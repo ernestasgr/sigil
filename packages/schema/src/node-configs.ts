@@ -48,7 +48,7 @@ export const NotificationConfigSchema = z.object({
 export type NotificationConfig = z.infer<typeof NotificationConfigSchema>;
 
 export const LogConfigSchema = z.object({
-    message: z.string(),
+    message: z.string().min(1),
 });
 export type LogConfig = z.infer<typeof LogConfigSchema>;
 
