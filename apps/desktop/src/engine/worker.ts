@@ -4,13 +4,16 @@ import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 
 import {
     EngineChannel,
+    type EngineDisableWorkflows,
+    type EngineEnableWorkflows,
     type EngineFireTestEvent,
     type EngineLog,
     type EnginePing,
     type EnginePong,
+    type EngineWorkflowsActive,
 } from '../shared/ipc-channels.js';
 import { createEngine } from './engine.js';
-import { assertNever } from './utils.js';
+import { assertNever } from '../shared/assert-never.js';
 
 if (!parentPort) {
     throw new Error('engine worker must be spawned as a worker_thread');
@@ -18,7 +21,11 @@ if (!parentPort) {
 
 const port = parentPort;
 
-type WorkerInbound = EnginePing | EngineFireTestEvent;
+type WorkerInbound =
+    | EnginePing
+    | EngineFireTestEvent
+    | EngineEnableWorkflows
+    | EngineDisableWorkflows;
 
 const engine = createEngine();
 
@@ -53,10 +60,22 @@ port.on('message', (message: WorkerInbound) => {
             }
             break;
         }
+        case EngineChannel.EnableWorkflows: {
+            break;
+        }
+        case EngineChannel.DisableWorkflows: {
+            break;
+        }
         default: {
             assertNever(message);
         }
     }
 });
+
+const initialWorkflowsActive: EngineWorkflowsActive = {
+    type: EngineChannel.WorkflowsActive,
+    active: false,
+};
+port.postMessage(initialWorkflowsActive);
 
 port.postMessage({ type: 'engine:ready' });
