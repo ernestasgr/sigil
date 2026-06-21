@@ -1,24 +1,42 @@
 import { describe, expect, it } from 'vitest';
 
+import type { WorkflowSummary } from '../shared/workflow.js';
+
 import { buildTrayMenu } from './tray-menu.js';
 
+const workflow = (id: string, name: string, enabled: boolean): WorkflowSummary => ({
+    id,
+    name,
+    enabled,
+});
+
 describe('buildTrayMenu', () => {
-    it('offers enabling workflows when they are inactive', () => {
-        const menu = buildTrayMenu(false);
+    it('lists each workflow as a toggle item', () => {
+        const workflows: readonly WorkflowSummary[] = [
+            workflow('sort-downloads', 'Sort Downloads', true),
+            workflow('notify-build', 'Notify Build', false),
+        ];
 
-        expect(menu.workflowsActive).toBe(false);
-        expect(menu.items[0]).toEqual({ kind: 'enable-workflows' });
+        const menu = buildTrayMenu(workflows);
+
+        expect(menu.items[0]).toEqual({
+            kind: 'workflow-toggle',
+            workflow: workflow('sort-downloads', 'Sort Downloads', true),
+        });
+        expect(menu.items[1]).toEqual({
+            kind: 'workflow-toggle',
+            workflow: workflow('notify-build', 'Notify Build', false),
+        });
     });
 
-    it('offers disabling workflows when they are active', () => {
-        const menu = buildTrayMenu(true);
+    it('shows a no-workflows placeholder when the registry is empty', () => {
+        const menu = buildTrayMenu([]);
 
-        expect(menu.workflowsActive).toBe(true);
-        expect(menu.items[0]).toEqual({ kind: 'disable-workflows' });
+        expect(menu.items[0]).toEqual({ kind: 'no-workflows' });
     });
 
-    it('always includes open-app and quit actions separated from the toggle', () => {
-        const menu = buildTrayMenu(false);
+    it('always includes open-app and quit actions separated from the workflow list', () => {
+        const menu = buildTrayMenu([workflow('a', 'A', false)]);
         const kinds = menu.items.map((item) => item.kind);
 
         expect(kinds).toContain('open-app');
@@ -26,26 +44,37 @@ describe('buildTrayMenu', () => {
         expect(kinds).toContain('separator');
     });
 
-    it('places a separator between the workflow toggle and the app actions', () => {
-        const inactive = buildTrayMenu(false);
-        const active = buildTrayMenu(true);
+    it('places a separator between the workflow list and the app actions', () => {
+        const menu = buildTrayMenu([workflow('a', 'A', false)]);
 
-        const inactiveKinds = inactive.items.map((item) => item.kind);
-        const activeKinds = active.items.map((item) => item.kind);
+        const kinds = menu.items.map((item) => item.kind);
 
-        expect(inactiveKinds).toEqual([
-            'enable-workflows',
-            'separator',
-            'open-app',
-            'separator',
-            'quit',
-        ]);
-        expect(activeKinds).toEqual([
-            'disable-workflows',
-            'separator',
-            'open-app',
-            'separator',
-            'quit',
-        ]);
+        expect(kinds).toEqual(['workflow-toggle', 'separator', 'open-app', 'separator', 'quit']);
+    });
+
+    it('places a separator between the no-workflows label and the app actions when empty', () => {
+        const menu = buildTrayMenu([]);
+
+        const kinds = menu.items.map((item) => item.kind);
+
+        expect(kinds).toEqual(['no-workflows', 'separator', 'open-app', 'separator', 'quit']);
+    });
+
+    it('reports workflows active when at least one workflow is enabled', () => {
+        const menu = buildTrayMenu([workflow('a', 'A', false), workflow('b', 'B', true)]);
+
+        expect(menu.workflowsActive).toBe(true);
+    });
+
+    it('reports workflows inactive when no workflow is enabled', () => {
+        const menu = buildTrayMenu([workflow('a', 'A', false)]);
+
+        expect(menu.workflowsActive).toBe(false);
+    });
+
+    it('reports workflows inactive when the registry is empty', () => {
+        const menu = buildTrayMenu([]);
+
+        expect(menu.workflowsActive).toBe(false);
     });
 });

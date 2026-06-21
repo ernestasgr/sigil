@@ -1,20 +1,28 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { WorkflowSummary } from '../../shared/workflow.js';
+
 import { useAppStore } from './app-store.js';
+
+const workflow = (id: string, name: string, enabled: boolean): WorkflowSummary => ({
+    id,
+    name,
+    enabled,
+});
 
 describe('useAppStore', () => {
     beforeEach(() => {
         useAppStore.setState({
             activeSection: 'home',
-            workflowsActive: false,
+            workflows: [],
         });
     });
 
-    it('boots to the Home section with workflows inactive', () => {
+    it('boots to the Home section with an empty workflow list', () => {
         const state = useAppStore.getState();
 
         expect(state.activeSection).toBe('home');
-        expect(state.workflowsActive).toBe(false);
+        expect(state.workflows).toEqual([]);
     });
 
     it('navigates to a different section', () => {
@@ -32,9 +40,21 @@ describe('useAppStore', () => {
         }
     });
 
-    it('reflects workflow active state reported by the engine', () => {
-        useAppStore.getState().setWorkflowsActive(true);
+    it('adopts the workflow list reported by the engine', () => {
+        const list: readonly WorkflowSummary[] = [
+            workflow('sort-downloads', 'Sort Downloads', true),
+            workflow('notify-build', 'Notify Build', false),
+        ];
 
-        expect(useAppStore.getState().workflowsActive).toBe(true);
+        useAppStore.getState().setWorkflows(list);
+
+        expect(useAppStore.getState().workflows).toEqual(list);
+    });
+
+    it('replaces the workflow list on each update rather than merging', () => {
+        useAppStore.getState().setWorkflows([workflow('a', 'A', false)]);
+        useAppStore.getState().setWorkflows([workflow('b', 'B', true)]);
+
+        expect(useAppStore.getState().workflows).toEqual([workflow('b', 'B', true)]);
     });
 });

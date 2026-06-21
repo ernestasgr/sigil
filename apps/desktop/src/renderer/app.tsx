@@ -5,16 +5,16 @@ import { SectionRouter } from './components/section-router.js';
 import { useAppStore } from './store/app-store.js';
 
 export function App(): ReactElement {
-    const setWorkflowsActive = useAppStore((state) => state.setWorkflowsActive);
+    const setWorkflows = useAppStore((state) => state.setWorkflows);
 
     useEffect(() => {
-        const unsubscribe = window.sigil.onWorkflowsActive((active) => {
-            setWorkflowsActive(active);
+        const unsubscribe = window.sigil.onWorkflowsList((workflows) => {
+            setWorkflows(workflows);
         });
         return () => {
             unsubscribe();
         };
-    }, [setWorkflowsActive]);
+    }, [setWorkflows]);
 
     return (
         <div className="flex h-full">
