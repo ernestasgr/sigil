@@ -1,78 +1,58 @@
 import { useEffect, useState, type ReactElement } from 'react';
-import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 
-type EngineStatus = 'idle' | 'pinging' | 'ok' | 'error';
+type LogEntry = { readonly id: number; readonly line: string };
 
 export function App(): ReactElement {
-    const [engineStatus, setEngineStatus] = useState<EngineStatus>('idle');
-    const [pongReceivedAt, setPongReceivedAt] = useState<number | null>(null);
+    const [logs, setLogs] = useState<readonly LogEntry[]>([]);
 
     useEffect(() => {
-        const sigil = (
-            window as unknown as {
-                sigil?: { pingEngine: () => Promise<{ receivedAt: number } | null> };
-            }
-        ).sigil;
-        if (!sigil) {
-            setEngineStatus('error');
-            return;
-        }
-        setEngineStatus('pinging');
-        sigil
-            .pingEngine()
-            .then((pong) => {
-                if (pong) {
-                    setPongReceivedAt(pong.receivedAt);
-                    setEngineStatus('ok');
-                } else {
-                    setEngineStatus('error');
-                }
-            })
-            .catch(() => setEngineStatus('error'));
+        const unsubscribe = window.sigil.onEngineLog((line) => {
+            setLogs((prev) => [...prev, { id: prev.length, line }]);
+        });
+        return () => {
+            unsubscribe();
+        };
     }, []);
 
-    const statusColor =
-        engineStatus === 'ok'
-            ? 'text-verdigris'
-            : engineStatus === 'error'
-              ? 'text-old-blood'
-              : 'text-veil';
-
-    const statusLabel =
-        engineStatus === 'ok'
-            ? 'Engine online'
-            : engineStatus === 'error'
-              ? 'Engine offline'
-              : engineStatus === 'pinging'
-                ? 'Pinging engine…'
-                : 'Idle';
+    const handleFire = (): void => {
+        void window.sigil.fireTestEvent();
+    };
 
     return (
-        <div className="flex h-full flex-col items-center justify-center gap-6 p-8">
+        <div className="flex h-full flex-col items-center gap-8 p-8">
             <header className="text-center">
-                <h1 className="font-display text-4xl tracking-[0.3em] text-gilt uppercase">
-                    Sigil
-                </h1>
+                <h1 className="font-display text-4xl tracking-[0.3em] text-gilt uppercase">Sigil</h1>
                 <p className="font-manuscript text-veil mt-2 text-lg italic">
-                    A local-first automation platform.
+                    Tracer: manual-trigger → log
                 </p>
             </header>
 
-            <div className="border-veil/40 text-data text-sm flex items-center gap-3 rounded-sm border px-4 py-3">
-                <span className={statusColor}>●</span>
-                <span>{statusLabel}</span>
-                {pongReceivedAt !== null && (
-                    <span className="text-veil">
-                        {' '}
-                        (pong @ {new Date(pongReceivedAt).toLocaleTimeString()})
-                    </span>
-                )}
-            </div>
+            <button
+                type="button"
+                onClick={handleFire}
+                className="border-gilt text-gilt hover:bg-gilt/10 px-6 py-2 text-sm tracking-widest uppercase border transition-colors"
+            >
+                Fire test event
+            </button>
 
-            <div className="text-data text-veil max-w-md text-xs">
-                <p>Schema sample loaded: {sampleManualTriggerToLog.id}</p>
-                <p>Nodes: {sampleManualTriggerToLog.nodes.map((n) => n.type).join(' → ')}</p>
-            </div>
+            <section className="border-gilt/40 w-full max-w-2xl border">
+                <h2 className="font-ui text-veil border-gilt/40 border-b px-4 py-2 text-xs tracking-widest uppercase">
+                    Engine log
+                </h2>
+                <ul className="font-data divide-gilt/30 divide-y">
+                    {logs.length === 0 ? (
+                        <li className="font-manuscript text-veil px-4 py-3 text-sm italic">
+                            No events yet — fire the trigger to see a log line.
+                        </li>
+                    ) : (
+                        logs.map((entry) => (
+                            <li key={entry.id} className="text-parchment px-4 py-2 text-sm">
+                                {entry.line}
+                            </li>
+                        ))
+                    )}
+                </ul>
+            </section>
         </div>
     );
 }

@@ -2,14 +2,21 @@ import { Worker } from 'node:worker_threads';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve as resolvePath } from 'node:path';
-import { EngineChannel, type EngineMessage, type EnginePong } from '../shared/ipc-channels.js';
+import {
+    EngineChannel,
+    type EngineFireTestEvent,
+    type EngineMessage,
+    type EnginePong,
+} from '../shared/ipc-channels.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export type EngineHandle = {
-    ping: (timeoutMs?: number) => Promise<EnginePong>;
-    terminate: () => Promise<number>;
-    onReady: (handler: () => void) => void;
+    readonly ping: (timeoutMs?: number) => Promise<EnginePong>;
+    readonly fireTestEvent: () => void;
+    readonly terminate: () => Promise<number>;
+    readonly onReady: (handler: () => void) => void;
+    readonly onLog: (handler: (line: string) => void) => () => void;
 };
 
 export function spawnEngine(): EngineHandle {
@@ -18,10 +25,11 @@ export function spawnEngine(): EngineHandle {
 
     const pendingPings = new Map<string, { resolve: (pong: EnginePong) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }>();
     const readyHandlers = new Set<() => void>();
+    const logHandlers = new Set<(line: string) => void>();
     let ready = false;
 
     function rejectAllPending(reason: string) {
-        for (const [id, entry] of pendingPings) {
+        for (const [, entry] of pendingPings) {
             clearTimeout(entry.timer);
             entry.reject(new Error(reason));
         }
@@ -41,6 +49,10 @@ export function spawnEngine(): EngineHandle {
                 clearTimeout(entry.timer);
                 entry.resolve(message);
             }
+            return;
+        }
+        if (message.type === EngineChannel.Log) {
+            for (const handler of logHandlers) handler(message.line);
         }
     });
 
@@ -71,6 +83,10 @@ export function spawnEngine(): EngineHandle {
                 worker.postMessage(ping);
             });
         },
+        fireTestEvent(): void {
+            const fire: EngineFireTestEvent = { type: EngineChannel.FireTestEvent };
+            worker.postMessage(fire);
+        },
         terminate(): Promise<number> {
             return worker.terminate();
         },
@@ -80,6 +96,12 @@ export function spawnEngine(): EngineHandle {
             } else {
                 readyHandlers.add(handler);
             }
+        },
+        onLog(handler: (line: string) => void): () => void {
+            logHandlers.add(handler);
+            return () => {
+                logHandlers.delete(handler);
+            };
         },
     };
 }
