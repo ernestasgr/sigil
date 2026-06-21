@@ -1,13 +1,15 @@
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 
 type LogEntry = { readonly id: number; readonly line: string };
 
 export function App(): ReactElement {
     const [logs, setLogs] = useState<readonly LogEntry[]>([]);
+    const nextId = useRef(0);
 
     useEffect(() => {
         const unsubscribe = window.sigil.onEngineLog((line) => {
-            setLogs((prev) => [...prev, { id: prev.length, line }]);
+            const id = nextId.current++;
+            setLogs((prev) => [...prev, { id, line }]);
         });
         return () => {
             unsubscribe();

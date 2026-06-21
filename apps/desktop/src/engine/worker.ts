@@ -10,6 +10,7 @@ import {
     type EnginePong,
 } from '../shared/ipc-channels.js';
 import { createEngine } from './engine.js';
+import { assertNever } from './utils.js';
 
 if (!parentPort) {
     throw new Error('engine worker must be spawned as a worker_thread');
@@ -18,10 +19,6 @@ if (!parentPort) {
 const port = parentPort;
 
 type WorkerInbound = EnginePing | EngineFireTestEvent;
-
-function assertNever(value: never): never {
-    throw new Error(`Unhandled engine message: ${JSON.stringify(value)}`);
-}
 
 const engine = createEngine();
 
@@ -44,7 +41,16 @@ port.on('message', (message: WorkerInbound) => {
             break;
         }
         case EngineChannel.FireTestEvent: {
-            engine.execute(sampleManualTriggerToLog);
+            try {
+                engine.execute(sampleManualTriggerToLog);
+            } catch (err) {
+                console.error('[worker] engine.execute failed:', err);
+                const log: EngineLog = {
+                    type: EngineChannel.Log,
+                    line: `[error] engine.execute failed: ${err instanceof Error ? err.message : String(err)}`,
+                };
+                port.postMessage(log);
+            }
             break;
         }
         default: {

@@ -5,6 +5,7 @@ import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
 import type { EventBus } from './event-bus.js';
 import { resolveTemplate } from './template.js';
+import { assertNever } from './utils.js';
 
 export type NodeError =
     | { readonly kind: 'node_type_not_a_trigger'; readonly nodeType: NodeType }
@@ -16,10 +17,6 @@ export type TriggerResult =
     | { readonly ok: false; readonly error: NodeError };
 
 export type BodyResult = { readonly ok: true } | { readonly ok: false; readonly error: NodeError };
-
-function assertNever(node: never): never {
-    throw new Error(`Unhandled node type: ${JSON.stringify(node)}`);
-}
 
 function executionOrder(pipeline: CompiledPipeline): readonly string[] {
     const adjacency = new Map<string, string[]>();
@@ -37,18 +34,20 @@ function executionOrder(pipeline: CompiledPipeline): readonly string[] {
         incomingCount.set(edge.target, (incomingCount.get(edge.target) ?? 0) + 1);
     }
 
-    const roots = pipeline.nodes.filter((node) => (incomingCount.get(node.id) ?? 0) === 0);
-    const queue = roots.map((node) => node.id);
-    const visited = new Set<string>();
-    const order: string[] = [];
+    const queue: string[] = [];
+    for (const [id, count] of incomingCount) {
+        if (count === 0) queue.push(id);
+    }
 
+    const order: string[] = [];
     while (queue.length > 0) {
         const id = queue.shift();
-        if (id === undefined || visited.has(id)) continue;
-        visited.add(id);
+        if (id === undefined) continue;
         order.push(id);
         for (const target of adjacency.get(id) ?? []) {
-            if (!visited.has(target)) {
+            const remaining = (incomingCount.get(target) ?? 1) - 1;
+            incomingCount.set(target, remaining);
+            if (remaining === 0) {
                 queue.push(target);
             }
         }
@@ -128,7 +127,11 @@ export function executePipeline(pipeline: CompiledPipeline, bus: EventBus): void
     for (const id of order.slice(1)) {
         const node = nodeById.get(id);
         if (node) {
-            runBodyNode(node, ctx, bus);
+            const result = runBodyNode(node, ctx, bus);
+            if (!result.ok) {
+                bus.next({ name: 'workflow.completed', payload: runPayload });
+                return;
+            }
         }
     }
 

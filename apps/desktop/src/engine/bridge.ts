@@ -1,5 +1,4 @@
-import type { BusEvent } from './event-bus.js';
-import type { EventBus } from './event-bus.js';
+import type { BusEvent, EventBus } from './event-bus.js';
 
 export interface Bridge {
     readonly emit: (event: BusEvent) => void;

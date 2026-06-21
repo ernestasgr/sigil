@@ -70,11 +70,12 @@ function wireEngineIpc(): void {
 
 function forwardEngineLogsToRenderer(): void {
     if (!engine) return;
-    engine.onLog((line) => {
+    const unsubscribe = engine.onLog((line) => {
         for (const window of BrowserWindow.getAllWindows()) {
             window.webContents.send(RendererChannel.EngineLog, line);
         }
     });
+    app.on('before-quit', unsubscribe);
 }
 
 app.whenReady().then(() => {
