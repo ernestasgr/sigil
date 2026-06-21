@@ -95,7 +95,10 @@ function runBodyNode(node: PipelineNode, ctx: WorkflowContext, bus: EventBus): B
         case 'delay':
         case 'state-get':
         case 'state-set':
-            return { ok: false, error: { kind: 'node_type_not_supported_in_tracer', nodeType: node.type } };
+            return {
+                ok: false,
+                error: { kind: 'node_type_not_supported_in_tracer', nodeType: node.type },
+            };
         default:
             return assertNever(node);
     }

@@ -15,7 +15,10 @@ export type CapabilityRequest = {
 
 export type CapabilityResult =
     | { readonly ok: true }
-    | { readonly ok: false; readonly error: { readonly kind: 'denied'; readonly capability: Capability } };
+    | {
+          readonly ok: false;
+          readonly error: { readonly kind: 'denied'; readonly capability: Capability };
+      };
 
 export interface CapabilityBroker {
     readonly request: (request: CapabilityRequest) => CapabilityResult;

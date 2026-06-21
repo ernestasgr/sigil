@@ -10,7 +10,10 @@ describe('createEventBus', () => {
             received.push(event.name);
         });
 
-        bus.next({ name: 'log.output', payload: { message: 'Manual trigger fired for report.pdf' } });
+        bus.next({
+            name: 'log.output',
+            payload: { message: 'Manual trigger fired for report.pdf' },
+        });
 
         expect(received).toEqual(['log.output']);
     });
