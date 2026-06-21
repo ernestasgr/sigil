@@ -6,15 +6,20 @@ import { useAppStore } from './store/app-store.js';
 
 export function App(): ReactElement {
     const setWorkflows = useAppStore((state) => state.setWorkflows);
+    const appendLog = useAppStore((state) => state.appendLog);
 
     useEffect(() => {
-        const unsubscribe = window.sigil.onWorkflowsList((workflows) => {
+        const unsubscribeWorkflows = window.sigil.onWorkflowsList((workflows) => {
             setWorkflows(workflows);
         });
+        const unsubscribeLogs = window.sigil.onEngineLog((line) => {
+            appendLog(line);
+        });
         return () => {
-            unsubscribe();
+            unsubscribeWorkflows();
+            unsubscribeLogs();
         };
-    }, [setWorkflows]);
+    }, [setWorkflows, appendLog]);
 
     return (
         <div className="flex h-full">
