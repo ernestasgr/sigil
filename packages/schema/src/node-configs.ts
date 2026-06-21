@@ -42,8 +42,8 @@ export const FileManagerConfigSchema = z.object({
 export type FileManagerConfig = z.infer<typeof FileManagerConfigSchema>;
 
 export const NotificationConfigSchema = z.object({
-    title: z.string(),
-    body: z.string(),
+    title: z.string().min(1),
+    body: z.string().min(1),
 });
 export type NotificationConfig = z.infer<typeof NotificationConfigSchema>;
 
