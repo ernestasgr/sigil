@@ -4,7 +4,9 @@ import { cn } from '../lib/utils.js';
 import { useAppStore } from '../store/app-store.js';
 
 export function WorkflowStatus(): ReactElement {
-    const workflowsActive = useAppStore((state) => state.workflowsActive);
+    const workflows = useAppStore((state) => state.workflows);
+    const enabledCount = workflows.filter((w) => w.enabled).length;
+    const active = enabledCount > 0;
 
     return (
         <div className="border-gilt/40 border-t px-6 py-4">
@@ -14,7 +16,7 @@ export function WorkflowStatus(): ReactElement {
                     height="14"
                     viewBox="0 0 14 14"
                     fill="none"
-                    className={cn(workflowsActive ? 'text-gilt' : 'text-veil')}
+                    className={cn(active ? 'text-gilt' : 'text-veil')}
                     aria-hidden="true"
                 >
                     <polygon
@@ -28,10 +30,12 @@ export function WorkflowStatus(): ReactElement {
                 <span
                     className={cn(
                         'font-ui text-xs tracking-widest uppercase',
-                        workflowsActive ? 'text-gilt' : 'text-veil',
+                        active ? 'text-gilt' : 'text-veil',
                     )}
                 >
-                    {workflowsActive ? 'Workflows active' : 'Workflows dormant'}
+                    {active
+                        ? `${enabledCount} ${enabledCount === 1 ? 'workflow' : 'workflows'} active`
+                        : 'Workflows dormant'}
                 </span>
             </div>
         </div>

@@ -1,11 +1,12 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { RendererChannel, type EnginePong } from '../shared/ipc-channels.js';
+import type { WorkflowSummary } from '../shared/workflow.js';
 
 const api = {
     pingEngine: (): Promise<EnginePong | null> => ipcRenderer.invoke(RendererChannel.EnginePong),
     fireTestEvent: (): Promise<void> => ipcRenderer.invoke(RendererChannel.FireTestEvent),
-    enableWorkflows: (): Promise<void> => ipcRenderer.invoke(RendererChannel.EnableWorkflows),
-    disableWorkflows: (): Promise<void> => ipcRenderer.invoke(RendererChannel.DisableWorkflows),
+    toggleWorkflow: (id: string): Promise<void> =>
+        ipcRenderer.invoke(RendererChannel.ToggleWorkflow, id),
     onEngineLog: (handler: (line: string) => void): (() => void) => {
         const listener = (_event: IpcRendererEvent, line: string): void => handler(line);
         ipcRenderer.on(RendererChannel.EngineLog, listener);
@@ -13,11 +14,12 @@ const api = {
             ipcRenderer.off(RendererChannel.EngineLog, listener);
         };
     },
-    onWorkflowsActive: (handler: (active: boolean) => void): (() => void) => {
-        const listener = (_event: IpcRendererEvent, active: boolean): void => handler(active);
-        ipcRenderer.on(RendererChannel.WorkflowsActive, listener);
+    onWorkflowsList: (handler: (workflows: readonly WorkflowSummary[]) => void): (() => void) => {
+        const listener = (_event: IpcRendererEvent, workflows: WorkflowSummary[]): void =>
+            handler(workflows);
+        ipcRenderer.on(RendererChannel.WorkflowsList, listener);
         return () => {
-            ipcRenderer.off(RendererChannel.WorkflowsActive, listener);
+            ipcRenderer.off(RendererChannel.WorkflowsList, listener);
         };
     },
 };

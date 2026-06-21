@@ -1,38 +1,39 @@
+import type { WorkflowSummary } from './workflow.js';
+
 export const EngineChannel = {
     Ping: 'engine:ping',
     Pong: 'engine:pong',
     FireTestEvent: 'engine:fire-test-event',
     Log: 'engine:log',
-    WorkflowsActive: 'engine:workflows-active',
-    EnableWorkflows: 'engine:enable-workflows',
-    DisableWorkflows: 'engine:disable-workflows',
+    WorkflowsList: 'engine:workflows-list',
+    ToggleWorkflow: 'engine:toggle-workflow',
 } as const;
 
 export type EnginePing = { id: string; type: typeof EngineChannel.Ping };
 export type EnginePong = { id: string; type: typeof EngineChannel.Pong; receivedAt: number };
 export type EngineFireTestEvent = { type: typeof EngineChannel.FireTestEvent };
 export type EngineLog = { type: typeof EngineChannel.Log; line: string };
-export type EngineWorkflowsActive = {
-    type: typeof EngineChannel.WorkflowsActive;
-    active: boolean;
+export type EngineWorkflowsList = {
+    type: typeof EngineChannel.WorkflowsList;
+    workflows: readonly WorkflowSummary[];
 };
-export type EngineEnableWorkflows = { type: typeof EngineChannel.EnableWorkflows };
-export type EngineDisableWorkflows = { type: typeof EngineChannel.DisableWorkflows };
+export type EngineToggleWorkflow = {
+    type: typeof EngineChannel.ToggleWorkflow;
+    id: string;
+};
 
 export type EngineMessage =
     | EnginePing
     | EnginePong
     | EngineFireTestEvent
     | EngineLog
-    | EngineWorkflowsActive
-    | EngineEnableWorkflows
-    | EngineDisableWorkflows;
+    | EngineWorkflowsList
+    | EngineToggleWorkflow;
 
 export const RendererChannel = {
     EnginePong: 'renderer:engine-pong',
     FireTestEvent: 'renderer:fire-test-event',
     EngineLog: 'renderer:engine-log',
-    WorkflowsActive: 'renderer:workflows-active',
-    EnableWorkflows: 'renderer:enable-workflows',
-    DisableWorkflows: 'renderer:disable-workflows',
+    WorkflowsList: 'renderer:workflows-list',
+    ToggleWorkflow: 'renderer:toggle-workflow',
 } as const;

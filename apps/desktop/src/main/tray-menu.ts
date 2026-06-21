@@ -1,6 +1,8 @@
+import type { WorkflowSummary } from '../shared/workflow.js';
+
 export type TrayMenuItem =
-    | { readonly kind: 'enable-workflows' }
-    | { readonly kind: 'disable-workflows' }
+    | { readonly kind: 'workflow-toggle'; readonly workflow: WorkflowSummary }
+    | { readonly kind: 'no-workflows' }
     | { readonly kind: 'open-app' }
     | { readonly kind: 'separator' }
     | { readonly kind: 'quit' };
@@ -10,15 +12,18 @@ export interface TrayMenu {
     readonly items: readonly TrayMenuItem[];
 }
 
-export function buildTrayMenu(workflowsActive: boolean): TrayMenu {
-    const toggle: TrayMenuItem = workflowsActive
-        ? { kind: 'disable-workflows' }
-        : { kind: 'enable-workflows' };
+export function buildTrayMenu(workflows: readonly WorkflowSummary[]): TrayMenu {
+    const workflowItems: TrayMenuItem[] = workflows.map((w) => ({
+        kind: 'workflow-toggle',
+        workflow: w,
+    }));
+    const emptyItem: TrayMenuItem[] = workflows.length === 0 ? [{ kind: 'no-workflows' }] : [];
 
     return {
-        workflowsActive,
+        workflowsActive: workflows.some((w) => w.enabled),
         items: [
-            toggle,
+            ...workflowItems,
+            ...emptyItem,
             { kind: 'separator' },
             { kind: 'open-app' },
             { kind: 'separator' },

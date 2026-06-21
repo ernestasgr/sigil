@@ -4,24 +4,25 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve as resolvePath } from 'node:path';
 import {
     EngineChannel,
-    type EngineDisableWorkflows,
-    type EngineEnableWorkflows,
     type EngineFireTestEvent,
     type EngineMessage,
     type EnginePong,
+    type EngineToggleWorkflow,
 } from '../shared/ipc-channels.js';
+import type { WorkflowSummary } from '../shared/workflow.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export type EngineHandle = {
     readonly ping: (timeoutMs?: number) => Promise<EnginePong>;
     readonly fireTestEvent: () => void;
-    readonly enableWorkflows: () => void;
-    readonly disableWorkflows: () => void;
+    readonly toggleWorkflow: (id: string) => void;
     readonly terminate: () => Promise<number>;
     readonly onReady: (handler: () => void) => void;
     readonly onLog: (handler: (line: string) => void) => () => void;
-    readonly onWorkflowsActive: (handler: (active: boolean) => void) => () => void;
+    readonly onWorkflowsList: (
+        handler: (workflows: readonly WorkflowSummary[]) => void,
+    ) => () => void;
 };
 
 export function spawnEngine(): EngineHandle {
@@ -34,7 +35,7 @@ export function spawnEngine(): EngineHandle {
     >();
     const readyHandlers = new Set<() => void>();
     const logHandlers = new Set<(line: string) => void>();
-    const workflowsActiveHandlers = new Set<(active: boolean) => void>();
+    const workflowsListHandlers = new Set<(workflows: readonly WorkflowSummary[]) => void>();
     let ready = false;
 
     function rejectAllPending(reason: string) {
@@ -64,8 +65,8 @@ export function spawnEngine(): EngineHandle {
             for (const handler of [...logHandlers]) handler(message.line);
             return;
         }
-        if (message.type === EngineChannel.WorkflowsActive) {
-            for (const handler of [...workflowsActiveHandlers]) handler(message.active);
+        if (message.type === EngineChannel.WorkflowsList) {
+            for (const handler of [...workflowsListHandlers]) handler(message.workflows);
         }
     });
 
@@ -100,13 +101,9 @@ export function spawnEngine(): EngineHandle {
             const fire: EngineFireTestEvent = { type: EngineChannel.FireTestEvent };
             worker.postMessage(fire);
         },
-        enableWorkflows(): void {
-            const enable: EngineEnableWorkflows = { type: EngineChannel.EnableWorkflows };
-            worker.postMessage(enable);
-        },
-        disableWorkflows(): void {
-            const disable: EngineDisableWorkflows = { type: EngineChannel.DisableWorkflows };
-            worker.postMessage(disable);
+        toggleWorkflow(id: string): void {
+            const toggle: EngineToggleWorkflow = { type: EngineChannel.ToggleWorkflow, id };
+            worker.postMessage(toggle);
         },
         terminate(): Promise<number> {
             return worker.terminate();
@@ -124,10 +121,10 @@ export function spawnEngine(): EngineHandle {
                 logHandlers.delete(handler);
             };
         },
-        onWorkflowsActive(handler: (active: boolean) => void): () => void {
-            workflowsActiveHandlers.add(handler);
+        onWorkflowsList(handler: (workflows: readonly WorkflowSummary[]) => void): () => void {
+            workflowsListHandlers.add(handler);
             return () => {
-                workflowsActiveHandlers.delete(handler);
+                workflowsListHandlers.delete(handler);
             };
         },
     };

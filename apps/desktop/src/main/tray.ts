@@ -1,18 +1,18 @@
 import { Menu, Tray, nativeImage } from 'electron';
 
 import { assertNever } from '../shared/assert-never.js';
+import type { WorkflowSummary } from '../shared/workflow.js';
 import { solidColorPngDataUrl } from './tray-icon.js';
 import { buildTrayMenu, type TrayMenuItem } from './tray-menu.js';
 
 export interface TrayHandlers {
-    readonly onEnableWorkflows: () => void;
-    readonly onDisableWorkflows: () => void;
+    readonly onToggleWorkflow: (id: string) => void;
     readonly onOpenApp: () => void;
     readonly onQuit: () => void;
 }
 
 export interface TrayController {
-    readonly updateWorkflowsActive: (active: boolean) => void;
+    readonly updateWorkflows: (workflows: readonly WorkflowSummary[]) => void;
     readonly destroy: () => void;
 }
 
@@ -25,10 +25,12 @@ function iconForState(workflowsActive: boolean): string {
 
 function labelForItem(item: TrayMenuItem): string {
     switch (item.kind) {
-        case 'enable-workflows':
-            return 'Enable Workflows';
-        case 'disable-workflows':
-            return 'Disable Workflows';
+        case 'workflow-toggle': {
+            const check = item.workflow.enabled ? '✓ ' : '  ';
+            return `${check}${item.workflow.name}`;
+        }
+        case 'no-workflows':
+            return 'No workflows';
         case 'open-app':
             return 'Open Sigil';
         case 'separator':
@@ -41,18 +43,17 @@ function labelForItem(item: TrayMenuItem): string {
 }
 
 export function createTray(handlers: TrayHandlers): TrayController {
-    let workflowsActive = false;
+    let workflows: readonly WorkflowSummary[] = [];
 
-    const tray = new Tray(nativeImage.createFromDataURL(iconForState(workflowsActive)));
+    const tray = new Tray(nativeImage.createFromDataURL(iconForState(false)));
     tray.setToolTip('Sigil — Inactive');
 
     function dispatch(item: TrayMenuItem): void {
         switch (item.kind) {
-            case 'enable-workflows':
-                handlers.onEnableWorkflows();
+            case 'workflow-toggle':
+                handlers.onToggleWorkflow(item.workflow.id);
                 return;
-            case 'disable-workflows':
-                handlers.onDisableWorkflows();
+            case 'no-workflows':
                 return;
             case 'open-app':
                 handlers.onOpenApp();
@@ -68,20 +69,25 @@ export function createTray(handlers: TrayHandlers): TrayController {
     }
 
     function rebuild(): void {
-        const model = buildTrayMenu(workflowsActive);
-        const template = model.items.map((item) =>
-            item.kind === 'separator'
-                ? { type: 'separator' as const }
-                : { label: labelForItem(item), click: () => dispatch(item) },
-        );
+        const model = buildTrayMenu(workflows);
+        const template = model.items.map((item) => {
+            if (item.kind === 'separator') {
+                return { type: 'separator' as const };
+            }
+            if (item.kind === 'no-workflows') {
+                return { label: labelForItem(item), enabled: false };
+            }
+            return { label: labelForItem(item), click: () => dispatch(item) };
+        });
         tray.setContextMenu(Menu.buildFromTemplate(template));
     }
 
     rebuild();
 
     return {
-        updateWorkflowsActive(active: boolean): void {
-            workflowsActive = active;
+        updateWorkflows(nextWorkflows: readonly WorkflowSummary[]): void {
+            workflows = nextWorkflows;
+            const active = workflows.some((w) => w.enabled);
             tray.setImage(iconForState(active));
             tray.setToolTip(active ? 'Sigil — Workflows active' : 'Sigil — Inactive');
             rebuild();

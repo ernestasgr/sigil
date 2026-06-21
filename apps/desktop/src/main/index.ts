@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RendererChannel, type EnginePong } from '../shared/ipc-channels.js';
+import type { WorkflowSummary } from '../shared/workflow.js';
 import { spawnEngine, type EngineHandle } from './engine-client.js';
 import { createTray, type TrayController } from './tray.js';
 
@@ -13,7 +14,7 @@ const RENDERER_DEV_URL = process.env['ELECTRON_RENDERER_URL'];
 let engine: EngineHandle | null = null;
 let mainWindow: BrowserWindow | null = null;
 let tray: TrayController | null = null;
-let workflowsActive = false;
+let workflows: readonly WorkflowSummary[] = [];
 let isQuitting = false;
 
 function createWindow(): BrowserWindow {
@@ -72,19 +73,18 @@ function showAppWindow(): void {
     mainWindow = createWindow();
 }
 
-function broadcastWorkflowsActive(active: boolean): void {
+function broadcastWorkflowsList(next: readonly WorkflowSummary[]): void {
     for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed()) {
-            window.webContents.send(RendererChannel.WorkflowsActive, active);
+            window.webContents.send(RendererChannel.WorkflowsList, next);
         }
     }
 }
 
-function handleWorkflowsActiveChange(active: boolean): void {
-    if (active === workflowsActive) return;
-    workflowsActive = active;
-    tray?.updateWorkflowsActive(active);
-    broadcastWorkflowsActive(active);
+function handleWorkflowsListChange(next: readonly WorkflowSummary[]): void {
+    workflows = next;
+    tray?.updateWorkflows(next);
+    broadcastWorkflowsList(next);
 }
 
 function wireEngineIpc(): void {
@@ -102,12 +102,10 @@ function wireEngineIpc(): void {
         engine?.fireTestEvent();
     });
 
-    ipcMain.handle(RendererChannel.EnableWorkflows, async (): Promise<void> => {
-        engine?.enableWorkflows();
-    });
-
-    ipcMain.handle(RendererChannel.DisableWorkflows, async (): Promise<void> => {
-        engine?.disableWorkflows();
+    ipcMain.handle(RendererChannel.ToggleWorkflow, async (_event, id: unknown): Promise<void> => {
+        if (typeof id === 'string') {
+            engine?.toggleWorkflow(id);
+        }
     });
 }
 
@@ -123,10 +121,10 @@ function forwardEngineLogsToRenderer(): void {
     app.on('before-quit', unsubscribe);
 }
 
-function subscribeToWorkflowsActive(): void {
+function subscribeToWorkflowsList(): void {
     if (!engine) return;
-    const unsubscribe = engine.onWorkflowsActive((active) => {
-        handleWorkflowsActiveChange(active);
+    const unsubscribe = engine.onWorkflowsList((next) => {
+        handleWorkflowsListChange(next);
     });
     app.on('before-quit', unsubscribe);
 }
@@ -140,17 +138,17 @@ app.whenReady().then(() => {
 
     wireEngineIpc();
     forwardEngineLogsToRenderer();
-    subscribeToWorkflowsActive();
+    subscribeToWorkflowsList();
 
     tray = createTray({
-        onEnableWorkflows: () => engine?.enableWorkflows(),
-        onDisableWorkflows: () => engine?.disableWorkflows(),
+        onToggleWorkflow: (id) => engine?.toggleWorkflow(id),
         onOpenApp: () => showAppWindow(),
         onQuit: () => {
             app.quit();
         },
     });
 
+    tray.updateWorkflows(workflows);
     mainWindow = createWindow();
 
     app.on('activate', () => {

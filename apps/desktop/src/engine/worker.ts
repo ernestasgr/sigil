@@ -4,16 +4,16 @@ import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 
 import {
     EngineChannel,
-    type EngineDisableWorkflows,
-    type EngineEnableWorkflows,
     type EngineFireTestEvent,
     type EngineLog,
     type EnginePing,
     type EnginePong,
-    type EngineWorkflowsActive,
+    type EngineToggleWorkflow,
+    type EngineWorkflowsList,
 } from '../shared/ipc-channels.js';
 import { createEngine } from './engine.js';
 import { assertNever } from '../shared/assert-never.js';
+import { toggleWorkflow, type WorkflowRegistryState } from './workflow-registry.js';
 
 if (!parentPort) {
     throw new Error('engine worker must be spawned as a worker_thread');
@@ -21,13 +21,18 @@ if (!parentPort) {
 
 const port = parentPort;
 
-type WorkerInbound =
-    | EnginePing
-    | EngineFireTestEvent
-    | EngineEnableWorkflows
-    | EngineDisableWorkflows;
+type WorkerInbound = EnginePing | EngineFireTestEvent | EngineToggleWorkflow;
 
 const engine = createEngine();
+let registry: WorkflowRegistryState = [];
+
+function broadcastWorkflowsList(): void {
+    const message: EngineWorkflowsList = {
+        type: EngineChannel.WorkflowsList,
+        workflows: registry,
+    };
+    port.postMessage(message);
+}
 
 engine.bus.subscribe((event) => {
     if (event.name === 'log.output') {
@@ -60,10 +65,9 @@ port.on('message', (message: WorkerInbound) => {
             }
             break;
         }
-        case EngineChannel.EnableWorkflows: {
-            break;
-        }
-        case EngineChannel.DisableWorkflows: {
+        case EngineChannel.ToggleWorkflow: {
+            registry = toggleWorkflow(registry, message.id);
+            broadcastWorkflowsList();
             break;
         }
         default: {
@@ -72,10 +76,6 @@ port.on('message', (message: WorkerInbound) => {
     }
 });
 
-const initialWorkflowsActive: EngineWorkflowsActive = {
-    type: EngineChannel.WorkflowsActive,
-    active: false,
-};
-port.postMessage(initialWorkflowsActive);
+broadcastWorkflowsList();
 
 port.postMessage({ type: 'engine:ready' });
