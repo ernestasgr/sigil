@@ -15,6 +15,7 @@ describe('useAppStore', () => {
         useAppStore.setState({
             activeSection: 'home',
             workflows: [],
+            logs: [],
         });
     });
 
@@ -56,5 +57,23 @@ describe('useAppStore', () => {
         useAppStore.getState().setWorkflows([workflow('b', 'B', true)]);
 
         expect(useAppStore.getState().workflows).toEqual([workflow('b', 'B', true)]);
+    });
+
+    it('appends engine log lines to the log list', () => {
+        useAppStore.getState().appendLog('first');
+        useAppStore.getState().appendLog('second');
+
+        expect(useAppStore.getState().logs.map((l) => l.line)).toEqual(['first', 'second']);
+    });
+
+    it('caps the log list at 200 entries', () => {
+        for (let i = 0; i < 210; i++) {
+            useAppStore.getState().appendLog(`line-${i}`);
+        }
+
+        const logs = useAppStore.getState().logs;
+        expect(logs.length).toBe(200);
+        expect(logs[0].line).toBe('line-10');
+        expect(logs[199].line).toBe('line-209');
     });
 });

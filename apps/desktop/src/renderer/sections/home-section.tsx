@@ -1,23 +1,11 @@
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 
 import { SectionShell } from '../components/section-shell.js';
 import { Button } from '../components/ui/button.js';
-
-type LogEntry = { readonly id: number; readonly line: string };
+import { useAppStore } from '../store/app-store.js';
 
 export function HomeSection(): ReactElement {
-    const [logs, setLogs] = useState<readonly LogEntry[]>([]);
-    const nextId = useRef(0);
-
-    useEffect(() => {
-        const unsubscribe = window.sigil.onEngineLog((line) => {
-            const id = nextId.current++;
-            setLogs((prev) => [...prev, { id, line }]);
-        });
-        return () => {
-            unsubscribe();
-        };
-    }, []);
+    const logs = useAppStore((state) => state.logs);
 
     const handleFire = (): void => {
         void window.sigil.fireTestEvent();
@@ -34,7 +22,7 @@ export function HomeSection(): ReactElement {
                     <ul className="divide-gilt/30 divide-y font-data">
                         {logs.length === 0 ? (
                             <li className="font-manuscript text-veil px-4 py-3 text-sm italic">
-                                No events yet — fire the trigger to see a log line.
+                                No events yet — fire the trigger or toggle a workflow from the tray.
                             </li>
                         ) : (
                             logs.map((entry) => (
