@@ -1,0 +1,65 @@
+{
+    "name": "@sigil/schema",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "description": "Zod schemas for the Sigil Pipeline JSON type system. The shared contract every layer compiles to and validates against.",
+    "main": "./dist/pipeline.js",
+    "types": "./dist/pipeline.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/pipeline.d.ts",
+            "import": "./dist/pipeline.js"
+        },
+        "./operators": {
+            "types": "./dist/operators.d.ts",
+            "import": "./dist/operators.js"
+        },
+        "./file-event-payload": {
+            "types": "./dist/file-event-payload.d.ts",
+            "import": "./dist/file-event-payload.js"
+        },
+        "./workflow-context": {
+            "types": "./dist/workflow-context.d.ts",
+            "import": "./dist/workflow-context.js"
+        },
+        "./conditions": {
+            "types": "./dist/conditions.d.ts",
+            "import": "./dist/conditions.js"
+        },
+        "./node-configs": {
+            "types": "./dist/node-configs.d.ts",
+            "import": "./dist/node-configs.js"
+        },
+        "./nodes": {
+            "types": "./dist/nodes.d.ts",
+            "import": "./dist/nodes.js"
+        },
+        "./edges": {
+            "types": "./dist/edges.d.ts",
+            "import": "./dist/edges.js"
+        },
+        "./samples": {
+            "types": "./dist/samples.d.ts",
+            "import": "./dist/samples.js"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest"
+    },
+    "dependencies": {
+        "zod": "4.4.3"
+    },
+    "devDependencies": {
+        "typescript": "6.0.3",
+        "vite": "7.3.5",
+        "vitest": "4.1.9"
+    }
+}

@@ -52,8 +52,8 @@ from the executor's perspective once compiled.
 
 ```typescript
 interface WorkflowContext {
-  readonly event: Readonly<FileEventPayload>;
-  readonly vars: Readonly<Record<string, unknown>>;
+    readonly event: Readonly<FileEventPayload>;
+    readonly vars: Readonly<Record<string, unknown>>;
 }
 ```
 
@@ -62,8 +62,8 @@ A `WorkflowId` and a `NodeId` are both `string` at runtime but should
 never be assignable to each other.
 
 ```typescript
-type NodeId = string & { readonly __brand: "NodeId" };
-type WorkflowId = string & { readonly __brand: "WorkflowId" };
+type NodeId = string & { readonly __brand: 'NodeId' };
+type WorkflowId = string & { readonly __brand: 'WorkflowId' };
 ```
 
 **Avoid `as`.** The only acceptable place for a type assertion is
@@ -79,10 +79,10 @@ interface and the schema by hand in two places.
 
 ```typescript
 const FileConditionSchema = z.object({
-  target: z.literal("event"),
-  field: z.enum(["path", "name", "ext", "dir", "size"]),
-  operator: z.union([StringOperatorSchema, NumberOperatorSchema]),
-  value: z.union([z.string(), z.number()]),
+    target: z.literal('event'),
+    field: z.enum(['path', 'name', 'ext', 'dir', 'size']),
+    operator: z.union([StringOperatorSchema, NumberOperatorSchema]),
+    value: z.union([z.string(), z.number()]),
 });
 type FileCondition = z.infer<typeof FileConditionSchema>;
 ```
@@ -117,8 +117,8 @@ shared object that later steps wrote over.
 ```typescript
 // Good
 const nextContext: WorkflowContext = {
-  ...ctx,
-  vars: { ...ctx.vars, [assignTo]: value },
+    ...ctx,
+    vars: { ...ctx.vars, [assignTo]: value },
 };
 
 // Bad — later replay can't trust this snapshot

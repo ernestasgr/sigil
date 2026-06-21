@@ -67,4 +67,3 @@ _Avoid_: mode, profile, scene
 **Properties File:**
 The app-wide configuration file (JSON) containing plugin defaults and engine-level preferences. Resolution order for properties: node config (explicit) → Properties File → hardcoded fallback.
 _Avoid_: settings registry, config store
-

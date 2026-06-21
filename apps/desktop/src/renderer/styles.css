@@ -1,0 +1,35 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@theme {
+    --color-obsidian-ink: #0e0c10;
+    --color-parchment: #e8e1cc;
+    --color-gilt: #c9a227;
+    --color-old-blood: #7a1f2b;
+    --color-verdigris: #3e6259;
+    --color-veil: #4b4554;
+
+    --color-trigger: #c9a227;
+    --color-logic: #7e8aa0;
+    --color-system: #4a7568;
+    --color-state: #a85c32;
+    --color-utility: #6a6473;
+
+    --font-display: 'Cinzel', serif;
+    --font-ui: 'Inter', 'IBM Plex Sans', sans-serif;
+    --font-manuscript: 'Spectral', 'Cormorant', serif;
+    --font-data: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+}
+
+html,
+body,
+#root {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    font-family: var(--font-ui);
+    background-color: var(--color-obsidian-ink);
+    color: var(--color-parchment);
+}
