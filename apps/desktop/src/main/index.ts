@@ -61,6 +61,20 @@ function wireEngineIpc(): void {
             return null;
         }
     });
+
+    ipcMain.handle(RendererChannel.FireTestEvent, async (): Promise<void> => {
+        if (!engine) return;
+        engine.fireTestEvent();
+    });
+}
+
+function forwardEngineLogsToRenderer(): void {
+    if (!engine) return;
+    engine.onLog((line) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+            window.webContents.send(RendererChannel.EngineLog, line);
+        }
+    });
 }
 
 app.whenReady().then(() => {
@@ -71,6 +85,7 @@ app.whenReady().then(() => {
     });
 
     wireEngineIpc();
+    forwardEngineLogsToRenderer();
     createWindow();
 
     app.on('activate', () => {
