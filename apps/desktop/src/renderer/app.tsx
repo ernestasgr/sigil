@@ -21,7 +21,9 @@ export function App(): ReactElement {
     return (
         <div className="flex h-full flex-col items-center gap-8 p-8">
             <header className="text-center">
-                <h1 className="font-display text-4xl tracking-[0.3em] text-gilt uppercase">Sigil</h1>
+                <h1 className="font-display text-4xl tracking-[0.3em] text-gilt uppercase">
+                    Sigil
+                </h1>
                 <p className="font-manuscript text-veil mt-2 text-lg italic">
                     Tracer: manual-trigger → log
                 </p>

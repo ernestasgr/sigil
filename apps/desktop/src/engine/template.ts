@@ -2,10 +2,7 @@ import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
 const TEMPLATE_TOKEN = /\{\{\s*(event|vars)\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
 
-function resolveEventField(
-    event: WorkflowContext['event'],
-    field: string,
-): string | null {
+function resolveEventField(event: WorkflowContext['event'], field: string): string | null {
     switch (field) {
         case 'path':
             return event.path;

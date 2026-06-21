@@ -23,7 +23,10 @@ export function spawnEngine(): EngineHandle {
     const workerPath = resolvePath(__dirname, 'worker.js');
     const worker = new Worker(workerPath);
 
-    const pendingPings = new Map<string, { resolve: (pong: EnginePong) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }>();
+    const pendingPings = new Map<
+        string,
+        { resolve: (pong: EnginePong) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }
+    >();
     const readyHandlers = new Set<() => void>();
     const logHandlers = new Set<(line: string) => void>();
     let ready = false;

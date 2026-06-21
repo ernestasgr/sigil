@@ -25,7 +25,9 @@ describe('resolveTemplate', () => {
     });
 
     it('renders other event fields', () => {
-        expect(resolveTemplate('{{event.ext}} in {{event.dir}}', ctx)).toBe('pdf in /Users/dev/Downloads');
+        expect(resolveTemplate('{{event.ext}} in {{event.dir}}', ctx)).toBe(
+            'pdf in /Users/dev/Downloads',
+        );
     });
 
     it('renders vars tokens', () => {
@@ -33,6 +35,8 @@ describe('resolveTemplate', () => {
     });
 
     it('leaves unknown tokens untouched', () => {
-        expect(resolveTemplate('hello {{event.missing}} world', ctx)).toBe('hello {{event.missing}} world');
+        expect(resolveTemplate('hello {{event.missing}} world', ctx)).toBe(
+            'hello {{event.missing}} world',
+        );
     });
 });
