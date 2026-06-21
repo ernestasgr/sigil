@@ -16,10 +16,14 @@ export interface TrayController {
     readonly destroy: () => void;
 }
 
-const ACTIVE_ICON = solidColorPngDataUrl(16, 16, 0xc9, 0xa2, 0x27, 0xff);
-const INACTIVE_ICON = solidColorPngDataUrl(16, 16, 0x4b, 0x45, 0x54, 0xff);
+const ACTIVE_ICON = nativeImage.createFromDataURL(
+    solidColorPngDataUrl(16, 16, 0xc9, 0xa2, 0x27, 0xff),
+);
+const INACTIVE_ICON = nativeImage.createFromDataURL(
+    solidColorPngDataUrl(16, 16, 0x4b, 0x45, 0x54, 0xff),
+);
 
-function iconForState(workflowsActive: boolean): string {
+function iconForState(workflowsActive: boolean): Electron.NativeImage {
     return workflowsActive ? ACTIVE_ICON : INACTIVE_ICON;
 }
 
@@ -45,7 +49,7 @@ function labelForItem(item: TrayMenuItem): string {
 export function createTray(handlers: TrayHandlers): TrayController {
     let workflows: readonly WorkflowSummary[] = [];
 
-    const tray = new Tray(nativeImage.createFromDataURL(iconForState(false)));
+    const tray = new Tray(iconForState(false));
     tray.setToolTip('Sigil — Inactive');
 
     function dispatch(item: TrayMenuItem): void {
