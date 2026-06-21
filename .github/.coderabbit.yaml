@@ -1,0 +1,2 @@
+review_rules:
+    auto_pause_after_reviewed_commits: 1

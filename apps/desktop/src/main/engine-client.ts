@@ -55,7 +55,7 @@ export function spawnEngine(): EngineHandle {
             return;
         }
         if (message.type === EngineChannel.Log) {
-            for (const handler of logHandlers) handler(message.line);
+            for (const handler of [...logHandlers]) handler(message.line);
         }
     });
 
