@@ -5,7 +5,7 @@ import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
 import type { EventBus } from './event-bus.js';
 import { resolveTemplate } from './template.js';
-import { assertNever } from './utils.js';
+import { assertNever } from '../shared/assert-never.js';
 
 export type NodeError =
     | { readonly kind: 'node_type_not_a_trigger'; readonly nodeType: NodeType }

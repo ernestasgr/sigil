@@ -3,6 +3,7 @@ import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RendererChannel, type EnginePong } from '../shared/ipc-channels.js';
 import { spawnEngine, type EngineHandle } from './engine-client.js';
+import { createTray, type TrayController } from './tray.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -10,6 +11,10 @@ const RENDERER_DIST = resolvePath(__dirname, '../renderer');
 const RENDERER_DEV_URL = process.env['ELECTRON_RENDERER_URL'];
 
 let engine: EngineHandle | null = null;
+let mainWindow: BrowserWindow | null = null;
+let tray: TrayController | null = null;
+let workflowsActive = false;
+let isQuitting = false;
 
 function createWindow(): BrowserWindow {
     const window = new BrowserWindow({
@@ -42,6 +47,13 @@ function createWindow(): BrowserWindow {
         window.show();
     });
 
+    window.on('close', (event) => {
+        if (!isQuitting) {
+            event.preventDefault();
+            window.hide();
+        }
+    });
+
     window.webContents.on('console-message', (event) => {
         const { level, message, lineNumber, sourceId } = event;
 
@@ -49,6 +61,30 @@ function createWindow(): BrowserWindow {
     });
 
     return window;
+}
+
+function showAppWindow(): void {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
+        return;
+    }
+    mainWindow = createWindow();
+}
+
+function broadcastWorkflowsActive(active: boolean): void {
+    for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+            window.webContents.send(RendererChannel.WorkflowsActive, active);
+        }
+    }
+}
+
+function handleWorkflowsActiveChange(active: boolean): void {
+    if (active === workflowsActive) return;
+    workflowsActive = active;
+    tray?.updateWorkflowsActive(active);
+    broadcastWorkflowsActive(active);
 }
 
 function wireEngineIpc(): void {
@@ -63,8 +99,15 @@ function wireEngineIpc(): void {
     });
 
     ipcMain.handle(RendererChannel.FireTestEvent, async (): Promise<void> => {
-        if (!engine) return;
-        engine.fireTestEvent();
+        engine?.fireTestEvent();
+    });
+
+    ipcMain.handle(RendererChannel.EnableWorkflows, async (): Promise<void> => {
+        engine?.enableWorkflows();
+    });
+
+    ipcMain.handle(RendererChannel.DisableWorkflows, async (): Promise<void> => {
+        engine?.disableWorkflows();
     });
 }
 
@@ -72,8 +115,18 @@ function forwardEngineLogsToRenderer(): void {
     if (!engine) return;
     const unsubscribe = engine.onLog((line) => {
         for (const window of BrowserWindow.getAllWindows()) {
-            window.webContents.send(RendererChannel.EngineLog, line);
+            if (!window.isDestroyed()) {
+                window.webContents.send(RendererChannel.EngineLog, line);
+            }
         }
+    });
+    app.on('before-quit', unsubscribe);
+}
+
+function subscribeToWorkflowsActive(): void {
+    if (!engine) return;
+    const unsubscribe = engine.onWorkflowsActive((active) => {
+        handleWorkflowsActiveChange(active);
     });
     app.on('before-quit', unsubscribe);
 }
@@ -87,22 +140,34 @@ app.whenReady().then(() => {
 
     wireEngineIpc();
     forwardEngineLogsToRenderer();
-    createWindow();
+    subscribeToWorkflowsActive();
+
+    tray = createTray({
+        onEnableWorkflows: () => engine?.enableWorkflows(),
+        onDisableWorkflows: () => engine?.disableWorkflows(),
+        onOpenApp: () => showAppWindow(),
+        onQuit: () => {
+            app.quit();
+        },
+    });
+
+    mainWindow = createWindow();
 
     app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
-            createWindow();
-        }
+        showAppWindow();
     });
 });
 
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
+    if (process.platform !== 'darwin' && !tray) {
         app.quit();
     }
 });
 
 app.on('before-quit', async () => {
+    isQuitting = true;
+    tray?.destroy();
+    tray = null;
     if (engine) {
         await engine.terminate();
         engine = null;
