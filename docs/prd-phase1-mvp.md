@@ -63,20 +63,20 @@ The user creates a Workflow in the visual builder by connecting Nodes: a File Wa
 ### MVP Node Types (10 total)
 
 - **Triggers:**
-  - **File Watcher**: Subscribes to filesystem events.
-  - **Manual Trigger**: Triggers execution on click, using a pre-configured `FileEventPayload` static payload and a file picker shortcut to easily load properties of a real file.
+    - **File Watcher**: Subscribes to filesystem events.
+    - **Manual Trigger**: Triggers execution on click, using a pre-configured `FileEventPayload` static payload and a file picker shortcut to easily load properties of a real file.
 - **Logic:**
-  - **If/Else**: Evaluates a strongly-typed `PipelineCondition` against `WorkflowContext` and branches to a `true` or `false` port. Single condition only for MVP. Standard string operators (`equals`, `contains`, `starts_with`, `ends_with`) are case-insensitive by default. The `matches` operator performs regex matches where case sensitivity is determined by regex flags.
-  - **Switch**: Evaluates a single field on `WorkflowContext` (event or vars) against dynamic case values using type-aware matching, routing to case-specific ports (derived from case values) or a required `default` port.
+    - **If/Else**: Evaluates a strongly-typed `PipelineCondition` against `WorkflowContext` and branches to a `true` or `false` port. Single condition only for MVP. Standard string operators (`equals`, `contains`, `starts_with`, `ends_with`) are case-insensitive by default. The `matches` operator performs regex matches where case sensitivity is determined by regex flags.
+    - **Switch**: Evaluates a single field on `WorkflowContext` (event or vars) against dynamic case values using type-aware matching, routing to case-specific ports (derived from case values) or a required `default` port.
 - **System:**
-  - **File Manager**: Executes move, rename, or copy with chosen collision policy. Updates file properties in `WorkflowContext` event metadata upon completion.
-  - **Notification**: Standard OS notifications with mustache-style `{{event.field}}` or `{{vars.field}}` template interpolation for `title` and `body`.
+    - **File Manager**: Executes move, rename, or copy with chosen collision policy. Updates file properties in `WorkflowContext` event metadata upon completion.
+    - **Notification**: Standard OS notifications with mustache-style `{{event.field}}` or `{{vars.field}}` template interpolation for `title` and `body`.
 - **State:**
-  - **State Get**: Reads a key from persistent SQLite state and assigns it to a transient key in `WorkflowContext` `vars`.
-  - **State Set**: Writes a value to persistent SQLite state.
+    - **State Get**: Reads a key from persistent SQLite state and assigns it to a transient key in `WorkflowContext` `vars`.
+    - **State Set**: Writes a value to persistent SQLite state.
 - **Utilities:**
-  - **Log**: Outputs logs to the Variable Inspector or console, supporting mustache template interpolation (`{{event.field}}`, `{{vars.field}}`).
-  - **Delay**: Delays execution for a specified duration in milliseconds.
+    - **Log**: Outputs logs to the Variable Inspector or console, supporting mustache template interpolation (`{{event.field}}`, `{{vars.field}}`).
+    - **Delay**: Delays execution for a specified duration in milliseconds.
 
 ### Properties File
 
@@ -122,141 +122,147 @@ Workflows are stored as JSON files. The Workflow Builder compiles the visual nod
 // ── File Event Payload ────────────────────────────────────
 
 interface FileEventPayload {
-  path: string;
-  name: string;
-  ext: string;     // without dot, lowercased
-  size: number;    // bytes
-  dir: string;
+    path: string;
+    name: string;
+    ext: string; // without dot, lowercased
+    size: number; // bytes
+    dir: string;
 }
 
 // ── Workflow Context ──────────────────────────────────────
 
 interface WorkflowContext {
-  event: FileEventPayload;
-  vars: Record<string, any>;   // Transient in-memory variables populated via state-get
+    event: FileEventPayload;
+    vars: Record<string, any>; // Transient in-memory variables populated via state-get
 }
 
 // ── Condition Types ───────────────────────────────────────
 
-type StringOperator = "equals" | "not_equals" | "contains" | "not_contains"
-                    | "starts_with" | "ends_with" | "matches";
-type NumberOperator = "equals" | "not_equals" | "gt" | "lt" | "gte" | "lte";
-type BooleanOperator = "equals" | "not_equals";
+type StringOperator =
+    | 'equals'
+    | 'not_equals'
+    | 'contains'
+    | 'not_contains'
+    | 'starts_with'
+    | 'ends_with'
+    | 'matches';
+type NumberOperator = 'equals' | 'not_equals' | 'gt' | 'lt' | 'gte' | 'lte';
+type BooleanOperator = 'equals' | 'not_equals';
 
-interface BaseCondition<Target extends "event" | "vars", Field extends string, Op, Val> {
-  target: Target;
-  field: Field;
-  operator: Op;
-  value: Val;
+interface BaseCondition<Target extends 'event' | 'vars', Field extends string, Op, Val> {
+    target: Target;
+    field: Field;
+    operator: Op;
+    value: Val;
 }
 
 type FileCondition =
-  | BaseCondition<"event", "path" | "name" | "ext" | "dir", StringOperator, string>
-  | BaseCondition<"event", "size", NumberOperator, number>;
+    | BaseCondition<'event', 'path' | 'name' | 'ext' | 'dir', StringOperator, string>
+    | BaseCondition<'event', 'size', NumberOperator, number>;
 
 type VarCondition =
-  | BaseCondition<"vars", string, StringOperator, string>
-  | BaseCondition<"vars", string, NumberOperator, number>
-  | BaseCondition<"vars", string, BooleanOperator, boolean>;
+    | BaseCondition<'vars', string, StringOperator, string>
+    | BaseCondition<'vars', string, NumberOperator, number>
+    | BaseCondition<'vars', string, BooleanOperator, boolean>;
 
 type PipelineCondition = FileCondition | VarCondition;
 
 // ── Node Configurations ───────────────────────────────────
 
 interface FileWatcherConfig {
-  path: string;
-  recursive: boolean;
-  events: ("file.created" | "file.modified" | "file.deleted")[];
-  ignorePatterns?: string[];
+    path: string;
+    recursive: boolean;
+    events: ('file.created' | 'file.modified' | 'file.deleted')[];
+    ignorePatterns?: string[];
 }
 
 interface ManualTriggerConfig {
-  payload: FileEventPayload;
+    payload: FileEventPayload;
 }
 
 interface IfElseConfig {
-  condition: PipelineCondition;
+    condition: PipelineCondition;
 }
 
 interface SwitchConfig {
-  target: "event" | "vars";
-  field: string;
-  cases: string[];                 // Case values (port names are derived directly from these)
+    target: 'event' | 'vars';
+    field: string;
+    cases: string[]; // Case values (port names are derived directly from these)
 }
 
 interface FileManagerConfig {
-  action: "move" | "rename" | "copy";
-  destination: string;
-  onConflict: "skip" | "overwrite" | "auto-rename" | "error";
+    action: 'move' | 'rename' | 'copy';
+    destination: string;
+    onConflict: 'skip' | 'overwrite' | 'auto-rename' | 'error';
 }
 
 interface NotificationConfig {
-  title: string;
-  body: string;
+    title: string;
+    body: string;
 }
 
 interface LogConfig {
-  message: string;
+    message: string;
 }
 
 interface DelayConfig {
-  ms: number;
+    ms: number;
 }
 
 interface StateGetConfig {
-  key: string;
-  assignTo: string;                // Writes to context.vars[assignTo]
+    key: string;
+    assignTo: string; // Writes to context.vars[assignTo]
 }
 
 interface StateSetConfig {
-  key: string;
-  valueTemplate: string;           // Interpolates context.event or context.vars values
+    key: string;
+    valueTemplate: string; // Interpolates context.event or context.vars values
 }
 
 // ── Discriminated Node Union ──────────────────────────────
 
 type PipelineNode =
-  | { id: string; type: "file-watcher";    config: FileWatcherConfig }
-  | { id: string; type: "manual-trigger";  config: ManualTriggerConfig }
-  | { id: string; type: "if-else";         config: IfElseConfig }
-  | { id: string; type: "switch";          config: SwitchConfig }
-  | { id: string; type: "file-manager";    config: FileManagerConfig }
-  | { id: string; type: "notification";    config: NotificationConfig }
-  | { id: string; type: "log";            config: LogConfig }
-  | { id: string; type: "delay";          config: DelayConfig }
-  | { id: string; type: "state-get";      config: StateGetConfig }
-  | { id: string; type: "state-set";      config: StateSetConfig };
+    | { id: string; type: 'file-watcher'; config: FileWatcherConfig }
+    | { id: string; type: 'manual-trigger'; config: ManualTriggerConfig }
+    | { id: string; type: 'if-else'; config: IfElseConfig }
+    | { id: string; type: 'switch'; config: SwitchConfig }
+    | { id: string; type: 'file-manager'; config: FileManagerConfig }
+    | { id: string; type: 'notification'; config: NotificationConfig }
+    | { id: string; type: 'log'; config: LogConfig }
+    | { id: string; type: 'delay'; config: DelayConfig }
+    | { id: string; type: 'state-get'; config: StateGetConfig }
+    | { id: string; type: 'state-set'; config: StateSetConfig };
 
 // ── Edges ─────────────────────────────────────────────────
 
 interface NodeOutputPorts {
-  "file-watcher":   "out";
-  "manual-trigger": "out";
-  "if-else":        "true" | "false";
-  "switch":         string;          // Equal to one of the config.cases values, or "default"
-  "file-manager":   "out";
-  "notification":   "out";
-  "log":            "out";
-  "delay":          "out";
-  "state-get":      "out";
-  "state-set":      "out";
+    'file-watcher': 'out';
+    'manual-trigger': 'out';
+    'if-else': 'true' | 'false';
+    switch: string; // Equal to one of the config.cases values, or "default"
+    'file-manager': 'out';
+    notification: 'out';
+    log: 'out';
+    delay: 'out';
+    'state-get': 'out';
+    'state-set': 'out';
 }
 
 interface PipelineEdge {
-  id: string;
-  source: string;                  // Node ID
-  target: string;                  // Node ID
-  sourcePort: string;              // Validated against NodeOutputPorts at runtime via Zod
+    id: string;
+    source: string; // Node ID
+    target: string; // Node ID
+    sourcePort: string; // Validated against NodeOutputPorts at runtime via Zod
 }
 
 // ── Compiled Pipeline Schema ──────────────────────────────
 
 interface CompiledPipeline {
-  id: string;
-  workflowId: string;
-  schemaVersion: 1;
-  nodes: PipelineNode[];
-  edges: PipelineEdge[];
+    id: string;
+    workflowId: string;
+    schemaVersion: 1;
+    nodes: PipelineNode[];
+    edges: PipelineEdge[];
 }
 ```
 
@@ -269,16 +275,19 @@ Tests should verify external behavior at architectural boundaries, not internal 
 ### Testing seams
 
 **1. Capability Broker (highest-value seam)**
+
 - Feed simulated Plugin RPC calls (event emissions, state operations) through the Broker
 - Assert: permitted calls pass through; calls exceeding Manifest permissions are rejected; events not in the Plugin's `emits` list are blocked
 - This seam validates the entire trust model without requiring Electron or a running UI
 
 **2. DAG Executor**
+
 - Feed a compiled Pipeline (JSON) + a trigger payload into the Executor
 - Assert: correct Node execution sequence, correct branching decisions, correct final outputs, graceful error handling on Node failure, correct Workflow State mutations
 - This seam validates all Workflow logic as pure computation
 
 **3. Event Bus + Bridge**
+
 - Emit Events through simulated worker_thread boundaries
 - Assert: Events arrive on the Bus with correct payloads, validation rejects undeclared events, subscribers receive events matching their filters
 - This seam validates the reactive pipeline foundation

@@ -1,2 +1,30 @@
-.obsidian
+node_modules/
+dist/
+out/
+release/
+.cache/
+.turbo/
+.parcel-cache/
+coverage/
+
+# Electron / native build artifacts
+*.log
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# Obsidian (docs are edited in Obsidian locally)
+.obsidian/
+
+# Project-specific
 idea.md
+
+# pnpm temp files from interrupted installs
+_tmp_*
+__tmp_*

@@ -13,8 +13,8 @@ The single in-memory RxJS Subject through which all Events flow. Plugins emit in
 _Avoid_: message queue, event loop, dispatcher
 
 **Plugin:**
-An isolated module running in its own worker_thread that either emits Events (Trigger Plugin) or consumes them to produce side effects (Action Plugin).
-_Avoid_: extension, add-on, module
+An isolated module running in its own worker*thread that either emits Events (Trigger Plugin) or consumes them to produce side effects (Action Plugin).
+\_Avoid*: extension, add-on, module
 
 **Trigger Plugin:**
 A Plugin that watches an external source (filesystem, OS state, timer) and emits Events into the Bus when something happens.
@@ -33,8 +33,8 @@ The main-thread component that mediates every privileged operation a Plugin requ
 _Avoid_: permission manager, gatekeeper, proxy
 
 **Bridge:**
-The cross-thread serialization layer between a Plugin's worker_thread and the Engine's main thread. Every Event emission and state call crosses the Bridge via postMessage.
-_Avoid_: channel, pipe, IPC (reserved for Electron's renderer ↔ main IPC)
+The cross-thread serialization layer between a Plugin's worker*thread and the Engine's main thread. Every Event emission and state call crosses the Bridge via postMessage.
+\_Avoid*: channel, pipe, IPC (reserved for Electron's renderer ↔ main IPC)
 
 **Workflow:**
 A user-defined automation composed of Nodes arranged in a directed acyclic graph. Stored as JSON. Created and edited in the Workflow Builder.
@@ -67,4 +67,3 @@ _Avoid_: mode, profile, scene
 **Properties File:**
 The app-wide configuration file (JSON) containing plugin defaults and engine-level preferences. Resolution order for properties: node config (explicit) → Properties File → hardcoded fallback.
 _Avoid_: settings registry, config store
-

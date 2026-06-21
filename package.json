@@ -1,0 +1,36 @@
+{
+    "name": "sigil",
+    "private": true,
+    "version": "0.0.0",
+    "description": "A local-first desktop automation platform that reacts to system events by executing user-defined workflows.",
+    "type": "module",
+    "packageManager": "pnpm@11.8.0",
+    "engines": {
+        "node": ">=22.12.0"
+    },
+    "scripts": {
+        "start": "pnpm run dev",
+        "dev": "pnpm --filter @sigil/schema build && pnpm --filter @sigil/desktop dev",
+        "build": "pnpm --filter @sigil/schema build && pnpm --filter @sigil/desktop build",
+        "preview": "pnpm --filter @sigil/desktop preview",
+        "typecheck": "pnpm -r typecheck",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "test": "pnpm -r test",
+        "test:watch": "pnpm --filter @sigil/schema test:watch",
+        "clean": "pnpm -r --parallel exec rimraf dist out .turbo node_modules/.cache"
+    },
+    "devDependencies": {
+        "@eslint/js": "10.0.1",
+        "eslint": "10.5.0",
+        "eslint-plugin-react": "7.37.5",
+        "eslint-plugin-react-hooks": "7.1.1",
+        "eslint-plugin-react-refresh": "0.5.3",
+        "globals": "17.6.0",
+        "prettier": "3.8.4",
+        "rimraf": "6.0.1",
+        "typescript-eslint": "8.61.1"
+    }
+}
