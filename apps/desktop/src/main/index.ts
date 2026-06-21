@@ -25,12 +25,13 @@ function createWindow(): BrowserWindow {
             preload: resolvePath(__dirname, '../preload/index.cjs'),
             contextIsolation: true,
             nodeIntegration: false,
-            sandbox: false,
+            sandbox: true,
         },
     });
 
-    window.webContents.openDevTools();
-
+    if (RENDERER_DEV_URL) {
+        window.webContents.openDevTools({ mode: 'detach' });
+    }
     if (RENDERER_DEV_URL) {
         void window.loadURL(RENDERER_DEV_URL);
     } else {
