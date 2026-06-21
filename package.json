@@ -20,7 +20,8 @@
         "format:check": "prettier --check .",
         "test": "pnpm -r test",
         "test:watch": "pnpm --filter @sigil/schema test:watch",
-        "clean": "pnpm -r --parallel exec rimraf dist out .turbo node_modules/.cache"
+        "clean": "pnpm -r --parallel exec rimraf dist out .turbo node_modules/.cache",
+        "prepare": "husky"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",
@@ -29,6 +30,8 @@
         "eslint-plugin-react-hooks": "7.1.1",
         "eslint-plugin-react-refresh": "0.5.3",
         "globals": "17.6.0",
+        "husky": "^9.1.7",
+        "lint-staged": "^17.0.7",
         "prettier": "3.8.4",
         "rimraf": "6.0.1",
         "typescript": "^6.0.3",
