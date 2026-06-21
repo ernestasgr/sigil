@@ -1,10 +1,8 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
-import { fileURLToPath } from 'node:url';
 import { dirname, resolve as resolvePath } from 'node:path';
-
-app.disableHardwareAcceleration();
-import { spawnEngine, type EngineHandle } from './engine-client.js';
+import { fileURLToPath } from 'node:url';
 import { RendererChannel, type EnginePong } from '../shared/ipc-channels.js';
+import { spawnEngine, type EngineHandle } from './engine-client.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
