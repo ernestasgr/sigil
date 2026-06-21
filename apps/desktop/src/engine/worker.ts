@@ -24,7 +24,14 @@ const port = parentPort;
 type WorkerInbound = EnginePing | EngineFireTestEvent | EngineToggleWorkflow;
 
 const engine = createEngine();
-let registry: WorkflowRegistryState = [];
+
+const seedWorkflows: WorkflowRegistryState = [
+    { id: 'sort-downloads', name: 'Sort Downloads', enabled: false },
+    { id: 'notify-build', name: 'Notify Build', enabled: true },
+    { id: 'clean-tmp', name: 'Clean Tmp', enabled: false },
+];
+
+let registry: WorkflowRegistryState = seedWorkflows;
 
 function broadcastWorkflowsList(): void {
     const message: EngineWorkflowsList = {
@@ -32,6 +39,10 @@ function broadcastWorkflowsList(): void {
         workflows: registry,
     };
     port.postMessage(message);
+}
+
+function log(message: string): void {
+    engine.bus.next({ name: 'log.output', payload: { message } });
 }
 
 engine.bus.subscribe((event) => {
@@ -66,7 +77,12 @@ port.on('message', (message: WorkerInbound) => {
             break;
         }
         case EngineChannel.ToggleWorkflow: {
+            const before = registry.find((w) => w.id === message.id);
             registry = toggleWorkflow(registry, message.id);
+            const after = registry.find((w) => w.id === message.id);
+            if (before && after) {
+                log(`[tray] "${before.name}" ${after.enabled ? 'enabled' : 'disabled'}`);
+            }
             broadcastWorkflowsList();
             break;
         }
