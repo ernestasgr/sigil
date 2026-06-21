@@ -8,7 +8,9 @@ export function HomeSection(): ReactElement {
     const logs = useAppStore((state) => state.logs);
 
     const handleFire = (): void => {
-        void window.sigil.fireTestEvent();
+        void window.sigil.fireTestEvent().catch((error: unknown) => {
+            console.error('Failed to fire test event', error);
+        });
     };
 
     return (
