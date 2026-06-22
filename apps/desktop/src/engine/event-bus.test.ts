@@ -20,7 +20,7 @@ describe('createEventBus', () => {
 
     it('carries the typed payload through to the subscriber', () => {
         const bus = createEventBus();
-        let captured: { message: string } | null = null;
+        let captured: unknown = null;
         bus.subscribe((event) => {
             if (event.name === 'log.output') {
                 captured = event.payload;

@@ -42,6 +42,10 @@
         "./samples": {
             "types": "./dist/samples.d.ts",
             "import": "./dist/samples.js"
+        },
+        "./manifest": {
+            "types": "./dist/manifest.d.ts",
+            "import": "./dist/manifest.js"
         }
     },
     "files": [
