@@ -43,7 +43,7 @@ const slices = result.output.slices;
 const createdNumbers: number[] = [];
 
 for (let i = 0; i < slices.length; i++) {
-    const slice = slices[i]!;
+    const slice = slices[i];
     const position = i + 1;
 
     const body = renderBody({

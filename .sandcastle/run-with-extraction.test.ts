@@ -84,11 +84,11 @@ describe('runWithExtraction', () => {
         expect(result.commits).toEqual([{ sha: 'abc123' }]);
         expect(mockRun).toHaveBeenCalledTimes(2);
 
-        const produceCall = mockRun.mock.calls[0]![0];
+        const produceCall = mockRun.mock.calls[0][0];
         expect(produceCall).not.toHaveProperty('output');
         expect(produceCall).not.toHaveProperty('resumeSession');
 
-        const extractCall = mockRun.mock.calls[1]![0];
+        const extractCall = mockRun.mock.calls[1][0];
         expect(extractCall.resumeSession).toBe('sess-1');
         expect(extractCall.output).toBe(output);
         expect(extractCall.promptFile).toBeUndefined();
@@ -104,13 +104,13 @@ describe('runWithExtraction', () => {
         await runWithExtraction({ ...baseOptions(), promptArgs });
 
         // The produce call uses promptFile, so promptArgs is valid there.
-        const produceCall = mockRun.mock.calls[0]![0];
+        const produceCall = mockRun.mock.calls[0][0];
         expect(produceCall.promptArgs).toBe(promptArgs);
         expect(produceCall.promptFile).toBe('/repo/prompt.md');
 
         // The extraction call swaps to an inline prompt; Sandcastle rejects
         // promptArgs alongside an inline prompt, so it must be dropped.
-        const extractCall = mockRun.mock.calls[1]![0];
+        const extractCall = mockRun.mock.calls[1][0];
         expect(extractCall.prompt).toBe('Emit the <output> block.');
         expect(extractCall.promptFile).toBeUndefined();
         expect(extractCall).not.toHaveProperty('promptArgs');
@@ -130,10 +130,10 @@ describe('runWithExtraction', () => {
         // First extraction attempt resumes the produce session; the retry resumes
         // the *failed extraction's* own session (via error.sessionId) so the fix
         // happens in-context.
-        expect(mockRun.mock.calls[1]![0].resumeSession).toBe('sess-1');
-        expect(mockRun.mock.calls[2]![0].resumeSession).toBe('sess-extract');
+        expect(mockRun.mock.calls[1][0].resumeSession).toBe('sess-1');
+        expect(mockRun.mock.calls[2][0].resumeSession).toBe('sess-extract');
 
-        const retryPrompt = mockRun.mock.calls[2]![0].prompt as string;
+        const retryPrompt = mockRun.mock.calls[2][0].prompt as string;
         expect(retryPrompt).toContain('Previous attempt failed');
         expect(retryPrompt).toContain('{"value":}');
         expect(retryPrompt).toContain('Unexpected token }');
@@ -147,7 +147,7 @@ describe('runWithExtraction', () => {
 
         await runWithExtraction(baseOptions());
 
-        const retryPrompt = mockRun.mock.calls[2]![0].prompt as string;
+        const retryPrompt = mockRun.mock.calls[2][0].prompt as string;
         expect(retryPrompt).toContain('did not contain a `<output>` block');
     });
 
