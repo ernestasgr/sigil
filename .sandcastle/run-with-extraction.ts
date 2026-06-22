@@ -76,7 +76,8 @@ export async function runWithExtraction<T>(
     // The extraction pass uses an inline `prompt` (extractionPrompt), so drop the
     // produce phase's `promptArgs` — Sandcastle only allows promptArgs alongside
     // a promptFile, and the extraction prompt needs no substitution.
-    const { promptArgs: _produceArgs, ...extractionOptions } = produceOptions;
+    const { promptArgs, ...extractionOptions } = produceOptions;
+    void promptArgs;
 
     const extraction = await runWithRetry({
         ...extractionOptions,

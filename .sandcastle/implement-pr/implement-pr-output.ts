@@ -27,8 +27,8 @@ export const ImplementPrOutput = z.object({
 
                     let line = c.line;
                     if (line == null && c.lineRange != null) {
-                        const match = c.lineRange.match(/^(\d+)/);
-                        line = match ? parseInt(match[1]!, 10) : undefined;
+                        const raw = c.lineRange.match(/^(\d+)/)?.[1];
+                        line = raw ? parseInt(raw, 10) : undefined;
                     }
 
                     if (!path) {

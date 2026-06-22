@@ -8,8 +8,8 @@ export function parseDiffLines(diff: string): Map<string, Set<number>> {
 
     for (const line of lines) {
         const fileMatch = line.match(/^diff --git a\/.+ b\/(.+)$/);
-        if (fileMatch) {
-            currentPath = fileMatch[1]!;
+        if (fileMatch?.[1]) {
+            currentPath = fileMatch[1];
             inHunk = false;
             if (!result.has(currentPath)) {
                 result.set(currentPath, new Set());
@@ -17,9 +17,9 @@ export function parseDiffLines(diff: string): Map<string, Set<number>> {
             continue;
         }
 
-        const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-        if (hunkMatch) {
-            rightLine = parseInt(hunkMatch[1]!, 10);
+        const hunkRaw = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/)?.[1];
+        if (hunkRaw) {
+            rightLine = parseInt(hunkRaw, 10);
             inHunk = true;
             continue;
         }
@@ -27,12 +27,12 @@ export function parseDiffLines(diff: string): Map<string, Set<number>> {
         if (!currentPath || !inHunk) continue;
 
         if (line.startsWith('+')) {
-            result.get(currentPath)!.add(rightLine);
+            result.get(currentPath)?.add(rightLine);
             rightLine++;
         } else if (line.startsWith('-')) {
             // Removed line — only on left side, don't increment right counter.
         } else if (line.startsWith(' ')) {
-            result.get(currentPath)!.add(rightLine);
+            result.get(currentPath)?.add(rightLine);
             rightLine++;
         }
     }

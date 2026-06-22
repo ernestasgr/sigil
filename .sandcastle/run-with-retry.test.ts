@@ -65,7 +65,7 @@ describe('runWithRetry', () => {
         expect(mockRun).toHaveBeenCalledTimes(1);
 
         // First call carries output, runs the original prompt, no resume.
-        const firstCall = mockRun.mock.calls[0]![0];
+        const firstCall = mockRun.mock.calls[0][0];
         expect(firstCall.output).toBe(output);
         expect(firstCall.promptFile).toBe('/repo/prompt.md');
         expect(firstCall).not.toHaveProperty('resumeSession');
@@ -85,7 +85,7 @@ describe('runWithRetry', () => {
         expect(result.output).toEqual({ value: 'recovered' });
         expect(mockRun).toHaveBeenCalledTimes(2);
 
-        const retryCall = mockRun.mock.calls[1]![0];
+        const retryCall = mockRun.mock.calls[1][0];
         // The retry resumes the *failed call's own* session, via error.sessionId.
         expect(retryCall.resumeSession).toBe('sess-1');
         expect(retryCall.output).toBe(output);
@@ -106,13 +106,13 @@ describe('runWithRetry', () => {
         await runWithRetry({ ...baseOptions(), promptArgs });
 
         // First call uses promptFile, so promptArgs is valid there.
-        const firstCall = mockRun.mock.calls[0]![0];
+        const firstCall = mockRun.mock.calls[0][0];
         expect(firstCall.promptArgs).toBe(promptArgs);
         expect(firstCall.promptFile).toBe('/repo/prompt.md');
 
         // The retry swaps to an inline feedback prompt; Sandcastle rejects
         // promptArgs alongside an inline prompt, so it must be dropped.
-        const retryCall = mockRun.mock.calls[1]![0];
+        const retryCall = mockRun.mock.calls[1][0];
         expect(retryCall.promptFile).toBeUndefined();
         expect(retryCall).not.toHaveProperty('promptArgs');
     });
@@ -124,7 +124,7 @@ describe('runWithRetry', () => {
 
         await runWithRetry(baseOptions());
 
-        const retryPrompt = mockRun.mock.calls[1]![0].prompt as string;
+        const retryPrompt = mockRun.mock.calls[1][0].prompt as string;
         expect(retryPrompt).toContain('did not contain a `<output>` block');
     });
 
