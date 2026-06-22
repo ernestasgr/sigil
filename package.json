@@ -24,7 +24,9 @@
         "prepare": "husky"
     },
     "devDependencies": {
+        "@ai-hero/sandcastle": "^0.10.0",
         "@eslint/js": "10.0.1",
+        "@types/node": "26.0.0",
         "eslint": "10.5.0",
         "eslint-plugin-react": "7.37.5",
         "eslint-plugin-react-hooks": "7.1.1",
@@ -34,7 +36,9 @@
         "lint-staged": "^17.0.7",
         "prettier": "3.8.4",
         "rimraf": "6.0.1",
+        "tsx": "^4.22.4",
         "typescript": "^6.0.3",
-        "typescript-eslint": "8.61.1"
+        "typescript-eslint": "8.61.1",
+        "zod": "4.4.3"
     }
 }
