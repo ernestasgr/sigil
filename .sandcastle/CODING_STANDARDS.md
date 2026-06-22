@@ -1,133 +1,175 @@
-Wherever possible, use Effect primitives like `FileSystem` over promises. This is so that we can make use of DI and type-safe errors from Effect. However, Effect should not leak out into the user-facing API.
+# Sigil — TypeScript Coding Standards
 
----
+Short, opinionated, and specific to this codebase. Goal: lean on the type
+system instead of runtime checks, and write functional code instead of
+stateful/OOP code.
 
-Optional parameters passed to functions should be scrutinised extremely carefully. They are a huge source of bugs (by omission). Prioritise correctness over backwards compatibility.
+## 1. Types
 
----
+**No `any`. Ever.** Use `unknown` and narrow it. If you're reaching for
+`any` to make a type error go away, the type is wrong — fix the type.
 
-All files in `./app/routes` will be exposed publicly as routes. Do not include test files or utility files there.
-
----
-
-Context menu items should always include a leading icon (from `lucide-react`), matching the style of the surrounding items. When adding a new menu item, pick an icon that conveys the action.
-
----
-
-Filters must stay in sync with the shape of the data they filter. When a new field is added to an entity that affects what something "is" (status, category, state), every filter, count, and badge that surfaces that concept must be updated to take the new field into account. Filters are part of the entity's definition, not a one-time UI feature — drift between them and the data shape produces silently-wrong results.
-
----
-
-When a fetcher action's sole job after success is to navigate, return `redirect(...)` from the action instead of returning data and navigating from a client-side `useEffect`. React Router handles fetcher redirects automatically. The `useEffect` pattern is fragile: if any dep (e.g. an inline `onOpenChange` prop) changes between renders, the effect re-fires and re-issues `navigate(...)`, cancelling and restarting the in-flight navigation in a loop.
-
----
-
-For optimistic UI on fetcher mutations, derive the optimistic value from `fetcher.formData` instead of mirroring it into `useState` + syncing back with `useEffect`. When the fetcher is in-flight, `fetcher.formData.get("value")` holds the pending value; when it settles, `formData` becomes `undefined` and the component falls back to the revalidated loader data. Example: `const optimistic = (fetcher.formData?.get("value") ?? loaderValue) as MyType;`. This eliminates state-sync bugs and removes the need for `useEffect` entirely.
-
----
-
-## Testing
-
-### Core Principle
-
-Tests verify behavior through public interfaces, not implementation details. Code can change entirely; tests shouldn't break unless behavior changed.
-
-### Good Tests
-
-Integration-style tests that exercise real code paths through public APIs. They describe _what_ the system does, not _how_.
+**Discriminated unions over enums + switch-on-string.** This is already
+the shape of `PipelineNode` and `PipelineCondition` — keep using it
+everywhere a value can be "one of several kinds with different data."
 
 ```typescript
-// GOOD: Tests observable behavior through the public interface
-test('createUser makes user retrievable', async () => {
-    const user = await createUser({ name: 'Alice' });
-    const retrieved = await getUser(user.id);
-    expect(retrieved.name).toBe('Alice');
-});
+// Good — the compiler knows config's shape once type is narrowed
+function execute(node: PipelineNode): void {
+  switch (node.type) {
+    case "if-else":   return runIfElse(node.config);
+    case "file-manager": return runFileManager(node.config);
+    // ...
+  }
+}
+
+// Bad — config is `any`-shaped until you cast it
+function execute(node: { type: string; config: object }): void { ... }
 ```
 
-- Test behavior users/callers care about
-- Use the public API only
-- Survive internal refactors
-- One logical assertion per test
-
-### Bad Tests
+**Exhaustiveness-check every switch over a union** with a `never`
+fallthrough. This is non-negotiable for `PipelineNode["type"]` and
+`PipelineCondition` — adding a 11th node type should be a compile error
+everywhere it's not handled, not a silent runtime no-op.
 
 ```typescript
-// BAD: Mocks internal collaborator, tests HOW not WHAT
-test('checkout calls paymentService.process', async () => {
-    const mockPayment = jest.mock(paymentService);
-    await checkout(cart, payment);
-    expect(mockPayment.process).toHaveBeenCalledWith(cart.total);
-});
+function assertNever(x: never): never {
+  throw new Error(`Unhandled case: ${JSON.stringify(x)}`);
+}
 
-// BAD: Bypasses the interface to verify via database
-test('createUser saves to database', async () => {
-    await createUser({ name: 'Alice' });
-    const row = await db.query('SELECT * FROM users WHERE name = ?', ['Alice']);
-    expect(row).toBeDefined();
-});
+switch (node.type) {
+  case "if-else": ...
+  case "switch": ...
+  // ... all 10 cases
+  default: return assertNever(node);
+}
 ```
+
+**`readonly` by default.** Function parameters, interface fields, and
+arrays are `readonly` unless something genuinely needs to mutate them.
+`CompiledPipeline`, `PipelineNode[]`, `WorkflowContext` — all read-only
+from the executor's perspective once compiled.
 
 ```typescript
-// BAD: Test restates the implementation — the function IS the spec
-test('pitchHref includes from param', () => {
-    expect(pitchHref('abc')).toBe('/pitches/abc?from=deliverables');
+interface WorkflowContext {
+    readonly event: Readonly<FileEventPayload>;
+    readonly vars: Readonly<Record<string, unknown>>;
+}
+```
+
+**Branded types for IDs that look like strings but aren't interchangeable.**
+A `WorkflowId` and a `NodeId` are both `string` at runtime but should
+never be assignable to each other.
+
+```typescript
+type NodeId = string & { readonly __brand: 'NodeId' };
+type WorkflowId = string & { readonly __brand: 'WorkflowId' };
+```
+
+**Avoid `as`.** The only acceptable place for a type assertion is
+immediately after a Zod `.parse()` at a true I/O boundary (reading a
+Workflow JSON file, an incoming IPC message, a plugin manifest). Inside
+business logic, `as` is a sign the types upstream are wrong.
+
+**Validate at the boundary, trust the type after.** Every external
+input — Workflow JSON, Properties File, plugin manifest, RPC payload
+crossing the worker boundary — gets a Zod schema. Derive the TypeScript
+type from the schema with `z.infer<>` rather than maintaining the
+interface and the schema by hand in two places.
+
+```typescript
+const FileConditionSchema = z.object({
+    target: z.literal('event'),
+    field: z.enum(['path', 'name', 'ext', 'dir', 'size']),
+    operator: z.union([StringOperatorSchema, NumberOperatorSchema]),
+    value: z.union([z.string(), z.number()]),
 });
+type FileCondition = z.infer<typeof FileConditionSchema>;
 ```
 
-Red flags:
+## 2. Functional style
 
-- Mocking internal collaborators (your own classes/modules)
-- Testing private methods
-- Asserting on call counts/order of internal calls
-- Test breaks when refactoring without behavior change
-- Test name describes HOW not WHAT
-- Verifying through external means (e.g. querying a DB) instead of through the interface
-- Testing a trivial function (one-liner, simple mapping, string concatenation) where the test just mirrors the code — these tests add no confidence and break on any refactor
-- Thin delegation tests for route handlers — when a route's only job is to parse input and call a service method, testing that it "delegates correctly" by mocking the service duplicates the route code in the test. The real behavior lives in the service; test that instead.
+**No classes for domain logic.** Plugins, nodes, and the executor are
+functions operating on plain data, not objects with methods and
+internal mutable state. Reach for a class only when wrapping a genuinely
+stateful native resource (a `worker_thread` handle, a `better-sqlite3`
+connection) — and even then, expose a functional API over it.
 
-### Mocking
+```typescript
+// Good
+function evaluateCondition(condition: PipelineCondition, ctx: WorkflowContext): boolean { ... }
 
-Mock at **system boundaries** only:
-
-- External APIs (payment, email, etc.)
-- Time/randomness
-- File system or databases when a real instance isn't practical
-
-**Never mock your own classes/modules or internal collaborators.** If something is hard to test without mocking internals, redesign the interface.
-
-Prefer SDK-style interfaces over generic fetchers at boundaries — each function is independently mockable with a single return shape, no conditional logic in test setup.
-
-### TDD Workflow: Vertical Slices
-
-Do NOT write all tests first, then all implementation. That produces tests that verify _imagined_ behavior and are insensitive to real changes.
-
-Correct approach — one test, one implementation, repeat:
-
-```
-RED→GREEN: test1→impl1
-RED→GREEN: test2→impl2
-RED→GREEN: test3→impl3
+// Avoid
+class ConditionEvaluator {
+  private ctx: WorkflowContext;
+  evaluate(condition: PipelineCondition): boolean { ... }
+}
 ```
 
-Each test responds to what you learned from the previous cycle. Never refactor while RED — get to GREEN first.
+**No mutation.** Don't mutate function arguments, don't push into arrays
+you didn't just create, don't reassign `let` where a `const` and a new
+value would do. Produce a new `WorkflowContext` rather than mutating the
+one you were given — this matters concretely here because Time Travel
+Debugging (Phase 3) replays past executions step by step, which is only
+possible if each step's context is an immutable snapshot rather than a
+shared object that later steps wrote over.
 
-## Interface Design
+```typescript
+// Good
+const nextContext: WorkflowContext = {
+    ...ctx,
+    vars: { ...ctx.vars, [assignTo]: value },
+};
 
-### Deep Modules
+// Bad — later replay can't trust this snapshot
+ctx.vars[assignTo] = value;
+```
 
-Prefer deep modules: small interface, deep implementation. A few methods with simple params hiding complex logic behind them.
+**Composition over inheritance.** No base classes for node types. If
+behavior is shared between nodes, extract a function, not a superclass.
 
-Avoid shallow modules: large interface with many methods that just pass through to thin implementation. When designing, ask: can I reduce the number of methods? Can I simplify the parameters? Can I hide more complexity inside?
+**Pure functions wherever possible.** `evaluateCondition`,
+`compareValues`, `resolveTemplate`, `coerceForComparison` should all be
+pure: same input, same output, no I/O, no logging, no side effects.
+Isolate the actually-impure parts (filesystem moves, SQLite writes, OS
+notifications) into clearly named functions and keep them at the edges.
 
-### Design for Testability
+## 3. Errors
 
-1. **Accept dependencies, don't create them** — pass external dependencies in rather than constructing them internally.
-2. **Return results, don't produce side effects** — a function that returns a value is easier to test than one that mutates state.
-3. **Small surface area** — fewer methods = fewer tests needed, fewer params = simpler test setup.
+**Prefer `Result` types over throwing for expected failure.** A failed
+condition coercion, an unmatched Switch case, or a file-collision policy
+of `"error"` are expected outcomes of normal operation, not exceptional
+states — model them as data, not exceptions, in the layers that produce
+them.
 
----
+```typescript
+type Result<T, E> =
+  | { ok: true; value: T }
+  | { ok: false; error: E };
 
-## localStorage
+function coerceForComparison(raw: string, expectedType: "string" | "number" | "boolean"): Result<string | number | boolean, "coercion_failed"> { ... }
+```
 
-Use `useLocalStorage` from `@/hooks/use-local-storage` for component state that should persist in `localStorage`. The hook handles SSR guards, initialization from a stored value with a fallback, and auto-saves on every change. Avoid raw `localStorage.getItem`/`setItem` scattered across components.
+**Reserve `throw` for genuinely unexpected/programmer errors** —
+malformed Pipeline JSON that somehow passed Zod, an unreachable branch,
+a broken invariant. The DAG Executor's per-node `try/catch` (per the
+PRD) is the single place those exceptions are expected to surface and
+get turned into a `workflow.error` event — don't let lower-level code
+throw for things that are really just `Result`-shaped business outcomes.
+
+## 4. Structure
+
+- One module, one responsibility, named exports only. No `export default`.
+- No barrel files (`index.ts` that just re-exports everything) — they
+  make it too easy to create circular imports and hide where a thing
+  actually lives.
+- Async functions are typed explicitly (`Promise<Result<...>>`, not
+  inferred); no floating/unawaited promises — if you don't need the
+  result, `void somePromise()` to make the intent visible.
+
+## 5. When in doubt
+
+Optimize for "a future contributor with no memory of this conversation
+can read the types and know what's valid" over "this was quick to
+write." The type system is doing the work that comments and runtime
+checks would otherwise have to do — use it.
