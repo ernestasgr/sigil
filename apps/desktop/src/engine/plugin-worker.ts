@@ -89,10 +89,9 @@ port.on('message', (message: EngineToPluginMessage) => {
 
 const sandbox = createPluginSandbox(rpc);
 
-send({ kind: PluginLifecycleKind.Ready, pluginId: data.pluginId });
-
 try {
     sandbox.run(data.code);
+    send({ kind: PluginLifecycleKind.Ready, pluginId: data.pluginId });
 } catch (err) {
     send({
         kind: PluginLifecycleKind.Error,

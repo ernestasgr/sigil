@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createEventBus } from './event-bus.js';
+import { createEventBus, type LogOutputPayload } from './event-bus.js';
 
 describe('createEventBus', () => {
     it('delivers emitted events to subscribers', () => {
@@ -20,7 +20,7 @@ describe('createEventBus', () => {
 
     it('carries the typed payload through to the subscriber', () => {
         const bus = createEventBus();
-        let captured: unknown = null;
+        let captured: LogOutputPayload | null = null;
         bus.subscribe((event) => {
             if (event.name === 'log.output') {
                 captured = event.payload;

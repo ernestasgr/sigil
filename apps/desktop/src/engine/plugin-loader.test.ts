@@ -107,6 +107,24 @@ describe('plugin isolation integration', () => {
             expect(result.error.kind).toBe('duplicate');
         }
     });
+
+    it('recovers from a worker error and reloads on retry', async () => {
+        const stack = createTestStack();
+
+        const firstResult = await stack.loader.load(stubPingManifest, 'function {');
+
+        expect(firstResult.ok).toBe(false);
+        if (!firstResult.ok) {
+            expect(firstResult.error.kind).toBe('worker_error');
+        }
+
+        const secondResult = await stack.loader.load(stubPingManifest, stubPingCode);
+
+        expect(secondResult.ok).toBe(true);
+        if (secondResult.ok) {
+            await secondResult.handle.terminate();
+        }
+    }, 15000);
 });
 
 describe('handleRpcRequest routing', () => {

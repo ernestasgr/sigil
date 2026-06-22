@@ -48,7 +48,9 @@ export function createPluginSandbox(rpc: PluginSandboxRpc): PluginSandbox {
         decodeURIComponent,
     };
 
-    const context = vm.createContext(sandbox);
+    const context = vm.createContext(sandbox, {
+        codeGeneration: { strings: false, wasm: false },
+    });
 
     return {
         run: (code) => {
