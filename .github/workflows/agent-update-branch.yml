@@ -68,7 +68,7 @@ jobs:
             - name: Run update-branch.ts
               id: run
               env:
-                  AI_API_KEY: ${{ secrets.AI_API_KEY }}
+                  OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
                   OUTPUT_DIR: ${{ runner.temp }}
               run: npx tsx .sandcastle/update-branch/update-branch.ts
 

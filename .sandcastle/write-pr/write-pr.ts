@@ -19,7 +19,7 @@ const result = await runWithRetry({
     name: `write-pr-#${ISSUE_NUMBER}`,
     agent: sandcastle.opencode('opencode-go/glm-5.2', {
         env: {
-            AI_API_KEY: required('AI_API_KEY'),
+            OPENCODE_API_KEY: required('OPENCODE_API_KEY'),
         },
     }),
     sandbox: noSandbox(),

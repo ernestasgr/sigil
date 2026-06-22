@@ -25,7 +25,7 @@ const result = await runWithExtraction({
     name: `architecture-review-${new Date().toISOString().slice(0, 10)}`,
     agent: sandcastle.opencode('opencode-go/glm-5.2', {
         env: {
-            AI_API_KEY: required('AI_API_KEY'),
+            OPENCODE_API_KEY: required('OPENCODE_API_KEY'),
         },
     }),
     sandbox: noSandbox(),

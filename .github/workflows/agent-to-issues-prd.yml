@@ -101,7 +101,7 @@ jobs:
             - name: Run to-issues-prd.ts
               if: steps.shape.outputs.mode == 'run'
               env:
-                  AI_API_KEY: ${{ secrets.AI_API_KEY }}
+                  OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
                   PRD_NUMBER: ${{ env.PRD_NUMBER }}
                   PRD_TITLE: ${{ env.PRD_TITLE }}
                   GH_REPO: ${{ env.GH_REPO }}

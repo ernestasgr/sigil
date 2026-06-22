@@ -73,7 +73,7 @@ jobs:
             - name: Run review.ts
               id: review
               env:
-                  AI_API_KEY: ${{ secrets.AI_API_KEY }}
+                  OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
                   OUTPUT_DIR: ${{ runner.temp }}
               run: npx tsx .sandcastle/review/review.ts
 

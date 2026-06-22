@@ -112,7 +112,7 @@ jobs:
               if: steps.state.outputs.proceed == 'true' && steps.inputs.outputs.proceed == 'true'
               id: implement
               env:
-                  AI_API_KEY: ${{ secrets.AI_API_KEY }}
+                  OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
                   OUTPUT_DIR: ${{ runner.temp }}
               run: npx tsx .sandcastle/implement-pr/implement-pr.ts
 

@@ -150,7 +150,7 @@ jobs:
               if: steps.shape.outputs.proceed == 'true' && steps.preflight.outputs.refused != 'true'
               id: implement
               env:
-                  AI_API_KEY: ${{ secrets.AI_API_KEY }}
+                  OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
                   BRANCH: ${{ steps.branch.outputs.name }}
                   OUTPUT_DIR: ${{ runner.temp }}
               run: npx tsx .sandcastle/implement/implement.ts
@@ -168,7 +168,7 @@ jobs:
             - name: Write PR title and description
               if: steps.shape.outputs.proceed == 'true' && steps.preflight.outputs.refused != 'true' && success()
               env:
-                  AI_API_KEY: ${{ secrets.AI_API_KEY }}
+                  OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
                   BRANCH: ${{ steps.branch.outputs.name }}
                   OUTPUT_DIR: ${{ runner.temp }}
               run: npx tsx .sandcastle/write-pr/write-pr.ts
