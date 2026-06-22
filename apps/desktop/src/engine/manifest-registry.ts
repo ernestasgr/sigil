@@ -6,9 +6,14 @@ export type ManifestRegistryResult =
 
 export interface ManifestRegistry {
     readonly register: (manifest: Manifest) => ManifestRegistryResult;
+    readonly unregister: (pluginId: string) => void;
     readonly get: (pluginId: string) => Manifest | undefined;
     readonly has: (pluginId: string) => boolean;
     readonly all: () => readonly Manifest[];
+}
+
+function cloneManifest(manifest: Manifest): Manifest {
+    return structuredClone(manifest);
 }
 
 export function createManifestRegistry(): ManifestRegistry {
@@ -18,11 +23,18 @@ export function createManifestRegistry(): ManifestRegistry {
             if (manifests.has(manifest.id)) {
                 return { ok: false, error: 'duplicate' };
             }
-            manifests.set(manifest.id, manifest);
-            return { ok: true, value: manifest };
+            const snapshot = cloneManifest(manifest);
+            manifests.set(manifest.id, snapshot);
+            return { ok: true, value: snapshot };
         },
-        get: (pluginId) => manifests.get(pluginId),
+        unregister: (pluginId) => {
+            manifests.delete(pluginId);
+        },
+        get: (pluginId) => {
+            const manifest = manifests.get(pluginId);
+            return manifest ? cloneManifest(manifest) : undefined;
+        },
         has: (pluginId) => manifests.has(pluginId),
-        all: () => [...manifests.values()],
+        all: () => [...manifests.values()].map(cloneManifest),
     };
 }

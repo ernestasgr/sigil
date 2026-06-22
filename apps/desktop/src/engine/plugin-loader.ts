@@ -180,10 +180,22 @@ export function createPluginLoader(deps: PluginLoaderDeps) {
         return new Promise<PluginLoadResult>((resolve) => {
             let settled = false;
 
+            const timeout = setTimeout(() => {
+                if (!settled) {
+                    settled = true;
+                    deps.registry.unregister(manifest.id);
+                    resolve({
+                        ok: false,
+                        error: { kind: 'worker_error', error: 'plugin worker startup timeout' },
+                    });
+                }
+            }, 10000);
+
             worker.on('message', (message: PluginToEngineMessage) => {
                 if (message.kind === PluginLifecycleKind.Ready) {
                     if (!settled) {
                         settled = true;
+                        clearTimeout(timeout);
                         resolve({
                             ok: true,
                             handle: {
@@ -201,6 +213,8 @@ export function createPluginLoader(deps: PluginLoaderDeps) {
                 if (message.kind === PluginLifecycleKind.Error) {
                     if (!settled) {
                         settled = true;
+                        clearTimeout(timeout);
+                        deps.registry.unregister(manifest.id);
                         resolve({
                             ok: false,
                             error: { kind: 'worker_error', error: message.message },
@@ -223,6 +237,8 @@ export function createPluginLoader(deps: PluginLoaderDeps) {
             worker.on('error', (err: Error) => {
                 if (!settled) {
                     settled = true;
+                    clearTimeout(timeout);
+                    deps.registry.unregister(manifest.id);
                     resolve({
                         ok: false,
                         error: { kind: 'worker_error', error: err.message },
@@ -232,6 +248,21 @@ export function createPluginLoader(deps: PluginLoaderDeps) {
                         name: 'log.output',
                         payload: {
                             message: `[plugin:${manifest.id}] worker error: ${err.message}`,
+                        },
+                    });
+                }
+            });
+
+            worker.on('exit', (code: number) => {
+                if (!settled) {
+                    settled = true;
+                    clearTimeout(timeout);
+                    deps.registry.unregister(manifest.id);
+                    resolve({
+                        ok: false,
+                        error: {
+                            kind: 'worker_error',
+                            error: `plugin worker exited unexpectedly with code ${code}`,
                         },
                     });
                 }
