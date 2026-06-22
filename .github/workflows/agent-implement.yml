@@ -144,7 +144,7 @@ jobs:
 
             - name: Install opencode
               if: steps.shape.outputs.proceed == 'true' && steps.preflight.outputs.refused != 'true'
-              run: npm install -g opencode
+              run: curl -fsSL https://opencode.ai/install | bash
 
             - name: Run implement.ts
               if: steps.shape.outputs.proceed == 'true' && steps.preflight.outputs.refused != 'true'

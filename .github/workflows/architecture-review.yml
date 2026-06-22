@@ -41,7 +41,7 @@ jobs:
               run: pnpm install
 
             - name: Install opencode
-              run: npm install -g opencode
+              run: curl -fsSL https://opencode.ai/install | bash
 
             - name: Run architecture-review.ts
               env:

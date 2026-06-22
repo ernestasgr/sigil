@@ -177,7 +177,7 @@ jobs:
 
             - name: Install opencode
               if: steps.shape.outputs.mode == 'run'
-              run: npm install -g opencode
+              run: curl -fsSL https://opencode.ai/install | bash
 
             - name: Run implement-prd.ts
               if: steps.shape.outputs.mode == 'run'

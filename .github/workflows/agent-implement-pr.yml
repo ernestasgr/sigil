@@ -100,7 +100,7 @@ jobs:
 
             - name: Install opencode
               if: steps.state.outputs.proceed == 'true' && steps.inputs.outputs.proceed == 'true'
-              run: npm install -g opencode
+              run: curl -fsSL https://opencode.ai/install | bash
 
             - name: Configure git identity
               if: steps.state.outputs.proceed == 'true' && steps.inputs.outputs.proceed == 'true'
