@@ -45,6 +45,10 @@ jobs:
             - name: Ensure branch is checked out by name
               run: git checkout "$BRANCH" 2>/dev/null || git checkout -B "$BRANCH"
 
+            - uses: pnpm/action-setup@v4
+              with:
+                  version: 11.8.0
+
             - name: Setup Node.js 22
               uses: actions/setup-node@v4
               with:

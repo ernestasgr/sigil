@@ -83,6 +83,11 @@ jobs:
                   git fetch origin main:main || git fetch origin main
                   git checkout "$BRANCH" 2>/dev/null || git checkout -B "$BRANCH"
 
+            - uses: pnpm/action-setup@v4
+              if: steps.state.outputs.proceed == 'true' && steps.inputs.outputs.proceed == 'true'
+              with:
+                  version: 11.8.0
+
             - name: Setup Node.js 22
               if: steps.state.outputs.proceed == 'true' && steps.inputs.outputs.proceed == 'true'
               uses: actions/setup-node@v4

@@ -160,6 +160,11 @@ jobs:
                     echo "is_first=true" >> "$GITHUB_OUTPUT"
                   fi
 
+            - uses: pnpm/action-setup@v4
+              if: steps.shape.outputs.mode == 'run'
+              with:
+                  version: 11.8.0
+
             - name: Setup Node.js 22
               if: steps.shape.outputs.mode == 'run'
               uses: actions/setup-node@v4

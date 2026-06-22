@@ -79,6 +79,11 @@ jobs:
                   ref: main
                   fetch-depth: 1
 
+            - uses: pnpm/action-setup@v4
+              if: steps.shape.outputs.mode == 'run'
+              with:
+                  version: 11.8.0
+
             - name: Setup Node.js 22
               if: steps.shape.outputs.mode == 'run'
               uses: actions/setup-node@v4
