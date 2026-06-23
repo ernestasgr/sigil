@@ -79,7 +79,11 @@ function compareString(operator: StringOperator, left: string, right: string): b
             return left.toLowerCase().endsWith(right.toLowerCase());
         case 'matches': {
             const { pattern, flags } = parseRegexLiteral(right);
-            return new RegExp(pattern, flags).test(left);
+            try {
+                return new RegExp(pattern, flags).test(left);
+            } catch {
+                return false;
+            }
         }
         default:
             return assertNever(operator);
