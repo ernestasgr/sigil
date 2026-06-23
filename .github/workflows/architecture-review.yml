@@ -15,7 +15,7 @@ jobs:
             has-commits: ${{ steps.check-commits.outputs.has-commits }}
         steps:
             - name: Checkout main
-              uses: actions/checkout@v4
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
               with:
                   ref: main
                   fetch-depth: 0
@@ -39,7 +39,7 @@ jobs:
     architecture-review:
         runs-on: ubuntu-latest
         needs: should-run
-        if: needs.should-run.outputs.has-commits == 'true'
+        if: github.event_name == 'workflow_dispatch' || needs.should-run.outputs.has-commits == 'true'
         timeout-minutes: 20
         concurrency:
             group: architecture-review
@@ -54,17 +54,17 @@ jobs:
 
         steps:
             - name: Checkout main
-              uses: actions/checkout@v4
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
               with:
                   ref: main
                   fetch-depth: 1
 
-            - uses: pnpm/action-setup@v4
+            - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
               with:
                   version: 11.8.0
 
             - name: Setup Node.js 22
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
               with:
                   node-version: '22'
 
