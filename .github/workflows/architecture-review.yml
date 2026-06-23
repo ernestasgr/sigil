@@ -7,8 +7,39 @@ on:
     workflow_dispatch:
 
 jobs:
+    should-run:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        outputs:
+            has-commits: ${{ steps.check-commits.outputs.has-commits }}
+        steps:
+            - name: Checkout main
+              uses: actions/checkout@v4
+              with:
+                  ref: main
+                  fetch-depth: 0
+
+            - name: Check for commits yesterday
+              id: check-commits
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  YESTERDAY_START=$(date -d "yesterday 00:00:00" --utc +"%Y-%m-%dT%H:%M:%SZ")
+                  YESTERDAY_END=$(date -d "today 00:00:00" --utc +"%Y-%m-%dT%H:%M:%SZ")
+                  COUNT=$(git log --after="$YESTERDAY_START" --before="$YESTERDAY_END" --oneline | wc -l)
+                  if [ "$COUNT" -gt 0 ]; then
+                    echo "has-commits=true" >> "$GITHUB_OUTPUT"
+                    echo "Found $COUNT commit(s) yesterday — review will proceed."
+                  else
+                    echo "has-commits=false" >> "$GITHUB_OUTPUT"
+                    echo "No commits yesterday — skipping architecture review."
+                  fi
+
     architecture-review:
         runs-on: ubuntu-latest
+        needs: should-run
+        if: needs.should-run.outputs.has-commits == 'true'
         timeout-minutes: 20
         concurrency:
             group: architecture-review
