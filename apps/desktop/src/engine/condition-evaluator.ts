@@ -116,41 +116,33 @@ function compareBoolean(operator: BooleanOperator, left: boolean, right: boolean
     }
 }
 
+function compareWithCondition(raw: unknown, condition: PipelineCondition): boolean {
+    if (raw === undefined || raw === null) return false;
+
+    if (typeof condition.value === 'string') {
+        const field = coerceForComparison(raw, 'string');
+        const value = coerceForComparison(condition.value, 'string');
+        if (!field.ok || !value.ok) return false;
+        return compareString(condition.operator, field.value, value.value);
+    }
+    if (typeof condition.value === 'number') {
+        const field = coerceForComparison(raw, 'number');
+        const value = coerceForComparison(condition.value, 'number');
+        if (!field.ok || !value.ok) return false;
+        return compareNumber(condition.operator, field.value, value.value);
+    }
+    const field = coerceForComparison(raw, 'boolean');
+    const value = coerceForComparison(condition.value, 'boolean');
+    if (!field.ok || !value.ok) return false;
+    return compareBoolean(condition.operator, field.value, value.value);
+}
+
 export function evaluateCondition(condition: PipelineCondition, ctx: WorkflowContext): boolean {
     switch (condition.target) {
-        case 'event': {
-            if (condition.field === 'size') {
-                const field = coerceForComparison(ctx.event.size, 'number');
-                const value = coerceForComparison(condition.value, 'number');
-                if (!field.ok || !value.ok) return false;
-                return compareNumber(condition.operator, field.value, value.value);
-            }
-            const field = coerceForComparison(ctx.event[condition.field], 'string');
-            const value = coerceForComparison(condition.value, 'string');
-            if (!field.ok || !value.ok) return false;
-            return compareString(condition.operator, field.value, value.value);
-        }
-        case 'vars': {
-            const raw = ctx.vars[condition.field];
-            if (raw === undefined || raw === null) return false;
-
-            if (typeof condition.value === 'string') {
-                const field = coerceForComparison(raw, 'string');
-                const value = coerceForComparison(condition.value, 'string');
-                if (!field.ok || !value.ok) return false;
-                return compareString(condition.operator, field.value, value.value);
-            }
-            if (typeof condition.value === 'number') {
-                const field = coerceForComparison(raw, 'number');
-                const value = coerceForComparison(condition.value, 'number');
-                if (!field.ok || !value.ok) return false;
-                return compareNumber(condition.operator, field.value, value.value);
-            }
-            const field = coerceForComparison(raw, 'boolean');
-            const value = coerceForComparison(condition.value, 'boolean');
-            if (!field.ok || !value.ok) return false;
-            return compareBoolean(condition.operator, field.value, value.value);
-        }
+        case 'event':
+            return compareWithCondition(ctx.event[condition.field], condition);
+        case 'vars':
+            return compareWithCondition(ctx.vars[condition.field], condition);
         default:
             return assertNever(condition);
     }
