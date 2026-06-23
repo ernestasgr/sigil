@@ -2,17 +2,18 @@ import { z } from 'zod';
 import { FileEventPayloadSchema } from './file-event-payload.js';
 import { PipelineConditionSchema } from './conditions.js';
 
-const FileEventSchema = z.enum(['file.created', 'file.modified', 'file.deleted']);
+const FileEventNameSchema = z.enum(['file.created', 'file.modified', 'file.deleted']);
 
 export const FileWatcherConfigSchema = z.object({
     path: z.string().min(1),
     recursive: z.boolean(),
-    events: z.array(FileEventSchema).min(1),
+    events: z.array(FileEventNameSchema).min(1),
     ignorePatterns: z.array(z.string()).optional(),
 });
 export type FileWatcherConfig = z.infer<typeof FileWatcherConfigSchema>;
 
 export const ManualTriggerConfigSchema = z.object({
+    eventName: FileEventNameSchema,
     payload: FileEventPayloadSchema,
 });
 export type ManualTriggerConfig = z.infer<typeof ManualTriggerConfigSchema>;
@@ -22,12 +23,19 @@ export const IfElseConfigSchema = z.object({
 });
 export type IfElseConfig = z.infer<typeof IfElseConfigSchema>;
 
+const EventNameSwitchSchema = z.object({
+    target: z.literal('event'),
+    cases: z.array(z.string().min(1)),
+});
+
+const FieldSwitchSchema = z.object({
+    target: z.enum(['payload', 'vars']),
+    field: z.string().min(1),
+    cases: z.array(z.string().min(1)),
+});
+
 export const SwitchConfigSchema = z
-    .object({
-        target: z.enum(['event', 'vars']),
-        field: z.string().min(1),
-        cases: z.array(z.string().min(1)),
-    })
+    .union([EventNameSwitchSchema, FieldSwitchSchema])
     .refine((cfg) => new Set(cfg.cases).size === cfg.cases.length, {
         message: 'switch cases must be unique',
         path: ['cases'],

@@ -1,4 +1,3 @@
-import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import type { PipelineCondition } from '@sigil/schema/conditions';
 import type { BooleanOperator, NumberOperator, StringOperator } from '@sigil/schema/operators';
 import type { SwitchConfig } from '@sigil/schema/node-configs';
@@ -144,28 +143,13 @@ function compareWithCondition(raw: unknown, condition: PipelineCondition): boole
 export function evaluateCondition(condition: PipelineCondition, ctx: WorkflowContext): boolean {
     switch (condition.target) {
         case 'event':
-            return compareWithCondition(ctx.event[condition.field], condition);
+            return compareWithCondition(ctx.event, condition);
+        case 'payload':
+            return compareWithCondition(ctx.payload[condition.field], condition);
         case 'vars':
             return compareWithCondition(ctx.vars[condition.field], condition);
         default:
             return assertNever(condition);
-    }
-}
-
-function readEventField(event: FileEventPayload, field: string): unknown {
-    switch (field) {
-        case 'path':
-            return event.path;
-        case 'name':
-            return event.name;
-        case 'ext':
-            return event.ext;
-        case 'dir':
-            return event.dir;
-        case 'size':
-            return event.size;
-        default:
-            return undefined;
     }
 }
 
@@ -178,22 +162,28 @@ function matchStringCase(cases: readonly string[], raw: unknown): string {
     return 'default';
 }
 
+function matchNumberCase(cases: readonly string[], raw: number): string {
+    for (const caseValue of cases) {
+        const caseNum = Number(caseValue);
+        if (!Number.isNaN(caseNum) && caseNum === raw) return caseValue;
+    }
+    return 'default';
+}
+
+function matchFieldCase(cases: readonly string[], raw: unknown): string {
+    if (typeof raw === 'number') return matchNumberCase(cases, raw);
+    return matchStringCase(cases, raw);
+}
+
 export function matchSwitchCase(config: SwitchConfig, ctx: WorkflowContext): string {
     switch (config.target) {
-        case 'event': {
-            if (config.field === 'size') {
-                const sizeNum = ctx.event.size;
-                for (const caseValue of config.cases) {
-                    const caseNum = Number(caseValue);
-                    if (!Number.isNaN(caseNum) && caseNum === sizeNum) return caseValue;
-                }
-                return 'default';
-            }
-            return matchStringCase(config.cases, readEventField(ctx.event, config.field));
-        }
+        case 'event':
+            return matchStringCase(config.cases, ctx.event);
+        case 'payload':
+            return matchFieldCase(config.cases, ctx.payload[config.field]);
         case 'vars':
-            return matchStringCase(config.cases, ctx.vars[config.field]);
+            return matchFieldCase(config.cases, ctx.vars[config.field]);
         default:
-            return assertNever(config.target);
+            return assertNever(config);
     }
 }

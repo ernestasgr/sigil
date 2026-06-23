@@ -29,7 +29,7 @@ const payload: FileEventPayload = {
 const trigger = (id = 'trigger'): PipelineNode => ({
     id,
     type: 'manual-trigger',
-    config: { payload },
+    config: { eventName: 'file.created', payload },
 });
 const log = (id: string, message: string): PipelineNode => ({
     id,
@@ -104,7 +104,7 @@ describe('executePipeline — if/else branching', () => {
                     type: 'if-else',
                     config: {
                         condition: {
-                            target: 'event',
+                            target: 'payload',
                             field: 'ext',
                             operator: 'equals',
                             value: conditionValue,
@@ -154,7 +154,7 @@ describe('executePipeline — switch branching', () => {
                 {
                     id: 'sw',
                     type: 'switch',
-                    config: { target: 'event', field: 'ext', cases: [...cases] },
+                    config: { target: 'payload', field: 'ext', cases: [...cases] },
                 },
                 log('pdf-log', 'routed to PDF'),
                 log('png-log', 'routed to PNG'),
@@ -267,8 +267,8 @@ describe('executePipeline — notification', () => {
                         id: 'notify',
                         type: 'notification',
                         config: {
-                            title: 'Sorted {{event.name}}',
-                            body: 'Moved {{event.size}} bytes',
+                            title: 'Sorted {{payload.name}}',
+                            body: 'Moved {{payload.size}} bytes',
                         },
                     },
                 ],
@@ -300,7 +300,7 @@ describe('executePipeline — context pass-through', () => {
                         type: 'if-else',
                         config: {
                             condition: {
-                                target: 'event',
+                                target: 'payload',
                                 field: 'ext',
                                 operator: 'equals',
                                 value: 'pdf',
@@ -308,7 +308,7 @@ describe('executePipeline — context pass-through', () => {
                         },
                     },
                     { id: 'wait', type: 'delay', config: { ms: 1 } },
-                    log('final', 'file is {{event.name}} ({{event.ext}})'),
+                    log('final', 'file is {{payload.name}} ({{payload.ext}})'),
                 ],
                 [
                     edge('t-to-branch', 'trigger', 'branch', 'out'),

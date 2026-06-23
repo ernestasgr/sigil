@@ -29,9 +29,28 @@ describe('FileEventPayloadSchema', () => {
 });
 
 describe('PipelineConditionSchema', () => {
-    it('accepts a file string condition', () => {
+    it('accepts an event name condition', () => {
         const result = PipelineConditionSchema.safeParse({
             target: 'event',
+            operator: 'equals',
+            value: 'file.created',
+        });
+        expect(result.success).toBe(true);
+    });
+
+    it('rejects an event name condition with a field', () => {
+        const result = PipelineConditionSchema.safeParse({
+            target: 'event',
+            field: 'name',
+            operator: 'equals',
+            value: 'file.created',
+        });
+        expect(result.success).toBe(false);
+    });
+
+    it('accepts a payload string condition', () => {
+        const result = PipelineConditionSchema.safeParse({
+            target: 'payload',
             field: 'name',
             operator: 'contains',
             value: 'report',
@@ -39,9 +58,9 @@ describe('PipelineConditionSchema', () => {
         expect(result.success).toBe(true);
     });
 
-    it('accepts a file size condition with a number operator', () => {
+    it('accepts a payload size condition with a number operator', () => {
         const result = PipelineConditionSchema.safeParse({
-            target: 'event',
+            target: 'payload',
             field: 'size',
             operator: 'gt',
             value: 1024,
@@ -49,11 +68,11 @@ describe('PipelineConditionSchema', () => {
         expect(result.success).toBe(true);
     });
 
-    it('rejects a size condition paired with a string operator', () => {
+    it('rejects a number operator paired with a string value', () => {
         const result = PipelineConditionSchema.safeParse({
-            target: 'event',
+            target: 'payload',
             field: 'size',
-            operator: 'contains',
+            operator: 'gt',
             value: 'foo',
         });
         expect(result.success).toBe(false);
@@ -71,7 +90,7 @@ describe('PipelineConditionSchema', () => {
 
     it('rejects an unknown operator', () => {
         const result = PipelineConditionSchema.safeParse({
-            target: 'event',
+            target: 'payload',
             field: 'name',
             operator: 'approx',
             value: 'x',
@@ -129,7 +148,7 @@ describe('CompiledPipelineSchema', () => {
                     type: 'if-else',
                     config: {
                         condition: {
-                            target: 'event',
+                            target: 'payload',
                             field: 'ext',
                             operator: 'equals',
                             value: 'pdf',
@@ -156,7 +175,7 @@ describe('CompiledPipelineSchema', () => {
                 {
                     id: 'sw',
                     type: 'switch',
-                    config: { target: 'event', field: 'ext', cases: ['pdf', 'png'] },
+                    config: { target: 'payload', field: 'ext', cases: ['pdf', 'png'] },
                 },
                 { id: 'log', type: 'log', config: { message: 'x' } },
             ],
@@ -223,7 +242,7 @@ describe('CompiledPipelineSchema', () => {
                 {
                     id: 'sw',
                     type: 'switch',
-                    config: { target: 'event', field: 'ext', cases: ['pdf', 'pdf'] },
+                    config: { target: 'payload', field: 'ext', cases: ['pdf', 'pdf'] },
                 },
             ],
             edges: [],

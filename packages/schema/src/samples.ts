@@ -9,6 +9,7 @@ export const sampleManualTriggerToLog: CompiledPipeline = {
             id: 'trigger',
             type: 'manual-trigger',
             config: {
+                eventName: 'file.created',
                 payload: {
                     path: '/Users/dev/Downloads/report.pdf',
                     name: 'report.pdf',
@@ -22,7 +23,7 @@ export const sampleManualTriggerToLog: CompiledPipeline = {
             id: 'log',
             type: 'log',
             config: {
-                message: 'Manual trigger fired for {{event.name}} ({{event.size}} bytes)',
+                message: 'Manual trigger fired for {{payload.name}} ({{payload.size}} bytes)',
             },
         },
     ],

@@ -63,9 +63,9 @@ function topologicalOrder(pipeline: CompiledPipeline): readonly string[] {
 function runTriggerNode(node: PipelineNode, bus: EventBus): WorkflowContext {
     switch (node.type) {
         case 'manual-trigger': {
-            const payload = node.config.payload;
+            const { eventName, payload } = node.config;
             bus.next({ name: 'manual.trigger.fired', payload });
-            return { event: payload, vars: {} };
+            return { event: eventName, payload, vars: {} };
         }
         case 'file-watcher':
             throw new Error(
