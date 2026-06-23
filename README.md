@@ -2,53 +2,141 @@
 
 > A local-first desktop automation platform that reacts to system events by executing user-defined workflows.
 
-Sigil watches your filesystem (and, in future phases, other sources) and runs
-**Workflows** — visual, node-graph automations you build by dragging and
-connecting nodes on a canvas. The MVP use case: stop manually sorting your
-Downloads folder. A File Watcher fires when a file appears → If/Else and Switch
-nodes route by extension, size, or name → a File Manager node moves it where it
-belongs. Workflows run in the background from the system tray, and a Live Event
-Inspector shows every Event flowing through the system in real time.
+Sigil watches your filesystem (and, in future phases, other sources) and runs **Workflows** — visual, node-graph automations you build by dragging and connecting nodes on a canvas. The MVP use case: stop manually sorting your Downloads folder. A File Watcher fires when a file appears → If/Else and Switch nodes route by extension, size, or name → a File Manager node moves it where it belongs. Workflows run in the background from the system tray, and a Live Event Inspector shows every Event flowing through the system in real time.
 
 ## Status
 
-**Phase 1 (MVP).** Windows only. Sigil is a personal tool and learning project,
-not a product launch — the architecture is intentionally ambitious relative to
-the use case because Plugin isolation, reactive pipelines, and visual graph
-editing are learning goals in their own right. See
-[`docs/prd-phase1-mvp.md`](docs/prd-phase1-mvp.md) for the full PRD and
-[`docs/adr/`](docs/adr) for architectural decisions.
-
-## How it works
-
-1. A **Trigger Plugin** (e.g. File Watcher) watches an external source and emits
-   an **Event** onto the **Event Bus**.
-2. A **Workflow** subscribes to that Event. The Engine compiles it into a
-   **Pipeline** (a DAG) and the **DAG Executor** runs it in topological order.
-3. **Nodes** along the graph evaluate conditions (If/Else, Switch), transform
-   data (State Get/Set, Log, Delay), and produce side effects (File Manager,
-   Notification).
-4. Each Node receives a **Workflow Context** (`event` metadata + transient `vars`)
-   and passes it downstream. Persistent values live in per-Workflow **Workflow
-   State** backed by SQLite.
+**Phase 1 (MVP).** Windows only. Sigil is a personal tool and learning project, not a product launch — the architecture is intentionally ambitious relative to the use case because Plugin isolation, reactive pipelines, and visual graph editing are learning goals in their own right. See [`docs/prd-phase1-mvp.md`](docs/prd-phase1-mvp.md) for the full PRD and [`docs/adr/`](docs/adr) for architectural decisions.
 
 ## Architecture
 
-Three layers, each isolated from the next:
+Three fully isolated layers, each with a distinct responsibility:
 
-- **Electron Shell** (`apps/desktop/src/main`, `apps/desktop/src/preload`) —
-  window, system tray, IPC. Intentionally thin; owns no application logic.
-- **Automation Engine** (`apps/desktop/src/engine`) — the **Event Bus** (a typed
-  RxJS Subject), Plugin Loader, **DAG Executor**, and **State Manager**. Runs as
-  an isolated Node.js worker process so a crashed Workflow can't take down the
-  UI.
-- **Plugins** — isolated modules running in their own `worker_thread`, evaluated
-  inside a `vm.Context` with no ambient `require`/`process`/`fs`/`net`. Every
-  privileged call crosses the **Bridge** via `postMessage` RPC and is re-checked
-  by the **Capability Broker** against the Plugin's **Manifest** permissions on
-  every call, not just at load time.
+```
+┌─────────────────────────────────────────────────────┐
+│                Electron Shell (main)                  │
+│  Window | Tray | IPC routing | engine-client         │
+│  Intentionally thin — owns NO application logic      │
+└────────────────────┬────────────────────────────────┘
+                     │ postMessage IPC
+┌────────────────────▼────────────────────────────────┐
+│              Automation Engine (worker_thread)        │
+│  Event Bus │ Bridge │ Capability Broker              │
+│  Manifest Registry │ Condition Evaluator             │
+│  Template Resolver │ DAG Executor                    │
+│  Plugin Loader │ Workflow Registry                   │
+└──────┬───────────────────────────────────────────────┘
+       │ postMessage RPC
+┌──────▼──────────────────────────────────────────────┐
+│     Plugin Worker (worker_thread + vm.Context)       │
+│  PluginSandbox (no require/process/fs/net)           │
+│  RPC bridge for privileged operations                │
+└─────────────────────────────────────────────────────┘
+```
 
-## MVP node types
+### Electron Shell (`apps/desktop/src/main/`)
+
+The shell manages the window, system tray, and IPC routing. It owns no domain logic.
+
+**Boot sequence** (`apps/desktop/src/main/index.ts:132`):
+
+1. `spawnEngine()` spins up a `Worker` running the Engine
+2. IPC handlers are wired (`ipcMain.handle` for pong, fire-test-event, toggle-workflow)
+3. Engine logs and workflow lists are forwarded to all renderer windows
+4. System tray is created with workflow-toggle/open/quit menu
+5. Main `BrowserWindow` is created (loads React renderer or dev URL)
+6. On `before-quit`, tray is destroyed and engine worker is terminated
+
+### Automation Engine (`apps/desktop/src/engine/`)
+
+Runs as an isolated `worker_thread` so crashed workflows cannot take down the UI.
+
+**Event Bus** — a single in-memory RxJS `Subject<BusEvent>` through which all Events flow. BusEvent is a discriminated union of 7 event types:
+
+- `workflow.started` / `workflow.completed` / `workflow.error` — pipeline lifecycle
+- `manual.trigger.fired` — manual trigger node fired
+- `log.output` — a log line
+- `notification.show` — request to show an OS notification
+- `plugin.event` — plugin emitted an event onto the bus
+
+**Bridge** — the cross-thread serialization layer. Validates every plugin emission against its Manifest (event names must be declared), then pushes onto the Event Bus. Returns `{ ok: true }` or `{ ok: false, error }`.
+
+**Capability Broker** — mediates every privileged operation by re-checking the plugin's Manifest `permissions` array on every call, not just at load time.
+
+**Manifest Registry** — in-memory store of plugin Manifests. All returned manifests are deep-cloned via `structuredClone` to prevent mutation.
+
+**Plugin Loader** — loads a plugin from raw manifest + source code:
+
+1. Parses manifest with Zod
+2. Checks for duplicate plugin ID
+3. Registers the manifest
+4. Spawns a `Worker` pointing at `plugin-worker.js`
+5. Waits for `plugin:ready` (10s timeout), cleans up on failure
+
+**DAG Executor** — runs a compiled pipeline in topological order (Kahn's algorithm). For each node: evaluates conditions (If/Else, Switch), resolves templates (`{{payload.*}}` / `{{vars.*}}`), emits log/notification events, and sleeps on Delay nodes. On error, emits `workflow.error` + optional notification.
+
+**Condition Evaluator** — evaluates `PipelineCondition` with type coercion. Operators: `equals`, `not_equals`, `contains`, `not_contains`, `starts_with`, `ends_with`, `matches` (regex) for strings; `gt`, `lt`, `gte`, `lte` for numbers. Case-insensitive by default.
+
+### Plugins
+
+Plugins are double-sandboxed modules. Each runs in its own `worker_thread`, with plugin code evaluated inside a `vm.Context` that has no ambient `require`, `process`, `fs`, `Buffer`, `setTimeout`, `setInterval`, or `net`. Only safe globals are exposed: `JSON`, `Math`, `Date`, `Promise`, `Array`, `Object`, `String`, `Number`, `Boolean`, `Map`, `Set`, `Error`, `RegExp`, and a restricted API surface (`event.emit()`, `state.get()`, `state.set()`, `log()`).
+
+Code generation (`eval`, `Function`, WebAssembly) is explicitly disabled. Execution has a 5-second timeout.
+
+All privileged operations cross the Bridge via `postMessage` RPC and are re-checked by the Capability Broker against the plugin's Manifest permissions on every call.
+
+## Process Architecture & IPC
+
+Three distinct IPC mechanisms:
+
+| Channel        | Between          | Mechanism                               | Purpose              |
+| -------------- | ---------------- | --------------------------------------- | -------------------- |
+| **IPC**        | Renderer ↔ Main  | `ipcMain.handle` / `ipcRenderer.invoke` | UI actions           |
+| **IPC (push)** | Main → Renderer  | `webContents.send` / `ipcRenderer.on`   | Logs, workflow lists |
+| **Bridge**     | Engine ↔ Plugins | `worker_thread.postMessage` RPC         | Plugin events, state |
+
+The Electron preload (`apps/desktop/src/preload/index.ts`) uses `contextBridge.exposeInMainWorld` to expose a safe `window.sigil` API — no direct Node.js access from the renderer.
+
+## End-to-End Event Flow
+
+Example: Manual Trigger → Log workflow ("Fire test event" button):
+
+```
+User clicks "Fire test event"
+  → renderer: window.sigil.fireTestEvent()
+  → ipcRenderer.invoke → main: engine.fireTestEvent()
+  → Worker.postMessage → worker: engine.execute(samplePipeline)
+
+DAG Executor:
+  1. Topological sort → ['trigger', 'log']
+  2. Run trigger (manual-trigger):
+     → emits 'manual.trigger.fired' on Event Bus
+     → returns WorkflowContext { event, payload, vars }
+  3. Schedule downstream from port 'out' → log node queued
+  4. Run log node:
+     → resolves "Manual trigger fired for {{payload.name}}"
+     → emits 'log.output' on Event Bus
+  5. Emit 'workflow.completed'
+
+Event Bus subscriptions:
+  → worker.ts forwards 'log.output' to main via postMessage
+  → main forwards to renderer via webContents.send
+  → renderer appends to Zustand store → HomeSection displays it
+```
+
+## Security Model (Defense in Depth)
+
+| Layer                 | Protection                                                                                                  |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Electron**          | `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`                                         |
+| **Preload**           | Only `window.sigil` API surface via `contextBridge`                                                         |
+| **Engine isolation**  | Separate `worker_thread` — independent heap, no shared state                                                |
+| **Plugin isolation**  | Own `worker_thread` + `vm.Context` with no Node.js globals                                                  |
+| **Plugin sandbox**    | Code generation disabled (`strings: false`, `wasm: false`); 5s timeout                                      |
+| **Permission model**  | Manifest declares capabilities; Bridge checks `emits`; Capability Broker checks `permissions` on every call |
+| **Schema validation** | Zod validates all data at every process boundary                                                            |
+
+## MVP Node Types
 
 Ten node types, grouped by category:
 
@@ -65,36 +153,23 @@ Ten node types, grouped by category:
 | Utilities | Log            | Outputs a templated message to the Variable Inspector.         |
 | Utilities | Delay          | Pauses execution for a duration in milliseconds.               |
 
-## MVP plugins
+## MVP Plugins
 
-- **File Watcher** (Trigger) — emits `file.created`, `file.modified`,
-  `file.deleted`. One underlying watcher per unique `(path, recursive)` pair,
-  shared across subscribers. Ignores `*.crdownload`, `*.part`, `*.tmp`,
-  `*.download` by default (configurable via the Properties File).
-- **File Manager** (Action) — `move`, `copy`, or `rename` with a collision
-  policy of `skip`, `overwrite`, `auto-rename`, or `error`. Requires
-  `filesystem.read` and `filesystem.write` permissions.
+- **File Watcher** (Trigger) — emits `file.created`, `file.modified`, `file.deleted`. One underlying watcher per unique `(path, recursive)` pair, shared across subscribers. Ignores `*.crdownload`, `*.part`, `*.tmp`, `*.download` by default.
+- **File Manager** (Action) — `move`, `copy`, or `rename` with a collision policy of `skip`, `overwrite`, `auto-rename`, or `error`. Requires `filesystem.read` and `filesystem.write` permissions.
 
 ## UI
 
-- **React** renderer with **Zustand** state, **React Flow** canvas, **Zod**
-  validation, and **Tailwind CSS** styling.
-- Five sections: **Home** (active Workflows + recent Events), **Workflows**
-  (create/edit/enable/disable), **Events** (Live Event Inspector), **Plugins**
-  (installed Plugins + permissions), **Settings** (permissions + Properties File
-  editor).
-- System tray with status indicator and a quick-action menu to
-  enable/disable Workflows and open the app.
+- **React 19** renderer with **Zustand 5** state, **React Flow** canvas, **Zod** validation, and **Tailwind CSS 4** styling.
+- Five sections: **Home** (active Workflows + recent Events), **Workflows** (create/edit/enable/disable), **Events** (Live Event Inspector), **Plugins** (installed Plugins + permissions), **Settings** (permissions + Properties File editor).
+- System tray with status indicator and a quick-action menu to enable/disable Workflows and open the app.
+- Visual design: "machine-age ritual" — Obsidian, Parchment, Gilt, Old Blood, Verdigris, Veil. See [`UI_STYLE_GUIDANCE.md`](UI_STYLE_GUIDANCE.md).
 
-See [`UI_STYLE_GUIDANCE.md`](UI_STYLE_GUIDANCE.md) for the visual language
-(machine-age ritual: Obsidian, Parchment, Gilt, Old Blood, Verdigris, Veil).
+## Tech Stack
 
-## Tech stack
+TypeScript 6 · Electron 42 · React 19 · Zustand 5 · @xyflow/react 12 · Zod 4 · RxJS 7 · better-sqlite3 12 · Tailwind CSS 4 · Vitest 4
 
-TypeScript · Electron · React · Zustand · @xyflow/react · Zod · RxJS ·
-better-sqlite3 · Tailwind CSS · Vitest
-
-## Repository layout
+## Repository Layout
 
 ```
 sigil/
@@ -113,12 +188,14 @@ sigil/
     └── adr/                # Architecture Decision Records
 ```
 
+The shared contract: `@sigil/schema` defines `CompiledPipeline`, `PipelineNode` (discriminated union of 10 types), `WorkflowContext`, `PipelineCondition`, `Manifest`, and operator schemas — all validated with Zod at every boundary.
+
 ## Prerequisites
 
 - **Node.js** `>= 22.12.0`
 - **pnpm** `11.8.0` (enforced via `packageManager`)
 
-## Getting started
+## Getting Started
 
 ```bash
 pnpm install
@@ -143,46 +220,27 @@ pnpm dev          # builds @sigil/schema, then launches the Electron app with HM
 
 ## Testing
 
-Tests target architectural seams — feeding input into one side of a boundary
-and asserting what comes out the other — rather than internal implementation
-details. The highest-value seams:
+Tests target architectural seams — feeding input into one side of a boundary and asserting what comes out the other — rather than internal implementation details. The highest-value seams:
 
-- **Capability Broker** — the trust model: permitted RPCs pass, calls exceeding
-  Manifest permissions or undeclared Events are rejected.
-- **DAG Executor** — feed a compiled Pipeline + trigger payload, assert node
-  sequence, branching, outputs, error handling, and State mutations.
-- **Event Bus + Bridge** — Events arrive with correct payloads, undeclared
-  emissions are blocked, subscribers receive matching Events.
+- **Capability Broker** — the trust model: permitted RPCs pass, calls exceeding Manifest permissions or undeclared Events are rejected.
+- **DAG Executor** — feed a compiled Pipeline + trigger payload, assert node sequence, branching, outputs, error handling, and State mutations.
+- **Event Bus + Bridge** — Events arrive with correct payloads, undeclared emissions are blocked, subscribers receive matching Events.
 
-Electron Shell, React Flow interactions, and platform-specific behavior are
-validated manually. Run the suite with `pnpm test`.
+Run the suite with `pnpm test`.
 
-## Project docs
+## Project Docs
 
-- [`CONTEXT.md`](CONTEXT.md) — the domain glossary. Canonical vocabulary for
-  Event, Plugin, Workflow, Node, Pipeline, Workflow State, Context, and more.
-  Use these terms verbatim; the glossary lists terms to avoid.
-- [`CODING_STANDARDS.md`](CODING_STANDARDS.md) — TypeScript conventions: no
-  `any`, discriminated unions with exhaustive switches, `readonly` by default,
-  branded IDs, Zod at boundaries, functional style, `Result` types over
-  throwing.
-- [`UI_STYLE_GUIDANCE.md`](UI_STYLE_GUIDANCE.md) — visual language and color
-  system.
-- [`docs/prd-phase1-mvp.md`](docs/prd-phase1-mvp.md) — the Phase 1 PRD (user
-  stories, implementation decisions, type definitions, testing strategy).
+- [`CONTEXT.md`](CONTEXT.md) — the domain glossary. Canonical vocabulary for Event, Plugin, Workflow, Node, Pipeline, Workflow State, Context, and more.
+- [`CODING_STANDARDS.md`](CODING_STANDARDS.md) — TypeScript conventions: no `any`, discriminated unions with exhaustive switches, `readonly` by default, branded IDs, Zod at boundaries, functional style, `Result` types over throwing.
+- [`UI_STYLE_GUIDANCE.md`](UI_STYLE_GUIDANCE.md) — visual language and color system.
+- [`docs/prd-phase1-mvp.md`](docs/prd-phase1-mvp.md) — the Phase 1 PRD (user stories, implementation decisions, type definitions, testing strategy).
 - [`docs/adr/`](docs/adr) — Architecture Decision Records.
 
 ## Roadmap
 
 Phase 1 is the MVP. Later phases (scoped separately when the time comes):
 
-- **Phase 2** — Parallel branch execution, Debounce/Rate Limiter/Queue nodes,
-  Cron scheduler, command palette, global hotkeys, more Plugins.
-- **Phase 3** — Context Engine with incremental dependency graph and
-  hysteresis, Time Travel Debugging, State Machine and Transaction/Rollback
-  nodes.
-- **Phase 4** — AI nodes (Summarize, Classify, Sentiment, Decision Router,
-  Vision), integration Plugins (Discord, Spotify, Obsidian…), natural-language
-  Workflow creation.
-- **Phase 5** — Plugin marketplace, signing and trust tiers, multi-device sync,
-  cross-platform support (macOS, Linux).
+- **Phase 2** — Parallel branch execution, Debounce/Rate Limiter/Queue nodes, Cron scheduler, command palette, global hotkeys, more Plugins.
+- **Phase 3** — Context Engine with incremental dependency graph and hysteresis, Time Travel Debugging, State Machine and Transaction/Rollback nodes.
+- **Phase 4** — AI nodes (Summarize, Classify, Sentiment, Decision Router, Vision), integration Plugins (Discord, Spotify, Obsidian…), natural-language Workflow creation.
+- **Phase 5** — Plugin marketplace, signing and trust tiers, multi-device sync, cross-platform support (macOS, Linux).
