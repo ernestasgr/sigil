@@ -9,9 +9,11 @@ const ISSUE_TITLE = required('ISSUE_TITLE');
 const BRANCH = required('BRANCH');
 const OUTPUT_DIR = process.env.OUTPUT_DIR ?? '/tmp';
 
+const MODEL = process.env.OPENCODE_MODEL ?? 'opencode-go/glm-5.2';
+
 const result = await sandcastle.run({
     name: `implement-#${ISSUE_NUMBER}`,
-    agent: sandcastle.opencode('opencode-go/glm-5.2', {
+    agent: sandcastle.opencode(MODEL, {
         env: {
             OPENCODE_API_KEY: required('OPENCODE_API_KEY'),
         },

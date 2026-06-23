@@ -152,9 +152,11 @@ const prComments = {
     ),
 };
 
+const MODEL = process.env.OPENCODE_MODEL ?? 'opencode-go/glm-5.2';
+
 const result = await runWithExtraction({
     name: `review-pr-${PR_NUMBER}`,
-    agent: sandcastle.opencode('opencode-go/glm-5.2', {
+    agent: sandcastle.opencode(MODEL, {
         env: {
             OPENCODE_API_KEY: required('OPENCODE_API_KEY'),
         },
