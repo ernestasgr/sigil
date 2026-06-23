@@ -7,7 +7,8 @@ import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { coerceForComparison, evaluateCondition, matchSwitchCase } from './condition-evaluator.js';
 
 const ctx: WorkflowContext = {
-    event: {
+    event: 'file.created',
+    payload: {
         path: '/Users/dev/Downloads/Report.PDF',
         name: 'Report.PDF',
         ext: 'PDF',
@@ -49,10 +50,10 @@ describe('coerceForComparison', () => {
     });
 });
 
-describe('evaluateCondition — event string context', () => {
+describe('evaluateCondition — payload string context', () => {
     it('equals is case-insensitive', () => {
         const condition: PipelineCondition = {
-            target: 'event',
+            target: 'payload',
             field: 'ext',
             operator: 'equals',
             value: 'pdf',
@@ -62,7 +63,7 @@ describe('evaluateCondition — event string context', () => {
 
     it('not_equals is case-insensitive', () => {
         const condition: PipelineCondition = {
-            target: 'event',
+            target: 'payload',
             field: 'ext',
             operator: 'not_equals',
             value: 'png',
@@ -72,7 +73,7 @@ describe('evaluateCondition — event string context', () => {
 
     it('contains matches a substring case-insensitively', () => {
         const condition: PipelineCondition = {
-            target: 'event',
+            target: 'payload',
             field: 'name',
             operator: 'contains',
             value: 'PORT',
@@ -82,7 +83,7 @@ describe('evaluateCondition — event string context', () => {
 
     it('starts_with matches a prefix case-insensitively', () => {
         const condition: PipelineCondition = {
-            target: 'event',
+            target: 'payload',
             field: 'name',
             operator: 'starts_with',
             value: 'report',
@@ -92,7 +93,7 @@ describe('evaluateCondition — event string context', () => {
 
     it('ends_with matches a suffix case-insensitively', () => {
         const condition: PipelineCondition = {
-            target: 'event',
+            target: 'payload',
             field: 'name',
             operator: 'ends_with',
             value: '.pdf',
@@ -102,7 +103,7 @@ describe('evaluateCondition — event string context', () => {
 
     it('matches uses regex flags for case sensitivity', () => {
         const caseInsensitive: PipelineCondition = {
-            target: 'event',
+            target: 'payload',
             field: 'name',
             operator: 'matches',
             value: '/report/i',
@@ -110,7 +111,7 @@ describe('evaluateCondition — event string context', () => {
         expect(evaluateCondition(caseInsensitive, ctx)).toBe(true);
 
         const caseSensitive: PipelineCondition = {
-            target: 'event',
+            target: 'payload',
             field: 'name',
             operator: 'matches',
             value: 'report',
@@ -119,10 +120,10 @@ describe('evaluateCondition — event string context', () => {
     });
 });
 
-describe('evaluateCondition — event numeric context', () => {
+describe('evaluateCondition — payload numeric context', () => {
     it('gt compares size as a number', () => {
         const condition: PipelineCondition = {
-            target: 'event',
+            target: 'payload',
             field: 'size',
             operator: 'gt',
             value: 1000000,
@@ -132,7 +133,7 @@ describe('evaluateCondition — event numeric context', () => {
 
     it('equals matches the exact byte count', () => {
         const condition: PipelineCondition = {
-            target: 'event',
+            target: 'payload',
             field: 'size',
             operator: 'equals',
             value: 2048576,
@@ -142,7 +143,7 @@ describe('evaluateCondition — event numeric context', () => {
 
     it('lt returns false when size is larger', () => {
         const condition: PipelineCondition = {
-            target: 'event',
+            target: 'payload',
             field: 'size',
             operator: 'lt',
             value: 1000,
@@ -237,38 +238,71 @@ describe('evaluateCondition — vars contexts', () => {
     });
 });
 
+describe('evaluateCondition — event name context', () => {
+    it('equals matches the event name case-insensitively', () => {
+        const condition: PipelineCondition = {
+            target: 'event',
+            operator: 'equals',
+            value: 'FILE.CREATED',
+        };
+        expect(evaluateCondition(condition, ctx)).toBe(true);
+    });
+
+    it('starts_with matches an event name prefix', () => {
+        const condition: PipelineCondition = {
+            target: 'event',
+            operator: 'starts_with',
+            value: 'file.',
+        };
+        expect(evaluateCondition(condition, ctx)).toBe(true);
+    });
+
+    it('returns false for a non-matching event name', () => {
+        const condition: PipelineCondition = {
+            target: 'event',
+            operator: 'equals',
+            value: 'file.deleted',
+        };
+        expect(evaluateCondition(condition, ctx)).toBe(false);
+    });
+});
+
 describe('matchSwitchCase', () => {
-    it('routes to the matching case port on an event string field', () => {
-        const config: SwitchConfig = { target: 'event', field: 'ext', cases: ['pdf', 'png'] };
+    it('routes to the matching case port on a payload string field', () => {
+        const config: SwitchConfig = { target: 'payload', field: 'ext', cases: ['pdf', 'png'] };
         expect(matchSwitchCase(config, ctx)).toBe('pdf');
     });
 
     it('falls back to default when no case matches', () => {
-        const config: SwitchConfig = { target: 'event', field: 'ext', cases: ['jpg', 'png'] };
+        const config: SwitchConfig = { target: 'payload', field: 'ext', cases: ['jpg', 'png'] };
         expect(matchSwitchCase(config, ctx)).toBe('default');
     });
 
-    it('matches event string fields case-insensitively', () => {
-        const config: SwitchConfig = { target: 'event', field: 'ext', cases: ['pdf'] };
+    it('matches payload string fields case-insensitively', () => {
+        const config: SwitchConfig = { target: 'payload', field: 'ext', cases: ['pdf'] };
         expect(matchSwitchCase(config, ctx)).toBe('pdf');
     });
 
-    it('routes to default on an unknown event field', () => {
-        const config: SwitchConfig = { target: 'event', field: 'bogus', cases: ['x'] };
+    it('routes to default on an unknown payload field', () => {
+        const config: SwitchConfig = { target: 'payload', field: 'bogus', cases: ['x'] };
         expect(matchSwitchCase(config, ctx)).toBe('default');
     });
 
-    it('uses numeric context for event.size', () => {
-        const config: SwitchConfig = { target: 'event', field: 'size', cases: ['1024', '2048576'] };
+    it('uses numeric context for payload.size', () => {
+        const config: SwitchConfig = {
+            target: 'payload',
+            field: 'size',
+            cases: ['1024', '2048576'],
+        };
         expect(matchSwitchCase(config, ctx)).toBe('2048576');
     });
 
     it('falls back to default when a size case is non-numeric', () => {
-        const config: SwitchConfig = { target: 'event', field: 'size', cases: ['large'] };
+        const config: SwitchConfig = { target: 'payload', field: 'size', cases: ['large'] };
         expect(matchSwitchCase(config, ctx)).toBe('default');
     });
 
-    it('always compares vars as strings (a numeric vars value matches a string case)', () => {
+    it('matches a numeric vars value via numeric comparison', () => {
         const config: SwitchConfig = { target: 'vars', field: 'count', cases: ['5', '10'] };
         expect(matchSwitchCase(config, ctx)).toBe('5');
     });
@@ -287,5 +321,15 @@ describe('matchSwitchCase', () => {
         const withNull: WorkflowContext = { ...ctx, vars: { ...ctx.vars, kind: null } };
         const config: SwitchConfig = { target: 'vars', field: 'kind', cases: ['null'] };
         expect(matchSwitchCase(config, withNull)).toBe('default');
+    });
+
+    it('routes to the matching case on the event name', () => {
+        const config: SwitchConfig = { target: 'event', cases: ['file.created', 'file.deleted'] };
+        expect(matchSwitchCase(config, ctx)).toBe('file.created');
+    });
+
+    it('falls back to default when no event name case matches', () => {
+        const config: SwitchConfig = { target: 'event', cases: ['file.modified'] };
+        expect(matchSwitchCase(config, ctx)).toBe('default');
     });
 });

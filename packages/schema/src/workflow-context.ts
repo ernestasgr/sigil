@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { FileEventPayloadSchema } from './file-event-payload.js';
 
 export const WorkflowContextSchema = z.object({
-    event: FileEventPayloadSchema,
+    event: z.string().min(1),
+    payload: z.record(z.string(), z.unknown()),
     vars: z.record(z.string(), z.unknown()),
 });
 export type WorkflowContext = z.infer<typeof WorkflowContextSchema>;

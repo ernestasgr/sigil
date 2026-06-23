@@ -64,18 +64,18 @@ The user creates a Workflow in the visual builder by connecting Nodes: a File Wa
 
 - **Triggers:**
     - **File Watcher**: Subscribes to filesystem events.
-    - **Manual Trigger**: Triggers execution on click, using a pre-configured `FileEventPayload` static payload and a file picker shortcut to easily load properties of a real file.
+    - **Manual Trigger**: Triggers execution on click, using a pre-configured `FileEventPayload` static payload with an `eventName` to simulate, and a file picker shortcut to easily load properties of a real file.
 - **Logic:**
     - **If/Else**: Evaluates a strongly-typed `PipelineCondition` against `WorkflowContext` and branches to a `true` or `false` port. Single condition only for MVP. Standard string operators (`equals`, `contains`, `starts_with`, `ends_with`) are case-insensitive by default. The `matches` operator performs regex matches where case sensitivity is determined by regex flags.
-    - **Switch**: Evaluates a single field on `WorkflowContext` (event or vars) against dynamic case values using type-aware matching, routing to case-specific ports (derived from case values) or a required `default` port.
+    - **Switch**: Evaluates a single field on `WorkflowContext` (event name, payload field, or vars field) against dynamic case values using type-aware matching, routing to case-specific ports (derived from case values) or a required `default` port.
 - **System:**
-    - **File Manager**: Executes move, rename, or copy with chosen collision policy. Updates file properties in `WorkflowContext` event metadata upon completion.
-    - **Notification**: Standard OS notifications with mustache-style `{{event.field}}` or `{{vars.field}}` template interpolation for `title` and `body`.
+    - **File Manager**: Executes move, rename, or copy with chosen collision policy. Updates file properties in `WorkflowContext` `payload` fields upon completion.
+    - **Notification**: Standard OS notifications with mustache-style `{{event}}`, `{{payload.field}}`, or `{{vars.field}}` template interpolation for `title` and `body`.
 - **State:**
     - **State Get**: Reads a key from persistent SQLite state and assigns it to a transient key in `WorkflowContext` `vars`.
     - **State Set**: Writes a value to persistent SQLite state.
 - **Utilities:**
-    - **Log**: Outputs logs to the Variable Inspector or console, supporting mustache template interpolation (`{{event.field}}`, `{{vars.field}}`).
+    - **Log**: Outputs logs to the Variable Inspector or console, supporting mustache template interpolation (`{{event}}`, `{{payload.field}}`, `{{vars.field}}`).
     - **Delay**: Delays execution for a specified duration in milliseconds.
 
 ### Properties File
@@ -91,9 +91,9 @@ The user creates a Workflow in the visual builder by connecting Nodes: a File Wa
 - **Sequential execution** with **branching** (If/Else and Switch route to one of N downstream paths). No parallel branch execution in MVP.
 - **Basic error handling** at the executor level: try/catch around each Node execution. On an unhandled error, fire a `workflow.error` event onto the Bus, display a default system desktop notification (silenceable via `notifyOnWorkflowError` in the Properties File), and stop the Workflow gracefully. No Error Boundary Nodes yet.
 - **Topological-sort evaluation:** Nodes execute in dependency order.
-- **Context Pass-Through:** Each Node receives the `WorkflowContext` (containing `event` and `vars` fields) as input and passes it along on its output port. Action and utility nodes (`File Manager`, `Notification`, `Log`, `Delay`, `State Set`) pass the context through unchanged, except for `File Manager` which updates the `event` properties (`path`, `dir`, `name`, `ext`) to reflect the file's new state on disk, and `State Get` which merges the retrieved value into `vars`.
+- **Context Pass-Through:** Each Node receives the `WorkflowContext` (containing `event` name, `payload` fields, and `vars` fields) as input and passes it along on its output port. Action and utility nodes (`File Manager`, `Notification`, `Log`, `Delay`, `State Set`) pass the context through unchanged, except for `File Manager` which updates the `payload` fields (`path`, `dir`, `name`, `ext`) to reflect the file's new state on disk, and `State Get` which merges the retrieved value into `vars`.
 - **Fan-Out Support:** A single output port on any node can connect to multiple downstream nodes. The executor schedules all active downstream paths to run sequentially in topological order.
-- **Type Coercion Rules:** All condition and case values are compared as case-insensitive strings unless a numeric or boolean context is explicitly determined. A numeric context is established when checking a statically declared numeric field (e.g., `event.size`) or when evaluating a `vars` condition with a `NumberOperator`; in these cases, both sides are coerced via `Number()`, and any coercion producing `NaN` is treated as a non-match. A boolean context is established when evaluating a `vars` condition with a `BooleanOperator`; the strings `"true"` and `"false"` are parsed case-insensitively, and any other value is treated as a non-match. Switch comparisons targeting `vars` are always executed as string comparisons since the Switch node has no operator to declare numeric or boolean intent. Any non-match causes `If/Else` to route to the `false` branch and `Switch` to fall through to the `default` port.
+- **Type Coercion Rules:** All condition and case values are compared as case-insensitive strings unless a numeric or boolean context is explicitly determined. A numeric context is established when the resolved field value is a `number` at runtime (detected via `typeof`), or when evaluating a condition with a `NumberOperator` (both sides are coerced via `Number()`, and any coercion producing `NaN` is treated as a non-match). A boolean context is established when evaluating a condition with a `BooleanOperator`; the strings `"true"` and `"false"` are parsed case-insensitively, and any other value is treated as a non-match. Switch comparisons use `typeof` on the resolved value for both `payload` and `vars` targets — a `number` value routes to numeric comparison, any other type routes to string comparison. Switch on `event` (the event name) is always string comparison. Any non-match causes `If/Else` to route to the `false` branch and `Switch` to fall through to the `default` port.
 
 ### UI Architecture
 
@@ -132,7 +132,8 @@ interface FileEventPayload {
 // ── Workflow Context ──────────────────────────────────────
 
 interface WorkflowContext {
-    event: FileEventPayload;
+    event: string; // Event name (e.g. 'file.created')
+    payload: Record<string, unknown>; // Validated event payload (opaque to the engine)
     vars: Record<string, any>; // Transient in-memory variables populated via state-get
 }
 
@@ -149,23 +150,22 @@ type StringOperator =
 type NumberOperator = 'equals' | 'not_equals' | 'gt' | 'lt' | 'gte' | 'lte';
 type BooleanOperator = 'equals' | 'not_equals';
 
-interface BaseCondition<Target extends 'event' | 'vars', Field extends string, Op, Val> {
-    target: Target;
-    field: Field;
-    operator: Op;
-    value: Val;
+// Event name condition — compares the event name as a string (no field)
+interface EventNameCondition {
+    target: 'event';
+    operator: StringOperator;
+    value: string;
 }
 
-type FileCondition =
-    | BaseCondition<'event', 'path' | 'name' | 'ext' | 'dir', StringOperator, string>
-    | BaseCondition<'event', 'size', NumberOperator, number>;
+// Field condition — compares a field on payload or vars
+interface FieldCondition {
+    target: 'payload' | 'vars';
+    field: string;
+    operator: StringOperator | NumberOperator | BooleanOperator;
+    value: string | number | boolean;
+}
 
-type VarCondition =
-    | BaseCondition<'vars', string, StringOperator, string>
-    | BaseCondition<'vars', string, NumberOperator, number>
-    | BaseCondition<'vars', string, BooleanOperator, boolean>;
-
-type PipelineCondition = FileCondition | VarCondition;
+type PipelineCondition = EventNameCondition | FieldCondition;
 
 // ── Node Configurations ───────────────────────────────────
 
@@ -177,6 +177,7 @@ interface FileWatcherConfig {
 }
 
 interface ManualTriggerConfig {
+    eventName: 'file.created' | 'file.modified' | 'file.deleted';
     payload: FileEventPayload;
 }
 
@@ -184,11 +185,9 @@ interface IfElseConfig {
     condition: PipelineCondition;
 }
 
-interface SwitchConfig {
-    target: 'event' | 'vars';
-    field: string;
-    cases: string[]; // Case values (port names are derived directly from these)
-}
+type SwitchConfig =
+    | { target: 'event'; cases: string[] }
+    | { target: 'payload' | 'vars'; field: string; cases: string[] };
 
 interface FileManagerConfig {
     action: 'move' | 'rename' | 'copy';
