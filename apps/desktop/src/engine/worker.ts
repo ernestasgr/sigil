@@ -64,16 +64,14 @@ port.on('message', (message: WorkerInbound) => {
             break;
         }
         case EngineChannel.FireTestEvent: {
-            try {
-                engine.execute(sampleManualTriggerToLog);
-            } catch (err) {
+            void engine.execute(sampleManualTriggerToLog).catch((err: unknown) => {
                 console.error('[worker] engine.execute failed:', err);
                 const log: EngineLog = {
                     type: EngineChannel.Log,
                     line: `[error] engine.execute failed: ${err instanceof Error ? err.message : String(err)}`,
                 };
                 port.postMessage(log);
-            }
+            });
             break;
         }
         case EngineChannel.ToggleWorkflow: {

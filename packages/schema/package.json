@@ -46,6 +46,10 @@
         "./manifest": {
             "types": "./dist/manifest.d.ts",
             "import": "./dist/manifest.js"
+        },
+        "./properties-file": {
+            "types": "./dist/properties-file.d.ts",
+            "import": "./dist/properties-file.js"
         }
     },
     "files": [

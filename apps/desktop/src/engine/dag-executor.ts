@@ -1,24 +1,29 @@
 import type { CompiledPipeline } from '@sigil/schema';
-import type { FileEventPayload } from '@sigil/schema/file-event-payload';
-import type { NodeType, PipelineNode } from '@sigil/schema/nodes';
+import type { PipelineNode } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
-import type { EventBus } from './event-bus.js';
+import { evaluateCondition, matchSwitchCase } from './condition-evaluator.js';
+import type { EventBus, WorkflowRunPayload } from './event-bus.js';
 import { resolveTemplate } from './template.js';
 import { assertNever } from '../shared/assert-never.js';
 
-export type NodeError =
-    | { readonly kind: 'node_type_not_a_trigger'; readonly nodeType: NodeType }
-    | { readonly kind: 'trigger_node_in_body'; readonly nodeType: NodeType }
-    | { readonly kind: 'node_type_not_supported_in_tracer'; readonly nodeType: NodeType };
+export interface ExecutorSettings {
+    readonly notifyOnWorkflowError: boolean;
+}
 
-export type TriggerResult =
-    | { readonly ok: true; readonly output: FileEventPayload }
-    | { readonly ok: false; readonly error: NodeError };
+export const DEFAULT_EXECUTOR_SETTINGS: ExecutorSettings = { notifyOnWorkflowError: true };
 
-export type BodyResult = { readonly ok: true } | { readonly ok: false; readonly error: NodeError };
+type Sleep = (ms: number) => Promise<void>;
 
-function executionOrder(pipeline: CompiledPipeline): readonly string[] {
+const DEFAULT_SLEEP: Sleep = (ms: number): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+interface NodeRunResult {
+    readonly outputCtx: WorkflowContext;
+    readonly activePort: string;
+}
+
+function topologicalOrder(pipeline: CompiledPipeline): readonly string[] {
     const adjacency = new Map<string, string[]>();
     for (const edge of pipeline.edges) {
         const targets = adjacency.get(edge.source) ?? [];
@@ -55,14 +60,17 @@ function executionOrder(pipeline: CompiledPipeline): readonly string[] {
     return order;
 }
 
-function runTriggerNode(node: PipelineNode, bus: EventBus): TriggerResult {
+function runTriggerNode(node: PipelineNode, bus: EventBus): WorkflowContext {
     switch (node.type) {
         case 'manual-trigger': {
             const payload = node.config.payload;
             bus.next({ name: 'manual.trigger.fired', payload });
-            return { ok: true, output: payload };
+            return { event: payload, vars: {} };
         }
         case 'file-watcher':
+            throw new Error(
+                `Trigger node type "${node.type}" is a plugin and is not executed directly by the DAG executor`,
+            );
         case 'if-else':
         case 'switch':
         case 'file-manager':
@@ -71,67 +79,137 @@ function runTriggerNode(node: PipelineNode, bus: EventBus): TriggerResult {
         case 'delay':
         case 'state-get':
         case 'state-set':
-            return { ok: false, error: { kind: 'node_type_not_a_trigger', nodeType: node.type } };
+            throw new Error(`Node type "${node.type}" is not a trigger`);
         default:
             return assertNever(node);
     }
 }
 
-function runBodyNode(node: PipelineNode, ctx: WorkflowContext, bus: EventBus): BodyResult {
+async function runBodyNode(
+    node: PipelineNode,
+    ctx: WorkflowContext,
+    bus: EventBus,
+    sleep: Sleep,
+): Promise<NodeRunResult> {
     switch (node.type) {
+        case 'if-else':
+            return {
+                outputCtx: ctx,
+                activePort: evaluateCondition(node.config.condition, ctx) ? 'true' : 'false',
+            };
+        case 'switch':
+            return { outputCtx: ctx, activePort: matchSwitchCase(node.config, ctx) };
         case 'log': {
             const message = resolveTemplate(node.config.message, ctx);
             bus.next({ name: 'log.output', payload: { message } });
-            return { ok: true };
+            return { outputCtx: ctx, activePort: 'out' };
+        }
+        case 'delay': {
+            await sleep(node.config.ms);
+            return { outputCtx: ctx, activePort: 'out' };
+        }
+        case 'notification': {
+            const title = resolveTemplate(node.config.title, ctx);
+            const body = resolveTemplate(node.config.body, ctx);
+            bus.next({ name: 'notification.show', payload: { title, body } });
+            return { outputCtx: ctx, activePort: 'out' };
         }
         case 'manual-trigger':
-            return { ok: false, error: { kind: 'trigger_node_in_body', nodeType: node.type } };
         case 'file-watcher':
-        case 'if-else':
-        case 'switch':
+            throw new Error(`Trigger node "${node.type}" appeared in the pipeline body`);
         case 'file-manager':
-        case 'notification':
-        case 'delay':
         case 'state-get':
         case 'state-set':
-            return {
-                ok: false,
-                error: { kind: 'node_type_not_supported_in_tracer', nodeType: node.type },
-            };
+            throw new Error(`Node type "${node.type}" is not implemented in this slice`);
         default:
             return assertNever(node);
     }
 }
 
-export function executePipeline(pipeline: CompiledPipeline, bus: EventBus): void {
-    const runPayload = { pipelineId: pipeline.id };
+function reportNodeError(
+    bus: EventBus,
+    settings: ExecutorSettings,
+    runPayload: WorkflowRunPayload,
+    nodeId: string,
+    err: unknown,
+): void {
+    const message = err instanceof Error ? err.message : String(err);
+    bus.next({
+        name: 'workflow.error',
+        payload: { pipelineId: runPayload.pipelineId, nodeId, message },
+    });
+    if (settings.notifyOnWorkflowError) {
+        bus.next({
+            name: 'notification.show',
+            payload: { title: 'Workflow error', body: message },
+        });
+    }
+    bus.next({ name: 'workflow.completed', payload: runPayload });
+}
+
+export async function executePipeline(
+    pipeline: CompiledPipeline,
+    bus: EventBus,
+    settings: ExecutorSettings = DEFAULT_EXECUTOR_SETTINGS,
+    sleep: Sleep = DEFAULT_SLEEP,
+): Promise<void> {
+    const runPayload: WorkflowRunPayload = { pipelineId: pipeline.id };
     bus.next({ name: 'workflow.started', payload: runPayload });
 
-    const order = executionOrder(pipeline);
     const nodeById = new Map<string, PipelineNode>(pipeline.nodes.map((node) => [node.id, node]));
+    const order = topologicalOrder(pipeline);
+    const topoIndex = new Map<string, number>(order.map((id, index) => [id, index]));
 
     const triggerId = order[0];
-    const triggerNode = triggerId === undefined ? undefined : nodeById.get(triggerId);
+    const triggerNode = triggerId !== undefined ? nodeById.get(triggerId) : undefined;
     if (!triggerNode) {
         bus.next({ name: 'workflow.completed', payload: runPayload });
         return;
     }
 
-    const triggerResult = runTriggerNode(triggerNode, bus);
-    if (!triggerResult.ok) {
-        bus.next({ name: 'workflow.completed', payload: runPayload });
+    let initialCtx: WorkflowContext;
+    try {
+        initialCtx = runTriggerNode(triggerNode, bus);
+    } catch (err) {
+        reportNodeError(bus, settings, runPayload, triggerNode.id, err);
         return;
     }
 
-    const ctx: WorkflowContext = { event: triggerResult.output, vars: {} };
-    for (const id of order.slice(1)) {
-        const node = nodeById.get(id);
-        if (node) {
-            const result = runBodyNode(node, ctx, bus);
-            if (!result.ok) {
-                bus.next({ name: 'workflow.completed', payload: runPayload });
-                return;
+    const scheduled = new Set<string>([triggerNode.id]);
+    const queue: { nodeId: string; ctx: WorkflowContext }[] = [];
+
+    const scheduleDownstream = (sourceId: string, port: string, ctx: WorkflowContext): void => {
+        for (const edge of pipeline.edges) {
+            if (edge.source === sourceId && edge.sourcePort === port) {
+                if (scheduled.has(edge.target)) continue;
+                scheduled.add(edge.target);
+                queue.push({ nodeId: edge.target, ctx });
             }
+        }
+    };
+
+    scheduleDownstream(triggerNode.id, 'out', initialCtx);
+
+    while (queue.length > 0) {
+        let nextIdx = 0;
+        for (let i = 1; i < queue.length; i++) {
+            if (
+                (topoIndex.get(queue[i].nodeId) ?? 0) < (topoIndex.get(queue[nextIdx].nodeId) ?? 0)
+            ) {
+                nextIdx = i;
+            }
+        }
+        const entry = queue.splice(nextIdx, 1)[0];
+        if (entry === undefined) continue;
+        const node = nodeById.get(entry.nodeId);
+        if (!node) continue;
+
+        try {
+            const { outputCtx, activePort } = await runBodyNode(node, entry.ctx, bus, sleep);
+            scheduleDownstream(entry.nodeId, activePort, outputCtx);
+        } catch (err) {
+            reportNodeError(bus, settings, runPayload, entry.nodeId, err);
+            return;
         }
     }
 
