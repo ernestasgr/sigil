@@ -11,32 +11,43 @@ const OUTPUT_DIR = process.env.OUTPUT_DIR ?? '/tmp';
 
 const MODEL = process.env.OPENCODE_MODEL ?? 'opencode-go/glm-5.2';
 
-const result = await sandcastle.run({
-    name: `implement-#${ISSUE_NUMBER}`,
-    agent: sandcastle.opencode(MODEL, {
-        env: {
-            OPENCODE_API_KEY: required('OPENCODE_API_KEY'),
+let result: sandcastle.RunResult | undefined;
+try {
+    result = await sandcastle.run({
+        name: `implement-#${ISSUE_NUMBER}`,
+        agent: sandcastle.opencode(MODEL, {
+            env: {
+                OPENCODE_API_KEY: required('OPENCODE_API_KEY'),
+            },
+        }),
+        sandbox: noSandbox(),
+        logging: { type: 'stdout' },
+        promptFile: path.join(import.meta.dirname, 'prompt.md'),
+        promptArgs: {
+            ISSUE_NUMBER,
+            ISSUE_TITLE,
+            BRANCH,
         },
-    }),
-    sandbox: noSandbox(),
-    logging: { type: 'stdout' },
-    promptFile: path.join(import.meta.dirname, 'prompt.md'),
-    promptArgs: {
-        ISSUE_NUMBER,
-        ISSUE_TITLE,
-        BRANCH,
-    },
-});
+    });
+} catch (error) {
+    console.error(`\nAgent run threw: ${error}`);
+    console.log('Checking for commits made before the failure...');
+}
 
 const commitsAhead = Number(
     execSync('git rev-list --count main..HEAD', { encoding: 'utf8' }).trim(),
 );
 if (!Number.isFinite(commitsAhead) || commitsAhead === 0) {
-    fail('Agent finished but no commits were made on the branch.');
+    console.log('\nNo commits were made. The issue can be retried.');
+    fs.writeFileSync(path.join(OUTPUT_DIR, 'has_commits.txt'), 'false');
+    process.exit(0);
 }
 
 console.log(`\nImplementation produced ${commitsAhead} commit(s) on ${BRANCH}.`);
-console.log(`  commits this run: ${result.commits.length}`);
+if (result) {
+    console.log(`  commits this run: ${result.commits.length}`);
+}
+fs.writeFileSync(path.join(OUTPUT_DIR, 'has_commits.txt'), 'true');
 
 function required(name: string): string {
     const value = process.env[name];
