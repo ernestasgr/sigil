@@ -1,7 +1,9 @@
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineNode } from '@sigil/schema/nodes';
+import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
+import type { CapabilityBroker } from './capability-broker.js';
 import { evaluateCondition, matchSwitchCase } from './condition-evaluator.js';
 import type { EventBus, WorkflowRunPayload } from './event-bus.js';
 import { resolveTemplate } from './template.js';
@@ -11,9 +13,13 @@ import { createInMemoryWorkflowStateStore, type WorkflowStateStore } from './wor
 
 export interface ExecutorSettings {
     readonly notifyOnWorkflowError: boolean;
+    readonly collisionSuffixStyle: CollisionSuffixStyle;
 }
 
-export const DEFAULT_EXECUTOR_SETTINGS: ExecutorSettings = { notifyOnWorkflowError: true };
+export const DEFAULT_EXECUTOR_SETTINGS: ExecutorSettings = {
+    notifyOnWorkflowError: true,
+    collisionSuffixStyle: 'windows',
+};
 
 const DEFAULT_SLEEP: Sleep = (ms: number): Promise<void> =>
     new Promise((resolve) => setTimeout(resolve, ms));
@@ -84,6 +90,7 @@ export async function executePipeline(
     settings: ExecutorSettings = DEFAULT_EXECUTOR_SETTINGS,
     sleep: Sleep = DEFAULT_SLEEP,
     stateStore: WorkflowStateStore = createInMemoryWorkflowStateStore(),
+    capabilityBroker?: CapabilityBroker,
 ): Promise<void> {
     const runPayload: WorkflowRunPayload = { pipelineId: pipeline.id };
     bus.next({ name: 'workflow.started', payload: runPayload });
@@ -110,6 +117,9 @@ export async function executePipeline(
             evaluateCondition,
             matchSwitchCase,
             state,
+            capabilityBroker: capabilityBroker ?? createDenyAllCapabilityBroker(),
+            pluginId: 'com.sigil.file-manager',
+            collisionSuffixStyle: settings.collisionSuffixStyle,
         };
 
         let triggerResult: NodeRunResult;
@@ -169,4 +179,13 @@ export async function executePipeline(
     } finally {
         state.flush();
     }
+}
+
+function createDenyAllCapabilityBroker(): CapabilityBroker {
+    return {
+        request: ({ capability }) => ({
+            ok: false,
+            error: { kind: 'denied', capability },
+        }),
+    };
 }

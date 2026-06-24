@@ -41,6 +41,9 @@ function buildDeps(): NodeHandlerDeps {
         evaluateCondition: vi.fn(),
         matchSwitchCase: vi.fn(),
         state: { get: vi.fn(), set: vi.fn(), flush: vi.fn() },
+        capabilityBroker: { request: vi.fn() },
+        pluginId: 'com.sigil.file-manager',
+        collisionSuffixStyle: 'windows',
     };
 }
 

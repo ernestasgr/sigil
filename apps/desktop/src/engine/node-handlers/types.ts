@@ -1,7 +1,9 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
 import type { SwitchConfig, PipelineNode, NodeType } from '@sigil/schema/nodes';
+import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
+import type { CapabilityBroker } from '../capability-broker.js';
 import type { EventBus } from '../event-bus.js';
 import type { WorkflowState } from '../workflow-state.js';
 
@@ -22,6 +24,9 @@ export interface NodeHandlerDeps {
     readonly evaluateCondition: EvaluateCondition;
     readonly matchSwitchCase: MatchSwitchCase;
     readonly state: WorkflowState;
+    readonly capabilityBroker: CapabilityBroker;
+    readonly pluginId: string;
+    readonly collisionSuffixStyle: CollisionSuffixStyle;
 }
 
 export interface NodeHandlerInput {

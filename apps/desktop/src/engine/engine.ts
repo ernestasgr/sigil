@@ -15,6 +15,11 @@ import { executePipeline, type ExecutorSettings } from './dag-executor.js';
 import type { EventBus } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
 import {
+    FILE_MANAGER_PLUGIN_ID,
+    fileManagerManifest,
+    fileManagerPluginCode,
+} from './file-manager-plugin.js';
+import {
     FILE_WATCHER_PLUGIN_ID,
     fileWatcherManifest,
     fileWatcherPluginCode,
@@ -47,7 +52,10 @@ export interface Engine {
 }
 
 export function resolveSettings(properties: ResolvedProperties): ExecutorSettings {
-    return { notifyOnWorkflowError: properties.notifyOnWorkflowError };
+    return {
+        notifyOnWorkflowError: properties.notifyOnWorkflowError,
+        collisionSuffixStyle: properties.collisionSuffixStyle,
+    };
 }
 
 export function createEngine(options?: EngineOptions): Engine {
@@ -86,20 +94,32 @@ export function createEngine(options?: EngineOptions): Engine {
         settings,
         fileWatcherManager,
         loadBuiltinPlugins: async (): Promise<void> => {
-            if (!registry.has(FILE_WATCHER_PLUGIN_ID)) {
-                const result = await loader.load(fileWatcherManifest, fileWatcherPluginCode);
-                if (!result.ok) {
-                    bus.next({
-                        name: 'log.output',
-                        payload: {
-                            message: `[engine] failed to load file-watcher plugin: ${result.error.kind}`,
-                        },
-                    });
+            for (const [pluginId, manifest, code] of [
+                [FILE_WATCHER_PLUGIN_ID, fileWatcherManifest, fileWatcherPluginCode] as const,
+                [FILE_MANAGER_PLUGIN_ID, fileManagerManifest, fileManagerPluginCode] as const,
+            ]) {
+                if (!registry.has(pluginId)) {
+                    const result = await loader.load(manifest, code);
+                    if (!result.ok) {
+                        bus.next({
+                            name: 'log.output',
+                            payload: {
+                                message: `[engine] failed to load ${pluginId} plugin: ${result.error.kind}`,
+                            },
+                        });
+                    }
                 }
             }
         },
         execute: (pipeline) =>
-            executePipeline(pipeline, bus, settings, undefined, workflowStateStore),
+            executePipeline(
+                pipeline,
+                bus,
+                settings,
+                undefined,
+                workflowStateStore,
+                capabilityBroker,
+            ),
         dispose: (): void => {
             fileWatcherManager.dispose();
             workflowStateStore.dispose();
