@@ -65,7 +65,7 @@ function valueKindForCondition(condition: FieldCondition): FieldValueKind {
     return 'string';
 }
 
-interface FormProps<T> {
+export interface ConfigFormProps<T> {
     readonly config: T;
     readonly onChange: (next: T) => void;
 }
@@ -73,7 +73,7 @@ interface FormProps<T> {
 export function FileWatcherConfigForm({
     config,
     onChange,
-}: FormProps<FileWatcherConfig>): ReactElement {
+}: ConfigFormProps<FileWatcherConfig>): ReactElement {
     const ignorePatterns = config.ignorePatterns ?? [];
     return (
         <>
@@ -119,7 +119,7 @@ export function FileWatcherConfigForm({
 export function ManualTriggerConfigForm({
     config,
     onChange,
-}: FormProps<ManualTriggerConfig>): ReactElement {
+}: ConfigFormProps<ManualTriggerConfig>): ReactElement {
     const { payload } = config;
     return (
         <>
@@ -159,7 +159,10 @@ export function ManualTriggerConfigForm({
     );
 }
 
-export function IfElseConfigForm({ config, onChange }: FormProps<IfElseConfig>): ReactElement {
+export function IfElseConfigForm({
+    config,
+    onChange,
+}: ConfigFormProps<IfElseConfig>): ReactElement {
     return (
         <ConditionForm
             condition={config.condition}
@@ -323,7 +326,10 @@ function FieldConditionFields({
     );
 }
 
-export function SwitchConfigForm({ config, onChange }: FormProps<SwitchConfig>): ReactElement {
+export function SwitchConfigForm({
+    config,
+    onChange,
+}: ConfigFormProps<SwitchConfig>): ReactElement {
     return (
         <>
             <SelectInput
@@ -363,7 +369,7 @@ export function SwitchConfigForm({ config, onChange }: FormProps<SwitchConfig>):
 export function FileManagerConfigForm({
     config,
     onChange,
-}: FormProps<FileManagerConfig>): ReactElement {
+}: ConfigFormProps<FileManagerConfig>): ReactElement {
     const ACTION_OPTIONS: {
         readonly value: FileManagerConfig['action'];
         readonly label: string;
@@ -408,7 +414,7 @@ export function FileManagerConfigForm({
 export function NotificationConfigForm({
     config,
     onChange,
-}: FormProps<NotificationConfig>): ReactElement {
+}: ConfigFormProps<NotificationConfig>): ReactElement {
     return (
         <>
             <TextInput
@@ -425,7 +431,7 @@ export function NotificationConfigForm({
     );
 }
 
-export function LogConfigForm({ config, onChange }: FormProps<LogConfig>): ReactElement {
+export function LogConfigForm({ config, onChange }: ConfigFormProps<LogConfig>): ReactElement {
     return (
         <TextInput
             label="Message"
@@ -437,7 +443,7 @@ export function LogConfigForm({ config, onChange }: FormProps<LogConfig>): React
     );
 }
 
-export function DelayConfigForm({ config, onChange }: FormProps<DelayConfig>): ReactElement {
+export function DelayConfigForm({ config, onChange }: ConfigFormProps<DelayConfig>): ReactElement {
     return (
         <NumberInput
             label="Milliseconds"
@@ -448,7 +454,10 @@ export function DelayConfigForm({ config, onChange }: FormProps<DelayConfig>): R
     );
 }
 
-export function StateGetConfigForm({ config, onChange }: FormProps<StateGetConfig>): ReactElement {
+export function StateGetConfigForm({
+    config,
+    onChange,
+}: ConfigFormProps<StateGetConfig>): ReactElement {
     return (
         <>
             <TextInput
@@ -467,7 +476,10 @@ export function StateGetConfigForm({ config, onChange }: FormProps<StateGetConfi
     );
 }
 
-export function StateSetConfigForm({ config, onChange }: FormProps<StateSetConfig>): ReactElement {
+export function StateSetConfigForm({
+    config,
+    onChange,
+}: ConfigFormProps<StateSetConfig>): ReactElement {
     return (
         <>
             <TextInput
