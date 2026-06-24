@@ -10,7 +10,10 @@
         "build": "electron-vite build",
         "preview": "electron-vite preview",
         "typecheck": "tsc -p tsconfig.json --noEmit",
-        "test": "vitest run"
+        "test": "vitest run",
+        "rebuild": "electron-rebuild -f -w better-sqlite3",
+        "predev": "electron-rebuild -w better-sqlite3",
+        "prebuild": "electron-rebuild -w better-sqlite3"
     },
     "dependencies": {
         "@sigil/schema": "workspace:*",
@@ -27,6 +30,7 @@
         "zustand": "5.0.14"
     },
     "devDependencies": {
+        "@electron/rebuild": "4.0.4",
         "@tailwindcss/vite": "4.3.1",
         "@types/better-sqlite3": "7.6.13",
         "@types/node": "26.0.0",
