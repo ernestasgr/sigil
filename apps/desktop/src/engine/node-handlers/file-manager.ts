@@ -58,10 +58,17 @@ function generateAutoRenamePath(
     return join(parsed.dir, `${parsed.name}${separator}${counter}${close}${parsed.ext}`);
 }
 
+const MAX_AUTO_RENAME_ATTEMPTS = 10_000;
+
 function findAvailablePath(originalPath: string, style: CollisionSuffixStyle): string {
     let counter = 2;
     let candidate = generateAutoRenamePath(originalPath, style, counter);
     while (existsSync(candidate)) {
+        if (counter >= MAX_AUTO_RENAME_ATTEMPTS) {
+            throw new Error(
+                `Auto-rename exhausted after ${MAX_AUTO_RENAME_ATTEMPTS} attempts for: ${originalPath}`,
+            );
+        }
         counter++;
         candidate = generateAutoRenamePath(originalPath, style, counter);
     }
@@ -105,13 +112,15 @@ function handleConflict(
         }
         case 'error':
             throw new Error(`Destination exists: ${destPath}`);
+        default:
+            throw new Error(`Unknown conflict policy: ${onConflict}`);
     }
 }
 
 function performAction(action: FileAction, sourcePath: string, destPath: string): void {
     if (action === 'copy') {
         copyFileSync(sourcePath, destPath);
-    } else {
+    } else if (action === 'move' || action === 'rename') {
         renameSync(sourcePath, destPath);
     }
 }
@@ -159,9 +168,7 @@ export const fileManagerHandler: NodeHandler = {
 
         const destInfo = computeDest(action, sourcePath, destination);
 
-        if (action === 'move' || action === 'copy') {
-            ensureDir(destInfo.dir);
-        }
+        ensureDir(destInfo.dir);
 
         const { resolvedPath, shouldSkip } = handleConflict(
             destInfo.fullPath,
