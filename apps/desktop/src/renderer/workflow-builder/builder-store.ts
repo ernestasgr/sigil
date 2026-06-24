@@ -51,7 +51,10 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
             id,
             type: BUILDER_NODE_TYPE,
             position,
-            data: { type, config: nodeTypeDef(type).defaultConfig } as NodeSpec,
+            data: {
+                type,
+                config: structuredClone(nodeTypeDef(type).defaultConfig),
+            } as NodeSpec,
         };
         set((state) => ({
             nodes: [...state.nodes, node],

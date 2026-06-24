@@ -24,6 +24,21 @@ describe('useBuilderStore', () => {
         expect(a).not.toBe(b);
     });
 
+    it('addNode gives each node its own config copy, not the shared descriptor default', () => {
+        const a = useBuilderStore.getState().addNode('log', { x: 0, y: 0 });
+        const b = useBuilderStore.getState().addNode('log', { x: 0, y: 0 });
+
+        const { nodes } = useBuilderStore.getState();
+        expect(nodes).toHaveLength(2);
+        const nodeA = nodes[0];
+        const nodeB = nodes[1];
+        expect(nodeA.id).toBe(a);
+        expect(nodeB.id).toBe(b);
+
+        expect(nodeA.data.config).not.toBe(nodeB.data.config);
+        expect(nodeA.data.config).toEqual(nodeB.data.config);
+    });
+
     it('connect adds an edge carrying the source port from sourceHandle', () => {
         const source = useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
         const target = useBuilderStore.getState().addNode('log', { x: 100, y: 0 });
