@@ -40,6 +40,7 @@ function buildDeps(): NodeHandlerDeps {
         resolveTemplate: vi.fn(),
         evaluateCondition: vi.fn(),
         matchSwitchCase: vi.fn(),
+        state: { get: vi.fn(), set: vi.fn(), flush: vi.fn() },
     };
 }
 

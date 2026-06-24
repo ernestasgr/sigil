@@ -1,3 +1,5 @@
+import Database from 'better-sqlite3';
+
 import type { CompiledPipeline } from '@sigil/schema';
 import {
     DEFAULT_PROPERTIES,
@@ -16,9 +18,11 @@ import type { ManifestRegistry } from './manifest-registry.js';
 import { createManifestRegistry } from './manifest-registry.js';
 import { createInMemoryPluginStateStore, createPluginLoader } from './plugin-loader.js';
 import type { PluginLoader, PluginStateStore } from './plugin-loader.js';
+import { createWorkflowStateStore, type WorkflowStateStore } from './workflow-state.js';
 
 export interface EngineOptions {
     readonly properties?: unknown;
+    readonly databasePath?: string;
 }
 
 export interface Engine {
@@ -28,8 +32,10 @@ export interface Engine {
     readonly registry: ManifestRegistry;
     readonly loader: PluginLoader;
     readonly stateStore: PluginStateStore;
+    readonly workflowStateStore: WorkflowStateStore;
     readonly settings: ExecutorSettings;
     readonly execute: (pipeline: CompiledPipeline) => Promise<void>;
+    readonly dispose: () => void;
 }
 
 export function resolveSettings(properties: ResolvedProperties): ExecutorSettings {
@@ -54,6 +60,11 @@ export function createEngine(options?: EngineOptions): Engine {
     const properties = propertiesResult.ok ? propertiesResult.value : DEFAULT_PROPERTIES;
     const settings = resolveSettings(properties);
 
+    const database = options?.databasePath
+        ? new Database(options.databasePath)
+        : new Database(':memory:');
+    const workflowStateStore = createWorkflowStateStore(database);
+
     return {
         bus,
         bridge,
@@ -61,7 +72,13 @@ export function createEngine(options?: EngineOptions): Engine {
         registry,
         loader,
         stateStore,
+        workflowStateStore,
         settings,
-        execute: (pipeline) => executePipeline(pipeline, bus, settings),
+        execute: (pipeline) =>
+            executePipeline(pipeline, bus, settings, undefined, workflowStateStore),
+        dispose: (): void => {
+            workflowStateStore.dispose();
+            database.close();
+        },
     };
 }
