@@ -15,6 +15,7 @@ export default tseslint.config(
             '**/coverage/**',
             '**/.turbo/**',
             '**/*.d.ts',
+            '.sandcastle/**',
         ],
     },
     js.configs.recommended,
