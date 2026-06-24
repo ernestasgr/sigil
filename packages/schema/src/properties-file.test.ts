@@ -133,4 +133,29 @@ describe('loadPropertiesFile', () => {
             expect(result.value.notifyOnWorkflowError).toBe(false);
         }
     });
+
+    it('resolves collisionSuffixStyle from the file content', () => {
+        const result = loadPropertiesFile({ collisionSuffixStyle: 'underscore' });
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.value.collisionSuffixStyle).toBe('underscore');
+        }
+    });
+
+    it('defaults collisionSuffixStyle to windows when absent', () => {
+        const result = loadPropertiesFile({});
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.value.collisionSuffixStyle).toBe('windows');
+        }
+    });
+
+    it('DEFAULT_PROPERTIES uses windows for collisionSuffixStyle', () => {
+        expect(DEFAULT_PROPERTIES.collisionSuffixStyle).toBe('windows');
+    });
+
+    it('rejects an unknown collisionSuffixStyle', () => {
+        const result = PropertiesFileSchema.safeParse({ collisionSuffixStyle: 'unknown' });
+        expect(result.success).toBe(false);
+    });
 });

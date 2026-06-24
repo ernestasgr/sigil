@@ -1,3 +1,7 @@
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 
@@ -7,6 +11,7 @@ import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 
+import type { CapabilityBroker } from './capability-broker.js';
 import type { BusEvent } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
 import { executePipeline, type ExecutorSettings } from './dag-executor.js';
@@ -368,7 +373,10 @@ describe('executePipeline — error handling', () => {
     it('emits a default error notification when notifyOnWorkflowError is true', async () => {
         const bus = createEventBus();
         const events = captureEvents(bus);
-        const settings: ExecutorSettings = { notifyOnWorkflowError: true };
+        const settings: ExecutorSettings = {
+            notifyOnWorkflowError: true,
+            collisionSuffixStyle: 'windows',
+        };
 
         await executePipeline(errorPipeline(), bus, settings, failingSleep);
 
@@ -379,7 +387,10 @@ describe('executePipeline — error handling', () => {
     it('suppresses the error notification when notifyOnWorkflowError is false', async () => {
         const bus = createEventBus();
         const events = captureEvents(bus);
-        const settings: ExecutorSettings = { notifyOnWorkflowError: false };
+        const settings: ExecutorSettings = {
+            notifyOnWorkflowError: false,
+            collisionSuffixStyle: 'windows',
+        };
 
         await executePipeline(errorPipeline(), bus, settings, failingSleep);
 
@@ -550,5 +561,319 @@ describe('executePipeline — workflow state', () => {
 
         store.dispose();
         database.close();
+    });
+});
+
+describe('executePipeline — file-manager', () => {
+    function tmpDir(): string {
+        const dir = join(tmpdir(), 'sigil-fm-dag-test', randomUUID());
+        mkdirSync(dir, { recursive: true });
+        return dir;
+    }
+
+    function touch(path: string, content = ''): void {
+        writeFileSync(path, content, 'utf-8');
+    }
+
+    function allowAllBroker(): CapabilityBroker {
+        return { request: () => ({ ok: true }) };
+    }
+
+    const fileManager = (
+        id: string,
+        action: 'move' | 'copy' | 'rename',
+        destination: string,
+        onConflict: 'skip' | 'overwrite' | 'auto-rename' | 'error',
+    ): PipelineNode => ({
+        id,
+        type: 'file-manager',
+        config: { action, destination, onConflict },
+    });
+
+    const triggerWithPayload = (payload: FileEventPayload, id = 'trigger'): PipelineNode => ({
+        id,
+        type: 'manual-trigger',
+        config: { eventName: 'file.created' as const, payload },
+    });
+
+    it('moves a file through the DAG', async () => {
+        const dir = tmpDir();
+        const srcDir = join(dir, 'src');
+        const dstDir = join(dir, 'dst');
+        mkdirSync(srcDir);
+        mkdirSync(dstDir);
+        const srcPath = join(srcDir, 'file.txt');
+        touch(srcPath, 'moved-content');
+
+        const bus = createEventBus();
+        const events = captureEvents(bus);
+
+        await executePipeline(
+            pipeline(
+                [
+                    triggerWithPayload({
+                        path: srcPath,
+                        name: 'file.txt',
+                        ext: 'txt',
+                        size: 12,
+                        dir: srcDir,
+                    }),
+                    fileManager('fm', 'move', dstDir, 'overwrite'),
+                ],
+                [edge('t-to-fm', 'trigger', 'fm', 'out')],
+            ),
+            bus,
+            undefined,
+            undefined,
+            undefined,
+            allowAllBroker(),
+        );
+
+        expect(existsSync(srcPath)).toBe(false);
+        expect(existsSync(join(dstDir, 'file.txt'))).toBe(true);
+        expect(events.map((e) => e.name)).toEqual([
+            'workflow.started',
+            'manual.trigger.fired',
+            'workflow.completed',
+        ]);
+    });
+
+    it('copies a file through the DAG', async () => {
+        const dir = tmpDir();
+        const srcDir = join(dir, 'src');
+        const dstDir = join(dir, 'dst');
+        mkdirSync(srcDir);
+        mkdirSync(dstDir);
+        const srcPath = join(srcDir, 'file.txt');
+        touch(srcPath, 'copy-content');
+
+        const bus = createEventBus();
+        const events = captureEvents(bus);
+
+        await executePipeline(
+            pipeline(
+                [
+                    triggerWithPayload({
+                        path: srcPath,
+                        name: 'file.txt',
+                        ext: 'txt',
+                        size: 12,
+                        dir: srcDir,
+                    }),
+                    fileManager('fm', 'copy', dstDir, 'overwrite'),
+                ],
+                [edge('t-to-fm', 'trigger', 'fm', 'out')],
+            ),
+            bus,
+            undefined,
+            undefined,
+            undefined,
+            allowAllBroker(),
+        );
+
+        expect(existsSync(srcPath)).toBe(true);
+        expect(existsSync(join(dstDir, 'file.txt'))).toBe(true);
+        expect(events.map((e) => e.name)).toEqual([
+            'workflow.started',
+            'manual.trigger.fired',
+            'workflow.completed',
+        ]);
+    });
+
+    it('renames a file through the DAG', async () => {
+        const dir = tmpDir();
+        const srcPath = join(dir, 'old-name.txt');
+        touch(srcPath, 'rename-content');
+
+        const bus = createEventBus();
+        const events = captureEvents(bus);
+
+        await executePipeline(
+            pipeline(
+                [
+                    triggerWithPayload({
+                        path: srcPath,
+                        name: 'old-name.txt',
+                        ext: 'txt',
+                        size: 14,
+                        dir,
+                    }),
+                    fileManager('fm', 'rename', 'new-name.txt', 'overwrite'),
+                ],
+                [edge('t-to-fm', 'trigger', 'fm', 'out')],
+            ),
+            bus,
+            undefined,
+            undefined,
+            undefined,
+            allowAllBroker(),
+        );
+
+        expect(existsSync(srcPath)).toBe(false);
+        expect(existsSync(join(dir, 'new-name.txt'))).toBe(true);
+        expect(events.map((e) => e.name)).toEqual([
+            'workflow.started',
+            'manual.trigger.fired',
+            'workflow.completed',
+        ]);
+    });
+
+    it('skip collision policy: keeps destination untouched through the DAG', async () => {
+        const dir = tmpDir();
+        const srcDir = join(dir, 'src');
+        const dstDir = join(dir, 'dst');
+        mkdirSync(srcDir);
+        mkdirSync(dstDir);
+        const srcPath = join(srcDir, 'file.txt');
+        touch(srcPath, 'new-content');
+        const dstPath = join(dstDir, 'file.txt');
+        touch(dstPath, 'existing-content');
+
+        const bus = createEventBus();
+        const events = captureEvents(bus);
+
+        await executePipeline(
+            pipeline(
+                [
+                    triggerWithPayload({
+                        path: srcPath,
+                        name: 'file.txt',
+                        ext: 'txt',
+                        size: 11,
+                        dir: srcDir,
+                    }),
+                    fileManager('fm', 'move', dstDir, 'skip'),
+                ],
+                [edge('t-to-fm', 'trigger', 'fm', 'out')],
+            ),
+            bus,
+            undefined,
+            undefined,
+            undefined,
+            allowAllBroker(),
+        );
+
+        expect(existsSync(srcPath)).toBe(true);
+        expect(existsSync(dstPath)).toBe(true);
+        expect(events.map((e) => e.name)).toEqual([
+            'workflow.started',
+            'manual.trigger.fired',
+            'workflow.completed',
+        ]);
+    });
+
+    it('error collision policy: emits workflow.error when destination exists', async () => {
+        const dir = tmpDir();
+        const srcDir = join(dir, 'src');
+        const dstDir = join(dir, 'dst');
+        mkdirSync(srcDir);
+        mkdirSync(dstDir);
+        const srcPath = join(srcDir, 'file.txt');
+        touch(srcPath, 'new-content');
+        const dstPath = join(dstDir, 'file.txt');
+        touch(dstPath, 'existing-content');
+
+        const bus = createEventBus();
+        const events = captureEvents(bus);
+
+        await executePipeline(
+            pipeline(
+                [
+                    triggerWithPayload({
+                        path: srcPath,
+                        name: 'file.txt',
+                        ext: 'txt',
+                        size: 11,
+                        dir: srcDir,
+                    }),
+                    fileManager('fm', 'move', dstDir, 'error'),
+                ],
+                [edge('t-to-fm', 'trigger', 'fm', 'out')],
+            ),
+            bus,
+            undefined,
+            undefined,
+            undefined,
+            allowAllBroker(),
+        );
+
+        const errorEvent = events.find((e) => e.name === 'workflow.error');
+        expect(errorEvent).toBeDefined();
+        expect(errorEvent?.name === 'workflow.error' && errorEvent.payload.nodeId).toBe('fm');
+    });
+
+    it('default deny-all capability broker blocks file operations through the DAG', async () => {
+        const dir = tmpDir();
+        const srcDir = join(dir, 'src');
+        const dstDir = join(dir, 'dst');
+        mkdirSync(srcDir);
+        mkdirSync(dstDir);
+        const srcPath = join(srcDir, 'file.txt');
+        touch(srcPath, 'content');
+
+        const bus = createEventBus();
+        const events = captureEvents(bus);
+
+        await executePipeline(
+            pipeline(
+                [
+                    triggerWithPayload({
+                        path: srcPath,
+                        name: 'file.txt',
+                        ext: 'txt',
+                        size: 7,
+                        dir: srcDir,
+                    }),
+                    fileManager('fm', 'move', dstDir, 'overwrite'),
+                ],
+                [edge('t-to-fm', 'trigger', 'fm', 'out')],
+            ),
+            bus,
+        );
+
+        const errorEvent = events.find((e) => e.name === 'workflow.error');
+        expect(errorEvent).toBeDefined();
+        expect(errorEvent?.name === 'workflow.error' && errorEvent.payload.nodeId).toBe('fm');
+    });
+
+    it('propagates updated payload downstream through the DAG', async () => {
+        const dir = tmpDir();
+        const srcDir = join(dir, 'src');
+        const dstDir = join(dir, 'dst');
+        mkdirSync(srcDir);
+        mkdirSync(dstDir);
+        const srcPath = join(srcDir, 'file.txt');
+        touch(srcPath, 'payload-test');
+
+        const bus = createEventBus();
+        const events = captureEvents(bus);
+
+        await executePipeline(
+            pipeline(
+                [
+                    triggerWithPayload({
+                        path: srcPath,
+                        name: 'file.txt',
+                        ext: 'txt',
+                        size: 12,
+                        dir: srcDir,
+                    }),
+                    fileManager('fm', 'move', dstDir, 'overwrite'),
+                    log('log', 'new path is {{payload.path}}'),
+                ],
+                [edge('t-to-fm', 'trigger', 'fm', 'out'), edge('fm-to-log', 'fm', 'log', 'out')],
+            ),
+            bus,
+            undefined,
+            undefined,
+            undefined,
+            allowAllBroker(),
+        );
+
+        const logEvent = events.find((e) => e.name === 'log.output');
+        expect(logEvent).toBeDefined();
+        expect(logEvent?.name === 'log.output' && logEvent.payload.message).toBe(
+            `new path is ${join(dstDir, 'file.txt')}`,
+        );
     });
 });

@@ -1,9 +1,13 @@
 import { z } from 'zod';
 
+export const CollisionSuffixStyleSchema = z.enum(['windows', 'underscore', 'hyphen']);
+export type CollisionSuffixStyle = z.infer<typeof CollisionSuffixStyleSchema>;
+
 export const PropertiesFileSchema = z
     .object({
         notifyOnWorkflowError: z.boolean().optional(),
         databasePath: z.string().optional(),
+        collisionSuffixStyle: CollisionSuffixStyleSchema.optional(),
     })
     .passthrough();
 
@@ -12,7 +16,14 @@ export type PropertiesFile = z.infer<typeof PropertiesFileSchema>;
 export interface ResolvedProperties {
     readonly notifyOnWorkflowError: boolean;
     readonly databasePath: string;
+    readonly collisionSuffixStyle: CollisionSuffixStyle;
 }
+
+export const DEFAULT_PROPERTIES: Readonly<ResolvedProperties> = {
+    notifyOnWorkflowError: true,
+    databasePath: ':memory:',
+    collisionSuffixStyle: 'windows',
+};
 
 export const DEFAULT_IGNORE_PATTERNS: readonly string[] = [
     '*.crdownload',
@@ -20,11 +31,6 @@ export const DEFAULT_IGNORE_PATTERNS: readonly string[] = [
     '*.tmp',
     '*.download',
 ];
-
-export const DEFAULT_PROPERTIES: Readonly<ResolvedProperties> = {
-    notifyOnWorkflowError: true,
-    databasePath: ':memory:',
-};
 
 export function loadPropertiesFile(
     unknown: unknown,
@@ -46,6 +52,7 @@ export function loadPropertiesFile(
             notifyOnWorkflowError:
                 result.data.notifyOnWorkflowError ?? merged.notifyOnWorkflowError,
             databasePath: result.data.databasePath ?? merged.databasePath,
+            collisionSuffixStyle: result.data.collisionSuffixStyle ?? merged.collisionSuffixStyle,
         },
     };
 }
