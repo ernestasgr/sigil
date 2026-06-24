@@ -1,23 +1,10 @@
 import type { ReactElement } from 'react';
 
-import { assertNever } from '../../../shared/assert-never.js';
 import { cn } from '../../lib/utils.js';
 import { Button } from '../../components/ui/button.js';
 import { useBuilderStore } from '../builder-store.js';
-import type { NodeSpec } from '../node-defaults.js';
+import type { NodeSpec } from '../node-registry.js';
 import { CATEGORY_TEXT, nodeTypeDef } from '../node-registry.js';
-import {
-    DelayConfigForm,
-    FileManagerConfigForm,
-    FileWatcherConfigForm,
-    IfElseConfigForm,
-    LogConfigForm,
-    ManualTriggerConfigForm,
-    NotificationConfigForm,
-    StateGetConfigForm,
-    StateSetConfigForm,
-    SwitchConfigForm,
-} from './config-forms.js';
 
 export function PropertiesPanel(): ReactElement {
     const selectedNodeId = useBuilderStore((state) => state.selectedNodeId);
@@ -60,7 +47,12 @@ export function PropertiesPanel(): ReactElement {
                 <p className="font-manuscript text-veil mt-1 text-xs italic">{def.description}</p>
             </header>
             <div className="flex flex-col gap-4 overflow-auto p-5">
-                {renderForm(spec, (next) => updateSpec(node.id, next))}
+                <def.Form
+                    config={spec.config}
+                    onChange={(config) =>
+                        updateSpec(node.id, { type: spec.type, config } as NodeSpec)
+                    }
+                />
             </div>
             <footer className="border-gilt/40 border-t p-5">
                 <Button variant="destructive" size="sm" onClick={() => removeNode(node.id)}>
@@ -69,81 +61,4 @@ export function PropertiesPanel(): ReactElement {
             </footer>
         </div>
     );
-}
-
-function renderForm(spec: NodeSpec, onChange: (next: NodeSpec) => void): ReactElement {
-    switch (spec.type) {
-        case 'file-watcher':
-            return (
-                <FileWatcherConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: 'file-watcher', config })}
-                />
-            );
-        case 'manual-trigger':
-            return (
-                <ManualTriggerConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: 'manual-trigger', config })}
-                />
-            );
-        case 'if-else':
-            return (
-                <IfElseConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: 'if-else', config })}
-                />
-            );
-        case 'switch':
-            return (
-                <SwitchConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: 'switch', config })}
-                />
-            );
-        case 'file-manager':
-            return (
-                <FileManagerConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: 'file-manager', config })}
-                />
-            );
-        case 'notification':
-            return (
-                <NotificationConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: 'notification', config })}
-                />
-            );
-        case 'log':
-            return (
-                <LogConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: 'log', config })}
-                />
-            );
-        case 'delay':
-            return (
-                <DelayConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: 'delay', config })}
-                />
-            );
-        case 'state-get':
-            return (
-                <StateGetConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: 'state-get', config })}
-                />
-            );
-        case 'state-set':
-            return (
-                <StateSetConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: 'state-set', config })}
-                />
-            );
-        default:
-            return assertNever(spec);
-    }
 }
