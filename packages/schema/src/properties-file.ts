@@ -14,6 +14,13 @@ export interface ResolvedProperties {
     readonly databasePath: string;
 }
 
+export const DEFAULT_IGNORE_PATTERNS: readonly string[] = [
+    '*.crdownload',
+    '*.part',
+    '*.tmp',
+    '*.download',
+];
+
 export const DEFAULT_PROPERTIES: Readonly<ResolvedProperties> = {
     notifyOnWorkflowError: true,
     databasePath: ':memory:',
