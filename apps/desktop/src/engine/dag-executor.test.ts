@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 
 import type { CompiledPipeline } from '@sigil/schema';
@@ -9,6 +10,7 @@ import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import type { BusEvent } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
 import { executePipeline, type ExecutorSettings } from './dag-executor.js';
+import { createWorkflowStateStore } from './workflow-state.js';
 
 function captureEvents(bus: ReturnType<typeof createEventBus>): BusEvent[] {
     const events: BusEvent[] = [];
@@ -383,5 +385,170 @@ describe('executePipeline — error handling', () => {
 
         expect(events.some((event) => event.name === 'notification.show')).toBe(false);
         expect(events.some((event) => event.name === 'workflow.error')).toBe(true);
+    });
+});
+
+describe('executePipeline — workflow state', () => {
+    const stateSet = (id: string, key: string, valueTemplate: string): PipelineNode => ({
+        id,
+        type: 'state-set',
+        config: { key, valueTemplate },
+    });
+    const stateGet = (id: string, key: string, assignTo: string): PipelineNode => ({
+        id,
+        type: 'state-get',
+        config: { key, assignTo },
+    });
+
+    it('makes a buffered state-set visible to a state-get within the same run', async () => {
+        const database = new Database(':memory:');
+        const store = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
+        const bus = createEventBus();
+        const events = captureEvents(bus);
+
+        await executePipeline(
+            pipeline(
+                [
+                    trigger(),
+                    stateSet('set', 'last-file', '{{payload.name}}'),
+                    stateGet('get', 'last-file', 'remembered'),
+                    log('recall', 'remembered {{vars.remembered}}'),
+                ],
+                [
+                    edge('t-to-set', 'trigger', 'set', 'out'),
+                    edge('set-to-get', 'set', 'get', 'out'),
+                    edge('get-to-recall', 'get', 'recall', 'out'),
+                ],
+            ),
+            bus,
+            undefined,
+            undefined,
+            store,
+        );
+
+        const logEvent = events.find((event) => event.name === 'log.output');
+        expect(logEvent?.name === 'log.output' && logEvent.payload.message).toBe(
+            'remembered report.pdf',
+        );
+
+        store.dispose();
+        database.close();
+    });
+
+    it('persists state across executions via flush-on-completion', async () => {
+        const database = new Database(':memory:');
+        const store = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
+        const bus = createEventBus();
+        const events = captureEvents(bus);
+
+        await executePipeline(
+            pipeline(
+                [trigger(), stateSet('set', 'counter', '{{payload.name}}')],
+                [edge('t-to-set', 'trigger', 'set', 'out')],
+            ),
+            bus,
+            undefined,
+            undefined,
+            store,
+        );
+
+        const reader = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
+        expect(reader.forWorkflow('test-workflow').get('counter')).toBe('report.pdf');
+        reader.dispose();
+
+        await executePipeline(
+            pipeline(
+                [
+                    trigger(),
+                    stateGet('get', 'counter', 'loaded'),
+                    log('recall', 'loaded {{vars.loaded}}'),
+                ],
+                [
+                    edge('t-to-get', 'trigger', 'get', 'out'),
+                    edge('get-to-recall', 'get', 'recall', 'out'),
+                ],
+            ),
+            bus,
+            undefined,
+            undefined,
+            store,
+        );
+
+        const recall = events.find((event) => event.name === 'log.output');
+        expect(recall?.name === 'log.output' && recall.payload.message).toBe('loaded report.pdf');
+
+        store.dispose();
+        database.close();
+    });
+
+    it('preserves payload metadata downstream of a state-get', async () => {
+        const database = new Database(':memory:');
+        const store = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
+        const bus = createEventBus();
+        const events = captureEvents(bus);
+
+        await executePipeline(
+            pipeline(
+                [
+                    trigger(),
+                    stateSet('set', 'last-file', '{{payload.name}}'),
+                    stateGet('get', 'last-file', 'remembered'),
+                    log('both', '{{payload.name}} -> {{vars.remembered}}'),
+                ],
+                [
+                    edge('t-to-set', 'trigger', 'set', 'out'),
+                    edge('set-to-get', 'set', 'get', 'out'),
+                    edge('get-to-both', 'get', 'both', 'out'),
+                ],
+            ),
+            bus,
+            undefined,
+            undefined,
+            store,
+        );
+
+        const logEvent = events.find((event) => event.name === 'log.output');
+        expect(logEvent?.name === 'log.output' && logEvent.payload.message).toBe(
+            'report.pdf -> report.pdf',
+        );
+
+        store.dispose();
+        database.close();
+    });
+
+    it('flushes buffered writes on completion even when a downstream node errors', async () => {
+        const database = new Database(':memory:');
+        const store = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
+        const bus = createEventBus();
+        const events = captureEvents(bus);
+        const failingSleep = (): Promise<void> => Promise.reject(new Error('delay failed'));
+
+        await executePipeline(
+            pipeline(
+                [
+                    trigger(),
+                    stateSet('set', 'counter', '{{payload.name}}'),
+                    { id: 'wait', type: 'delay', config: { ms: 1 } },
+                    log('after', 'should not run'),
+                ],
+                [
+                    edge('t-to-set', 'trigger', 'set', 'out'),
+                    edge('set-to-wait', 'set', 'wait', 'out'),
+                    edge('wait-to-after', 'wait', 'after', 'out'),
+                ],
+            ),
+            bus,
+            undefined,
+            failingSleep,
+            store,
+        );
+
+        expect(events.some((event) => event.name === 'workflow.error')).toBe(true);
+        const reader = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
+        expect(reader.forWorkflow('test-workflow').get('counter')).toBe('report.pdf');
+        reader.dispose();
+
+        store.dispose();
+        database.close();
     });
 });

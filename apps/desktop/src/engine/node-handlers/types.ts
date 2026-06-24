@@ -3,6 +3,7 @@ import type { SwitchConfig, PipelineNode, NodeType } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
 import type { EventBus } from '../event-bus.js';
+import type { WorkflowState } from '../workflow-state.js';
 
 export interface NodeRunResult {
     readonly outputCtx: WorkflowContext;
@@ -20,6 +21,7 @@ export interface NodeHandlerDeps {
     readonly resolveTemplate: ResolveTemplate;
     readonly evaluateCondition: EvaluateCondition;
     readonly matchSwitchCase: MatchSwitchCase;
+    readonly state: WorkflowState;
 }
 
 export interface NodeHandlerInput {

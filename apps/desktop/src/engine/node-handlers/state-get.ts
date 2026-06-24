@@ -1,7 +1,17 @@
 import type { NodeHandler, NodeRunResult } from './types.js';
 
 export const stateGetHandler: NodeHandler = {
-    async execute(): Promise<NodeRunResult> {
-        throw new Error('Node type "state-get" is not implemented in this slice');
+    async execute({ node, ctx }, deps): Promise<NodeRunResult> {
+        if (node.type !== 'state-get') {
+            throw new Error(
+                `Node handler registry mismatch: expected "state-get", got "${node.type}"`,
+            );
+        }
+        const { key, assignTo } = node.config;
+        const value = deps.state.get(key);
+        return {
+            outputCtx: { ...ctx, vars: { ...ctx.vars, [assignTo]: value } },
+            activePort: 'out',
+        };
     },
 };

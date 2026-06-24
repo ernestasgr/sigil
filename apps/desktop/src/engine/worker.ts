@@ -1,4 +1,4 @@
-import { parentPort } from 'node:worker_threads';
+import { parentPort, workerData } from 'node:worker_threads';
 
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 
@@ -23,7 +23,16 @@ const port = parentPort;
 
 type WorkerInbound = EnginePing | EngineFireTestEvent | EngineToggleWorkflow;
 
-const engine = createEngine();
+const engine = createEngine({
+    databasePath:
+        typeof workerData === 'object' && workerData !== null
+            ? (workerData as { databasePath?: string }).databasePath
+            : undefined,
+});
+
+process.on('exit', () => {
+    engine.dispose();
+});
 
 const seedWorkflows: WorkflowRegistryState = [
     { id: 'sort-downloads', name: 'Sort Downloads', enabled: false },

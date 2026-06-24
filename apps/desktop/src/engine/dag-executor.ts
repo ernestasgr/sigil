@@ -7,6 +7,7 @@ import type { EventBus, WorkflowRunPayload } from './event-bus.js';
 import { resolveTemplate } from './template.js';
 import { nodeHandlers } from './node-handlers/registry.js';
 import type { NodeHandlerDeps, NodeRunResult, Sleep } from './node-handlers/types.js';
+import { createInMemoryWorkflowStateStore, type WorkflowStateStore } from './workflow-state.js';
 
 export interface ExecutorSettings {
     readonly notifyOnWorkflowError: boolean;
@@ -82,80 +83,90 @@ export async function executePipeline(
     bus: EventBus,
     settings: ExecutorSettings = DEFAULT_EXECUTOR_SETTINGS,
     sleep: Sleep = DEFAULT_SLEEP,
+    stateStore: WorkflowStateStore = createInMemoryWorkflowStateStore(),
 ): Promise<void> {
     const runPayload: WorkflowRunPayload = { pipelineId: pipeline.id };
     bus.next({ name: 'workflow.started', payload: runPayload });
+    const state = stateStore.forWorkflow(pipeline.workflowId);
 
-    const nodeById = new Map<string, PipelineNode>(pipeline.nodes.map((node) => [node.id, node]));
-    const order = topologicalOrder(pipeline);
-    const topoIndex = new Map<string, number>(order.map((id, index) => [id, index]));
-
-    const triggerId = order[0];
-    const triggerNode = triggerId !== undefined ? nodeById.get(triggerId) : undefined;
-    if (!triggerNode) {
-        bus.next({ name: 'workflow.completed', payload: runPayload });
-        return;
-    }
-
-    const deps: NodeHandlerDeps = {
-        bus,
-        sleep,
-        resolveTemplate,
-        evaluateCondition,
-        matchSwitchCase,
-    };
-
-    let triggerResult: NodeRunResult;
     try {
-        triggerResult = await nodeHandlers[triggerNode.type].execute(
-            { node: triggerNode, ctx: SEED_CONTEXT },
-            deps,
+        const nodeById = new Map<string, PipelineNode>(
+            pipeline.nodes.map((node) => [node.id, node]),
         );
-    } catch (err) {
-        reportNodeError(bus, settings, runPayload, triggerNode.id, err);
-        return;
-    }
+        const order = topologicalOrder(pipeline);
+        const topoIndex = new Map<string, number>(order.map((id, index) => [id, index]));
 
-    const scheduled = new Set<string>([triggerNode.id]);
-    const queue: { nodeId: string; ctx: WorkflowContext }[] = [];
-
-    const scheduleDownstream = (sourceId: string, port: string, ctx: WorkflowContext): void => {
-        for (const edge of pipeline.edges) {
-            if (edge.source === sourceId && edge.sourcePort === port) {
-                if (scheduled.has(edge.target)) continue;
-                scheduled.add(edge.target);
-                queue.push({ nodeId: edge.target, ctx });
-            }
-        }
-    };
-
-    scheduleDownstream(triggerNode.id, triggerResult.activePort, triggerResult.outputCtx);
-
-    while (queue.length > 0) {
-        let nextIdx = 0;
-        for (let i = 1; i < queue.length; i++) {
-            if (
-                (topoIndex.get(queue[i].nodeId) ?? 0) < (topoIndex.get(queue[nextIdx].nodeId) ?? 0)
-            ) {
-                nextIdx = i;
-            }
-        }
-        const entry = queue.splice(nextIdx, 1)[0];
-        if (entry === undefined) continue;
-        const node = nodeById.get(entry.nodeId);
-        if (!node) continue;
-
-        try {
-            const { outputCtx, activePort } = await nodeHandlers[node.type].execute(
-                { node, ctx: entry.ctx },
-                deps,
-            );
-            scheduleDownstream(entry.nodeId, activePort, outputCtx);
-        } catch (err) {
-            reportNodeError(bus, settings, runPayload, entry.nodeId, err);
+        const triggerId = order[0];
+        const triggerNode = triggerId !== undefined ? nodeById.get(triggerId) : undefined;
+        if (!triggerNode) {
+            bus.next({ name: 'workflow.completed', payload: runPayload });
             return;
         }
-    }
 
-    bus.next({ name: 'workflow.completed', payload: runPayload });
+        const deps: NodeHandlerDeps = {
+            bus,
+            sleep,
+            resolveTemplate,
+            evaluateCondition,
+            matchSwitchCase,
+            state,
+        };
+
+        let triggerResult: NodeRunResult;
+        try {
+            triggerResult = await nodeHandlers[triggerNode.type].execute(
+                { node: triggerNode, ctx: SEED_CONTEXT },
+                deps,
+            );
+        } catch (err) {
+            reportNodeError(bus, settings, runPayload, triggerNode.id, err);
+            return;
+        }
+
+        const scheduled = new Set<string>([triggerNode.id]);
+        const queue: { nodeId: string; ctx: WorkflowContext }[] = [];
+
+        const scheduleDownstream = (sourceId: string, port: string, ctx: WorkflowContext): void => {
+            for (const edge of pipeline.edges) {
+                if (edge.source === sourceId && edge.sourcePort === port) {
+                    if (scheduled.has(edge.target)) continue;
+                    scheduled.add(edge.target);
+                    queue.push({ nodeId: edge.target, ctx });
+                }
+            }
+        };
+
+        scheduleDownstream(triggerNode.id, triggerResult.activePort, triggerResult.outputCtx);
+
+        while (queue.length > 0) {
+            let nextIdx = 0;
+            for (let i = 1; i < queue.length; i++) {
+                if (
+                    (topoIndex.get(queue[i].nodeId) ?? 0) <
+                    (topoIndex.get(queue[nextIdx].nodeId) ?? 0)
+                ) {
+                    nextIdx = i;
+                }
+            }
+            const entry = queue.splice(nextIdx, 1)[0];
+            if (entry === undefined) continue;
+            const node = nodeById.get(entry.nodeId);
+            if (!node) continue;
+
+            try {
+                const { outputCtx, activePort } = await nodeHandlers[node.type].execute(
+                    { node, ctx: entry.ctx },
+                    deps,
+                );
+                scheduleDownstream(entry.nodeId, activePort, outputCtx);
+            } catch (err) {
+                reportNodeError(bus, settings, runPayload, entry.nodeId, err);
+                return;
+            }
+        }
+
+        bus.next({ name: 'workflow.completed', payload: runPayload });
+    } finally {
+        state.flush();
+    }
 }

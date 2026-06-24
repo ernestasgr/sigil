@@ -1,7 +1,8 @@
 import { Worker } from 'node:worker_threads';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve as resolvePath } from 'node:path';
+import { dirname, join, resolve as resolvePath } from 'node:path';
+import { app } from 'electron';
 import {
     EngineChannel,
     type EngineFireTestEvent,
@@ -27,7 +28,8 @@ export type EngineHandle = {
 
 export function spawnEngine(): EngineHandle {
     const workerPath = resolvePath(__dirname, 'worker.js');
-    const worker = new Worker(workerPath);
+    const databasePath = join(app.getPath('userData'), 'sigil.db');
+    const worker = new Worker(workerPath, { workerData: { databasePath } });
 
     const pendingPings = new Map<
         string,
