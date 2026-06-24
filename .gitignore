@@ -25,6 +25,12 @@ Thumbs.db
 # Project-specific
 idea.md
 
+# SQLite database files (created at runtime from sigil.properties.json)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
 # pnpm temp files from interrupted installs
 _tmp_*
 __tmp_*
