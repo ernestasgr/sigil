@@ -5,7 +5,8 @@ import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { evaluateCondition, matchSwitchCase } from './condition-evaluator.js';
 import type { EventBus, WorkflowRunPayload } from './event-bus.js';
 import { resolveTemplate } from './template.js';
-import { assertNever } from '../shared/assert-never.js';
+import { nodeHandlers } from './node-handlers/registry.js';
+import type { NodeHandlerDeps, NodeRunResult, Sleep } from './node-handlers/types.js';
 
 export interface ExecutorSettings {
     readonly notifyOnWorkflowError: boolean;
@@ -13,15 +14,10 @@ export interface ExecutorSettings {
 
 export const DEFAULT_EXECUTOR_SETTINGS: ExecutorSettings = { notifyOnWorkflowError: true };
 
-type Sleep = (ms: number) => Promise<void>;
-
 const DEFAULT_SLEEP: Sleep = (ms: number): Promise<void> =>
     new Promise((resolve) => setTimeout(resolve, ms));
 
-interface NodeRunResult {
-    readonly outputCtx: WorkflowContext;
-    readonly activePort: string;
-}
+const SEED_CONTEXT: WorkflowContext = { event: '', payload: {}, vars: {} };
 
 function topologicalOrder(pipeline: CompiledPipeline): readonly string[] {
     const adjacency = new Map<string, string[]>();
@@ -58,72 +54,6 @@ function topologicalOrder(pipeline: CompiledPipeline): readonly string[] {
         }
     }
     return order;
-}
-
-function runTriggerNode(node: PipelineNode, bus: EventBus): WorkflowContext {
-    switch (node.type) {
-        case 'manual-trigger': {
-            const { eventName, payload } = node.config;
-            bus.next({ name: 'manual.trigger.fired', payload });
-            return { event: eventName, payload, vars: {} };
-        }
-        case 'file-watcher':
-            throw new Error(
-                `Trigger node type "${node.type}" is a plugin and is not executed directly by the DAG executor`,
-            );
-        case 'if-else':
-        case 'switch':
-        case 'file-manager':
-        case 'notification':
-        case 'log':
-        case 'delay':
-        case 'state-get':
-        case 'state-set':
-            throw new Error(`Node type "${node.type}" is not a trigger`);
-        default:
-            return assertNever(node);
-    }
-}
-
-async function runBodyNode(
-    node: PipelineNode,
-    ctx: WorkflowContext,
-    bus: EventBus,
-    sleep: Sleep,
-): Promise<NodeRunResult> {
-    switch (node.type) {
-        case 'if-else':
-            return {
-                outputCtx: ctx,
-                activePort: evaluateCondition(node.config.condition, ctx) ? 'true' : 'false',
-            };
-        case 'switch':
-            return { outputCtx: ctx, activePort: matchSwitchCase(node.config, ctx) };
-        case 'log': {
-            const message = resolveTemplate(node.config.message, ctx);
-            bus.next({ name: 'log.output', payload: { message } });
-            return { outputCtx: ctx, activePort: 'out' };
-        }
-        case 'delay': {
-            await sleep(node.config.ms);
-            return { outputCtx: ctx, activePort: 'out' };
-        }
-        case 'notification': {
-            const title = resolveTemplate(node.config.title, ctx);
-            const body = resolveTemplate(node.config.body, ctx);
-            bus.next({ name: 'notification.show', payload: { title, body } });
-            return { outputCtx: ctx, activePort: 'out' };
-        }
-        case 'manual-trigger':
-        case 'file-watcher':
-            throw new Error(`Trigger node "${node.type}" appeared in the pipeline body`);
-        case 'file-manager':
-        case 'state-get':
-        case 'state-set':
-            throw new Error(`Node type "${node.type}" is not implemented in this slice`);
-        default:
-            return assertNever(node);
-    }
 }
 
 function reportNodeError(
@@ -167,9 +97,20 @@ export async function executePipeline(
         return;
     }
 
-    let initialCtx: WorkflowContext;
+    const deps: NodeHandlerDeps = {
+        bus,
+        sleep,
+        resolveTemplate,
+        evaluateCondition,
+        matchSwitchCase,
+    };
+
+    let triggerResult: NodeRunResult;
     try {
-        initialCtx = runTriggerNode(triggerNode, bus);
+        triggerResult = await nodeHandlers[triggerNode.type].execute(
+            { node: triggerNode, ctx: SEED_CONTEXT },
+            deps,
+        );
     } catch (err) {
         reportNodeError(bus, settings, runPayload, triggerNode.id, err);
         return;
@@ -188,7 +129,7 @@ export async function executePipeline(
         }
     };
 
-    scheduleDownstream(triggerNode.id, 'out', initialCtx);
+    scheduleDownstream(triggerNode.id, triggerResult.activePort, triggerResult.outputCtx);
 
     while (queue.length > 0) {
         let nextIdx = 0;
@@ -205,7 +146,10 @@ export async function executePipeline(
         if (!node) continue;
 
         try {
-            const { outputCtx, activePort } = await runBodyNode(node, entry.ctx, bus, sleep);
+            const { outputCtx, activePort } = await nodeHandlers[node.type].execute(
+                { node, ctx: entry.ctx },
+                deps,
+            );
             scheduleDownstream(entry.nodeId, activePort, outputCtx);
         } catch (err) {
             reportNodeError(bus, settings, runPayload, entry.nodeId, err);
