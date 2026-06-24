@@ -10,6 +10,7 @@ import {
     createFileWatcherManager,
     type CreateWatcherFn,
     type FileEvent,
+    type GetFileStatsFn,
 } from './file-watcher-manager.js';
 import { createManifestRegistry } from './manifest-registry.js';
 
@@ -43,6 +44,16 @@ function createMockWatcher(): {
 const MOCK_STATS = { size: 1024 };
 
 const MOCK_STAT_FN = () => MOCK_STATS;
+
+function createFailingStatFn(existingFiles: readonly string[]): GetFileStatsFn {
+    const existing = new Set(existingFiles.map((f) => f.replace(/\\/g, '/')));
+    return (filePath: string) => {
+        if (existing.has(filePath.replace(/\\/g, '/'))) {
+            return { size: 1024 };
+        }
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    };
+}
 
 function collectFileEvents(): { events: FileEvent[]; onEvent: (e: FileEvent) => void } {
     const events: FileEvent[] = [];
@@ -491,6 +502,152 @@ describe('FileWatcherManager — ignorePatterns resolution chain', () => {
 
     it('DEFAULT_IGNORE_PATTERNS contains the expected patterns', () => {
         expect(DEFAULT_IGNORE_PATTERNS).toEqual(['*.crdownload', '*.part', '*.tmp', '*.download']);
+    });
+});
+
+describe('FileWatcherManager — file.deleted detection', () => {
+    it('emits file.deleted when rename fires on a non-existent file', () => {
+        const mock = createMockWatcher();
+        const statFn = createFailingStatFn(['/watch/existing.txt']);
+        const manager = createFileWatcherManager(undefined, mock.createWatcher, statFn);
+        const sub = collectFileEvents();
+
+        manager.registerSubscriber(
+            {
+                id: 'sub',
+                path: '/watch',
+                recursive: true,
+                events: ['file.created', 'file.modified', 'file.deleted'],
+            },
+            sub.onEvent,
+        );
+
+        const watcher = mock.watchers[0];
+        expect(watcher).toBeDefined();
+
+        watcher.triggerEvent('rename', 'existing.txt');
+        watcher.triggerEvent('rename', 'deleted.txt');
+        watcher.triggerEvent('rename', 'another.txt');
+
+        expect(sub.events).toHaveLength(3);
+        expect(sub.events[0]?.eventName).toBe('file.created');
+        expect(sub.events[0]?.payload.name).toBe('existing.txt');
+        expect(sub.events[1]?.eventName).toBe('file.deleted');
+        expect(sub.events[1]?.payload.name).toBe('deleted.txt');
+        expect(sub.events[2]?.eventName).toBe('file.deleted');
+        expect(sub.events[2]?.payload.name).toBe('another.txt');
+        manager.dispose();
+    });
+
+    it('file.deleted respects ignorePatterns', () => {
+        const mock = createMockWatcher();
+        const statFn = createFailingStatFn([]);
+        const manager = createFileWatcherManager(undefined, mock.createWatcher, statFn);
+        const sub = collectFileEvents();
+
+        manager.registerSubscriber(
+            {
+                id: 'sub',
+                path: '/watch',
+                recursive: true,
+                events: ['file.created', 'file.modified', 'file.deleted'],
+                ignorePatterns: ['*.tmp'],
+            },
+            sub.onEvent,
+        );
+
+        const watcher = mock.watchers[0];
+        expect(watcher).toBeDefined();
+
+        watcher.triggerEvent('rename', 'report.tmp');
+        watcher.triggerEvent('rename', 'report.pdf');
+
+        expect(sub.events).toHaveLength(1);
+        expect(sub.events[0]?.eventName).toBe('file.deleted');
+        expect(sub.events[0]?.payload.name).toBe('report.pdf');
+        manager.dispose();
+    });
+
+    it('file.deleted respects per-subscriber event filtering', () => {
+        const mock = createMockWatcher();
+        const statFn = createFailingStatFn([]);
+        const manager = createFileWatcherManager(undefined, mock.createWatcher, statFn);
+        const sub = collectFileEvents();
+
+        manager.registerSubscriber(
+            {
+                id: 'sub',
+                path: '/watch',
+                recursive: true,
+                events: ['file.deleted'],
+            },
+            sub.onEvent,
+        );
+
+        const watcher = mock.watchers[0];
+        expect(watcher).toBeDefined();
+
+        watcher.triggerEvent('rename', 'gone.txt');
+        watcher.triggerEvent('change', 'gone.txt');
+
+        expect(sub.events).toHaveLength(1);
+        expect(sub.events[0]?.eventName).toBe('file.deleted');
+        expect(sub.events[0]?.payload.name).toBe('gone.txt');
+        manager.dispose();
+    });
+
+    it('file.deleted payload has size 0', () => {
+        const mock = createMockWatcher();
+        const statFn = createFailingStatFn([]);
+        const manager = createFileWatcherManager(undefined, mock.createWatcher, statFn);
+        const sub = collectFileEvents();
+
+        manager.registerSubscriber(
+            {
+                id: 'sub',
+                path: '/watch',
+                recursive: true,
+                events: ['file.deleted'],
+            },
+            sub.onEvent,
+        );
+
+        const watcher = mock.watchers[0];
+        expect(watcher).toBeDefined();
+
+        watcher.triggerEvent('rename', 'removed.bin');
+
+        expect(sub.events).toHaveLength(1);
+        expect(sub.events[0]?.payload.size).toBe(0);
+        manager.dispose();
+    });
+
+    it('change on a non-existent file emits file.modified with size 0', () => {
+        const mock = createMockWatcher();
+        const statFn = createFailingStatFn([]);
+        const manager = createFileWatcherManager(undefined, mock.createWatcher, statFn);
+        const sub = collectFileEvents();
+
+        manager.registerSubscriber(
+            {
+                id: 'sub',
+                path: '/watch',
+                recursive: true,
+                events: ['file.created', 'file.modified', 'file.deleted'],
+            },
+            sub.onEvent,
+        );
+
+        const watcher = mock.watchers[0];
+        expect(watcher).toBeDefined();
+
+        watcher.triggerEvent('change', 'ghost.txt');
+
+        expect(sub.events).toHaveLength(1);
+        expect(sub.events[0]?.eventName).toBe('file.modified');
+        expect(sub.events[0]?.payload.name).toBe('ghost.txt');
+        expect(sub.events[0]?.payload.size).toBe(0);
+        manager.dispose();
     });
 });
 
