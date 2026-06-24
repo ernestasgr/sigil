@@ -66,10 +66,7 @@ type NodeId = string & { readonly __brand: 'NodeId' };
 type WorkflowId = string & { readonly __brand: 'WorkflowId' };
 ```
 
-**Avoid `as`.** The only acceptable place for a type assertion is
-immediately after a Zod `.parse()` at a true I/O boundary (reading a
-Workflow JSON file, an incoming IPC message, a plugin manifest). Inside
-business logic, `as` is a sign the types upstream are wrong.
+**Avoid as.** Type assertions should be rare and justified. The preferred place for assertions is at trust boundaries (JSON, IPC, plugins, network input), typically after runtime validation such as Zod. If you need as in business logic, first ask whether the types upstream can be improved. Assertions used to compensate for TypeScript limitations, third-party typings, branded types, or other well-documented cases are acceptable.
 
 **Validate at the boundary, trust the type after.** Every external
 input — Workflow JSON, Properties File, plugin manifest, RPC payload
