@@ -10,10 +10,11 @@
         "build": "electron-vite build",
         "preview": "electron-vite preview",
         "typecheck": "tsc -p tsconfig.json --noEmit",
+        "pretest": "pnpm rebuild better-sqlite3",
         "test": "vitest run",
-        "rebuild": "electron-rebuild -f -w better-sqlite3",
-        "predev": "electron-rebuild -w better-sqlite3",
-        "prebuild": "electron-rebuild -w better-sqlite3"
+        "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
+        "predev": "electron-rebuild -f -w better-sqlite3",
+        "prebuild": "electron-rebuild -f -w better-sqlite3"
     },
     "dependencies": {
         "@sigil/schema": "workspace:*",
