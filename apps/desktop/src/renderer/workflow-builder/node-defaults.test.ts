@@ -21,7 +21,7 @@ describe('defaultSpecFor', () => {
         });
     }
 
-    it('gives the switch node a default case plus default port', () => {
+    it('gives the switch node a default case', () => {
         const spec = defaultSpecFor('switch');
         expect(spec.type).toBe('switch');
         if (spec.type === 'switch') {

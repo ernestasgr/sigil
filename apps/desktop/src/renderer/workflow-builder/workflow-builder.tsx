@@ -44,9 +44,13 @@ function ValidationBar(): ReactElement {
 
     const onExport = async () => {
         if (!result.ok) return;
-        await navigator.clipboard.writeText(JSON.stringify(result.value, null, 2));
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1500);
+        try {
+            await navigator.clipboard.writeText(JSON.stringify(result.value, null, 2));
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1500);
+        } catch {
+            // Clipboard write failed — don't show copied state
+        }
     };
 
     return (

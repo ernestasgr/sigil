@@ -59,12 +59,9 @@ const BOOLEAN_OP_OPTIONS = BooleanOperatorSchema.options.map((value) => ({
     label: value.replaceAll('_', ' '),
 }));
 
-const NUMBER_OPS: ReadonlySet<string> = new Set(NumberOperatorSchema.options);
-const BOOLEAN_OPS: ReadonlySet<string> = new Set(BooleanOperatorSchema.options);
-
-function valueKindForOperator(operator: PipelineCondition['operator']): FieldValueKind {
-    if (NUMBER_OPS.has(operator)) return 'number';
-    if (BOOLEAN_OPS.has(operator)) return 'boolean';
+function valueKindForCondition(condition: FieldCondition): FieldValueKind {
+    if (isNumberField(condition)) return 'number';
+    if (isBooleanField(condition)) return 'boolean';
     return 'string';
 }
 
@@ -256,7 +253,7 @@ function FieldConditionFields({
     readonly condition: FieldCondition;
     readonly onChange: (next: PipelineCondition) => void;
 }): ReactElement {
-    const valueKind = valueKindForOperator(condition.operator);
+    const valueKind = valueKindForCondition(condition);
     return (
         <>
             <TextInput
