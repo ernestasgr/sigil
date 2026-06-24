@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { parentPort, workerData } from 'node:worker_threads';
 
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
@@ -12,6 +13,7 @@ import {
     type EngineWorkflowsList,
 } from '../shared/ipc-channels.js';
 import { createEngine } from './engine.js';
+import { readPropertiesFile } from './properties-loader.js';
 import { assertNever } from '../shared/assert-never.js';
 import { toggleWorkflow, type WorkflowRegistryState } from './workflow-registry.js';
 
@@ -23,11 +25,14 @@ const port = parentPort;
 
 type WorkerInbound = EnginePing | EngineFireTestEvent | EngineToggleWorkflow;
 
+const userDataPath =
+    typeof workerData === 'object' && workerData !== null
+        ? (workerData as { userDataPath?: string }).userDataPath
+        : undefined;
+
 const engine = createEngine({
-    databasePath:
-        typeof workerData === 'object' && workerData !== null
-            ? (workerData as { databasePath?: string }).databasePath
-            : undefined,
+    properties: readPropertiesFile(join(userDataPath ?? '', 'sigil.properties.json')),
+    defaultDatabasePath: join(userDataPath ?? '', 'sigil.db'),
 });
 
 process.on('exit', () => {
