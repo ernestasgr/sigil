@@ -22,7 +22,7 @@ import { createWorkflowStateStore, type WorkflowStateStore } from './workflow-st
 
 export interface EngineOptions {
     readonly properties?: unknown;
-    readonly databasePath?: string;
+    readonly defaultDatabasePath?: string;
 }
 
 export interface Engine {
@@ -56,13 +56,13 @@ export function createEngine(options?: EngineOptions): Engine {
         stateStore,
     });
 
-    const propertiesResult = loadPropertiesFile(options?.properties);
+    const propertiesResult = loadPropertiesFile(options?.properties, {
+        databasePath: options?.defaultDatabasePath,
+    });
     const properties = propertiesResult.ok ? propertiesResult.value : DEFAULT_PROPERTIES;
     const settings = resolveSettings(properties);
 
-    const database = options?.databasePath
-        ? new Database(options.databasePath)
-        : new Database(':memory:');
+    const database = new Database(properties.databasePath);
     const workflowStateStore = createWorkflowStateStore(database);
 
     return {
