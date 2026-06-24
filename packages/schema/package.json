@@ -28,8 +28,8 @@
             "import": "./dist/conditions.js"
         },
         "./nodes": {
-            "types": "./dist/nodes.d.ts",
-            "import": "./dist/nodes.js"
+            "types": "./dist/nodes/index.d.ts",
+            "import": "./dist/nodes/index.js"
         },
         "./edges": {
             "types": "./dist/edges.d.ts",
