@@ -6,14 +6,17 @@ import { cn } from '../lib/utils.js';
 import { compileGraph } from './compile.js';
 import { useBuilderStore } from './builder-store.js';
 import { WorkflowCanvas } from './canvas/workflow-canvas.js';
+import { CornerFlourish } from './corner-flourish.js';
 import { NodePalette } from './palette/node-palette.js';
 import { PropertiesPanel } from './inspector/properties-panel.js';
 
 export function WorkflowBuilder(): ReactElement {
     return (
         <div className="flex h-full gap-2 bg-obsidian-ink p-2">
-            <aside className="sigil-ornamental-frame w-60 shrink-0 overflow-hidden">
+            <aside className="sigil-ornamental-frame relative w-60 shrink-0 overflow-hidden">
                 <NodePalette />
+                <CornerFlourish corner="tl" />
+                <CornerFlourish corner="br" />
             </aside>
             <div className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex-1 overflow-hidden">
@@ -23,8 +26,10 @@ export function WorkflowBuilder(): ReactElement {
                 </div>
                 <ValidationBar />
             </div>
-            <aside className="sigil-ornamental-frame w-80 shrink-0 overflow-hidden">
+            <aside className="sigil-ornamental-frame relative w-80 shrink-0 overflow-hidden">
                 <PropertiesPanel />
+                <CornerFlourish corner="tl" />
+                <CornerFlourish corner="br" />
             </aside>
         </div>
     );

@@ -3,11 +3,11 @@ import { Handle, type NodeProps, Position } from '@xyflow/react';
 import type { ReactElement } from 'react';
 
 import { cn } from '../../lib/utils.js';
-import { CATEGORY_TOP_ACCENT, CATEGORY_TEXT, nodeTypeDef } from '../node-registry.js';
 import type { BuilderRFNode } from '../builder-store.js';
+import { CornerFlourish } from '../corner-flourish.js';
+import { CATEGORY_TOP_ACCENT, CATEGORY_TEXT, nodeTypeDef } from '../node-registry.js';
 
-const NODE_BASE_CLASS =
-    'sigil-light-frame relative min-w-52 border border-veil/40 bg-obsidian-ink/95 font-ui';
+const NODE_BASE_CLASS = 'relative min-w-52 border border-veil/40 bg-obsidian-ink/95 font-ui';
 
 export function PipelineNodeCard({ id, data, selected }: NodeProps<BuilderRFNode>): ReactElement {
     const spec = data;
@@ -23,6 +23,7 @@ export function PipelineNodeCard({ id, data, selected }: NodeProps<BuilderRFNode
                 selected && 'border-gilt',
             )}
         >
+            <CornerFlourish corner="tl" size={10} inset={4} opacity={0.55} />
             {showInput ? <Handle type="target" position={Position.Left} /> : null}
             <header className="flex flex-col gap-0.5 px-4 pt-3 pb-2">
                 <div className="flex items-center gap-2">
