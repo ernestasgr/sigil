@@ -28,3 +28,5 @@ idea.md
 # pnpm temp files from interrupted installs
 _tmp_*
 __tmp_*
+
+counter.py
