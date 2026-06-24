@@ -18,6 +18,10 @@ export const SwitchConfigSchema = z
     .refine((cfg) => new Set(cfg.cases).size === cfg.cases.length, {
         message: 'switch cases must be unique',
         path: ['cases'],
+    })
+    .refine((cfg) => !cfg.cases.includes('default'), {
+        message: "'default' is reserved and cannot be used as a case label",
+        path: ['cases'],
     });
 
 export type SwitchConfig = z.infer<typeof SwitchConfigSchema>;
