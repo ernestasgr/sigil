@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parentPort, workerData } from 'node:worker_threads';
 
@@ -30,8 +31,12 @@ const userDataPath =
         ? (workerData as { userDataPath?: string }).userDataPath
         : undefined;
 
+const cwdPropertiesPath = join(process.cwd(), 'sigil.properties.json');
+const userDataPropertiesPath = join(userDataPath ?? '', 'sigil.properties.json');
+const propertiesPath = existsSync(cwdPropertiesPath) ? cwdPropertiesPath : userDataPropertiesPath;
+
 const engine = createEngine({
-    properties: readPropertiesFile(join(userDataPath ?? '', 'sigil.properties.json')),
+    properties: readPropertiesFile(propertiesPath),
     defaultDatabasePath: join(userDataPath ?? '', 'sigil.db'),
 });
 

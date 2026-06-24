@@ -1,0 +1,4 @@
+{
+    "notifyOnWorkflowError": true,
+    "databasePath": "sigil.db"
+}
