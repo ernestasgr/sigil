@@ -9,7 +9,7 @@ import type {
     StateGetConfig,
     StateSetConfig,
     SwitchConfig,
-} from '@sigil/schema/node-configs';
+} from '@sigil/schema/nodes';
 import type { PipelineCondition } from '@sigil/schema/conditions';
 import {
     BooleanOperatorSchema,

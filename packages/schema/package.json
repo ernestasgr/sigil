@@ -27,10 +27,6 @@
             "types": "./dist/conditions.d.ts",
             "import": "./dist/conditions.js"
         },
-        "./node-configs": {
-            "types": "./dist/node-configs.d.ts",
-            "import": "./dist/node-configs.js"
-        },
         "./nodes": {
             "types": "./dist/nodes.d.ts",
             "import": "./dist/nodes.js"

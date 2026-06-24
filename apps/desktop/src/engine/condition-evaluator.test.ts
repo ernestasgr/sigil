@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PipelineCondition } from '@sigil/schema/conditions';
-import type { SwitchConfig } from '@sigil/schema/node-configs';
+import type { SwitchConfig } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
 import { coerceForComparison, evaluateCondition, matchSwitchCase } from './condition-evaluator.js';

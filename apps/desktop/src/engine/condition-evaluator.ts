@@ -1,6 +1,6 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
 import type { BooleanOperator, NumberOperator, StringOperator } from '@sigil/schema/operators';
-import type { SwitchConfig } from '@sigil/schema/node-configs';
+import type { SwitchConfig } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
 import { assertNever } from '../shared/assert-never.js';
