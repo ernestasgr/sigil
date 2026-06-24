@@ -4,8 +4,6 @@ import { join, parse } from 'node:path';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
 
-// ─── Types ───────────────────────────────────────────────────────
-
 export interface WatcherHandle {
     readonly close: () => void;
 }
@@ -54,8 +52,6 @@ export interface FileWatcherManager {
     readonly dispose: () => void;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────
-
 function watcherKey(path: string, recursive: boolean): string {
     return `${path}::${recursive}`;
 }
@@ -85,15 +81,6 @@ function resolveIgnorePatterns(
     return DEFAULT_IGNORE_PATTERNS;
 }
 
-function eventTypeToFileEventName(
-    eventType: string,
-): 'file.created' | 'file.modified' | 'file.deleted' {
-    if (eventType === 'change') {
-        return 'file.modified';
-    }
-    return 'file.created';
-}
-
 function buildFileEventPayload(filePath: string, size: number): FileEventPayload {
     const parsed = parse(filePath);
     return {
@@ -104,8 +91,6 @@ function buildFileEventPayload(filePath: string, size: number): FileEventPayload
         dir: parsed.dir,
     };
 }
-
-// ─── Factory ─────────────────────────────────────────────────────
 
 export function createFileWatcherManager(
     defaultIgnorePatterns?: readonly string[],
@@ -144,32 +129,43 @@ export function createFileWatcherManager(
             const subscribersList = Array.from(entry.subscribers.values());
             if (subscribersList.length === 0) return;
 
+            if (filename === null) return;
+
+            const fullPath = join(path, filename);
+
+            let stats: { readonly size: number } | undefined;
+            try {
+                stats = resolvedGetFileStats(fullPath);
+            } catch {
+                // stat failed — event may be a deletion or a race
+            }
+
+            let eventName: 'file.created' | 'file.modified' | 'file.deleted';
+            if (eventType === 'change') {
+                eventName = 'file.modified';
+            } else if (stats !== undefined) {
+                eventName = 'file.created';
+            } else {
+                eventName = 'file.deleted';
+            }
+
+            const size = stats?.size ?? 0;
+            const payload = buildFileEventPayload(fullPath, size);
+
             for (const sub of subscribersList) {
                 const patterns = resolveIgnorePatterns(
                     sub.config.ignorePatterns,
                     resolvedDefaultPatterns,
                 );
-                if (filename !== null && shouldIgnore(filename, patterns)) {
+                if (shouldIgnore(filename, patterns)) {
                     continue;
                 }
 
-                const eventName = eventTypeToFileEventName(eventType);
                 if (!sub.config.events.includes(eventName)) {
                     continue;
                 }
 
-                const fullPath = filename !== null ? join(path, filename) : path;
-                try {
-                    const stats = resolvedGetFileStats(fullPath);
-                    const payload = buildFileEventPayload(fullPath, stats.size);
-                    sub.onEvent({ eventName, payload });
-                } catch {
-                    if (eventName === 'file.created') {
-                        return;
-                    }
-                    const payload = buildFileEventPayload(fullPath, 0);
-                    sub.onEvent({ eventName, payload });
-                }
+                sub.onEvent({ eventName, payload });
             }
         });
         const entry: WatcherEntry = { handle, subscribers };
@@ -203,13 +199,11 @@ export function createFileWatcherManager(
 
         getWatcherCount: () => watchers.size,
 
-        getSubscriberCount: () => {
-            let count = 0;
-            for (const entry of watchers.values()) {
-                count += entry.subscribers.size;
-            }
-            return count;
-        },
+        getSubscriberCount: () =>
+            Array.from(watchers.values()).reduce(
+                (count, entry) => count + entry.subscribers.size,
+                0,
+            ),
 
         dispose: () => {
             for (const entry of watchers.values()) {
