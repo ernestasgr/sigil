@@ -30,14 +30,14 @@ export type EngineHandle = {
         name: string,
         pipeline: CompiledPipeline,
         positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
-    ) => void;
+    ) => Promise<WorkflowSummary>;
     readonly updateWorkflow: (
         id: string,
         name: string,
         pipeline: CompiledPipeline,
         positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
-    ) => void;
-    readonly deleteWorkflow: (id: string) => void;
+    ) => Promise<WorkflowSummary>;
+    readonly deleteWorkflow: (id: string) => Promise<boolean>;
     readonly getWorkflow: (id: string, timeoutMs?: number) => Promise<EngineGetWorkflowResult>;
     readonly terminate: () => Promise<number>;
     readonly onReady: (handler: () => void) => void;
@@ -64,6 +64,15 @@ export function spawnEngine(): EngineHandle {
             timer: NodeJS.Timeout;
         }
     >();
+    const pendingMutations = new Map<
+        string,
+        {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            resolve: (value: any) => void;
+            reject: (err: Error) => void;
+            timer: NodeJS.Timeout;
+        }
+    >();
     const readyHandlers = new Set<() => void>();
     const logHandlers = new Set<(line: string) => void>();
     const workflowsListHandlers = new Set<(workflows: readonly WorkflowSummary[]) => void>();
@@ -80,6 +89,11 @@ export function spawnEngine(): EngineHandle {
             entry.reject(new Error(reason));
         }
         pendingGetWorkflows.clear();
+        for (const [, entry] of pendingMutations) {
+            clearTimeout(entry.timer);
+            entry.reject(new Error(reason));
+        }
+        pendingMutations.clear();
     }
 
     worker.on('message', (message: EngineMessage | { type: 'engine:ready' }) => {
@@ -112,6 +126,28 @@ export function spawnEngine(): EngineHandle {
                 clearTimeout(entry.timer);
                 entry.resolve(message);
             }
+            return;
+        }
+        if (
+            message.type === EngineChannel.CreateWorkflowResult ||
+            message.type === EngineChannel.UpdateWorkflowResult
+        ) {
+            const entry = pendingMutations.get(message.correlationId);
+            if (entry) {
+                pendingMutations.delete(message.correlationId);
+                clearTimeout(entry.timer);
+                entry.resolve(message.summary);
+            }
+            return;
+        }
+        if (message.type === EngineChannel.DeleteWorkflowResult) {
+            const entry = pendingMutations.get(message.correlationId);
+            if (entry) {
+                pendingMutations.delete(message.correlationId);
+                clearTimeout(entry.timer);
+                entry.resolve(message.success);
+            }
+            return;
         }
     });
 
@@ -154,33 +190,63 @@ export function spawnEngine(): EngineHandle {
             name: string,
             pipeline: CompiledPipeline,
             positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
-        ): void {
-            const msg: EngineCreateWorkflow = {
-                type: EngineChannel.CreateWorkflow,
-                name,
-                pipeline,
-                positions,
-            };
-            worker.postMessage(msg);
+        ): Promise<WorkflowSummary> {
+            const correlationId = randomUUID();
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    pendingMutations.delete(correlationId);
+                    reject(new Error(`createWorkflow timed out after 5000ms`));
+                }, 5000);
+                pendingMutations.set(correlationId, { resolve, reject, timer });
+                const msg: EngineCreateWorkflow = {
+                    type: EngineChannel.CreateWorkflow,
+                    correlationId,
+                    name,
+                    pipeline,
+                    positions,
+                };
+                worker.postMessage(msg);
+            });
         },
         updateWorkflow(
             id: string,
             name: string,
             pipeline: CompiledPipeline,
             positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
-        ): void {
-            const msg: EngineUpdateWorkflow = {
-                type: EngineChannel.UpdateWorkflow,
-                id,
-                name,
-                pipeline,
-                positions,
-            };
-            worker.postMessage(msg);
+        ): Promise<WorkflowSummary> {
+            const correlationId = randomUUID();
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    pendingMutations.delete(correlationId);
+                    reject(new Error(`updateWorkflow timed out after 5000ms`));
+                }, 5000);
+                pendingMutations.set(correlationId, { resolve, reject, timer });
+                const msg: EngineUpdateWorkflow = {
+                    type: EngineChannel.UpdateWorkflow,
+                    correlationId,
+                    id,
+                    name,
+                    pipeline,
+                    positions,
+                };
+                worker.postMessage(msg);
+            });
         },
-        deleteWorkflow(id: string): void {
-            const msg: EngineDeleteWorkflow = { type: EngineChannel.DeleteWorkflow, id };
-            worker.postMessage(msg);
+        deleteWorkflow(id: string): Promise<boolean> {
+            const correlationId = randomUUID();
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    pendingMutations.delete(correlationId);
+                    reject(new Error(`deleteWorkflow timed out after 5000ms`));
+                }, 5000);
+                pendingMutations.set(correlationId, { resolve, reject, timer });
+                const msg: EngineDeleteWorkflow = {
+                    type: EngineChannel.DeleteWorkflow,
+                    correlationId,
+                    id,
+                };
+                worker.postMessage(msg);
+            });
         },
         getWorkflow(id: string, timeoutMs = 5000): Promise<EngineGetWorkflowResult> {
             const correlationId = randomUUID();

@@ -173,29 +173,28 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
 
         save: (id, name, pipeline, positions) => {
             const existing = workflows.get(id);
-            if (!existing) {
-                return toSummary({
-                    id,
-                    name,
-                    enabled: false,
-                    positions,
-                    pipelineId: pipeline.id,
-                    workflowId: pipeline.workflowId,
-                    schemaVersion: pipeline.schemaVersion,
-                    nodes: pipeline.nodes,
-                    edges: pipeline.edges,
-                });
-            }
-            const stored: StoredWorkflow = {
-                ...existing,
-                name,
-                positions,
-                pipelineId: pipeline.id,
-                workflowId: pipeline.workflowId,
-                schemaVersion: pipeline.schemaVersion,
-                nodes: pipeline.nodes,
-                edges: pipeline.edges,
-            };
+            const stored: StoredWorkflow = existing
+                ? {
+                      ...existing,
+                      name,
+                      positions,
+                      pipelineId: pipeline.id,
+                      workflowId: pipeline.workflowId,
+                      schemaVersion: pipeline.schemaVersion,
+                      nodes: pipeline.nodes,
+                      edges: pipeline.edges,
+                  }
+                : {
+                      id,
+                      name,
+                      enabled: false,
+                      positions,
+                      pipelineId: pipeline.id,
+                      workflowId: pipeline.workflowId,
+                      schemaVersion: pipeline.schemaVersion,
+                      nodes: pipeline.nodes,
+                      edges: pipeline.edges,
+                  };
             workflows.set(id, stored);
             writeWorkflowFile(storageDir, stored);
             return toSummary(stored);

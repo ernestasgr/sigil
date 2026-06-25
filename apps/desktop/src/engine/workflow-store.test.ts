@@ -247,6 +247,21 @@ describe('WorkflowStore', () => {
         expect(store.list()).toEqual([]);
     });
 
+    it('upserts a new workflow when save() is called with a non-existent id', () => {
+        const saved = store.save('new-id', 'New via save', samplePipeline, samplePositions);
+        expect(saved.id).toBe('new-id');
+        expect(saved.name).toBe('New via save');
+        expect(saved.enabled).toBe(false);
+
+        const loaded = store.get('new-id');
+        expect(loaded).not.toBeNull();
+        expect(loaded?.pipeline).toEqual(samplePipeline);
+        expect(loaded?.positions).toEqual(samplePositions);
+
+        const filePath = join(dir, 'new-id.json');
+        expect(existsSync(filePath)).toBe(true);
+    });
+
     it('preserves positions across toggle', () => {
         const summary = store.create('My Workflow', samplePipeline, samplePositions);
         store.toggle(summary.id);

@@ -112,6 +112,11 @@ port.on('message', (message: WorkerInbound) => {
             const summary = store.create(message.name, message.pipeline, message.positions);
             log(`Created workflow "${message.name}" (${summary.id})`);
             broadcastWorkflowsList();
+            port.postMessage({
+                type: EngineChannel.CreateWorkflowResult,
+                correlationId: message.correlationId,
+                summary,
+            });
             break;
         }
         case EngineChannel.UpdateWorkflow: {
@@ -123,6 +128,11 @@ port.on('message', (message: WorkerInbound) => {
             );
             log(`Updated workflow "${message.name}" (${summary.id})`);
             broadcastWorkflowsList();
+            port.postMessage({
+                type: EngineChannel.UpdateWorkflowResult,
+                correlationId: message.correlationId,
+                summary,
+            });
             break;
         }
         case EngineChannel.DeleteWorkflow: {
@@ -131,6 +141,11 @@ port.on('message', (message: WorkerInbound) => {
                 log(`Deleted workflow (${message.id})`);
             }
             broadcastWorkflowsList();
+            port.postMessage({
+                type: EngineChannel.DeleteWorkflowResult,
+                correlationId: message.correlationId,
+                success: removed,
+            });
             break;
         }
         case EngineChannel.GetWorkflow: {

@@ -30,6 +30,7 @@ export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): Rea
                     value={pipelineName}
                     onChange={(e) => setPipelineName(e.target.value)}
                     placeholder="Workflow name..."
+                    aria-label="Workflow name"
                     className="font-ui flex-1 bg-transparent text-parchment outline-none placeholder:text-veil"
                 />
             </div>
