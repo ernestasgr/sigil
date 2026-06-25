@@ -136,4 +136,5 @@ export const RendererChannel = {
     DeleteWorkflow: 'renderer:delete-workflow',
     GetWorkflow: 'renderer:get-workflow',
     BusEvent: 'renderer:bus-event',
+    RendererReady: 'renderer:renderer-ready',
 } as const;

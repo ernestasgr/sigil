@@ -10,6 +10,7 @@ import {
 import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
 
 const api = {
+    rendererReady: (): Promise<void> => ipcRenderer.invoke(RendererChannel.RendererReady),
     pingEngine: (): Promise<EnginePong | null> => ipcRenderer.invoke(RendererChannel.EnginePong),
     fireTestEvent: (): Promise<void> => ipcRenderer.invoke(RendererChannel.FireTestEvent),
     toggleWorkflow: (id: string): Promise<WorkflowSummary | null> =>

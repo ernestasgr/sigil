@@ -105,6 +105,10 @@ function isRecordOfNodePositions(value: unknown): value is Readonly<Record<strin
 }
 
 function wireEngineIpc(): void {
+    ipcMain.handle(RendererChannel.RendererReady, async (): Promise<void> => {
+        broadcastRendererReadyState();
+    });
+
     ipcMain.handle(RendererChannel.EnginePong, async (): Promise<EnginePong | null> => {
         if (!engine) return null;
         try {
@@ -204,6 +208,10 @@ function wireEngineIpc(): void {
     );
 }
 
+function broadcastRendererReadyState(): void {
+    broadcastWorkflowsList(workflows);
+}
+
 function forwardEngineLogsToRenderer(): void {
     if (!engine) return;
     const unsubscribe = engine.onLog((line) => {
@@ -258,10 +266,6 @@ app.whenReady().then(() => {
 
     tray.updateWorkflows(workflows);
     mainWindow = createWindow();
-
-    mainWindow.webContents.on('did-finish-load', () => {
-        broadcastWorkflowsList(workflows);
-    });
 
     app.on('activate', () => {
         showAppWindow();

@@ -1,40 +1,13 @@
 import type { ReactElement } from 'react';
 
 import { SectionShell } from '../components/section-shell.js';
-import { Button } from '../components/ui/button.js';
+import { eventColor, eventNameLabel, formatTime, payloadPreview } from '../lib/event-display.js';
 import { useAppStore } from '../store/app-store.js';
-
-function eventNameLabel(name: string): string {
-    switch (name) {
-        case 'workflow.started':
-            return 'Workflow started';
-        case 'workflow.completed':
-            return 'Workflow completed';
-        case 'workflow.error':
-            return 'Workflow error';
-        case 'manual.trigger.fired':
-            return 'Manual trigger fired';
-        case 'log.output':
-            return 'Log';
-        case 'notification.show':
-            return 'Notification';
-        case 'plugin.event':
-            return 'Plugin event';
-        default:
-            return name;
-    }
-}
 
 export function HomeSection(): ReactElement {
     const workflows = useAppStore((state) => state.workflows);
     const busEvents = useAppStore((state) => state.busEvents);
     const logs = useAppStore((state) => state.logs);
-
-    const handleFire = (): void => {
-        void window.sigil.fireTestEvent().catch((error: unknown) => {
-            console.error('Failed to fire test event', error);
-        });
-    };
 
     const activeWorkflows = workflows.filter((w) => w.enabled);
     const recentEvents = busEvents.slice(-10);
@@ -42,8 +15,6 @@ export function HomeSection(): ReactElement {
     return (
         <SectionShell title="Home" subtitle="The working table — active sigils and recent echoes.">
             <div className="flex flex-col gap-6">
-                <Button onClick={handleFire}>Fire test event</Button>
-
                 <div className="border-gilt/40 border">
                     <h2 className="border-gilt/40 border-b font-ui text-veil px-4 py-2 text-xs tracking-widest uppercase">
                         Active sigils — {activeWorkflows.length}
@@ -81,10 +52,18 @@ export function HomeSection(): ReactElement {
                                 ? recentEvents.map((entry) => (
                                       <li
                                           key={entry.id}
-                                          className="text-parchment flex items-center gap-2 px-4 py-1.5 text-sm"
+                                          className="hover:bg-veil/5 flex items-start gap-3 px-4 py-2 text-sm transition-colors"
                                       >
-                                          <span className="font-ui text-veil shrink-0 text-xs tracking-wider uppercase">
+                                          <span className="text-veil mt-0.5 shrink-0 font-mono text-xs tabular-nums">
+                                              {formatTime(entry.timestamp)}
+                                          </span>
+                                          <span
+                                              className={`shrink-0 text-xs tracking-wider uppercase ${eventColor(entry.name)}`}
+                                          >
                                               {eventNameLabel(entry.name)}
+                                          </span>
+                                          <span className="text-parchment truncate">
+                                              {payloadPreview(entry.payload)}
                                           </span>
                                       </li>
                                   ))
