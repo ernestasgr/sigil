@@ -1,6 +1,7 @@
 import type { Capability, Manifest } from '@sigil/schema/manifest';
 
 import type { ManifestRegistry } from './manifest-registry.js';
+import type { PermissionOverrideStore } from './permission-override-store.js';
 
 export type { Capability, Manifest };
 
@@ -24,9 +25,17 @@ function hasPermission(manifest: Manifest | undefined, capability: Capability): 
     return manifest !== undefined && manifest.permissions.includes(capability);
 }
 
-export function createCapabilityBroker(registry: ManifestRegistry): CapabilityBroker {
+export function createCapabilityBroker(
+    registry: ManifestRegistry,
+    overrides: PermissionOverrideStore,
+): CapabilityBroker {
     return {
         request: ({ pluginId, capability }) => {
+            if (overrides.has(pluginId)) {
+                return overrides.get(pluginId).includes(capability)
+                    ? { ok: true }
+                    : { ok: false, error: { kind: 'denied', capability } };
+            }
             if (!hasPermission(registry.get(pluginId), capability)) {
                 return { ok: false, error: { kind: 'denied', capability } };
             }

@@ -29,6 +29,8 @@ import {
 import { createFileWatcherManager, type FileWatcherManager } from './file-watcher-manager.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 import { createManifestRegistry } from './manifest-registry.js';
+import type { PermissionOverrideStore } from './permission-override-store.js';
+import { createPermissionOverrideStore } from './permission-override-store.js';
 import { createInMemoryPluginStateStore, createPluginLoader } from './plugin-loader.js';
 import type { PluginLoader, PluginStateStore } from './plugin-loader.js';
 import { createWorkflowStateStore, type WorkflowStateStore } from './workflow-state.js';
@@ -43,6 +45,7 @@ export interface Engine {
     readonly bridge: Bridge;
     readonly capabilityBroker: CapabilityBroker;
     readonly registry: ManifestRegistry;
+    readonly permissionOverrides: PermissionOverrideStore;
     readonly loader: PluginLoader;
     readonly stateStore: PluginStateStore;
     readonly workflowStateStore: WorkflowStateStore;
@@ -63,8 +66,9 @@ export function resolveSettings(properties: ResolvedProperties): ExecutorSetting
 export function createEngine(options?: EngineOptions): Engine {
     const bus = createEventBus();
     const registry = createManifestRegistry();
+    const permissionOverrides = createPermissionOverrideStore();
     const bridge = createBridge(bus, registry);
-    const capabilityBroker = createCapabilityBroker(registry);
+    const capabilityBroker = createCapabilityBroker(registry, permissionOverrides);
     const stateStore = createInMemoryPluginStateStore();
     const loader = createPluginLoader({
         bus,
@@ -89,6 +93,7 @@ export function createEngine(options?: EngineOptions): Engine {
         bus,
         bridge,
         capabilityBroker,
+        permissionOverrides,
         registry,
         loader,
         stateStore,

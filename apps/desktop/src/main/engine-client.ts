@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { app } from 'electron';
 
+import type { Capability } from '@sigil/schema/manifest';
 import type { CompiledPipeline } from '@sigil/schema';
 
 import {
@@ -19,6 +20,7 @@ import {
     type EngineToggleWorkflow,
     type EngineUpdateWorkflow,
 } from '../shared/ipc-channels.js';
+import type { PluginInfo } from '../shared/plugin-info.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -40,6 +42,13 @@ export type EngineHandle = {
     ) => Promise<WorkflowSummary>;
     readonly deleteWorkflow: (id: string) => Promise<boolean>;
     readonly getWorkflow: (id: string, timeoutMs?: number) => Promise<EngineGetWorkflowResult>;
+    readonly listPlugins: (timeoutMs?: number) => Promise<readonly PluginInfo[]>;
+    readonly setPermissionOverride: (
+        pluginId: string,
+        overrides: readonly Capability[],
+    ) => Promise<boolean>;
+    readonly readProperties: (timeoutMs?: number) => Promise<Record<string, unknown>>;
+    readonly saveProperties: (properties: Record<string, unknown>) => Promise<boolean>;
     readonly terminate: () => Promise<number>;
     readonly onReady: (handler: () => void) => void;
     readonly onLog: (handler: (line: string) => void) => () => void;
@@ -98,6 +107,38 @@ export function spawnEngine(): EngineHandle {
             timer: NodeJS.Timeout;
         }
     >();
+    const pendingListPlugins = new Map<
+        string,
+        {
+            resolve: (value: readonly PluginInfo[]) => void;
+            reject: (err: Error) => void;
+            timer: NodeJS.Timeout;
+        }
+    >();
+    const pendingSetPermissionOverrides = new Map<
+        string,
+        {
+            resolve: (value: boolean) => void;
+            reject: (err: Error) => void;
+            timer: NodeJS.Timeout;
+        }
+    >();
+    const pendingReadProperties = new Map<
+        string,
+        {
+            resolve: (value: Record<string, unknown>) => void;
+            reject: (err: Error) => void;
+            timer: NodeJS.Timeout;
+        }
+    >();
+    const pendingSaveProperties = new Map<
+        string,
+        {
+            resolve: (value: boolean) => void;
+            reject: (err: Error) => void;
+            timer: NodeJS.Timeout;
+        }
+    >();
     const readyHandlers = new Set<() => void>();
     const logHandlers = new Set<(line: string) => void>();
     const workflowsListHandlers = new Set<(workflows: readonly WorkflowSummary[]) => void>();
@@ -135,6 +176,26 @@ export function spawnEngine(): EngineHandle {
             entry.reject(new Error(reason));
         }
         pendingToggles.clear();
+        for (const [, entry] of pendingListPlugins) {
+            clearTimeout(entry.timer);
+            entry.reject(new Error(reason));
+        }
+        pendingListPlugins.clear();
+        for (const [, entry] of pendingSetPermissionOverrides) {
+            clearTimeout(entry.timer);
+            entry.reject(new Error(reason));
+        }
+        pendingSetPermissionOverrides.clear();
+        for (const [, entry] of pendingReadProperties) {
+            clearTimeout(entry.timer);
+            entry.reject(new Error(reason));
+        }
+        pendingReadProperties.clear();
+        for (const [, entry] of pendingSaveProperties) {
+            clearTimeout(entry.timer);
+            entry.reject(new Error(reason));
+        }
+        pendingSaveProperties.clear();
     }
 
     worker.on('message', (message: EngineMessage | { type: 'engine:ready' }) => {
@@ -207,6 +268,42 @@ export function spawnEngine(): EngineHandle {
         }
         if (message.type === EngineChannel.BusEvent) {
             for (const handler of [...busEventHandlers]) handler(message.event);
+            return;
+        }
+        if (message.type === EngineChannel.ListPluginsResult) {
+            const entry = pendingListPlugins.get(message.correlationId);
+            if (entry) {
+                pendingListPlugins.delete(message.correlationId);
+                clearTimeout(entry.timer);
+                entry.resolve(message.plugins);
+            }
+            return;
+        }
+        if (message.type === EngineChannel.SetPermissionOverrideResult) {
+            const entry = pendingSetPermissionOverrides.get(message.correlationId);
+            if (entry) {
+                pendingSetPermissionOverrides.delete(message.correlationId);
+                clearTimeout(entry.timer);
+                entry.resolve(message.ok);
+            }
+            return;
+        }
+        if (message.type === EngineChannel.ReadPropertiesResult) {
+            const entry = pendingReadProperties.get(message.correlationId);
+            if (entry) {
+                pendingReadProperties.delete(message.correlationId);
+                clearTimeout(entry.timer);
+                entry.resolve(message.properties);
+            }
+            return;
+        }
+        if (message.type === EngineChannel.SavePropertiesResult) {
+            const entry = pendingSaveProperties.get(message.correlationId);
+            if (entry) {
+                pendingSaveProperties.delete(message.correlationId);
+                clearTimeout(entry.timer);
+                entry.resolve(message.ok);
+            }
             return;
         }
     });
@@ -335,6 +432,74 @@ export function spawnEngine(): EngineHandle {
                     id,
                     correlationId,
                 };
+                worker.postMessage(msg);
+            });
+        },
+        listPlugins(timeoutMs = 5000): Promise<readonly PluginInfo[]> {
+            const correlationId = randomUUID();
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    pendingListPlugins.delete(correlationId);
+                    reject(new Error(`listPlugins timed out after ${timeoutMs}ms`));
+                }, timeoutMs);
+
+                pendingListPlugins.set(correlationId, { resolve, reject, timer });
+
+                const msg = { type: EngineChannel.ListPlugins, correlationId } as const;
+                worker.postMessage(msg);
+            });
+        },
+        setPermissionOverride(
+            pluginId: string,
+            overrides: readonly Capability[],
+        ): Promise<boolean> {
+            const correlationId = randomUUID();
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    pendingSetPermissionOverrides.delete(correlationId);
+                    reject(new Error(`setPermissionOverride timed out after 5000ms`));
+                }, 5000);
+
+                pendingSetPermissionOverrides.set(correlationId, { resolve, reject, timer });
+
+                const msg = {
+                    type: EngineChannel.SetPermissionOverride,
+                    correlationId,
+                    pluginId,
+                    overrides,
+                } as const;
+                worker.postMessage(msg);
+            });
+        },
+        readProperties(timeoutMs = 5000): Promise<Record<string, unknown>> {
+            const correlationId = randomUUID();
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    pendingReadProperties.delete(correlationId);
+                    reject(new Error(`readProperties timed out after ${timeoutMs}ms`));
+                }, timeoutMs);
+
+                pendingReadProperties.set(correlationId, { resolve, reject, timer });
+
+                const msg = { type: EngineChannel.ReadProperties, correlationId } as const;
+                worker.postMessage(msg);
+            });
+        },
+        saveProperties(properties: Record<string, unknown>): Promise<boolean> {
+            const correlationId = randomUUID();
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    pendingSaveProperties.delete(correlationId);
+                    reject(new Error(`saveProperties timed out after 5000ms`));
+                }, 5000);
+
+                pendingSaveProperties.set(correlationId, { resolve, reject, timer });
+
+                const msg = {
+                    type: EngineChannel.SaveProperties,
+                    correlationId,
+                    properties,
+                } as const;
                 worker.postMessage(msg);
             });
         },

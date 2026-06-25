@@ -206,6 +206,56 @@ function wireEngineIpc(): void {
             }
         },
     );
+
+    ipcMain.handle(RendererChannel.ListPlugins, async (): Promise<unknown> => {
+        if (!engine) return [];
+        try {
+            return await engine.listPlugins();
+        } catch (err) {
+            console.error('[main] listPlugins failed:', err);
+            return [];
+        }
+    });
+
+    ipcMain.handle(
+        RendererChannel.SetPermissionOverride,
+        async (_event, pluginId: unknown, overrides: unknown): Promise<boolean> => {
+            if (typeof pluginId !== 'string') throw new Error('Invalid pluginId');
+            if (!engine) return false;
+            try {
+                return await engine.setPermissionOverride(
+                    pluginId,
+                    overrides as readonly import('@sigil/schema/manifest').Capability[],
+                );
+            } catch (err) {
+                console.error('[main] setPermissionOverride failed:', err);
+                return false;
+            }
+        },
+    );
+
+    ipcMain.handle(RendererChannel.ReadProperties, async (): Promise<Record<string, unknown>> => {
+        if (!engine) return {};
+        try {
+            return await engine.readProperties();
+        } catch (err) {
+            console.error('[main] readProperties failed:', err);
+            return {};
+        }
+    });
+
+    ipcMain.handle(
+        RendererChannel.SaveProperties,
+        async (_event, properties: unknown): Promise<boolean> => {
+            if (!engine) return false;
+            try {
+                return await engine.saveProperties(properties as Record<string, unknown>);
+            } catch (err) {
+                console.error('[main] saveProperties failed:', err);
+                return false;
+            }
+        },
+    );
 }
 
 function broadcastRendererReadyState(): void {
