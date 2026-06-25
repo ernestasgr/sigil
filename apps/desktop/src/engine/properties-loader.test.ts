@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { readPropertiesFile } from './properties-loader.js';
+import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
 
 let tempDir: string;
 
@@ -40,5 +40,33 @@ describe('readPropertiesFile', () => {
         writeFileSync(filePath, '{ not valid json');
 
         expect(readPropertiesFile(filePath)).toEqual({});
+    });
+});
+
+describe('writePropertiesFile', () => {
+    it('writes properties to disk as formatted JSON', () => {
+        const filePath = join(tempDir, 'sigil.properties.json');
+        const result = writePropertiesFile(filePath, {
+            notifyOnWorkflowError: false,
+            databasePath: '/data/sigil.db',
+        });
+
+        expect(result.ok).toBe(true);
+
+        const contents = readFileSync(filePath, 'utf-8');
+        expect(JSON.parse(contents)).toEqual({
+            notifyOnWorkflowError: false,
+            databasePath: '/data/sigil.db',
+        });
+    });
+
+    it('returns ok:false when the directory does not exist', () => {
+        const filePath = join(tempDir, 'missing-dir', 'sigil.properties.json');
+        const result = writePropertiesFile(filePath, { notifyOnWorkflowError: true });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.error).toBeTruthy();
+        }
     });
 });

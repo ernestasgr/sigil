@@ -1,6 +1,9 @@
+import type { Capability } from '@sigil/schema/manifest';
+
 import type { CompiledPipeline } from '@sigil/schema';
 
 import type { NodePosition, WorkflowSummary } from './workflow.js';
+import type { PluginInfo } from './plugin-info.js';
 
 export const EngineChannel = {
     Ping: 'engine:ping',
@@ -19,6 +22,16 @@ export const EngineChannel = {
     GetWorkflow: 'engine:get-workflow',
     GetWorkflowResult: 'engine:get-workflow-result',
     BusEvent: 'engine:bus-event',
+    ListPlugins: 'engine:list-plugins',
+    ListPluginsResult: 'engine:list-plugins-result',
+    GetPermissionOverrides: 'engine:get-permission-overrides',
+    GetPermissionOverridesResult: 'engine:get-permission-overrides-result',
+    SetPermissionOverride: 'engine:set-permission-override',
+    SetPermissionOverrideResult: 'engine:set-permission-override-result',
+    ReadProperties: 'engine:read-properties',
+    ReadPropertiesResult: 'engine:read-properties-result',
+    SaveProperties: 'engine:save-properties',
+    SavePropertiesResult: 'engine:save-properties-result',
 } as const;
 
 export type EnginePing = { id: string; type: typeof EngineChannel.Ping };
@@ -107,6 +120,59 @@ export type EngineBusEvent = {
     event: EngineBusEventPayload;
 };
 
+export type EngineListPlugins = {
+    type: typeof EngineChannel.ListPlugins;
+    correlationId: string;
+};
+export type EngineListPluginsResult = {
+    type: typeof EngineChannel.ListPluginsResult;
+    correlationId: string;
+    plugins: readonly PluginInfo[];
+};
+
+export type EngineGetPermissionOverrides = {
+    type: typeof EngineChannel.GetPermissionOverrides;
+    correlationId: string;
+};
+export type EngineGetPermissionOverridesResult = {
+    type: typeof EngineChannel.GetPermissionOverridesResult;
+    correlationId: string;
+    overrides: Readonly<Record<string, readonly Capability[]>>;
+};
+
+export type EngineSetPermissionOverride = {
+    type: typeof EngineChannel.SetPermissionOverride;
+    correlationId: string;
+    pluginId: string;
+    overrides: readonly Capability[];
+};
+export type EngineSetPermissionOverrideResult = {
+    type: typeof EngineChannel.SetPermissionOverrideResult;
+    correlationId: string;
+    ok: boolean;
+};
+
+export type EngineReadProperties = {
+    type: typeof EngineChannel.ReadProperties;
+    correlationId: string;
+};
+export type EngineReadPropertiesResult = {
+    type: typeof EngineChannel.ReadPropertiesResult;
+    correlationId: string;
+    properties: Record<string, unknown>;
+};
+
+export type EngineSaveProperties = {
+    type: typeof EngineChannel.SaveProperties;
+    correlationId: string;
+    properties: Record<string, unknown>;
+};
+export type EngineSavePropertiesResult = {
+    type: typeof EngineChannel.SavePropertiesResult;
+    correlationId: string;
+    ok: boolean;
+};
+
 export type EngineMessage =
     | EnginePing
     | EnginePong
@@ -123,7 +189,17 @@ export type EngineMessage =
     | EngineDeleteWorkflowResult
     | EngineGetWorkflow
     | EngineGetWorkflowResult
-    | EngineBusEvent;
+    | EngineBusEvent
+    | EngineListPlugins
+    | EngineListPluginsResult
+    | EngineGetPermissionOverrides
+    | EngineGetPermissionOverridesResult
+    | EngineSetPermissionOverride
+    | EngineSetPermissionOverrideResult
+    | EngineReadProperties
+    | EngineReadPropertiesResult
+    | EngineSaveProperties
+    | EngineSavePropertiesResult;
 
 export const RendererChannel = {
     EnginePong: 'renderer:engine-pong',
@@ -137,4 +213,9 @@ export const RendererChannel = {
     GetWorkflow: 'renderer:get-workflow',
     BusEvent: 'renderer:bus-event',
     RendererReady: 'renderer:renderer-ready',
+    ListPlugins: 'renderer:list-plugins',
+    GetPermissionOverrides: 'renderer:get-permission-overrides',
+    SetPermissionOverride: 'renderer:set-permission-override',
+    ReadProperties: 'renderer:read-properties',
+    SaveProperties: 'renderer:save-properties',
 } as const;

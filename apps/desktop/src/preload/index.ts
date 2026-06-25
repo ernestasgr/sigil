@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
+import type { Capability } from '@sigil/schema/manifest';
 import type { CompiledPipeline } from '@sigil/schema';
 
 import {
@@ -7,6 +8,7 @@ import {
     type EngineBusEventPayload,
     type EnginePong,
 } from '../shared/ipc-channels.js';
+import type { PluginInfo } from '../shared/plugin-info.js';
 import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
 
 const api = {
@@ -37,6 +39,14 @@ const api = {
         readonly pipeline: CompiledPipeline;
         readonly positions: Readonly<Record<string, NodePosition>>;
     } | null> => ipcRenderer.invoke(RendererChannel.GetWorkflow, id),
+    listPlugins: (): Promise<readonly PluginInfo[]> =>
+        ipcRenderer.invoke(RendererChannel.ListPlugins),
+    setPermissionOverride: (pluginId: string, overrides: readonly Capability[]): Promise<boolean> =>
+        ipcRenderer.invoke(RendererChannel.SetPermissionOverride, pluginId, overrides),
+    readProperties: (): Promise<Record<string, unknown>> =>
+        ipcRenderer.invoke(RendererChannel.ReadProperties),
+    saveProperties: (properties: Record<string, unknown>): Promise<boolean> =>
+        ipcRenderer.invoke(RendererChannel.SaveProperties, properties),
     onEngineLog: (handler: (line: string) => void): (() => void) => {
         const listener = (_event: IpcRendererEvent, line: string): void => handler(line);
         ipcRenderer.on(RendererChannel.EngineLog, listener);

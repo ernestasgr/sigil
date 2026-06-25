@@ -11,15 +11,20 @@ import {
     type EngineDeleteWorkflow,
     type EngineFireTestEvent,
     type EngineGetWorkflow,
+    type EngineListPlugins,
     type EngineLog,
     type EnginePing,
     type EnginePong,
+    type EngineReadProperties,
+    type EngineSaveProperties,
+    type EngineSetPermissionOverride,
     type EngineToggleWorkflow,
     type EngineUpdateWorkflow,
     type EngineWorkflowsList,
 } from '../shared/ipc-channels.js';
+import type { PluginInfo } from '../shared/plugin-info.js';
 import { createEngine } from './engine.js';
-import { readPropertiesFile } from './properties-loader.js';
+import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
 import { assertNever } from '../shared/assert-never.js';
 import { createWorkflowActivator } from './workflow-activator.js';
 import { createWorkflowStore } from './workflow-store.js';
@@ -37,7 +42,11 @@ type WorkerInbound =
     | EngineCreateWorkflow
     | EngineUpdateWorkflow
     | EngineDeleteWorkflow
-    | EngineGetWorkflow;
+    | EngineGetWorkflow
+    | EngineListPlugins
+    | EngineSetPermissionOverride
+    | EngineReadProperties
+    | EngineSaveProperties;
 
 const userDataPath =
     typeof workerData === 'object' && workerData !== null
@@ -193,6 +202,48 @@ port.on('message', (message: WorkerInbound) => {
                     error: `Workflow not found: ${message.id}`,
                 });
             }
+            break;
+        }
+        case EngineChannel.ListPlugins: {
+            const manifests = engine.registry.all();
+            const plugins: readonly PluginInfo[] = manifests.map((manifest) => ({
+                manifest,
+                grantedPermissions: engine.permissionOverrides.has(manifest.id)
+                    ? engine.permissionOverrides.get(manifest.id)
+                    : manifest.permissions,
+            }));
+            port.postMessage({
+                type: EngineChannel.ListPluginsResult,
+                correlationId: message.correlationId,
+                plugins,
+            });
+            break;
+        }
+        case EngineChannel.SetPermissionOverride: {
+            engine.permissionOverrides.set(message.pluginId, message.overrides);
+            port.postMessage({
+                type: EngineChannel.SetPermissionOverrideResult,
+                correlationId: message.correlationId,
+                ok: true,
+            });
+            break;
+        }
+        case EngineChannel.ReadProperties: {
+            const current = readPropertiesFile(propertiesPath);
+            port.postMessage({
+                type: EngineChannel.ReadPropertiesResult,
+                correlationId: message.correlationId,
+                properties: current as Record<string, unknown>,
+            });
+            break;
+        }
+        case EngineChannel.SaveProperties: {
+            const result = writePropertiesFile(propertiesPath, message.properties);
+            port.postMessage({
+                type: EngineChannel.SavePropertiesResult,
+                correlationId: message.correlationId,
+                ok: result.ok,
+            });
             break;
         }
         default: {

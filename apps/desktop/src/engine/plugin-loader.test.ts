@@ -6,6 +6,7 @@ import { createEventBus } from './event-bus.js';
 import { createBridge } from './bridge.js';
 import { createCapabilityBroker } from './capability-broker.js';
 import { createManifestRegistry } from './manifest-registry.js';
+import { createPermissionOverrideStore } from './permission-override-store.js';
 import {
     createInMemoryPluginStateStore,
     createPluginLoader,
@@ -22,7 +23,8 @@ function createTestStack(): PluginLoaderDeps & {
     const bus = createEventBus();
     const registry = createManifestRegistry();
     const bridge = createBridge(bus, registry);
-    const broker = createCapabilityBroker(registry);
+    const overrides = createPermissionOverrideStore();
+    const broker = createCapabilityBroker(registry, overrides);
     const stateStore = createInMemoryPluginStateStore();
     const loader = createPluginLoader({ bus, registry, bridge, broker, stateStore });
     return { bus, registry, bridge, broker, stateStore, loader };
@@ -35,7 +37,8 @@ function createRoutingStack(): PluginLoaderDeps & {
     const registry = createManifestRegistry();
     registry.register(stubPingManifest);
     const bridge = createBridge(bus, registry);
-    const broker = createCapabilityBroker(registry);
+    const overrides = createPermissionOverrideStore();
+    const broker = createCapabilityBroker(registry, overrides);
     const stateStore = createInMemoryPluginStateStore();
     return { bus, registry, bridge, broker, stateStore };
 }
