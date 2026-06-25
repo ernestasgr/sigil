@@ -10,7 +10,7 @@ export function HomeSection(): ReactElement {
     const logs = useAppStore((state) => state.logs);
 
     const activeWorkflows = workflows.filter((w) => w.enabled);
-    const recentEvents = busEvents.slice(-10);
+    const recentEvents = [...busEvents.slice(-10)].reverse();
 
     return (
         <SectionShell title="Home" subtitle="The working table — active sigils and recent echoes.">
