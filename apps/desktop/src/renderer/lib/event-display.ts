@@ -52,7 +52,13 @@ export function payloadPreview(payload: unknown): string {
     if (typeof obj.name === 'string') parts.push(`name=${obj.name}`);
     if (typeof obj.nodeId === 'string') parts.push(`node=${obj.nodeId}`);
     if (typeof obj.title === 'string') parts.push(`title=${obj.title}`);
-    if (parts.length === 0) return JSON.stringify(payload).slice(0, 80);
+    if (parts.length === 0) {
+        try {
+            return JSON.stringify(payload).slice(0, 80);
+        } catch {
+            return '[unserializable payload]';
+        }
+    }
     return parts.join(', ');
 }
 

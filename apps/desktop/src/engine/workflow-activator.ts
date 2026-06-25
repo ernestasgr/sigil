@@ -1,4 +1,3 @@
-import type { CompiledPipeline } from '@sigil/schema';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
 import type { Engine } from './engine.js';
@@ -34,21 +33,37 @@ export function createWorkflowActivator(
 
             switch (trigger.type) {
                 case 'file-watcher': {
-                    const config = trigger.config as {
-                        path: string;
-                        recursive: boolean;
-                        events: readonly string[];
-                        ignorePatterns?: readonly string[] | undefined;
-                    };
+                    const rawConfig = trigger.config;
+                    if (!rawConfig || typeof rawConfig !== 'object') {
+                        engine.bus.next({
+                            name: 'log.output',
+                            payload: {
+                                message: `[activator] file-watcher trigger for "${data.name}" (${workflowId}) has invalid config — cannot activate`,
+                            },
+                        });
+                        return false;
+                    }
+                    const config = rawConfig as Record<string, unknown>;
+                    if (typeof config.path !== 'string') {
+                        engine.bus.next({
+                            name: 'log.output',
+                            payload: {
+                                message: `[activator] file-watcher trigger for "${data.name}" (${workflowId}) is missing path — cannot activate`,
+                            },
+                        });
+                        return false;
+                    }
                     const subscriberId = `workflow:${workflowId}`;
 
                     fileWatcherManager.registerSubscriber(
                         {
                             id: subscriberId,
                             path: config.path,
-                            recursive: config.recursive,
-                            events: config.events,
-                            ignorePatterns: config.ignorePatterns,
+                            recursive: config.recursive === true,
+                            events: Array.isArray(config.events) ? config.events : [],
+                            ignorePatterns: Array.isArray(config.ignorePatterns)
+                                ? config.ignorePatterns
+                                : undefined,
                         },
                         (fileEvent) => {
                             const seedCtx: WorkflowContext = {
@@ -56,16 +71,14 @@ export function createWorkflowActivator(
                                 payload: fileEvent.payload as Record<string, unknown>,
                                 vars: {},
                             };
-                            void engine
-                                .execute(data.pipeline as CompiledPipeline, seedCtx)
-                                .catch((err: unknown) => {
-                                    engine.bus.next({
-                                        name: 'log.output',
-                                        payload: {
-                                            message: `[activator] workflow ${data.name} (${workflowId}) execution failed: ${err instanceof Error ? err.message : String(err)}`,
-                                        },
-                                    });
+                            void engine.execute(data.pipeline, seedCtx).catch((err: unknown) => {
+                                engine.bus.next({
+                                    name: 'log.output',
+                                    payload: {
+                                        message: `[activator] workflow ${data.name} (${workflowId}) execution failed: ${err instanceof Error ? err.message : String(err)}`,
+                                    },
                                 });
+                            });
                         },
                     );
 

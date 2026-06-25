@@ -55,10 +55,14 @@ export function EventsSection(): ReactElement {
             <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
-                        <label className="font-ui text-veil text-xs tracking-widest uppercase">
+                        <label
+                            htmlFor="event-type-filter"
+                            className="font-ui text-veil text-xs tracking-widest uppercase"
+                        >
                             Type
                         </label>
                         <select
+                            id="event-type-filter"
                             className="bg-obsidian-ink border-gilt/40 text-parchment font-ui rounded-none border px-3 py-1.5 text-sm"
                             value={filter.eventType}
                             onChange={(e) =>
@@ -77,10 +81,14 @@ export function EventsSection(): ReactElement {
                     </div>
                     {pluginIds.length > 1 && (
                         <div className="flex items-center gap-2">
-                            <label className="font-ui text-veil text-xs tracking-widest uppercase">
+                            <label
+                                htmlFor="plugin-filter"
+                                className="font-ui text-veil text-xs tracking-widest uppercase"
+                            >
                                 Plugin
                             </label>
                             <select
+                                id="plugin-filter"
                                 className="bg-obsidian-ink border-gilt/40 text-parchment font-ui rounded-none border px-3 py-1.5 text-sm"
                                 value={filter.pluginId}
                                 onChange={(e) =>

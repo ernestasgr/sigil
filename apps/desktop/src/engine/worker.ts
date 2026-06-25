@@ -53,14 +53,14 @@ const engine = createEngine({
     defaultDatabasePath: join(userDataPath ?? '', 'sigil.db'),
 });
 
+const workflowsDir = join(userDataPath ?? '', 'workflows');
+const store = createWorkflowStore(workflowsDir);
+const activator = createWorkflowActivator(engine, store, engine.fileWatcherManager);
+
 process.on('exit', () => {
     activator.dispose();
     engine.dispose();
 });
-
-const workflowsDir = join(userDataPath ?? '', 'workflows');
-const store = createWorkflowStore(workflowsDir);
-const activator = createWorkflowActivator(engine, store, engine.fileWatcherManager);
 
 function broadcastWorkflowsList(): void {
     const message: EngineWorkflowsList = {
@@ -203,7 +203,15 @@ port.on('message', (message: WorkerInbound) => {
 
 for (const wf of store.list()) {
     if (wf.enabled) {
-        activator.activate(wf.id);
+        try {
+            activator.activate(wf.id);
+        } catch (err) {
+            const log: EngineLog = {
+                type: EngineChannel.Log,
+                line: `[worker] failed to activate workflow ${wf.id} (${wf.name}): ${err instanceof Error ? err.message : String(err)}`,
+            };
+            port.postMessage(log);
+        }
     }
 }
 
