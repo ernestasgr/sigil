@@ -18,6 +18,7 @@ export const EngineChannel = {
     DeleteWorkflowResult: 'engine:delete-workflow-result',
     GetWorkflow: 'engine:get-workflow',
     GetWorkflowResult: 'engine:get-workflow-result',
+    BusEvent: 'engine:bus-event',
 } as const;
 
 export type EnginePing = { id: string; type: typeof EngineChannel.Ping };
@@ -96,6 +97,16 @@ export type EngineGetWorkflowResult =
     | EngineGetWorkflowResultFound
     | EngineGetWorkflowResultNotFound;
 
+export interface EngineBusEventPayload {
+    readonly name: string;
+    readonly payload: unknown;
+}
+
+export type EngineBusEvent = {
+    type: typeof EngineChannel.BusEvent;
+    event: EngineBusEventPayload;
+};
+
 export type EngineMessage =
     | EnginePing
     | EnginePong
@@ -111,7 +122,8 @@ export type EngineMessage =
     | EngineDeleteWorkflow
     | EngineDeleteWorkflowResult
     | EngineGetWorkflow
-    | EngineGetWorkflowResult;
+    | EngineGetWorkflowResult
+    | EngineBusEvent;
 
 export const RendererChannel = {
     EnginePong: 'renderer:engine-pong',
@@ -123,4 +135,5 @@ export const RendererChannel = {
     UpdateWorkflow: 'renderer:update-workflow',
     DeleteWorkflow: 'renderer:delete-workflow',
     GetWorkflow: 'renderer:get-workflow',
+    BusEvent: 'renderer:bus-event',
 } as const;

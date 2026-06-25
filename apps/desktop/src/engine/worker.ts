@@ -6,6 +6,7 @@ import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 
 import {
     EngineChannel,
+    type EngineBusEvent,
     type EngineCreateWorkflow,
     type EngineDeleteWorkflow,
     type EngineFireTestEvent,
@@ -20,6 +21,7 @@ import {
 import { createEngine } from './engine.js';
 import { readPropertiesFile } from './properties-loader.js';
 import { assertNever } from '../shared/assert-never.js';
+import { createWorkflowActivator } from './workflow-activator.js';
 import { createWorkflowStore } from './workflow-store.js';
 
 if (!parentPort) {
@@ -52,11 +54,13 @@ const engine = createEngine({
 });
 
 process.on('exit', () => {
+    activator.dispose();
     engine.dispose();
 });
 
 const workflowsDir = join(userDataPath ?? '', 'workflows');
 const store = createWorkflowStore(workflowsDir);
+const activator = createWorkflowActivator(engine, store, engine.fileWatcherManager);
 
 function broadcastWorkflowsList(): void {
     const message: EngineWorkflowsList = {
@@ -71,6 +75,8 @@ function log(message: string): void {
 }
 
 engine.bus.subscribe((event) => {
+    const busEvent: EngineBusEvent = { type: EngineChannel.BusEvent, event };
+    port.postMessage(busEvent);
     if (event.name === 'log.output') {
         const log: EngineLog = { type: EngineChannel.Log, line: event.payload.message };
         port.postMessage(log);
@@ -104,6 +110,11 @@ port.on('message', (message: WorkerInbound) => {
             const toggled = store.toggle(message.id);
             if (before && toggled) {
                 log(`"${before.name}" ${toggled.enabled ? 'enabled' : 'disabled'}`);
+                if (toggled.enabled) {
+                    activator.activate(message.id);
+                } else {
+                    activator.deactivate(message.id);
+                }
             }
             broadcastWorkflowsList();
             port.postMessage({
@@ -125,6 +136,7 @@ port.on('message', (message: WorkerInbound) => {
             break;
         }
         case EngineChannel.UpdateWorkflow: {
+            activator.deactivate(message.id);
             const existed = store.get(message.id) !== null;
             const summary = store.save(
                 message.id,
@@ -134,6 +146,9 @@ port.on('message', (message: WorkerInbound) => {
             );
             if (existed) {
                 log(`Updated workflow "${message.name}" (${summary.id})`);
+                if (summary.enabled) {
+                    activator.activate(message.id);
+                }
             } else {
                 log(`Created workflow "${message.name}" via update for missing id (${summary.id})`);
             }
@@ -146,6 +161,7 @@ port.on('message', (message: WorkerInbound) => {
             break;
         }
         case EngineChannel.DeleteWorkflow: {
+            activator.deactivate(message.id);
             const removed = store.remove(message.id);
             if (removed) {
                 log(`Deleted workflow (${message.id})`);
@@ -184,6 +200,12 @@ port.on('message', (message: WorkerInbound) => {
         }
     }
 });
+
+for (const wf of store.list()) {
+    if (wf.enabled) {
+        activator.activate(wf.id);
+    }
+}
 
 broadcastWorkflowsList();
 

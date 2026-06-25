@@ -8,6 +8,7 @@ import type { CompiledPipeline } from '@sigil/schema';
 
 import {
     EngineChannel,
+    type EngineBusEventPayload,
     type EngineCreateWorkflow,
     type EngineDeleteWorkflow,
     type EngineFireTestEvent,
@@ -45,6 +46,7 @@ export type EngineHandle = {
     readonly onWorkflowsList: (
         handler: (workflows: readonly WorkflowSummary[]) => void,
     ) => () => void;
+    readonly onBusEvent: (handler: (event: EngineBusEventPayload) => void) => () => void;
 };
 
 export function spawnEngine(): EngineHandle {
@@ -99,6 +101,7 @@ export function spawnEngine(): EngineHandle {
     const readyHandlers = new Set<() => void>();
     const logHandlers = new Set<(line: string) => void>();
     const workflowsListHandlers = new Set<(workflows: readonly WorkflowSummary[]) => void>();
+    const busEventHandlers = new Set<(event: EngineBusEventPayload) => void>();
     let ready = false;
 
     function rejectAllPending(reason: string) {
@@ -200,6 +203,10 @@ export function spawnEngine(): EngineHandle {
                 clearTimeout(entry.timer);
                 entry.resolve(message.summary);
             }
+            return;
+        }
+        if (message.type === EngineChannel.BusEvent) {
+            for (const handler of [...busEventHandlers]) handler(message.event);
             return;
         }
     });
@@ -351,6 +358,12 @@ export function spawnEngine(): EngineHandle {
             workflowsListHandlers.add(handler);
             return () => {
                 workflowsListHandlers.delete(handler);
+            };
+        },
+        onBusEvent(handler: (event: EngineBusEventPayload) => void): () => void {
+            busEventHandlers.add(handler);
+            return () => {
+                busEventHandlers.delete(handler);
             };
         },
     };

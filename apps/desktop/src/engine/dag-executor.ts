@@ -91,6 +91,7 @@ export async function executePipeline(
     sleep: Sleep = DEFAULT_SLEEP,
     stateStore: WorkflowStateStore = createInMemoryWorkflowStateStore(),
     capabilityBroker?: CapabilityBroker,
+    seedContext?: WorkflowContext,
 ): Promise<void> {
     const runPayload: WorkflowRunPayload = { pipelineId: pipeline.id };
     bus.next({ name: 'workflow.started', payload: runPayload });
@@ -125,7 +126,7 @@ export async function executePipeline(
         let triggerResult: NodeRunResult;
         try {
             triggerResult = await nodeHandlers[triggerNode.type].execute(
-                { node: triggerNode, ctx: SEED_CONTEXT },
+                { node: triggerNode, ctx: seedContext ?? SEED_CONTEXT },
                 deps,
             );
         } catch (err) {
