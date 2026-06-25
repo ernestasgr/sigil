@@ -1,4 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+
+import type { CompiledPipeline } from '@sigil/schema';
+
 import { RendererChannel, type EnginePong } from '../shared/ipc-channels.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 
@@ -7,6 +10,16 @@ const api = {
     fireTestEvent: (): Promise<void> => ipcRenderer.invoke(RendererChannel.FireTestEvent),
     toggleWorkflow: (id: string): Promise<void> =>
         ipcRenderer.invoke(RendererChannel.ToggleWorkflow, id),
+    createWorkflow: (name: string, pipeline: CompiledPipeline): Promise<void> =>
+        ipcRenderer.invoke(RendererChannel.CreateWorkflow, name, pipeline),
+    updateWorkflow: (id: string, name: string, pipeline: CompiledPipeline): Promise<void> =>
+        ipcRenderer.invoke(RendererChannel.UpdateWorkflow, id, name, pipeline),
+    deleteWorkflow: (id: string): Promise<void> =>
+        ipcRenderer.invoke(RendererChannel.DeleteWorkflow, id),
+    getWorkflow: (
+        id: string,
+    ): Promise<{ readonly name: string; readonly pipeline: CompiledPipeline } | null> =>
+        ipcRenderer.invoke(RendererChannel.GetWorkflow, id),
     onEngineLog: (handler: (line: string) => void): (() => void) => {
         const listener = (_event: IpcRendererEvent, line: string): void => handler(line);
         ipcRenderer.on(RendererChannel.EngineLog, listener);

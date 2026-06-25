@@ -1,6 +1,9 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import type { CompiledPipeline } from '@sigil/schema';
+
 import { RendererChannel, type EnginePong } from '../shared/ipc-channels.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 import { spawnEngine, type EngineHandle } from './engine-client.js';
@@ -107,6 +110,55 @@ function wireEngineIpc(): void {
             engine?.toggleWorkflow(id);
         }
     });
+
+    ipcMain.handle(
+        RendererChannel.CreateWorkflow,
+        async (_event, name: unknown, pipeline: unknown): Promise<void> => {
+            if (typeof name === 'string' && pipeline && typeof pipeline === 'object') {
+                engine?.createWorkflow(name, pipeline as CompiledPipeline);
+            }
+        },
+    );
+
+    ipcMain.handle(
+        RendererChannel.UpdateWorkflow,
+        async (_event, id: unknown, name: unknown, pipeline: unknown): Promise<void> => {
+            if (
+                typeof id === 'string' &&
+                typeof name === 'string' &&
+                pipeline &&
+                typeof pipeline === 'object'
+            ) {
+                engine?.updateWorkflow(id, name, pipeline as CompiledPipeline);
+            }
+        },
+    );
+
+    ipcMain.handle(RendererChannel.DeleteWorkflow, async (_event, id: unknown): Promise<void> => {
+        if (typeof id === 'string') {
+            engine?.deleteWorkflow(id);
+        }
+    });
+
+    ipcMain.handle(
+        RendererChannel.GetWorkflow,
+        async (
+            _event,
+            id: unknown,
+        ): Promise<{ readonly name: string; readonly pipeline: CompiledPipeline } | null> => {
+            if (typeof id !== 'string' || !engine) return null;
+            try {
+                const result = await engine.getWorkflow(id);
+                if (result.found) {
+                    return { name: result.name, pipeline: result.pipeline };
+                }
+                return null;
+            } catch (err) {
+                console.error('[main] getWorkflow failed:', err);
+                return null;
+            }
+        },
+    );
 }
 
 function forwardEngineLogsToRenderer(): void {

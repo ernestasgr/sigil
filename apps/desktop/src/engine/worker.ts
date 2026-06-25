@@ -6,17 +6,21 @@ import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 
 import {
     EngineChannel,
+    type EngineCreateWorkflow,
+    type EngineDeleteWorkflow,
     type EngineFireTestEvent,
+    type EngineGetWorkflow,
     type EngineLog,
     type EnginePing,
     type EnginePong,
     type EngineToggleWorkflow,
+    type EngineUpdateWorkflow,
     type EngineWorkflowsList,
 } from '../shared/ipc-channels.js';
 import { createEngine } from './engine.js';
 import { readPropertiesFile } from './properties-loader.js';
 import { assertNever } from '../shared/assert-never.js';
-import { toggleWorkflow, type WorkflowRegistryState } from './workflow-registry.js';
+import { createWorkflowStore } from './workflow-store.js';
 
 if (!parentPort) {
     throw new Error('engine worker must be spawned as a worker_thread');
@@ -24,7 +28,14 @@ if (!parentPort) {
 
 const port = parentPort;
 
-type WorkerInbound = EnginePing | EngineFireTestEvent | EngineToggleWorkflow;
+type WorkerInbound =
+    | EnginePing
+    | EngineFireTestEvent
+    | EngineToggleWorkflow
+    | EngineCreateWorkflow
+    | EngineUpdateWorkflow
+    | EngineDeleteWorkflow
+    | EngineGetWorkflow;
 
 const userDataPath =
     typeof workerData === 'object' && workerData !== null
@@ -44,18 +55,13 @@ process.on('exit', () => {
     engine.dispose();
 });
 
-const seedWorkflows: WorkflowRegistryState = [
-    { id: 'sort-downloads', name: 'Sort Downloads', enabled: false },
-    { id: 'notify-build', name: 'Notify Build', enabled: true },
-    { id: 'clean-tmp', name: 'Clean Tmp', enabled: false },
-];
-
-let registry: WorkflowRegistryState = seedWorkflows;
+const workflowsDir = join(userDataPath ?? '', 'workflows');
+const store = createWorkflowStore(workflowsDir);
 
 function broadcastWorkflowsList(): void {
     const message: EngineWorkflowsList = {
         type: EngineChannel.WorkflowsList,
-        workflows: registry,
+        workflows: store.list(),
     };
     port.postMessage(message);
 }
@@ -94,13 +100,52 @@ port.on('message', (message: WorkerInbound) => {
             break;
         }
         case EngineChannel.ToggleWorkflow: {
-            const before = registry.find((w) => w.id === message.id);
-            registry = toggleWorkflow(registry, message.id);
-            const after = registry.find((w) => w.id === message.id);
-            if (before && after) {
-                log(`[tray] "${before.name}" ${after.enabled ? 'enabled' : 'disabled'}`);
+            const before = store.get(message.id);
+            const toggled = store.toggle(message.id);
+            if (before && toggled) {
+                log(`"${before.name}" ${toggled.enabled ? 'enabled' : 'disabled'}`);
             }
             broadcastWorkflowsList();
+            break;
+        }
+        case EngineChannel.CreateWorkflow: {
+            const summary = store.create(message.name, message.pipeline);
+            log(`Created workflow "${message.name}" (${summary.id})`);
+            broadcastWorkflowsList();
+            break;
+        }
+        case EngineChannel.UpdateWorkflow: {
+            const summary = store.save(message.id, message.name, message.pipeline);
+            log(`Updated workflow "${message.name}" (${summary.id})`);
+            broadcastWorkflowsList();
+            break;
+        }
+        case EngineChannel.DeleteWorkflow: {
+            const removed = store.remove(message.id);
+            if (removed) {
+                log(`Deleted workflow (${message.id})`);
+            }
+            broadcastWorkflowsList();
+            break;
+        }
+        case EngineChannel.GetWorkflow: {
+            const data = store.get(message.id);
+            if (data) {
+                port.postMessage({
+                    type: EngineChannel.GetWorkflowResult,
+                    correlationId: message.correlationId,
+                    found: true,
+                    name: data.name,
+                    pipeline: data.pipeline,
+                });
+            } else {
+                port.postMessage({
+                    type: EngineChannel.GetWorkflowResult,
+                    correlationId: message.correlationId,
+                    found: false,
+                    error: `Workflow not found: ${message.id}`,
+                });
+            }
             break;
         }
         default: {
