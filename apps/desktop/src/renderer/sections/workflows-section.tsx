@@ -35,7 +35,9 @@ export function WorkflowsSection(): ReactElement {
             try {
                 const result = await window.sigil.getWorkflow(id);
                 if (result) {
-                    useBuilderStore.getState().loadPipeline(result.pipeline, result.name);
+                    useBuilderStore
+                        .getState()
+                        .loadPipeline(result.pipeline, result.name, result.positions);
                     setEditingWorkflowId(id);
                     setWorkflowView('builder');
                 }
@@ -53,11 +55,12 @@ export function WorkflowsSection(): ReactElement {
             const result = useBuilderStore.getState().compile();
             if (!result.ok) return;
             const pipeline: CompiledPipeline = result.value;
+            const positions = useBuilderStore.getState().getPositions();
             try {
                 if (editingWorkflowId) {
-                    await window.sigil.updateWorkflow(editingWorkflowId, name, pipeline);
+                    await window.sigil.updateWorkflow(editingWorkflowId, name, pipeline, positions);
                 } else {
-                    await window.sigil.createWorkflow(name, pipeline);
+                    await window.sigil.createWorkflow(name, pipeline, positions);
                 }
                 setWorkflowView('list');
                 setEditingWorkflowId(null);

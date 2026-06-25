@@ -36,18 +36,27 @@ export interface BuilderState {
     readonly onNodesChange: (changes: readonly NodeChange<BuilderRFNode>[]) => void;
     readonly onEdgesChange: (changes: readonly EdgeChange[]) => void;
     readonly compile: () => CompileResult;
+    readonly getPositions: () => Readonly<
+        Record<string, { readonly x: number; readonly y: number }>
+    >;
     readonly clear: () => void;
-    readonly loadPipeline: (pipeline: CompiledPipeline, name: string) => void;
+    readonly loadPipeline: (
+        pipeline: CompiledPipeline,
+        name: string,
+        positions?: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
+    ) => void;
     readonly setPipelineName: (name: string) => void;
 }
 
-const DEFAULT_META: PipelineMeta = { id: 'pipeline-draft', workflowId: 'workflow-draft' };
+function freshMeta(): PipelineMeta {
+    return { id: crypto.randomUUID(), workflowId: crypto.randomUUID() };
+}
 
 export const useBuilderStore = create<BuilderState>((set, get) => ({
     nodes: [],
     edges: [],
     selectedNodeId: null,
-    meta: DEFAULT_META,
+    meta: freshMeta(),
     pipelineName: '',
 
     addNode: (type, position) => {
@@ -137,16 +146,25 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         return compileGraph(nodes, edges, meta);
     },
 
-    clear: () => {
-        set({ nodes: [], edges: [], selectedNodeId: null, meta: DEFAULT_META, pipelineName: '' });
+    getPositions: () => {
+        const { nodes } = get();
+        const positions: Record<string, { readonly x: number; readonly y: number }> = {};
+        for (const node of nodes) {
+            positions[node.id] = { x: node.position.x, y: node.position.y };
+        }
+        return positions;
     },
 
-    loadPipeline: (pipeline, name) => {
+    clear: () => {
+        set({ nodes: [], edges: [], selectedNodeId: null, meta: freshMeta(), pipelineName: '' });
+    },
+
+    loadPipeline: (pipeline, name, positions) => {
         const nodes: BuilderRFNode[] = pipeline.nodes.map(
             (pn: PipelineNode): BuilderRFNode => ({
                 id: pn.id,
                 type: BUILDER_NODE_TYPE,
-                position: { x: 0, y: 0 },
+                position: positions?.[pn.id] ?? { x: 0, y: 0 },
                 data: { type: pn.type, config: structuredClone(pn.config) } as NodeSpec,
             }),
         );

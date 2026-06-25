@@ -26,8 +26,17 @@ export type EngineHandle = {
     readonly ping: (timeoutMs?: number) => Promise<EnginePong>;
     readonly fireTestEvent: () => void;
     readonly toggleWorkflow: (id: string) => void;
-    readonly createWorkflow: (name: string, pipeline: CompiledPipeline) => void;
-    readonly updateWorkflow: (id: string, name: string, pipeline: CompiledPipeline) => void;
+    readonly createWorkflow: (
+        name: string,
+        pipeline: CompiledPipeline,
+        positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
+    ) => void;
+    readonly updateWorkflow: (
+        id: string,
+        name: string,
+        pipeline: CompiledPipeline,
+        positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
+    ) => void;
     readonly deleteWorkflow: (id: string) => void;
     readonly getWorkflow: (id: string, timeoutMs?: number) => Promise<EngineGetWorkflowResult>;
     readonly terminate: () => Promise<number>;
@@ -141,20 +150,31 @@ export function spawnEngine(): EngineHandle {
             const toggle: EngineToggleWorkflow = { type: EngineChannel.ToggleWorkflow, id };
             worker.postMessage(toggle);
         },
-        createWorkflow(name: string, pipeline: CompiledPipeline): void {
+        createWorkflow(
+            name: string,
+            pipeline: CompiledPipeline,
+            positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
+        ): void {
             const msg: EngineCreateWorkflow = {
                 type: EngineChannel.CreateWorkflow,
                 name,
                 pipeline,
+                positions,
             };
             worker.postMessage(msg);
         },
-        updateWorkflow(id: string, name: string, pipeline: CompiledPipeline): void {
+        updateWorkflow(
+            id: string,
+            name: string,
+            pipeline: CompiledPipeline,
+            positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
+        ): void {
             const msg: EngineUpdateWorkflow = {
                 type: EngineChannel.UpdateWorkflow,
                 id,
                 name,
                 pipeline,
+                positions,
             };
             worker.postMessage(msg);
         },
