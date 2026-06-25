@@ -75,7 +75,7 @@ function ValidationBar({ onSave }: ValidationBarProps): ReactElement {
         try {
             await navigator.clipboard.writeText(JSON.stringify(result.value, null, 2));
             setCopied(true);
-            window.setTimeout(() => setCopied(false), 1500);
+            setTimeout(() => setCopied(false), 1500);
         } catch {
             // Clipboard write failed — don't show copied state
         }

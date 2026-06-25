@@ -115,11 +115,14 @@ function wireEngineIpc(): void {
         engine?.fireTestEvent();
     });
 
-    ipcMain.handle(RendererChannel.ToggleWorkflow, async (_event, id: unknown): Promise<void> => {
-        if (typeof id === 'string') {
-            engine?.toggleWorkflow(id);
-        }
-    });
+    ipcMain.handle(
+        RendererChannel.ToggleWorkflow,
+        async (_event, id: unknown): Promise<WorkflowSummary | null> => {
+            if (typeof id !== 'string') throw new Error('Invalid workflow id');
+            if (!engine) throw new Error('Engine not ready');
+            return await engine.toggleWorkflow(id);
+        },
+    );
 
     ipcMain.handle(
         RendererChannel.CreateWorkflow,
