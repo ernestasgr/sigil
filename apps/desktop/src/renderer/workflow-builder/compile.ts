@@ -3,6 +3,7 @@ import { parsePipeline, type CompiledPipeline } from '@sigil/schema';
 export interface PipelineMeta {
     readonly id: string;
     readonly workflowId: string;
+    readonly name?: string;
 }
 
 export interface VisualNode {

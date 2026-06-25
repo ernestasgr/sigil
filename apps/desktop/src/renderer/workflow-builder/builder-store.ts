@@ -1,4 +1,5 @@
-import type { NodeType } from '@sigil/schema/nodes';
+import type { CompiledPipeline } from '@sigil/schema';
+import type { NodeType, PipelineNode } from '@sigil/schema/nodes';
 import { outputPortsForNode } from '@sigil/schema/nodes';
 import {
     addEdge,
@@ -25,6 +26,7 @@ export interface BuilderState {
     readonly edges: readonly Edge[];
     readonly selectedNodeId: string | null;
     readonly meta: PipelineMeta;
+    readonly pipelineName: string;
     readonly addNode: (type: NodeType, position: XYPosition) => string;
     readonly updateSpec: (nodeId: string, spec: NodeSpec) => void;
     readonly removeNode: (nodeId: string) => void;
@@ -35,6 +37,8 @@ export interface BuilderState {
     readonly onEdgesChange: (changes: readonly EdgeChange[]) => void;
     readonly compile: () => CompileResult;
     readonly clear: () => void;
+    readonly loadPipeline: (pipeline: CompiledPipeline, name: string) => void;
+    readonly setPipelineName: (name: string) => void;
 }
 
 const DEFAULT_META: PipelineMeta = { id: 'pipeline-draft', workflowId: 'workflow-draft' };
@@ -44,6 +48,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     edges: [],
     selectedNodeId: null,
     meta: DEFAULT_META,
+    pipelineName: '',
 
     addNode: (type, position) => {
         const id = crypto.randomUUID();
@@ -133,6 +138,34 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     },
 
     clear: () => {
-        set({ nodes: [], edges: [], selectedNodeId: null });
+        set({ nodes: [], edges: [], selectedNodeId: null, meta: DEFAULT_META, pipelineName: '' });
+    },
+
+    loadPipeline: (pipeline, name) => {
+        const nodes: BuilderRFNode[] = pipeline.nodes.map(
+            (pn: PipelineNode): BuilderRFNode => ({
+                id: pn.id,
+                type: BUILDER_NODE_TYPE,
+                position: { x: 0, y: 0 },
+                data: { type: pn.type, config: structuredClone(pn.config) } as NodeSpec,
+            }),
+        );
+        const edges: Edge[] = pipeline.edges.map((pe) => ({
+            id: pe.id,
+            source: pe.source,
+            target: pe.target,
+            sourceHandle: pe.sourcePort,
+            targetHandle: undefined,
+        }));
+        const meta: PipelineMeta = {
+            id: pipeline.id,
+            workflowId: pipeline.workflowId,
+            name,
+        };
+        set({ nodes, edges, selectedNodeId: null, meta, pipelineName: name });
+    },
+
+    setPipelineName: (name) => {
+        set({ pipelineName: name });
     },
 }));

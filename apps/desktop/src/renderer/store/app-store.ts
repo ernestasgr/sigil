@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type { WorkflowSummary } from '../../shared/workflow.js';
 
 export type Section = 'home' | 'workflows' | 'events' | 'plugins' | 'settings';
+export type WorkflowView = 'list' | 'builder';
 
 export interface LogEntry {
     readonly id: number;
@@ -16,15 +17,21 @@ export interface AppState {
     readonly activeSection: Section;
     readonly workflows: readonly WorkflowSummary[];
     readonly logs: readonly LogEntry[];
+    readonly workflowView: WorkflowView;
+    readonly editingWorkflowId: string | null;
     readonly navigate: (section: Section) => void;
     readonly setWorkflows: (workflows: readonly WorkflowSummary[]) => void;
     readonly appendLog: (line: string) => void;
+    readonly setWorkflowView: (view: WorkflowView) => void;
+    readonly setEditingWorkflowId: (id: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
     activeSection: 'home',
     workflows: [],
     logs: [],
+    workflowView: 'list',
+    editingWorkflowId: null,
     navigate: (section) => {
         set({ activeSection: section });
     },
@@ -38,5 +45,11 @@ export const useAppStore = create<AppState>((set) => ({
             if (logs.length <= LOG_CAP) return { logs };
             return { logs: logs.slice(logs.length - LOG_CAP) };
         });
+    },
+    setWorkflowView: (view) => {
+        set({ workflowView: view });
+    },
+    setEditingWorkflowId: (id) => {
+        set({ editingWorkflowId: id });
     },
 }));
