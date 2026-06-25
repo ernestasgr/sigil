@@ -19,6 +19,7 @@ export function App(): ReactElement {
         const unsubscribeBusEvents = window.sigil.onBusEvent((event) => {
             appendBusEvent(event);
         });
+        void window.sigil.rendererReady();
         return () => {
             unsubscribeWorkflows();
             unsubscribeLogs();
