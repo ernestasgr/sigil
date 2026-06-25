@@ -1,6 +1,6 @@
 import type { CompiledPipeline } from '@sigil/schema';
 
-import type { WorkflowSummary } from './workflow.js';
+import type { NodePosition, WorkflowSummary } from './workflow.js';
 
 export const EngineChannel = {
     Ping: 'engine:ping',
@@ -35,6 +35,7 @@ export type EngineCreateWorkflow = {
     type: typeof EngineChannel.CreateWorkflow;
     name: string;
     pipeline: CompiledPipeline;
+    positions: Readonly<Record<string, NodePosition>>;
 };
 export type EngineCreateWorkflowResult = {
     type: typeof EngineChannel.CreateWorkflowResult;
@@ -46,6 +47,7 @@ export type EngineUpdateWorkflow = {
     id: string;
     name: string;
     pipeline: CompiledPipeline;
+    positions: Readonly<Record<string, NodePosition>>;
 };
 export type EngineUpdateWorkflowResult = {
     type: typeof EngineChannel.UpdateWorkflowResult;
@@ -72,6 +74,7 @@ export type EngineGetWorkflowResultFound = {
     found: true;
     name: string;
     pipeline: CompiledPipeline;
+    positions: Readonly<Record<string, NodePosition>>;
 };
 export type EngineGetWorkflowResultNotFound = {
     type: typeof EngineChannel.GetWorkflowResult;

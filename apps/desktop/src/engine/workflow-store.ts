@@ -7,15 +7,17 @@ import {
     writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 import { parsePipeline, type CompiledPipeline, type PipelineSchemaVersion } from '@sigil/schema';
 
-import type { WorkflowSummary } from '../shared/workflow.js';
+import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
 
 export interface StoredWorkflow {
     readonly id: string;
     readonly name: string;
     readonly enabled: boolean;
+    readonly positions: Readonly<Record<string, NodePosition>>;
     readonly pipelineId: string;
     readonly workflowId: string;
     readonly schemaVersion: PipelineSchemaVersion;
@@ -25,17 +27,47 @@ export interface StoredWorkflow {
 
 export interface WorkflowStore {
     readonly list: () => readonly WorkflowSummary[];
-    readonly get: (
+    readonly get: (id: string) => {
+        readonly pipeline: CompiledPipeline;
+        readonly name: string;
+        readonly positions: Readonly<Record<string, NodePosition>>;
+    } | null;
+    readonly save: (
         id: string,
-    ) => { readonly pipeline: CompiledPipeline; readonly name: string } | null;
-    readonly save: (id: string, name: string, pipeline: CompiledPipeline) => WorkflowSummary;
-    readonly create: (name: string, pipeline: CompiledPipeline) => WorkflowSummary;
+        name: string,
+        pipeline: CompiledPipeline,
+        positions: Readonly<Record<string, NodePosition>>,
+    ) => WorkflowSummary;
+    readonly create: (
+        name: string,
+        pipeline: CompiledPipeline,
+        positions: Readonly<Record<string, NodePosition>>,
+    ) => WorkflowSummary;
     readonly remove: (id: string) => boolean;
     readonly toggle: (id: string) => WorkflowSummary | null;
 }
 
 function filePath(dir: string, id: string): string {
     return join(dir, `${id}.json`);
+}
+
+function readPositions(raw: Record<string, unknown>): Record<string, NodePosition> {
+    const rawPositions = raw['positions'];
+    if (!rawPositions || typeof rawPositions !== 'object') return {};
+    const positions: Record<string, NodePosition> = {};
+    for (const [key, value] of Object.entries(rawPositions)) {
+        if (
+            value &&
+            typeof value === 'object' &&
+            'x' in value &&
+            'y' in value &&
+            typeof (value as Record<string, unknown>).x === 'number' &&
+            typeof (value as Record<string, unknown>).y === 'number'
+        ) {
+            positions[key] = value as NodePosition;
+        }
+    }
+    return positions;
 }
 
 function readWorkflowFile(filePath: string): StoredWorkflow | null {
@@ -55,6 +87,7 @@ function readWorkflowFile(filePath: string): StoredWorkflow | null {
             id: raw.id as string,
             name: raw.name as string,
             enabled: typeof raw.enabled === 'boolean' ? (raw.enabled as boolean) : false,
+            positions: readPositions(raw),
             pipelineId: pipeline.id,
             workflowId: pipeline.workflowId,
             schemaVersion: pipeline.schemaVersion,
@@ -74,6 +107,7 @@ function writeWorkflowFile(dir: string, stored: StoredWorkflow): void {
         id: stored.id,
         name: stored.name,
         enabled: stored.enabled,
+        positions: stored.positions,
         pipelineId: stored.pipelineId,
         workflowId: stored.workflowId,
         schemaVersion: stored.schemaVersion,
@@ -117,14 +151,15 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
                 nodes: stored.nodes as CompiledPipeline['nodes'],
                 edges: stored.edges as CompiledPipeline['edges'],
             };
-            return { pipeline, name: stored.name };
+            return { pipeline, name: stored.name, positions: stored.positions };
         },
 
-        create: (name, pipeline) => {
+        create: (name, pipeline, positions) => {
             const stored: StoredWorkflow = {
-                id: pipeline.workflowId,
+                id: randomUUID(),
                 name,
                 enabled: false,
+                positions,
                 pipelineId: pipeline.id,
                 workflowId: pipeline.workflowId,
                 schemaVersion: pipeline.schemaVersion,
@@ -136,13 +171,14 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
             return toSummary(stored);
         },
 
-        save: (id, name, pipeline) => {
+        save: (id, name, pipeline, positions) => {
             const existing = workflows.get(id);
             if (!existing) {
                 return toSummary({
                     id,
                     name,
                     enabled: false,
+                    positions,
                     pipelineId: pipeline.id,
                     workflowId: pipeline.workflowId,
                     schemaVersion: pipeline.schemaVersion,
@@ -153,6 +189,7 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
             const stored: StoredWorkflow = {
                 ...existing,
                 name,
+                positions,
                 pipelineId: pipeline.id,
                 workflowId: pipeline.workflowId,
                 schemaVersion: pipeline.schemaVersion,

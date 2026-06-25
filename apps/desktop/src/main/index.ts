@@ -113,23 +113,38 @@ function wireEngineIpc(): void {
 
     ipcMain.handle(
         RendererChannel.CreateWorkflow,
-        async (_event, name: unknown, pipeline: unknown): Promise<void> => {
+        async (_event, name: unknown, pipeline: unknown, positions: unknown): Promise<void> => {
             if (typeof name === 'string' && pipeline && typeof pipeline === 'object') {
-                engine?.createWorkflow(name, pipeline as CompiledPipeline);
+                engine?.createWorkflow(
+                    name,
+                    pipeline as CompiledPipeline,
+                    (positions ?? {}) as Record<string, { readonly x: number; readonly y: number }>,
+                );
             }
         },
     );
 
     ipcMain.handle(
         RendererChannel.UpdateWorkflow,
-        async (_event, id: unknown, name: unknown, pipeline: unknown): Promise<void> => {
+        async (
+            _event,
+            id: unknown,
+            name: unknown,
+            pipeline: unknown,
+            positions: unknown,
+        ): Promise<void> => {
             if (
                 typeof id === 'string' &&
                 typeof name === 'string' &&
                 pipeline &&
                 typeof pipeline === 'object'
             ) {
-                engine?.updateWorkflow(id, name, pipeline as CompiledPipeline);
+                engine?.updateWorkflow(
+                    id,
+                    name,
+                    pipeline as CompiledPipeline,
+                    (positions ?? {}) as Record<string, { readonly x: number; readonly y: number }>,
+                );
             }
         },
     );
@@ -145,12 +160,22 @@ function wireEngineIpc(): void {
         async (
             _event,
             id: unknown,
-        ): Promise<{ readonly name: string; readonly pipeline: CompiledPipeline } | null> => {
+        ): Promise<{
+            readonly name: string;
+            readonly pipeline: CompiledPipeline;
+            readonly positions: Readonly<
+                Record<string, { readonly x: number; readonly y: number }>
+            >;
+        } | null> => {
             if (typeof id !== 'string' || !engine) return null;
             try {
                 const result = await engine.getWorkflow(id);
                 if (result.found) {
-                    return { name: result.name, pipeline: result.pipeline };
+                    return {
+                        name: result.name,
+                        pipeline: result.pipeline,
+                        positions: result.positions,
+                    };
                 }
                 return null;
             } catch (err) {
@@ -202,6 +227,10 @@ app.whenReady().then(() => {
 
     tray.updateWorkflows(workflows);
     mainWindow = createWindow();
+
+    mainWindow.webContents.on('did-finish-load', () => {
+        broadcastWorkflowsList(workflows);
+    });
 
     app.on('activate', () => {
         showAppWindow();

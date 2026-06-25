@@ -109,13 +109,18 @@ port.on('message', (message: WorkerInbound) => {
             break;
         }
         case EngineChannel.CreateWorkflow: {
-            const summary = store.create(message.name, message.pipeline);
+            const summary = store.create(message.name, message.pipeline, message.positions);
             log(`Created workflow "${message.name}" (${summary.id})`);
             broadcastWorkflowsList();
             break;
         }
         case EngineChannel.UpdateWorkflow: {
-            const summary = store.save(message.id, message.name, message.pipeline);
+            const summary = store.save(
+                message.id,
+                message.name,
+                message.pipeline,
+                message.positions,
+            );
             log(`Updated workflow "${message.name}" (${summary.id})`);
             broadcastWorkflowsList();
             break;
@@ -137,6 +142,7 @@ port.on('message', (message: WorkerInbound) => {
                     found: true,
                     name: data.name,
                     pipeline: data.pipeline,
+                    positions: data.positions,
                 });
             } else {
                 port.postMessage({
