@@ -9,6 +9,7 @@ export const EngineChannel = {
     Log: 'engine:log',
     WorkflowsList: 'engine:workflows-list',
     ToggleWorkflow: 'engine:toggle-workflow',
+    ToggleWorkflowResult: 'engine:toggle-workflow-result',
     CreateWorkflow: 'engine:create-workflow',
     CreateWorkflowResult: 'engine:create-workflow-result',
     UpdateWorkflow: 'engine:update-workflow',
@@ -29,7 +30,13 @@ export type EngineWorkflowsList = {
 };
 export type EngineToggleWorkflow = {
     type: typeof EngineChannel.ToggleWorkflow;
+    correlationId: string;
     id: string;
+};
+export type EngineToggleWorkflowResult = {
+    type: typeof EngineChannel.ToggleWorkflowResult;
+    correlationId: string;
+    summary: WorkflowSummary | null;
 };
 export type EngineCreateWorkflow = {
     type: typeof EngineChannel.CreateWorkflow;
@@ -96,6 +103,7 @@ export type EngineMessage =
     | EngineLog
     | EngineWorkflowsList
     | EngineToggleWorkflow
+    | EngineToggleWorkflowResult
     | EngineCreateWorkflow
     | EngineCreateWorkflowResult
     | EngineUpdateWorkflow

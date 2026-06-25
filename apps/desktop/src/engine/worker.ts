@@ -106,6 +106,11 @@ port.on('message', (message: WorkerInbound) => {
                 log(`"${before.name}" ${toggled.enabled ? 'enabled' : 'disabled'}`);
             }
             broadcastWorkflowsList();
+            port.postMessage({
+                type: EngineChannel.ToggleWorkflowResult,
+                correlationId: message.correlationId,
+                summary: toggled,
+            });
             break;
         }
         case EngineChannel.CreateWorkflow: {
@@ -120,13 +125,18 @@ port.on('message', (message: WorkerInbound) => {
             break;
         }
         case EngineChannel.UpdateWorkflow: {
+            const existed = store.get(message.id) !== null;
             const summary = store.save(
                 message.id,
                 message.name,
                 message.pipeline,
                 message.positions,
             );
-            log(`Updated workflow "${message.name}" (${summary.id})`);
+            if (existed) {
+                log(`Updated workflow "${message.name}" (${summary.id})`);
+            } else {
+                log(`Created workflow "${message.name}" via update for missing id (${summary.id})`);
+            }
             broadcastWorkflowsList();
             port.postMessage({
                 type: EngineChannel.UpdateWorkflowResult,
