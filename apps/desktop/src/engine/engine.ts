@@ -7,6 +7,8 @@ import {
     type ResolvedProperties,
 } from '@sigil/schema/properties-file';
 
+import type { WorkflowContext } from '@sigil/schema/workflow-context';
+
 import type { Bridge } from './bridge.js';
 import { createBridge } from './bridge.js';
 import type { CapabilityBroker } from './capability-broker.js';
@@ -47,7 +49,7 @@ export interface Engine {
     readonly settings: ExecutorSettings;
     readonly fileWatcherManager: FileWatcherManager;
     readonly loadBuiltinPlugins: () => Promise<void>;
-    readonly execute: (pipeline: CompiledPipeline) => Promise<void>;
+    readonly execute: (pipeline: CompiledPipeline, seedContext?: WorkflowContext) => Promise<void>;
     readonly dispose: () => void;
 }
 
@@ -111,7 +113,7 @@ export function createEngine(options?: EngineOptions): Engine {
                 }
             }
         },
-        execute: (pipeline) =>
+        execute: (pipeline, seedContext) =>
             executePipeline(
                 pipeline,
                 bus,
@@ -119,6 +121,7 @@ export function createEngine(options?: EngineOptions): Engine {
                 undefined,
                 workflowStateStore,
                 capabilityBroker,
+                seedContext,
             ),
         dispose: (): void => {
             fileWatcherManager.dispose();

@@ -2,7 +2,11 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
 import type { CompiledPipeline } from '@sigil/schema';
 
-import { RendererChannel, type EnginePong } from '../shared/ipc-channels.js';
+import {
+    RendererChannel,
+    type EngineBusEventPayload,
+    type EnginePong,
+} from '../shared/ipc-channels.js';
 import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
 
 const api = {
@@ -45,6 +49,14 @@ const api = {
         ipcRenderer.on(RendererChannel.WorkflowsList, listener);
         return () => {
             ipcRenderer.off(RendererChannel.WorkflowsList, listener);
+        };
+    },
+    onBusEvent: (handler: (event: EngineBusEventPayload) => void): (() => void) => {
+        const listener = (_event: IpcRendererEvent, event: EngineBusEventPayload): void =>
+            handler(event);
+        ipcRenderer.on(RendererChannel.BusEvent, listener);
+        return () => {
+            ipcRenderer.off(RendererChannel.BusEvent, listener);
         };
     },
 };

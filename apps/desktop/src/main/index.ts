@@ -4,7 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 import { parsePipeline, type CompiledPipeline } from '@sigil/schema';
 
-import { RendererChannel, type EnginePong } from '../shared/ipc-channels.js';
+import {
+    RendererChannel,
+    type EngineBusEventPayload,
+    type EnginePong,
+} from '../shared/ipc-channels.js';
 import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
 import { spawnEngine, type EngineHandle } from './engine-client.js';
 import { createTray, type TrayController } from './tray.js';
@@ -220,6 +224,18 @@ function subscribeToWorkflowsList(): void {
     app.on('before-quit', unsubscribe);
 }
 
+function forwardBusEventsToRenderer(): void {
+    if (!engine) return;
+    const unsubscribe = engine.onBusEvent((event: EngineBusEventPayload) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+            if (!window.isDestroyed()) {
+                window.webContents.send(RendererChannel.BusEvent, event);
+            }
+        }
+    });
+    app.on('before-quit', unsubscribe);
+}
+
 app.whenReady().then(() => {
     engine = spawnEngine();
 
@@ -229,6 +245,7 @@ app.whenReady().then(() => {
 
     wireEngineIpc();
     forwardEngineLogsToRenderer();
+    forwardBusEventsToRenderer();
     subscribeToWorkflowsList();
 
     tray = createTray({

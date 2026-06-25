@@ -7,6 +7,7 @@ import { useAppStore } from './store/app-store.js';
 export function App(): ReactElement {
     const setWorkflows = useAppStore((state) => state.setWorkflows);
     const appendLog = useAppStore((state) => state.appendLog);
+    const appendBusEvent = useAppStore((state) => state.appendBusEvent);
 
     useEffect(() => {
         const unsubscribeWorkflows = window.sigil.onWorkflowsList((workflows) => {
@@ -15,11 +16,15 @@ export function App(): ReactElement {
         const unsubscribeLogs = window.sigil.onEngineLog((line) => {
             appendLog(line);
         });
+        const unsubscribeBusEvents = window.sigil.onBusEvent((event) => {
+            appendBusEvent(event);
+        });
         return () => {
             unsubscribeWorkflows();
             unsubscribeLogs();
+            unsubscribeBusEvents();
         };
-    }, [setWorkflows, appendLog]);
+    }, [setWorkflows, appendLog, appendBusEvent]);
 
     return (
         <div className="flex h-full">
