@@ -33,6 +33,7 @@ export type EngineToggleWorkflow = {
 };
 export type EngineCreateWorkflow = {
     type: typeof EngineChannel.CreateWorkflow;
+    correlationId: string;
     name: string;
     pipeline: CompiledPipeline;
     positions: Readonly<Record<string, NodePosition>>;
@@ -44,6 +45,7 @@ export type EngineCreateWorkflowResult = {
 };
 export type EngineUpdateWorkflow = {
     type: typeof EngineChannel.UpdateWorkflow;
+    correlationId: string;
     id: string;
     name: string;
     pipeline: CompiledPipeline;
@@ -56,6 +58,7 @@ export type EngineUpdateWorkflowResult = {
 };
 export type EngineDeleteWorkflow = {
     type: typeof EngineChannel.DeleteWorkflow;
+    correlationId: string;
     id: string;
 };
 export type EngineDeleteWorkflowResult = {

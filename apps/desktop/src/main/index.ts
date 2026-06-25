@@ -2,10 +2,10 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { CompiledPipeline } from '@sigil/schema';
+import { parsePipeline, type CompiledPipeline } from '@sigil/schema';
 
 import { RendererChannel, type EnginePong } from '../shared/ipc-channels.js';
-import type { WorkflowSummary } from '../shared/workflow.js';
+import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
 import { spawnEngine, type EngineHandle } from './engine-client.js';
 import { createTray, type TrayController } from './tray.js';
 
@@ -90,6 +90,16 @@ function handleWorkflowsListChange(next: readonly WorkflowSummary[]): void {
     broadcastWorkflowsList(next);
 }
 
+function isRecordOfNodePositions(value: unknown): value is Readonly<Record<string, NodePosition>> {
+    if (!value || typeof value !== 'object') return false;
+    for (const val of Object.values(value as Record<string, unknown>)) {
+        if (!val || typeof val !== 'object') return false;
+        if (typeof (val as Record<string, unknown>).x !== 'number') return false;
+        if (typeof (val as Record<string, unknown>).y !== 'number') return false;
+    }
+    return true;
+}
+
 function wireEngineIpc(): void {
     ipcMain.handle(RendererChannel.EnginePong, async (): Promise<EnginePong | null> => {
         if (!engine) return null;
@@ -113,14 +123,18 @@ function wireEngineIpc(): void {
 
     ipcMain.handle(
         RendererChannel.CreateWorkflow,
-        async (_event, name: unknown, pipeline: unknown, positions: unknown): Promise<void> => {
-            if (typeof name === 'string' && pipeline && typeof pipeline === 'object') {
-                engine?.createWorkflow(
-                    name,
-                    pipeline as CompiledPipeline,
-                    (positions ?? {}) as Record<string, { readonly x: number; readonly y: number }>,
-                );
-            }
+        async (
+            _event,
+            name: unknown,
+            pipeline: unknown,
+            positions: unknown,
+        ): Promise<WorkflowSummary> => {
+            if (typeof name !== 'string') throw new Error('Invalid workflow name');
+            const parsed = parsePipeline(pipeline);
+            if (!parsed.ok) throw new Error(`Invalid pipeline: ${parsed.error}`);
+            if (!isRecordOfNodePositions(positions)) throw new Error('Invalid positions');
+            if (!engine) throw new Error('Engine not ready');
+            return await engine.createWorkflow(name, parsed.value, positions);
         },
     );
 
@@ -132,28 +146,25 @@ function wireEngineIpc(): void {
             name: unknown,
             pipeline: unknown,
             positions: unknown,
-        ): Promise<void> => {
-            if (
-                typeof id === 'string' &&
-                typeof name === 'string' &&
-                pipeline &&
-                typeof pipeline === 'object'
-            ) {
-                engine?.updateWorkflow(
-                    id,
-                    name,
-                    pipeline as CompiledPipeline,
-                    (positions ?? {}) as Record<string, { readonly x: number; readonly y: number }>,
-                );
-            }
+        ): Promise<WorkflowSummary> => {
+            if (typeof id !== 'string') throw new Error('Invalid workflow id');
+            if (typeof name !== 'string') throw new Error('Invalid workflow name');
+            const parsed = parsePipeline(pipeline);
+            if (!parsed.ok) throw new Error(`Invalid pipeline: ${parsed.error}`);
+            if (!isRecordOfNodePositions(positions)) throw new Error('Invalid positions');
+            if (!engine) throw new Error('Engine not ready');
+            return await engine.updateWorkflow(id, name, parsed.value, positions);
         },
     );
 
-    ipcMain.handle(RendererChannel.DeleteWorkflow, async (_event, id: unknown): Promise<void> => {
-        if (typeof id === 'string') {
-            engine?.deleteWorkflow(id);
-        }
-    });
+    ipcMain.handle(
+        RendererChannel.DeleteWorkflow,
+        async (_event, id: unknown): Promise<boolean> => {
+            if (typeof id !== 'string') throw new Error('Invalid workflow id');
+            if (!engine) throw new Error('Engine not ready');
+            return await engine.deleteWorkflow(id);
+        },
+    );
 
     ipcMain.handle(
         RendererChannel.GetWorkflow,

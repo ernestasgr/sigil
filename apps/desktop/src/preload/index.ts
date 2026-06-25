@@ -14,16 +14,16 @@ const api = {
         name: string,
         pipeline: CompiledPipeline,
         positions: Readonly<Record<string, NodePosition>>,
-    ): Promise<void> =>
+    ): Promise<WorkflowSummary> =>
         ipcRenderer.invoke(RendererChannel.CreateWorkflow, name, pipeline, positions),
     updateWorkflow: (
         id: string,
         name: string,
         pipeline: CompiledPipeline,
         positions: Readonly<Record<string, NodePosition>>,
-    ): Promise<void> =>
+    ): Promise<WorkflowSummary> =>
         ipcRenderer.invoke(RendererChannel.UpdateWorkflow, id, name, pipeline, positions),
-    deleteWorkflow: (id: string): Promise<void> =>
+    deleteWorkflow: (id: string): Promise<boolean> =>
         ipcRenderer.invoke(RendererChannel.DeleteWorkflow, id),
     getWorkflow: (
         id: string,
