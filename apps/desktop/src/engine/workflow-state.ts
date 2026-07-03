@@ -19,8 +19,16 @@ export interface WorkflowState {
     readonly flush: () => void;
 }
 
+export interface WorkflowStateEntry {
+    readonly key: string;
+    readonly value: string;
+}
+
 export interface WorkflowStateStore {
     readonly forWorkflow: (workflowId: string) => WorkflowState;
+    readonly listKeys: (workflowId: string) => readonly WorkflowStateEntry[];
+    readonly setKey: (workflowId: string, key: string, value: string) => void;
+    readonly deleteKey: (workflowId: string, key: string) => void;
     readonly flushAll: () => void;
     readonly dispose: () => void;
 }
@@ -115,7 +123,34 @@ export function createWorkflowStateStore(
         flushAll();
     }
 
-    return { forWorkflow, flushAll, dispose };
+    function listKeys(workflowId: string): readonly WorkflowStateEntry[] {
+        flushWorkflow(workflowId);
+        const rows = db
+            .select({ key: workflowStateTable.key, value: workflowStateTable.value })
+            .from(workflowStateTable)
+            .where(eq(workflowStateTable.workflowId, workflowId))
+            .all();
+        return rows.map((row) => ({ key: row.key, value: row.value }));
+    }
+
+    function setKey(workflowId: string, key: string, value: string): void {
+        const pending = buffer.get(workflowId) ?? new Map();
+        pending.set(key, value);
+        buffer.set(workflowId, pending);
+        flushWorkflow(workflowId);
+    }
+
+    function deleteKey(workflowId: string, key: string): void {
+        const pending = buffer.get(workflowId);
+        if (pending) {
+            pending.delete(key);
+        }
+        database
+            .prepare('DELETE FROM workflow_state WHERE workflow_id = ? AND key = ?')
+            .run(workflowId, key);
+    }
+
+    return { forWorkflow, listKeys, setKey, deleteKey, flushAll, dispose };
 }
 
 export function createInMemoryWorkflowStateStore(): WorkflowStateStore {
@@ -137,5 +172,34 @@ export function createInMemoryWorkflowStateStore(): WorkflowStateStore {
         };
     }
 
-    return { forWorkflow, flushAll: (): void => {}, dispose: (): void => {} };
+    function listKeys(workflowId: string): readonly WorkflowStateEntry[] {
+        const pending = buffer.get(workflowId);
+        if (!pending) return [];
+        return Array.from(pending.entries()).map(([key, value]) => ({ key, value }));
+    }
+
+    function setKey(workflowId: string, key: string, value: string): void {
+        let pending = buffer.get(workflowId);
+        if (!pending) {
+            pending = new Map();
+            buffer.set(workflowId, pending);
+        }
+        pending.set(key, value);
+    }
+
+    function deleteKey(workflowId: string, key: string): void {
+        const pending = buffer.get(workflowId);
+        if (pending) {
+            pending.delete(key);
+        }
+    }
+
+    return {
+        forWorkflow,
+        listKeys,
+        setKey,
+        deleteKey,
+        flushAll: (): void => {},
+        dispose: (): void => {},
+    };
 }

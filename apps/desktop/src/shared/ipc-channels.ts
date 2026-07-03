@@ -31,6 +31,12 @@ export const EngineChannel = {
     SaveProperties: 'engine:save-properties',
     SavePropertiesResult: 'engine:save-properties-result',
     FireManualTrigger: 'engine:fire-manual-trigger',
+    ReadWorkflowState: 'engine:read-workflow-state',
+    ReadWorkflowStateResult: 'engine:read-workflow-state-result',
+    SetWorkflowStateKey: 'engine:set-workflow-state-key',
+    SetWorkflowStateKeyResult: 'engine:set-workflow-state-key-result',
+    DeleteWorkflowStateKey: 'engine:delete-workflow-state-key',
+    DeleteWorkflowStateKeyResult: 'engine:delete-workflow-state-key-result',
 } as const;
 
 export type EnginePing = { id: string; type: typeof EngineChannel.Ping };
@@ -167,6 +173,45 @@ export type EngineFireManualTrigger = {
     pipeline: CompiledPipeline;
 };
 
+export interface WorkflowStateEntry {
+    readonly key: string;
+    readonly value: string;
+}
+
+export type EngineReadWorkflowState = {
+    type: typeof EngineChannel.ReadWorkflowState;
+    correlationId: string;
+    workflowId: string;
+};
+export type EngineReadWorkflowStateResult = {
+    type: typeof EngineChannel.ReadWorkflowStateResult;
+    correlationId: string;
+    entries: readonly WorkflowStateEntry[];
+};
+export type EngineSetWorkflowStateKey = {
+    type: typeof EngineChannel.SetWorkflowStateKey;
+    correlationId: string;
+    workflowId: string;
+    key: string;
+    value: string;
+};
+export type EngineSetWorkflowStateKeyResult = {
+    type: typeof EngineChannel.SetWorkflowStateKeyResult;
+    correlationId: string;
+    ok: boolean;
+};
+export type EngineDeleteWorkflowStateKey = {
+    type: typeof EngineChannel.DeleteWorkflowStateKey;
+    correlationId: string;
+    workflowId: string;
+    key: string;
+};
+export type EngineDeleteWorkflowStateKeyResult = {
+    type: typeof EngineChannel.DeleteWorkflowStateKeyResult;
+    correlationId: string;
+    ok: boolean;
+};
+
 export type EngineMessage =
     | EnginePing
     | EnginePong
@@ -192,7 +237,13 @@ export type EngineMessage =
     | EngineReadPropertiesResult
     | EngineSaveProperties
     | EngineSavePropertiesResult
-    | EngineFireManualTrigger;
+    | EngineFireManualTrigger
+    | EngineReadWorkflowState
+    | EngineReadWorkflowStateResult
+    | EngineSetWorkflowStateKey
+    | EngineSetWorkflowStateKeyResult
+    | EngineDeleteWorkflowStateKey
+    | EngineDeleteWorkflowStateKeyResult;
 
 export const RendererChannel = {
     EnginePong: 'renderer:engine-pong',
@@ -212,4 +263,7 @@ export const RendererChannel = {
     SaveProperties: 'renderer:save-properties',
     OpenFileDialog: 'renderer:open-file-dialog',
     FireManualTrigger: 'renderer:fire-manual-trigger',
+    ReadWorkflowState: 'renderer:read-workflow-state',
+    SetWorkflowStateKey: 'renderer:set-workflow-state-key',
+    DeleteWorkflowStateKey: 'renderer:delete-workflow-state-key',
 } as const;

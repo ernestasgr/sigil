@@ -9,6 +9,7 @@ import {
     type EngineBusEvent,
     type EngineCreateWorkflow,
     type EngineDeleteWorkflow,
+    type EngineDeleteWorkflowStateKey,
     type EngineFireManualTrigger,
     type EngineFireTestEvent,
     type EngineGetWorkflow,
@@ -17,8 +18,10 @@ import {
     type EnginePing,
     type EnginePong,
     type EngineReadProperties,
+    type EngineReadWorkflowState,
     type EngineSaveProperties,
     type EngineSetPermissionOverride,
+    type EngineSetWorkflowStateKey,
     type EngineToggleWorkflow,
     type EngineUpdateWorkflow,
     type EngineWorkflowsList,
@@ -48,7 +51,10 @@ type WorkerInbound =
     | EngineListPlugins
     | EngineSetPermissionOverride
     | EngineReadProperties
-    | EngineSaveProperties;
+    | EngineSaveProperties
+    | EngineReadWorkflowState
+    | EngineSetWorkflowStateKey
+    | EngineDeleteWorkflowStateKey;
 
 const userDataPath =
     typeof workerData === 'object' && workerData !== null
@@ -263,6 +269,33 @@ port.on('message', (message: WorkerInbound) => {
                 type: EngineChannel.SavePropertiesResult,
                 correlationId: message.correlationId,
                 ok: result.ok,
+            });
+            break;
+        }
+        case EngineChannel.ReadWorkflowState: {
+            const entries = engine.workflowStateStore.listKeys(message.workflowId);
+            port.postMessage({
+                type: EngineChannel.ReadWorkflowStateResult,
+                correlationId: message.correlationId,
+                entries,
+            });
+            break;
+        }
+        case EngineChannel.SetWorkflowStateKey: {
+            engine.workflowStateStore.setKey(message.workflowId, message.key, message.value);
+            port.postMessage({
+                type: EngineChannel.SetWorkflowStateKeyResult,
+                correlationId: message.correlationId,
+                ok: true,
+            });
+            break;
+        }
+        case EngineChannel.DeleteWorkflowStateKey: {
+            engine.workflowStateStore.deleteKey(message.workflowId, message.key);
+            port.postMessage({
+                type: EngineChannel.DeleteWorkflowStateKeyResult,
+                correlationId: message.correlationId,
+                ok: true,
             });
             break;
         }

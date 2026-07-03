@@ -12,6 +12,7 @@ import {
     type EngineBusEventPayload,
     type EngineCreateWorkflow,
     type EngineDeleteWorkflow,
+    type EngineDeleteWorkflowStateKey,
     type EngineFireManualTrigger,
     type EngineFireTestEvent,
     type EngineGetWorkflow,
@@ -20,12 +21,15 @@ import {
     type EngineMessage,
     type EnginePong,
     type EngineReadProperties,
+    type EngineReadWorkflowState,
     type EngineSaveProperties,
     type EngineSetPermissionOverride,
+    type EngineSetWorkflowStateKey,
     type EngineToggleWorkflow,
     type EngineUpdateWorkflow,
 } from '../shared/ipc-channels.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
+import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -55,6 +59,16 @@ export type EngineHandle = {
     ) => Promise<boolean>;
     readonly readProperties: (timeoutMs?: number) => Promise<Record<string, unknown>>;
     readonly saveProperties: (properties: Record<string, unknown>) => Promise<boolean>;
+    readonly readWorkflowState: (
+        workflowId: string,
+        timeoutMs?: number,
+    ) => Promise<readonly WorkflowStateEntry[]>;
+    readonly setWorkflowStateKey: (
+        workflowId: string,
+        key: string,
+        value: string,
+    ) => Promise<boolean>;
+    readonly deleteWorkflowStateKey: (workflowId: string, key: string) => Promise<boolean>;
     readonly terminate: () => Promise<number>;
     readonly onReady: (handler: () => void) => void;
     readonly onLog: (handler: (line: string) => void) => () => void;
@@ -145,6 +159,30 @@ export function spawnEngine(): EngineHandle {
             timer: NodeJS.Timeout;
         }
     >();
+    const pendingReadWorkflowState = new Map<
+        string,
+        {
+            resolve: (value: readonly WorkflowStateEntry[]) => void;
+            reject: (err: Error) => void;
+            timer: NodeJS.Timeout;
+        }
+    >();
+    const pendingSetWorkflowStateKey = new Map<
+        string,
+        {
+            resolve: (value: boolean) => void;
+            reject: (err: Error) => void;
+            timer: NodeJS.Timeout;
+        }
+    >();
+    const pendingDeleteWorkflowStateKey = new Map<
+        string,
+        {
+            resolve: (value: boolean) => void;
+            reject: (err: Error) => void;
+            timer: NodeJS.Timeout;
+        }
+    >();
     const readyHandlers = new Set<() => void>();
     const logHandlers = new Set<(line: string) => void>();
     const workflowsListHandlers = new Set<(workflows: readonly WorkflowSummary[]) => void>();
@@ -202,6 +240,21 @@ export function spawnEngine(): EngineHandle {
             entry.reject(new Error(reason));
         }
         pendingSaveProperties.clear();
+        for (const [, entry] of pendingReadWorkflowState) {
+            clearTimeout(entry.timer);
+            entry.reject(new Error(reason));
+        }
+        pendingReadWorkflowState.clear();
+        for (const [, entry] of pendingSetWorkflowStateKey) {
+            clearTimeout(entry.timer);
+            entry.reject(new Error(reason));
+        }
+        pendingSetWorkflowStateKey.clear();
+        for (const [, entry] of pendingDeleteWorkflowStateKey) {
+            clearTimeout(entry.timer);
+            entry.reject(new Error(reason));
+        }
+        pendingDeleteWorkflowStateKey.clear();
     }
 
     worker.on('message', (message: EngineMessage | { type: 'engine:ready' }) => {
@@ -307,6 +360,33 @@ export function spawnEngine(): EngineHandle {
             const entry = pendingSaveProperties.get(message.correlationId);
             if (entry) {
                 pendingSaveProperties.delete(message.correlationId);
+                clearTimeout(entry.timer);
+                entry.resolve(message.ok);
+            }
+            return;
+        }
+        if (message.type === EngineChannel.ReadWorkflowStateResult) {
+            const entry = pendingReadWorkflowState.get(message.correlationId);
+            if (entry) {
+                pendingReadWorkflowState.delete(message.correlationId);
+                clearTimeout(entry.timer);
+                entry.resolve(message.entries);
+            }
+            return;
+        }
+        if (message.type === EngineChannel.SetWorkflowStateKeyResult) {
+            const entry = pendingSetWorkflowStateKey.get(message.correlationId);
+            if (entry) {
+                pendingSetWorkflowStateKey.delete(message.correlationId);
+                clearTimeout(entry.timer);
+                entry.resolve(message.ok);
+            }
+            return;
+        }
+        if (message.type === EngineChannel.DeleteWorkflowStateKeyResult) {
+            const entry = pendingDeleteWorkflowStateKey.get(message.correlationId);
+            if (entry) {
+                pendingDeleteWorkflowStateKey.delete(message.correlationId);
                 clearTimeout(entry.timer);
                 entry.resolve(message.ok);
             }
@@ -518,6 +598,66 @@ export function spawnEngine(): EngineHandle {
                     type: EngineChannel.SaveProperties,
                     correlationId,
                     properties,
+                };
+                worker.postMessage(msg);
+            });
+        },
+        readWorkflowState(
+            workflowId: string,
+            timeoutMs = 5000,
+        ): Promise<readonly WorkflowStateEntry[]> {
+            const correlationId = randomUUID();
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    pendingReadWorkflowState.delete(correlationId);
+                    reject(new Error(`readWorkflowState timed out after ${timeoutMs}ms`));
+                }, timeoutMs);
+
+                pendingReadWorkflowState.set(correlationId, { resolve, reject, timer });
+
+                const msg: EngineReadWorkflowState = {
+                    type: EngineChannel.ReadWorkflowState,
+                    correlationId,
+                    workflowId,
+                };
+                worker.postMessage(msg);
+            });
+        },
+        setWorkflowStateKey(workflowId: string, key: string, value: string): Promise<boolean> {
+            const correlationId = randomUUID();
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    pendingSetWorkflowStateKey.delete(correlationId);
+                    reject(new Error(`setWorkflowStateKey timed out after 5000ms`));
+                }, 5000);
+
+                pendingSetWorkflowStateKey.set(correlationId, { resolve, reject, timer });
+
+                const msg: EngineSetWorkflowStateKey = {
+                    type: EngineChannel.SetWorkflowStateKey,
+                    correlationId,
+                    workflowId,
+                    key,
+                    value,
+                };
+                worker.postMessage(msg);
+            });
+        },
+        deleteWorkflowStateKey(workflowId: string, key: string): Promise<boolean> {
+            const correlationId = randomUUID();
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    pendingDeleteWorkflowStateKey.delete(correlationId);
+                    reject(new Error(`deleteWorkflowStateKey timed out after 5000ms`));
+                }, 5000);
+
+                pendingDeleteWorkflowStateKey.set(correlationId, { resolve, reject, timer });
+
+                const msg: EngineDeleteWorkflowStateKey = {
+                    type: EngineChannel.DeleteWorkflowStateKey,
+                    correlationId,
+                    workflowId,
+                    key,
                 };
                 worker.postMessage(msg);
             });

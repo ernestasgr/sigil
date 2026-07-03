@@ -10,6 +10,7 @@ import {
     type EnginePong,
 } from '../shared/ipc-channels.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
+import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
 import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
 
 const api = {
@@ -52,6 +53,12 @@ const api = {
         ipcRenderer.invoke(RendererChannel.OpenFileDialog),
     fireManualTrigger: (pipeline: CompiledPipeline): Promise<void> =>
         ipcRenderer.invoke(RendererChannel.FireManualTrigger, pipeline),
+    readWorkflowState: (workflowId: string): Promise<readonly WorkflowStateEntry[]> =>
+        ipcRenderer.invoke(RendererChannel.ReadWorkflowState, workflowId),
+    setWorkflowStateKey: (workflowId: string, key: string, value: string): Promise<boolean> =>
+        ipcRenderer.invoke(RendererChannel.SetWorkflowStateKey, workflowId, key, value),
+    deleteWorkflowStateKey: (workflowId: string, key: string): Promise<boolean> =>
+        ipcRenderer.invoke(RendererChannel.DeleteWorkflowStateKey, workflowId, key),
     onEngineLog: (handler: (line: string) => void): (() => void) => {
         const listener = (_event: IpcRendererEvent, line: string): void => handler(line);
         ipcRenderer.on(RendererChannel.EngineLog, listener);

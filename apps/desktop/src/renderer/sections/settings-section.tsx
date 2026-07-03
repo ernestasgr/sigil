@@ -5,9 +5,12 @@ import { DEFAULT_PROPERTIES as ENGINE_DEFAULTS } from '@sigil/schema/properties-
 import { CapabilitySchema } from '@sigil/schema/manifest';
 import type { Capability } from '@sigil/schema/manifest';
 
+import type { WorkflowStateEntry } from '../../shared/ipc-channels.js';
 import type { PluginInfo } from '../../shared/plugin-info.js';
+import type { WorkflowSummary } from '../../shared/workflow.js';
 import { Button } from '../components/ui/button.js';
 import { SectionShell } from '../components/section-shell.js';
+import { useAppStore } from '../store/app-store.js';
 
 const ALL_CAPABILITIES: readonly Capability[] =
     CapabilitySchema.options as unknown as readonly Capability[];
@@ -317,12 +320,241 @@ function PropertiesFilePanel({
     );
 }
 
+function WorkflowStateCard({
+    workflow,
+    entries,
+    onRefresh,
+    onSetKey,
+    onDeleteKey,
+}: {
+    readonly workflow: WorkflowSummary;
+    readonly entries: readonly WorkflowStateEntry[];
+    readonly onRefresh: () => void;
+    readonly onSetKey: (key: string, value: string) => void;
+    readonly onDeleteKey: (key: string) => void;
+}): ReactElement {
+    const [editingKey, setEditingKey] = useState<string | null>(null);
+    const [editValue, setEditValue] = useState('');
+
+    return (
+        <div className="border-gilt/30 border p-6">
+            <div className="flex items-center justify-between">
+                <h3 className="font-ui text-gilt text-lg tracking-wider uppercase">
+                    {workflow.name}
+                </h3>
+                <span
+                    className={`font-data text-xs tracking-wider uppercase ${
+                        workflow.enabled ? 'text-verdigris' : 'text-veil'
+                    }`}
+                >
+                    {workflow.enabled ? 'Active' : 'Disabled'}
+                </span>
+            </div>
+
+            <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between">
+                    <h4 className="font-ui text-veil text-xs tracking-widest uppercase">
+                        State Keys ({entries.length})
+                    </h4>
+                    <button
+                        type="button"
+                        onClick={onRefresh}
+                        className="font-ui text-gilt hover:text-gilt/80 text-[10px] tracking-widest uppercase transition-colors"
+                    >
+                        Refresh
+                    </button>
+                </div>
+
+                {entries.length === 0 ? (
+                    <p className="font-manuscript text-veil text-xs italic">No state keys.</p>
+                ) : (
+                    <div className="flex flex-col gap-2">
+                        {entries.map((entry) => (
+                            <div
+                                key={entry.key}
+                                className="border-gilt/20 flex items-start justify-between gap-2 border p-3"
+                            >
+                                {editingKey === entry.key ? (
+                                    <div className="flex flex-1 flex-col gap-2">
+                                        <span className="font-ui text-gilt text-[10px] tracking-wider uppercase">
+                                            {entry.key}
+                                        </span>
+                                        <input
+                                            type="text"
+                                            value={editValue}
+                                            onChange={(e) => setEditValue(e.target.value)}
+                                            className="font-data bg-obsidian-ink border-gilt/40 text-parchment w-full border px-2 py-1 text-xs outline-none"
+                                        />
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    onSetKey(entry.key, editValue);
+                                                    setEditingKey(null);
+                                                }}
+                                                className="font-ui text-verdigris text-[10px] tracking-widest uppercase transition-colors hover:opacity-80"
+                                            >
+                                                Save
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditingKey(null)}
+                                                className="font-ui text-veil text-[10px] tracking-widest uppercase transition-colors hover:text-parchment"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="flex flex-1 flex-col gap-0.5">
+                                            <span className="font-ui text-gilt text-[10px] tracking-wider uppercase">
+                                                {entry.key}
+                                            </span>
+                                            <span className="font-data text-parchment break-all text-xs">
+                                                {entry.value}
+                                            </span>
+                                        </div>
+                                        <div className="flex shrink-0 flex-col gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setEditingKey(entry.key);
+                                                    setEditValue(entry.value);
+                                                }}
+                                                className="font-ui text-gilt hover:text-gilt/80 text-[10px] tracking-widest uppercase transition-colors"
+                                            >
+                                                Edit
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => onDeleteKey(entry.key)}
+                                                className="font-ui text-old-blood hover:text-old-blood/80 text-[10px] tracking-widest uppercase transition-colors"
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function WorkflowStatePanel({
+    workflows,
+}: {
+    readonly workflows: readonly WorkflowSummary[];
+}): ReactElement {
+    const [stateMap, setStateMap] = useState<
+        Readonly<Record<string, readonly WorkflowStateEntry[]>>
+    >({});
+    const [loading, setLoading] = useState(true);
+
+    const loadAllState = useCallback(() => {
+        setLoading(true);
+        Promise.all(
+            workflows.map(async (wf) => {
+                try {
+                    const entries = await window.sigil.readWorkflowState(wf.id);
+                    return { id: wf.id, entries } as const;
+                } catch {
+                    return { id: wf.id, entries: [] as readonly WorkflowStateEntry[] } as const;
+                }
+            }),
+        )
+            .then((results) => {
+                const map: Record<string, readonly WorkflowStateEntry[]> = {};
+                for (const { id, entries } of results) {
+                    map[id] = entries;
+                }
+                setStateMap(map);
+            })
+            .catch(() => setStateMap({}))
+            .finally(() => setLoading(false));
+    }, [workflows]);
+
+    useEffect(() => {
+        loadAllState();
+    }, [loadAllState]);
+
+    const handleSetKey = useCallback(async (workflowId: string, key: string, value: string) => {
+        const ok = await window.sigil.setWorkflowStateKey(workflowId, key, value);
+        if (ok) {
+            setStateMap((prev) => {
+                const entries = prev[workflowId] ?? [];
+                const existing = entries.findIndex((e) => e.key === key);
+                const updated =
+                    existing >= 0
+                        ? entries.map((e) => (e.key === key ? { ...e, value } : e))
+                        : [...entries, { key, value }];
+                return { ...prev, [workflowId]: updated };
+            });
+        }
+    }, []);
+
+    const handleDeleteKey = useCallback(async (workflowId: string, key: string) => {
+        const ok = await window.sigil.deleteWorkflowStateKey(workflowId, key);
+        if (ok) {
+            setStateMap((prev) => ({
+                ...prev,
+                [workflowId]: (prev[workflowId] ?? []).filter((e) => e.key !== key),
+            }));
+        }
+    }, []);
+
+    if (loading) {
+        return <p className="font-manuscript text-veil italic">Loading workflow state...</p>;
+    }
+
+    if (workflows.length === 0) {
+        return (
+            <p className="font-manuscript text-veil italic">
+                No workflows created yet. Create a workflow and run it to populate state.
+            </p>
+        );
+    }
+
+    return (
+        <div className="flex flex-col gap-4">
+            <p className="font-manuscript text-veil mb-2 text-sm italic">
+                View and manage persistent workflow state keys. Edit values or delete keys to reset
+                counters, timestamps, or deduplication markers.
+            </p>
+            {workflows.map((wf) => (
+                <WorkflowStateCard
+                    key={wf.id}
+                    workflow={wf}
+                    entries={stateMap[wf.id] ?? []}
+                    onRefresh={() => {
+                        window.sigil
+                            .readWorkflowState(wf.id)
+                            .then((entries) => {
+                                setStateMap((prev) => ({ ...prev, [wf.id]: entries }));
+                            })
+                            .catch(() => {});
+                    }}
+                    onSetKey={(key, value) => handleSetKey(wf.id, key, value)}
+                    onDeleteKey={(key) => handleDeleteKey(wf.id, key)}
+                />
+            ))}
+        </div>
+    );
+}
+
 export function SettingsSection(): ReactElement {
     const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
     const [pluginsLoading, setPluginsLoading] = useState(true);
     const [properties, setProperties] = useState<Record<string, unknown>>({});
     const [propertiesLoading, setPropertiesLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'permissions' | 'properties'>('permissions');
+    const [activeTab, setActiveTab] = useState<'permissions' | 'properties' | 'workflow-state'>(
+        'permissions',
+    );
+    const workflows = useAppStore((state) => state.workflows);
     const loadData = useCallback(() => {
         setPluginsLoading(true);
         setPropertiesLoading(true);
@@ -384,7 +616,7 @@ export function SettingsSection(): ReactElement {
     const showPropertiesLoading = activeTab === 'properties' && propertiesLoading;
 
     return (
-        <SectionShell title="Settings" subtitle="Permissions and the properties file.">
+        <SectionShell title="Settings" subtitle="Permissions, properties, and workflow state.">
             <div className="flex flex-col gap-8">
                 <div className="border-gilt/30 flex border-b">
                     <button
@@ -409,6 +641,17 @@ export function SettingsSection(): ReactElement {
                     >
                         Properties File
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('workflow-state')}
+                        className={`font-ui px-6 py-3 text-xs tracking-[0.2em] uppercase transition-colors ${
+                            activeTab === 'workflow-state'
+                                ? 'border-gilt text-gilt border-b'
+                                : 'text-veil hover:text-parchment'
+                        }`}
+                    >
+                        Workflow State
+                    </button>
                 </div>
 
                 {activeTab === 'permissions' ? (
@@ -417,14 +660,18 @@ export function SettingsSection(): ReactElement {
                         loading={pluginsLoading}
                         onOverride={handlePermissionOverride}
                     />
-                ) : showPropertiesLoading ? (
-                    <p className="font-manuscript text-veil italic">Loading properties...</p>
+                ) : activeTab === 'properties' ? (
+                    showPropertiesLoading ? (
+                        <p className="font-manuscript text-veil italic">Loading properties...</p>
+                    ) : (
+                        <PropertiesFilePanel
+                            properties={properties}
+                            onSave={handlePropertiesSave}
+                            onCancel={handlePropertiesCancel}
+                        />
+                    )
                 ) : (
-                    <PropertiesFilePanel
-                        properties={properties}
-                        onSave={handlePropertiesSave}
-                        onCancel={handlePropertiesCancel}
-                    />
+                    <WorkflowStatePanel workflows={workflows} />
                 )}
             </div>
         </SectionShell>
