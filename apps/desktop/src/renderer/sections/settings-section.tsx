@@ -2,22 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { DEFAULT_PROPERTIES as ENGINE_DEFAULTS } from '@sigil/schema/properties-file';
+import { CapabilitySchema } from '@sigil/schema/manifest';
 import type { Capability } from '@sigil/schema/manifest';
 
 import type { PluginInfo } from '../../shared/plugin-info.js';
 import { Button } from '../components/ui/button.js';
 import { SectionShell } from '../components/section-shell.js';
 
-const ALL_CAPABILITIES: readonly Capability[] = [
-    'filesystem.read',
-    'filesystem.write',
-    'network',
-    'clipboard',
-    'processes',
-    'display',
-    'keyboard.global',
-    'microphone',
-];
+const ALL_CAPABILITIES: readonly Capability[] =
+    CapabilitySchema.options as unknown as readonly Capability[];
 
 function capabilityLabel(cap: Capability): string {
     return cap
@@ -41,7 +34,7 @@ function PermissionToggle({
                 type="checkbox"
                 checked={granted}
                 onChange={onToggle}
-                className="border-gilt/60 size-4 cursor-pointer appearance-none border bg-transparent checked:bg-gilt checked:hover:bg-gilt/80"
+                className="border-gilt/60 size-4 cursor-pointer appearance-none border bg-transparent checked:bg-gilt checked:hover:bg-gilt/80 focus-visible:ring-gilt focus-visible:ring-2 focus-visible:outline-none"
             />
             <span className="font-ui text-parchment text-xs tracking-wider uppercase">
                 {capabilityLabel(capability)}
@@ -123,6 +116,7 @@ function PluginPermissionsCard({
                                 setSelected(info.grantedPermissions);
                                 setEditing(false);
                             } else {
+                                setSelected(info.grantedPermissions);
                                 setEditing(true);
                             }
                         }}
@@ -263,9 +257,11 @@ function PropertiesEditor({
 
 function PermissionsPanel({
     plugins,
+    loading,
     onOverride,
 }: {
     readonly plugins: readonly PluginInfo[];
+    readonly loading: boolean;
     readonly onOverride: (pluginId: string, overrides: readonly Capability[]) => void;
 }): ReactElement {
     return (
@@ -278,7 +274,9 @@ function PermissionsPanel({
                 requests. Revoking a permission causes the plugin&apos;s next privileged call to
                 fail gracefully.
             </p>
-            {plugins.length === 0 ? (
+            {loading ? (
+                <p className="font-manuscript text-veil italic">Loading plugins...</p>
+            ) : plugins.length === 0 ? (
                 <p className="font-manuscript text-veil italic">No plugins installed.</p>
             ) : (
                 <div className="flex flex-col gap-4">
@@ -321,15 +319,18 @@ function PropertiesFilePanel({
 
 export function SettingsSection(): ReactElement {
     const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
+    const [pluginsLoading, setPluginsLoading] = useState(true);
     const [properties, setProperties] = useState<Record<string, unknown>>({});
     const [propertiesLoading, setPropertiesLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'permissions' | 'properties'>('permissions');
     const loadData = useCallback(() => {
+        setPluginsLoading(true);
         setPropertiesLoading(true);
         window.sigil
             .listPlugins()
             .then(setPlugins)
-            .catch(() => setPlugins([]));
+            .catch(() => setPlugins([]))
+            .finally(() => setPluginsLoading(false));
         window.sigil
             .readProperties()
             .then(setProperties)
@@ -345,14 +346,16 @@ export function SettingsSection(): ReactElement {
         (pluginId: string, overrides: readonly Capability[]) => {
             window.sigil
                 .setPermissionOverride(pluginId, overrides)
-                .then(() => {
-                    setPlugins((prev) =>
-                        prev.map((p) =>
-                            p.manifest.id === pluginId
-                                ? { ...p, grantedPermissions: overrides }
-                                : p,
-                        ),
-                    );
+                .then((ok) => {
+                    if (ok) {
+                        setPlugins((prev) =>
+                            prev.map((p) =>
+                                p.manifest.id === pluginId
+                                    ? { ...p, grantedPermissions: overrides }
+                                    : p,
+                            ),
+                        );
+                    }
                 })
                 .catch((err: unknown) => {
                     console.error('Failed to set permission override:', err);
@@ -409,7 +412,11 @@ export function SettingsSection(): ReactElement {
                 </div>
 
                 {activeTab === 'permissions' ? (
-                    <PermissionsPanel plugins={plugins} onOverride={handlePermissionOverride} />
+                    <PermissionsPanel
+                        plugins={plugins}
+                        loading={pluginsLoading}
+                        onOverride={handlePermissionOverride}
+                    />
                 ) : showPropertiesLoading ? (
                     <p className="font-manuscript text-veil italic">Loading properties...</p>
                 ) : (

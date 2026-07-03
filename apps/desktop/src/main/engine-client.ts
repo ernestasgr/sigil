@@ -15,8 +15,12 @@ import {
     type EngineFireTestEvent,
     type EngineGetWorkflow,
     type EngineGetWorkflowResult,
+    type EngineListPlugins,
     type EngineMessage,
     type EnginePong,
+    type EngineReadProperties,
+    type EngineSaveProperties,
+    type EngineSetPermissionOverride,
     type EngineToggleWorkflow,
     type EngineUpdateWorkflow,
 } from '../shared/ipc-channels.js';
@@ -445,7 +449,10 @@ export function spawnEngine(): EngineHandle {
 
                 pendingListPlugins.set(correlationId, { resolve, reject, timer });
 
-                const msg = { type: EngineChannel.ListPlugins, correlationId } as const;
+                const msg: EngineListPlugins = {
+                    type: EngineChannel.ListPlugins,
+                    correlationId,
+                };
                 worker.postMessage(msg);
             });
         },
@@ -462,12 +469,12 @@ export function spawnEngine(): EngineHandle {
 
                 pendingSetPermissionOverrides.set(correlationId, { resolve, reject, timer });
 
-                const msg = {
+                const msg: EngineSetPermissionOverride = {
                     type: EngineChannel.SetPermissionOverride,
                     correlationId,
                     pluginId,
                     overrides,
-                } as const;
+                };
                 worker.postMessage(msg);
             });
         },
@@ -481,7 +488,10 @@ export function spawnEngine(): EngineHandle {
 
                 pendingReadProperties.set(correlationId, { resolve, reject, timer });
 
-                const msg = { type: EngineChannel.ReadProperties, correlationId } as const;
+                const msg: EngineReadProperties = {
+                    type: EngineChannel.ReadProperties,
+                    correlationId,
+                };
                 worker.postMessage(msg);
             });
         },
@@ -495,11 +505,11 @@ export function spawnEngine(): EngineHandle {
 
                 pendingSaveProperties.set(correlationId, { resolve, reject, timer });
 
-                const msg = {
+                const msg: EngineSaveProperties = {
                     type: EngineChannel.SaveProperties,
                     correlationId,
                     properties,
-                } as const;
+                };
                 worker.postMessage(msg);
             });
         },

@@ -3,6 +3,7 @@ import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { parsePipeline, type CompiledPipeline } from '@sigil/schema';
+import { CapabilitySchema } from '@sigil/schema/manifest';
 
 import {
     RendererChannel,
@@ -10,6 +11,7 @@ import {
     type EnginePong,
 } from '../shared/ipc-channels.js';
 import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
+import type { PluginInfo } from '../shared/plugin-info.js';
 import { spawnEngine, type EngineHandle } from './engine-client.js';
 import { createTray, type TrayController } from './tray.js';
 
@@ -207,7 +209,7 @@ function wireEngineIpc(): void {
         },
     );
 
-    ipcMain.handle(RendererChannel.ListPlugins, async (): Promise<unknown> => {
+    ipcMain.handle(RendererChannel.ListPlugins, async (): Promise<readonly PluginInfo[]> => {
         if (!engine) return [];
         try {
             return await engine.listPlugins();
@@ -221,6 +223,10 @@ function wireEngineIpc(): void {
         RendererChannel.SetPermissionOverride,
         async (_event, pluginId: unknown, overrides: unknown): Promise<boolean> => {
             if (typeof pluginId !== 'string') throw new Error('Invalid pluginId');
+            if (!Array.isArray(overrides)) throw new Error('Invalid overrides: expected an array');
+            if (!overrides.every((c: unknown) => CapabilitySchema.safeParse(c).success)) {
+                throw new Error('Invalid overrides: contains invalid capability');
+            }
             if (!engine) return false;
             try {
                 return await engine.setPermissionOverride(

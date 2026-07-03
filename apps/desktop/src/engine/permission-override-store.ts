@@ -12,7 +12,8 @@ export function createPermissionOverrideStore(): PermissionOverrideStore {
 
     return {
         get: (pluginId) => {
-            return overrides.get(pluginId) ?? [];
+            const stored = overrides.get(pluginId);
+            return stored ? [...stored] : [];
         },
         has: (pluginId) => {
             return overrides.has(pluginId);
