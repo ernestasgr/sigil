@@ -3,6 +3,8 @@ import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
+import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
+
 export const workflowStateTable = sqliteTable(
     'workflow_state',
     {
@@ -17,11 +19,6 @@ export interface WorkflowState {
     readonly get: (key: string) => string | undefined;
     readonly set: (key: string, value: string) => void;
     readonly flush: () => void;
-}
-
-export interface WorkflowStateEntry {
-    readonly key: string;
-    readonly value: string;
 }
 
 export interface WorkflowStateStore {
@@ -141,13 +138,12 @@ export function createWorkflowStateStore(
     }
 
     function deleteKey(workflowId: string, key: string): void {
-        const pending = buffer.get(workflowId);
-        if (pending) {
-            pending.delete(key);
-        }
-        database
-            .prepare('DELETE FROM workflow_state WHERE workflow_id = ? AND key = ?')
-            .run(workflowId, key);
+        flushWorkflow(workflowId);
+        db.delete(workflowStateTable)
+            .where(
+                and(eq(workflowStateTable.workflowId, workflowId), eq(workflowStateTable.key, key)),
+            )
+            .run();
     }
 
     return { forWorkflow, listKeys, setKey, deleteKey, flushAll, dispose };
