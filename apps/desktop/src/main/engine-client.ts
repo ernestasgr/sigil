@@ -12,6 +12,7 @@ import {
     type EngineBusEventPayload,
     type EngineCreateWorkflow,
     type EngineDeleteWorkflow,
+    type EngineFireManualTrigger,
     type EngineFireTestEvent,
     type EngineGetWorkflow,
     type EngineGetWorkflowResult,
@@ -32,6 +33,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export type EngineHandle = {
     readonly ping: (timeoutMs?: number) => Promise<EnginePong>;
     readonly fireTestEvent: () => void;
+    readonly fireManualTrigger: (pipeline: CompiledPipeline) => void;
     readonly toggleWorkflow: (id: string) => Promise<WorkflowSummary | null>;
     readonly createWorkflow: (
         name: string,
@@ -342,6 +344,13 @@ export function spawnEngine(): EngineHandle {
         fireTestEvent(): void {
             const fire: EngineFireTestEvent = { type: EngineChannel.FireTestEvent };
             worker.postMessage(fire);
+        },
+        fireManualTrigger(pipeline: CompiledPipeline): void {
+            const msg: EngineFireManualTrigger = {
+                type: EngineChannel.FireManualTrigger,
+                pipeline,
+            };
+            worker.postMessage(msg);
         },
         toggleWorkflow(id: string): Promise<WorkflowSummary | null> {
             const correlationId = randomUUID();

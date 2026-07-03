@@ -54,7 +54,21 @@ export function PropertiesPanel(): ReactElement {
                     }
                 />
             </div>
-            <footer className="border-gilt/40 border-t p-5">
+            <footer className="border-gilt/40 flex items-center gap-2 border-t p-5">
+                {spec.type === 'manual-trigger' ? (
+                    <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => {
+                            const result = useBuilderStore.getState().compile();
+                            if (result.ok) {
+                                void window.sigil.fireManualTrigger(result.value);
+                            }
+                        }}
+                    >
+                        Fire
+                    </Button>
+                ) : null}
                 <Button variant="destructive" size="sm" onClick={() => removeNode(node.id)}>
                     Delete node
                 </Button>

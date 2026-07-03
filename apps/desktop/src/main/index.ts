@@ -1,8 +1,10 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
-import { dirname, resolve as resolvePath } from 'node:path';
+import { app, BrowserWindow, dialog, ipcMain, Notification } from 'electron';
+import { stat } from 'node:fs/promises';
+import { basename, dirname, extname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { parsePipeline, type CompiledPipeline } from '@sigil/schema';
+import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import { CapabilitySchema } from '@sigil/schema/manifest';
 
 import {
@@ -262,6 +264,39 @@ function wireEngineIpc(): void {
             }
         },
     );
+
+    ipcMain.handle(RendererChannel.OpenFileDialog, async (): Promise<FileEventPayload | null> => {
+        if (!mainWindow) return null;
+        try {
+            const result = await dialog.showOpenDialog(mainWindow, {
+                properties: ['openFile'],
+            });
+            if (result.canceled || result.filePaths.length === 0) return null;
+            const filePath = result.filePaths[0];
+            if (!filePath) return null;
+            const stats = await stat(filePath);
+            return {
+                path: filePath,
+                name: basename(filePath),
+                ext: extname(filePath).replace('.', ''),
+                size: stats.size,
+                dir: dirname(filePath),
+            };
+        } catch (err) {
+            console.error('[main] openFileDialog failed:', err);
+            return null;
+        }
+    });
+
+    ipcMain.handle(
+        RendererChannel.FireManualTrigger,
+        async (_event, pipeline: unknown): Promise<void> => {
+            const parsed = parsePipeline(pipeline);
+            if (!parsed.ok) throw new Error(`Invalid pipeline: ${parsed.error}`);
+            if (!engine) throw new Error('Engine not ready');
+            engine.fireManualTrigger(parsed.value);
+        },
+    );
 }
 
 function broadcastRendererReadyState(): void {
@@ -300,6 +335,17 @@ function forwardBusEventsToRenderer(): void {
     app.on('before-quit', unsubscribe);
 }
 
+function handleOsNotifications(): void {
+    if (!engine) return;
+    const unsubscribe = engine.onBusEvent((event: EngineBusEventPayload) => {
+        if (event.name === 'notification.show') {
+            const { title, body } = event.payload as { title: string; body: string };
+            new Notification({ title, body }).show();
+        }
+    });
+    app.on('before-quit', unsubscribe);
+}
+
 app.whenReady().then(() => {
     engine = spawnEngine();
 
@@ -310,6 +356,7 @@ app.whenReady().then(() => {
     wireEngineIpc();
     forwardEngineLogsToRenderer();
     forwardBusEventsToRenderer();
+    handleOsNotifications();
     subscribeToWorkflowsList();
 
     tray = createTray({

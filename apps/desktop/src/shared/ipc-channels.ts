@@ -30,6 +30,7 @@ export const EngineChannel = {
     ReadPropertiesResult: 'engine:read-properties-result',
     SaveProperties: 'engine:save-properties',
     SavePropertiesResult: 'engine:save-properties-result',
+    FireManualTrigger: 'engine:fire-manual-trigger',
 } as const;
 
 export type EnginePing = { id: string; type: typeof EngineChannel.Ping };
@@ -161,6 +162,11 @@ export type EngineSavePropertiesResult = {
     ok: boolean;
 };
 
+export type EngineFireManualTrigger = {
+    type: typeof EngineChannel.FireManualTrigger;
+    pipeline: CompiledPipeline;
+};
+
 export type EngineMessage =
     | EnginePing
     | EnginePong
@@ -185,7 +191,8 @@ export type EngineMessage =
     | EngineReadProperties
     | EngineReadPropertiesResult
     | EngineSaveProperties
-    | EngineSavePropertiesResult;
+    | EngineSavePropertiesResult
+    | EngineFireManualTrigger;
 
 export const RendererChannel = {
     EnginePong: 'renderer:engine-pong',
@@ -203,4 +210,6 @@ export const RendererChannel = {
     SetPermissionOverride: 'renderer:set-permission-override',
     ReadProperties: 'renderer:read-properties',
     SaveProperties: 'renderer:save-properties',
+    OpenFileDialog: 'renderer:open-file-dialog',
+    FireManualTrigger: 'renderer:fire-manual-trigger',
 } as const;

@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
 import type { Capability } from '@sigil/schema/manifest';
 import type { CompiledPipeline } from '@sigil/schema';
+import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 
 import {
     RendererChannel,
@@ -47,6 +48,10 @@ const api = {
         ipcRenderer.invoke(RendererChannel.ReadProperties),
     saveProperties: (properties: Record<string, unknown>): Promise<boolean> =>
         ipcRenderer.invoke(RendererChannel.SaveProperties, properties),
+    openFileDialog: (): Promise<FileEventPayload | null> =>
+        ipcRenderer.invoke(RendererChannel.OpenFileDialog),
+    fireManualTrigger: (pipeline: CompiledPipeline): Promise<void> =>
+        ipcRenderer.invoke(RendererChannel.FireManualTrigger, pipeline),
     onEngineLog: (handler: (line: string) => void): (() => void) => {
         const listener = (_event: IpcRendererEvent, line: string): void => handler(line);
         ipcRenderer.on(RendererChannel.EngineLog, listener);
