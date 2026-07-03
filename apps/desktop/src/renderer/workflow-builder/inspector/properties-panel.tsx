@@ -62,7 +62,9 @@ export function PropertiesPanel(): ReactElement {
                         onClick={() => {
                             const result = useBuilderStore.getState().compile();
                             if (result.ok) {
-                                void window.sigil.fireManualTrigger(result.value);
+                                window.sigil.fireManualTrigger(result.value).catch((err: unknown) => {
+                                    console.error('Failed to fire manual trigger:', err);
+                                });
                             }
                         }}
                     >
