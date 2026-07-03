@@ -10,6 +10,7 @@ import type {
     StateSetConfig,
     SwitchConfig,
 } from '@sigil/schema/nodes';
+import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import type { PipelineCondition } from '@sigil/schema/conditions';
 import {
     BooleanOperatorSchema,
@@ -21,6 +22,7 @@ import {
 } from '@sigil/schema/operators';
 import type { ReactElement } from 'react';
 
+import { Button } from '../../components/ui/button.js';
 import { Checkbox, NumberInput, SelectInput, StringList, TextInput } from './form-fields.js';
 
 type FieldValueKind = 'string' | 'number' | 'boolean';
@@ -121,6 +123,14 @@ export function ManualTriggerConfigForm({
     onChange,
 }: ConfigFormProps<ManualTriggerConfig>): ReactElement {
     const { payload } = config;
+
+    const handleBrowse = async (): Promise<void> => {
+        const fileInfo: FileEventPayload | null = await window.sigil.openFileDialog();
+        if (fileInfo) {
+            onChange({ ...config, payload: fileInfo });
+        }
+    };
+
     return (
         <>
             <SelectInput
@@ -129,11 +139,18 @@ export function ManualTriggerConfigForm({
                 options={EVENT_NAME_OPTIONS}
                 onChange={(eventName) => onChange({ ...config, eventName })}
             />
-            <TextInput
-                label="Payload · path"
-                value={payload.path}
-                onChange={(path) => onChange({ ...config, payload: { ...payload, path } })}
-            />
+            <div className="flex items-end gap-2">
+                <div className="flex-1">
+                    <TextInput
+                        label="Payload · path"
+                        value={payload.path}
+                        onChange={(path) => onChange({ ...config, payload: { ...payload, path } })}
+                    />
+                </div>
+                <Button size="sm" variant="default" onClick={handleBrowse}>
+                    Browse
+                </Button>
+            </div>
             <TextInput
                 label="Payload · name"
                 value={payload.name}

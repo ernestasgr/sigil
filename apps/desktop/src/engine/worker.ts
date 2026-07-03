@@ -9,6 +9,7 @@ import {
     type EngineBusEvent,
     type EngineCreateWorkflow,
     type EngineDeleteWorkflow,
+    type EngineFireManualTrigger,
     type EngineFireTestEvent,
     type EngineGetWorkflow,
     type EngineListPlugins,
@@ -38,6 +39,7 @@ const port = parentPort;
 type WorkerInbound =
     | EnginePing
     | EngineFireTestEvent
+    | EngineFireManualTrigger
     | EngineToggleWorkflow
     | EngineCreateWorkflow
     | EngineUpdateWorkflow
@@ -109,6 +111,17 @@ port.on('message', (message: WorkerInbound) => {
                 const log: EngineLog = {
                     type: EngineChannel.Log,
                     line: `[error] engine.execute failed: ${err instanceof Error ? err.message : String(err)}`,
+                };
+                port.postMessage(log);
+            });
+            break;
+        }
+        case EngineChannel.FireManualTrigger: {
+            void engine.execute(message.pipeline).catch((err: unknown) => {
+                console.error('[worker] manual trigger execution failed:', err);
+                const log: EngineLog = {
+                    type: EngineChannel.Log,
+                    line: `[error] manual trigger execution failed: ${err instanceof Error ? err.message : String(err)}`,
                 };
                 port.postMessage(log);
             });
