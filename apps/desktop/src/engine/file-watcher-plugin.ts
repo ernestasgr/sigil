@@ -15,7 +15,5 @@ async function start() {
     await state.set('watcherVersion', '0.0.1');
 }
 
-start().catch(function(err) {
-    throw err;
-});
+start();
 `;

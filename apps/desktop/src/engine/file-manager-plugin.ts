@@ -15,7 +15,5 @@ async function start() {
     await state.set('managerVersion', '0.0.1');
 }
 
-start().catch(function(err) {
-    throw err;
-});
+start();
 `;

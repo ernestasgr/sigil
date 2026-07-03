@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
+import { DEFAULT_PROPERTIES as ENGINE_DEFAULTS } from '@sigil/schema/properties-file';
 import type { Capability } from '@sigil/schema/manifest';
 
 import type { PluginInfo } from '../../shared/plugin-info.js';
@@ -179,6 +180,15 @@ function PluginPermissionsCard({
     );
 }
 
+const DEFAULT_PROPERTIES_TEMPLATE: Record<string, unknown> = {
+    notifyOnWorkflowError: ENGINE_DEFAULTS.notifyOnWorkflowError,
+    databasePath: ENGINE_DEFAULTS.databasePath,
+    collisionSuffixStyle: ENGINE_DEFAULTS.collisionSuffixStyle,
+    'file-watcher.ignorePatterns': ['*.crdownload', '*.part', '*.tmp', '*.download'],
+    'file-manager.defaultOnConflict': 'error',
+    'file-manager.collisionSuffixStyle': ENGINE_DEFAULTS.collisionSuffixStyle,
+};
+
 function PropertiesEditor({
     properties,
     onSave,
@@ -188,8 +198,27 @@ function PropertiesEditor({
     readonly onSave: (props: Record<string, unknown>) => void;
     readonly onCancel: () => void;
 }): ReactElement {
-    const [jsonText, setJsonText] = useState(() => JSON.stringify(properties, null, 4));
+    const [jsonText, setJsonText] = useState(() => {
+        if (Object.keys(properties).length === 0) {
+            return JSON.stringify(DEFAULT_PROPERTIES_TEMPLATE, null, 4);
+        }
+        return JSON.stringify(properties, null, 4);
+    });
     const [error, setError] = useState<string | null>(null);
+    const isFirstLoad = useRef(true);
+
+    useEffect(() => {
+        if (isFirstLoad.current) {
+            isFirstLoad.current = false;
+            return;
+        }
+        if (Object.keys(properties).length === 0) {
+            setJsonText(JSON.stringify(DEFAULT_PROPERTIES_TEMPLATE, null, 4));
+        } else {
+            setJsonText(JSON.stringify(properties, null, 4));
+        }
+        setError(null);
+    }, [properties]);
 
     const handleSave = (): void => {
         try {
@@ -293,8 +322,10 @@ function PropertiesFilePanel({
 export function SettingsSection(): ReactElement {
     const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
     const [properties, setProperties] = useState<Record<string, unknown>>({});
+    const [propertiesLoading, setPropertiesLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'permissions' | 'properties'>('permissions');
     const loadData = useCallback(() => {
+        setPropertiesLoading(true);
         window.sigil
             .listPlugins()
             .then(setPlugins)
@@ -302,7 +333,8 @@ export function SettingsSection(): ReactElement {
         window.sigil
             .readProperties()
             .then(setProperties)
-            .catch(() => setProperties({}));
+            .catch(() => setProperties({}))
+            .finally(() => setPropertiesLoading(false));
     }, []);
 
     useEffect(() => {
@@ -346,6 +378,8 @@ export function SettingsSection(): ReactElement {
         loadData();
     }, [loadData]);
 
+    const showPropertiesLoading = activeTab === 'properties' && propertiesLoading;
+
     return (
         <SectionShell title="Settings" subtitle="Permissions and the properties file.">
             <div className="flex flex-col gap-8">
@@ -376,6 +410,8 @@ export function SettingsSection(): ReactElement {
 
                 {activeTab === 'permissions' ? (
                     <PermissionsPanel plugins={plugins} onOverride={handlePermissionOverride} />
+                ) : showPropertiesLoading ? (
+                    <p className="font-manuscript text-veil italic">Loading properties...</p>
                 ) : (
                     <PropertiesFilePanel
                         properties={properties}
