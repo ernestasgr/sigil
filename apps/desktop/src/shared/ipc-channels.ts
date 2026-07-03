@@ -24,8 +24,6 @@ export const EngineChannel = {
     BusEvent: 'engine:bus-event',
     ListPlugins: 'engine:list-plugins',
     ListPluginsResult: 'engine:list-plugins-result',
-    GetPermissionOverrides: 'engine:get-permission-overrides',
-    GetPermissionOverridesResult: 'engine:get-permission-overrides-result',
     SetPermissionOverride: 'engine:set-permission-override',
     SetPermissionOverrideResult: 'engine:set-permission-override-result',
     ReadProperties: 'engine:read-properties',
@@ -130,16 +128,6 @@ export type EngineListPluginsResult = {
     plugins: readonly PluginInfo[];
 };
 
-export type EngineGetPermissionOverrides = {
-    type: typeof EngineChannel.GetPermissionOverrides;
-    correlationId: string;
-};
-export type EngineGetPermissionOverridesResult = {
-    type: typeof EngineChannel.GetPermissionOverridesResult;
-    correlationId: string;
-    overrides: Readonly<Record<string, readonly Capability[]>>;
-};
-
 export type EngineSetPermissionOverride = {
     type: typeof EngineChannel.SetPermissionOverride;
     correlationId: string;
@@ -192,8 +180,6 @@ export type EngineMessage =
     | EngineBusEvent
     | EngineListPlugins
     | EngineListPluginsResult
-    | EngineGetPermissionOverrides
-    | EngineGetPermissionOverridesResult
     | EngineSetPermissionOverride
     | EngineSetPermissionOverrideResult
     | EngineReadProperties
@@ -214,7 +200,6 @@ export const RendererChannel = {
     BusEvent: 'renderer:bus-event',
     RendererReady: 'renderer:renderer-ready',
     ListPlugins: 'renderer:list-plugins',
-    GetPermissionOverrides: 'renderer:get-permission-overrides',
     SetPermissionOverride: 'renderer:set-permission-override',
     ReadProperties: 'renderer:read-properties',
     SaveProperties: 'renderer:save-properties',

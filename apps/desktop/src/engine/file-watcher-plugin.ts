@@ -15,5 +15,7 @@ async function start() {
     await state.set('watcherVersion', '0.0.1');
 }
 
-start();
+start().catch(function(err) {
+    log('file-watcher startup error: ' + err.message);
+});
 `;

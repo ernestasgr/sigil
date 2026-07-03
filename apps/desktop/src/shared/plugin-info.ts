@@ -1,5 +1,4 @@
-import type { Manifest } from '@sigil/schema/manifest';
-import type { Capability } from '@sigil/schema/manifest';
+import type { Manifest, Capability } from '@sigil/schema/manifest';
 
 export interface PluginInfo {
     readonly manifest: Manifest;

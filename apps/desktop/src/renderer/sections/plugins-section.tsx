@@ -88,7 +88,10 @@ export function PluginsSection(): ReactElement {
         window.sigil
             .listPlugins()
             .then(setPlugins)
-            .catch(() => setPlugins([]))
+            .catch((err: unknown) => {
+                console.error('Failed to list plugins:', err);
+                setPlugins([]);
+            })
             .finally(() => setLoading(false));
     }, []);
 

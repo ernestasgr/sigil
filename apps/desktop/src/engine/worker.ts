@@ -66,11 +66,6 @@ const workflowsDir = join(userDataPath ?? '', 'workflows');
 const store = createWorkflowStore(workflowsDir);
 const activator = createWorkflowActivator(engine, store, engine.fileWatcherManager);
 
-// Load built-in plugins so they appear in the registry and PluginsSection
-void engine.loadBuiltinPlugins().catch((err: unknown) => {
-    log(`Failed to load built-in plugins: ${err instanceof Error ? err.message : String(err)}`);
-});
-
 process.on('exit', () => {
     activator.dispose();
     engine.dispose();
@@ -235,15 +230,22 @@ port.on('message', (message: WorkerInbound) => {
         }
         case EngineChannel.ReadProperties: {
             const current = readPropertiesFile(propertiesPath);
+            const properties =
+                current && typeof current === 'object' && !Array.isArray(current)
+                    ? (current as Record<string, unknown>)
+                    : {};
             port.postMessage({
                 type: EngineChannel.ReadPropertiesResult,
                 correlationId: message.correlationId,
-                properties: current as Record<string, unknown>,
+                properties,
             });
             break;
         }
         case EngineChannel.SaveProperties: {
             const result = writePropertiesFile(propertiesPath, message.properties);
+            if (!result.ok) {
+                log(`Failed to save properties: ${result.error}`);
+            }
             port.postMessage({
                 type: EngineChannel.SavePropertiesResult,
                 correlationId: message.correlationId,
@@ -272,5 +274,10 @@ for (const wf of store.list()) {
 }
 
 broadcastWorkflowsList();
+
+// Load built-in plugins so they appear in the registry before signaling ready
+await engine.loadBuiltinPlugins().catch((err: unknown) => {
+    log(`Failed to load built-in plugins: ${err instanceof Error ? err.message : String(err)}`);
+});
 
 port.postMessage({ type: 'engine:ready' });

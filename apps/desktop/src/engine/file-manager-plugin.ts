@@ -15,5 +15,7 @@ async function start() {
     await state.set('managerVersion', '0.0.1');
 }
 
-start();
+start().catch(function(err) {
+    log('file-manager startup error: ' + err.message);
+});
 `;
