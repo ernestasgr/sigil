@@ -12,6 +12,7 @@ import {
     type EngineBusEventPayload,
     type EnginePong,
 } from '../shared/ipc-channels.js';
+import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
 import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import { spawnEngine, type EngineHandle } from './engine-client.js';
@@ -295,6 +296,51 @@ function wireEngineIpc(): void {
             if (!parsed.ok) throw new Error(`Invalid pipeline: ${parsed.error}`);
             if (!engine) throw new Error('Engine not ready');
             engine.fireManualTrigger(parsed.value);
+        },
+    );
+
+    ipcMain.handle(
+        RendererChannel.ReadWorkflowState,
+        async (_event, workflowId: unknown): Promise<readonly WorkflowStateEntry[]> => {
+            if (typeof workflowId !== 'string') throw new Error('Invalid workflowId');
+            if (!engine) return [];
+            try {
+                return await engine.readWorkflowState(workflowId);
+            } catch (err) {
+                console.error('[main] readWorkflowState failed:', err);
+                return [];
+            }
+        },
+    );
+
+    ipcMain.handle(
+        RendererChannel.SetWorkflowStateKey,
+        async (_event, workflowId: unknown, key: unknown, value: unknown): Promise<boolean> => {
+            if (typeof workflowId !== 'string') throw new Error('Invalid workflowId');
+            if (typeof key !== 'string') throw new Error('Invalid key');
+            if (typeof value !== 'string') throw new Error('Invalid value');
+            if (!engine) return false;
+            try {
+                return await engine.setWorkflowStateKey(workflowId, key, value);
+            } catch (err) {
+                console.error('[main] setWorkflowStateKey failed:', err);
+                return false;
+            }
+        },
+    );
+
+    ipcMain.handle(
+        RendererChannel.DeleteWorkflowStateKey,
+        async (_event, workflowId: unknown, key: unknown): Promise<boolean> => {
+            if (typeof workflowId !== 'string') throw new Error('Invalid workflowId');
+            if (typeof key !== 'string') throw new Error('Invalid key');
+            if (!engine) return false;
+            try {
+                return await engine.deleteWorkflowStateKey(workflowId, key);
+            } catch (err) {
+                console.error('[main] deleteWorkflowStateKey failed:', err);
+                return false;
+            }
         },
     );
 }

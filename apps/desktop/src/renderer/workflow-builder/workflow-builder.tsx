@@ -9,6 +9,7 @@ import { WorkflowCanvas } from './canvas/workflow-canvas.js';
 import { CornerFlourish } from './corner-flourish.js';
 import { NodePalette } from './palette/node-palette.js';
 import { PropertiesPanel } from './inspector/properties-panel.js';
+import { VariableInspector } from './inspector/variable-inspector.js';
 
 export interface WorkflowBuilderProps {
     readonly onSave: (name: string) => void;
@@ -18,6 +19,8 @@ export interface WorkflowBuilderProps {
 export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): ReactElement {
     const pipelineName = useBuilderStore((state) => state.pipelineName);
     const setPipelineName = useBuilderStore((state) => state.setPipelineName);
+    const meta = useBuilderStore((state) => state.meta);
+    const [showInspector, setShowInspector] = useState(false);
 
     return (
         <div className="flex h-full flex-col bg-obsidian-ink p-2">
@@ -33,6 +36,15 @@ export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): Rea
                     aria-label="Workflow name"
                     className="font-ui flex-1 bg-transparent text-parchment outline-none placeholder:text-veil"
                 />
+                <button
+                    type="button"
+                    onClick={() => setShowInspector((prev) => !prev)}
+                    className={`font-ui text-[10px] tracking-[0.2em] uppercase transition-colors ${
+                        showInspector ? 'text-gilt' : 'text-veil hover:text-parchment'
+                    }`}
+                >
+                    {showInspector ? 'Hide Inspector' : 'Inspector'}
+                </button>
             </div>
             <div className="flex flex-1 gap-2 overflow-hidden">
                 <aside className="sigil-ornamental-frame relative w-60 shrink-0 overflow-hidden">
@@ -46,6 +58,13 @@ export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): Rea
                             <WorkflowCanvas />
                         </ReactFlowProvider>
                     </div>
+                    {showInspector ? (
+                        <div className="sigil-ornamental-frame relative mt-2 h-48 shrink-0 overflow-hidden">
+                            <VariableInspector workflowId={meta.workflowId} />
+                            <CornerFlourish corner="tl" />
+                            <CornerFlourish corner="br" />
+                        </div>
+                    ) : null}
                     <ValidationBar onSave={onSave} />
                 </div>
                 <aside className="sigil-ornamental-frame relative w-80 shrink-0 overflow-hidden">
