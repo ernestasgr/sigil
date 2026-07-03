@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createWorkflowStateStore } from './workflow-state.js';
+import { createInMemoryWorkflowStateStore, createWorkflowStateStore } from './workflow-state.js';
 
 function createStore(database: Database.Database) {
     return createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
@@ -229,5 +229,124 @@ describe('createWorkflowStateStore — persistence across executions', () => {
 
         second.dispose();
         database.close();
+    });
+});
+
+describe('createWorkflowStateStore — listKeys / setKey / deleteKey', () => {
+    it('listKeys returns an empty array when no keys exist', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        expect(store.listKeys('wf-a')).toEqual([]);
+        store.dispose();
+        database.close();
+    });
+
+    it('setKey writes a key and listKeys returns it', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        store.setKey('wf-a', 'k', 'v');
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'k', value: 'v' }]);
+        store.dispose();
+        database.close();
+    });
+
+    it('setKey overwrites an existing key', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        store.setKey('wf-a', 'k', 'first');
+        store.setKey('wf-a', 'k', 'second');
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'k', value: 'second' }]);
+        store.dispose();
+        database.close();
+    });
+
+    it('setKey round-trips through new store on same DB', () => {
+        const database = new Database(':memory:');
+        const writer = createStore(database);
+        writer.setKey('wf-a', 'k', 'persisted');
+        const reader = createStore(database);
+        expect(reader.listKeys('wf-a')).toEqual([{ key: 'k', value: 'persisted' }]);
+        writer.dispose();
+        reader.dispose();
+        database.close();
+    });
+
+    it('deleteKey removes a key', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        store.setKey('wf-a', 'k', 'v');
+        store.deleteKey('wf-a', 'k');
+        expect(store.listKeys('wf-a')).toEqual([]);
+        store.dispose();
+        database.close();
+    });
+
+    it('deleteKey does not throw when deleting a non-existent key', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        expect(() => store.deleteKey('wf-a', 'missing')).not.toThrow();
+        store.dispose();
+        database.close();
+    });
+
+    it('deleteKey flushes pending buffer before deleting so key is not resurrected', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        store.forWorkflow('wf-a').set('k', 'buffered');
+        store.deleteKey('wf-a', 'k');
+        expect(store.listKeys('wf-a')).toEqual([]);
+        store.dispose();
+        database.close();
+    });
+
+    it('listKeys isolates keys per workflow', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        store.setKey('wf-a', 'ka', 'a');
+        store.setKey('wf-b', 'kb', 'b');
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'ka', value: 'a' }]);
+        expect(store.listKeys('wf-b')).toEqual([{ key: 'kb', value: 'b' }]);
+        store.dispose();
+        database.close();
+    });
+});
+
+describe('createInMemoryWorkflowStateStore — listKeys / setKey / deleteKey', () => {
+    it('listKeys returns an empty array when no keys exist', () => {
+        const store = createInMemoryWorkflowStateStore();
+        expect(store.listKeys('wf-a')).toEqual([]);
+    });
+
+    it('setKey writes a key and listKeys returns it', () => {
+        const store = createInMemoryWorkflowStateStore();
+        store.setKey('wf-a', 'k', 'v');
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'k', value: 'v' }]);
+    });
+
+    it('setKey overwrites an existing key', () => {
+        const store = createInMemoryWorkflowStateStore();
+        store.setKey('wf-a', 'k', 'first');
+        store.setKey('wf-a', 'k', 'second');
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'k', value: 'second' }]);
+    });
+
+    it('deleteKey removes a key', () => {
+        const store = createInMemoryWorkflowStateStore();
+        store.setKey('wf-a', 'k', 'v');
+        store.deleteKey('wf-a', 'k');
+        expect(store.listKeys('wf-a')).toEqual([]);
+    });
+
+    it('deleteKey does not throw when deleting a non-existent key', () => {
+        const store = createInMemoryWorkflowStateStore();
+        expect(() => store.deleteKey('wf-a', 'missing')).not.toThrow();
+    });
+
+    it('listKeys isolates keys per workflow', () => {
+        const store = createInMemoryWorkflowStateStore();
+        store.setKey('wf-a', 'ka', 'a');
+        store.setKey('wf-b', 'kb', 'b');
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'ka', value: 'a' }]);
+        expect(store.listKeys('wf-b')).toEqual([{ key: 'kb', value: 'b' }]);
     });
 });

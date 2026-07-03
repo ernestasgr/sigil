@@ -428,7 +428,11 @@ function WorkflowStateCard({
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => onDeleteKey(entry.key)}
+                                                onClick={() => {
+                                                    if (window.confirm(`Delete state key "${entry.key}"?`)) {
+                                                        onDeleteKey(entry.key);
+                                                    }
+                                                }}
                                                 className="font-ui text-old-blood hover:text-old-blood/80 text-[10px] tracking-widest uppercase transition-colors"
                                             >
                                                 Delete
@@ -445,6 +449,16 @@ function WorkflowStateCard({
     );
 }
 
+async function fetchStateEntries(
+    workflowId: string,
+): Promise<readonly WorkflowStateEntry[]> {
+    try {
+        return await window.sigil.readWorkflowState(workflowId);
+    } catch {
+        return [];
+    }
+}
+
 function WorkflowStatePanel({
     workflows,
 }: {
@@ -459,12 +473,8 @@ function WorkflowStatePanel({
         setLoading(true);
         Promise.all(
             workflows.map(async (wf) => {
-                try {
-                    const entries = await window.sigil.readWorkflowState(wf.id);
-                    return { id: wf.id, entries } as const;
-                } catch {
-                    return { id: wf.id, entries: [] as readonly WorkflowStateEntry[] } as const;
-                }
+                const entries = await fetchStateEntries(wf.id);
+                return { id: wf.id, entries } as const;
             }),
         )
             .then((results) => {
@@ -483,27 +493,35 @@ function WorkflowStatePanel({
     }, [loadAllState]);
 
     const handleSetKey = useCallback(async (workflowId: string, key: string, value: string) => {
-        const ok = await window.sigil.setWorkflowStateKey(workflowId, key, value);
-        if (ok) {
-            setStateMap((prev) => {
-                const entries = prev[workflowId] ?? [];
-                const existing = entries.findIndex((e) => e.key === key);
-                const updated =
-                    existing >= 0
-                        ? entries.map((e) => (e.key === key ? { ...e, value } : e))
-                        : [...entries, { key, value }];
-                return { ...prev, [workflowId]: updated };
-            });
+        try {
+            const ok = await window.sigil.setWorkflowStateKey(workflowId, key, value);
+            if (ok) {
+                setStateMap((prev) => {
+                    const entries = prev[workflowId] ?? [];
+                    const existing = entries.findIndex((e) => e.key === key);
+                    const updated =
+                        existing >= 0
+                            ? entries.map((e) => (e.key === key ? { ...e, value } : e))
+                            : [...entries, { key, value }];
+                    return { ...prev, [workflowId]: updated };
+                });
+            }
+        } catch (err) {
+            console.error('Failed to set workflow state key:', err);
         }
     }, []);
 
     const handleDeleteKey = useCallback(async (workflowId: string, key: string) => {
-        const ok = await window.sigil.deleteWorkflowStateKey(workflowId, key);
-        if (ok) {
-            setStateMap((prev) => ({
-                ...prev,
-                [workflowId]: (prev[workflowId] ?? []).filter((e) => e.key !== key),
-            }));
+        try {
+            const ok = await window.sigil.deleteWorkflowStateKey(workflowId, key);
+            if (ok) {
+                setStateMap((prev) => ({
+                    ...prev,
+                    [workflowId]: (prev[workflowId] ?? []).filter((e) => e.key !== key),
+                }));
+            }
+        } catch (err) {
+            console.error('Failed to delete workflow state key:', err);
         }
     }, []);
 
@@ -530,13 +548,9 @@ function WorkflowStatePanel({
                     key={wf.id}
                     workflow={wf}
                     entries={stateMap[wf.id] ?? []}
-                    onRefresh={() => {
-                        window.sigil
-                            .readWorkflowState(wf.id)
-                            .then((entries) => {
-                                setStateMap((prev) => ({ ...prev, [wf.id]: entries }));
-                            })
-                            .catch(() => {});
+                    onRefresh={async () => {
+                        const entries = await fetchStateEntries(wf.id);
+                        setStateMap((prev) => ({ ...prev, [wf.id]: entries }));
                     }}
                     onSetKey={(key, value) => handleSetKey(wf.id, key, value)}
                     onDeleteKey={(key) => handleDeleteKey(wf.id, key)}
