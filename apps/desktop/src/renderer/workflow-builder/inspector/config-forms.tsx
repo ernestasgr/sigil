@@ -127,7 +127,7 @@ export function ManualTriggerConfigForm({
     const handleBrowse = async (): Promise<void> => {
         const fileInfo: FileEventPayload | null = await window.sigil.openFileDialog();
         if (fileInfo) {
-            onChange({ ...config, payload: fileInfo });
+            onChange({ ...config, payload: { ...payload, ...fileInfo } });
         }
     };
 
