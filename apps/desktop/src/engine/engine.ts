@@ -108,10 +108,12 @@ export function createEngine(options?: EngineOptions): Engine {
                 if (!registry.has(pluginId)) {
                     const result = await loader.load(manifest, code);
                     if (!result.ok) {
+                        const detail =
+                            'error' in result.error ? result.error.error : result.error.pluginId;
                         bus.next({
                             name: 'log.output',
                             payload: {
-                                message: `[engine] failed to load ${pluginId} plugin: ${result.error.kind}`,
+                                message: `[engine] failed to load ${pluginId} plugin: ${result.error.kind}: ${detail}`,
                             },
                         });
                     }

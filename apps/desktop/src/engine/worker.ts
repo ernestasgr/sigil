@@ -66,6 +66,11 @@ const workflowsDir = join(userDataPath ?? '', 'workflows');
 const store = createWorkflowStore(workflowsDir);
 const activator = createWorkflowActivator(engine, store, engine.fileWatcherManager);
 
+// Load built-in plugins so they appear in the registry and PluginsSection
+void engine.loadBuiltinPlugins().catch((err: unknown) => {
+    log(`Failed to load built-in plugins: ${err instanceof Error ? err.message : String(err)}`);
+});
+
 process.on('exit', () => {
     activator.dispose();
     engine.dispose();
