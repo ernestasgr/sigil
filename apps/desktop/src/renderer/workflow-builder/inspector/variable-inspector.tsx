@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import type { WorkflowStateEntry } from '../../../shared/ipc-channels.js';
+import { useWorkflowState } from '../../lib/use-workflow-state.js';
 import { useAppStore, type LogEntry } from '../../store/app-store.js';
 
 interface VariableInspectorProps {
@@ -9,24 +9,11 @@ interface VariableInspectorProps {
 }
 
 export function VariableInspector({ workflowId }: VariableInspectorProps): ReactElement {
-    const [stateEntries, setStateEntries] = useState<readonly WorkflowStateEntry[]>([]);
-    const [stateLoading, setStateLoading] = useState(true);
+    const { entries: stateEntries, loading: stateLoading, refresh: refreshState } =
+        useWorkflowState(workflowId);
     const [activeTab, setActiveTab] = useState<'state' | 'output'>('output');
     const allLogs = useAppStore((state) => state.logs);
     const logEndRef = useRef<HTMLDivElement>(null);
-
-    const loadState = useCallback(() => {
-        setStateLoading(true);
-        window.sigil
-            .readWorkflowState(workflowId)
-            .then(setStateEntries)
-            .catch(() => setStateEntries([]))
-            .finally(() => setStateLoading(false));
-    }, [workflowId]);
-
-    useEffect(() => {
-        loadState();
-    }, [loadState]);
 
     useEffect(() => {
         logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -99,7 +86,7 @@ export function VariableInspector({ workflowId }: VariableInspectorProps): React
                                 </p>
                                 <button
                                     type="button"
-                                    onClick={loadState}
+                                    onClick={refreshState}
                                     className="font-ui text-gilt hover:text-gilt/80 mt-2 text-[10px] tracking-widest uppercase transition-colors"
                                 >
                                     Refresh
@@ -114,7 +101,7 @@ export function VariableInspector({ workflowId }: VariableInspectorProps): React
                                     </span>
                                     <button
                                         type="button"
-                                        onClick={loadState}
+                                        onClick={refreshState}
                                         className="font-ui text-gilt hover:text-gilt/80 text-[10px] tracking-widest uppercase transition-colors"
                                     >
                                         Refresh
