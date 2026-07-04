@@ -31,6 +31,54 @@
             "types": "./dist/nodes/index.d.ts",
             "import": "./dist/nodes/index.js"
         },
+        "./nodes/log": {
+            "types": "./dist/nodes/log.d.ts",
+            "import": "./dist/nodes/log.js"
+        },
+        "./nodes/delay": {
+            "types": "./dist/nodes/delay.d.ts",
+            "import": "./dist/nodes/delay.js"
+        },
+        "./nodes/notification": {
+            "types": "./dist/nodes/notification.d.ts",
+            "import": "./dist/nodes/notification.js"
+        },
+        "./nodes/file-manager": {
+            "types": "./dist/nodes/file-manager.d.ts",
+            "import": "./dist/nodes/file-manager.js"
+        },
+        "./nodes/file-watcher": {
+            "types": "./dist/nodes/file-watcher.d.ts",
+            "import": "./dist/nodes/file-watcher.js"
+        },
+        "./nodes/manual-trigger": {
+            "types": "./dist/nodes/manual-trigger.d.ts",
+            "import": "./dist/nodes/manual-trigger.js"
+        },
+        "./nodes/if-else": {
+            "types": "./dist/nodes/if-else.d.ts",
+            "import": "./dist/nodes/if-else.js"
+        },
+        "./nodes/switch": {
+            "types": "./dist/nodes/switch.d.ts",
+            "import": "./dist/nodes/switch.js"
+        },
+        "./nodes/state-get": {
+            "types": "./dist/nodes/state-get.d.ts",
+            "import": "./dist/nodes/state-get.js"
+        },
+        "./nodes/state-set": {
+            "types": "./dist/nodes/state-set.d.ts",
+            "import": "./dist/nodes/state-set.js"
+        },
+        "./nodes/common": {
+            "types": "./dist/nodes/common.d.ts",
+            "import": "./dist/nodes/common.js"
+        },
+        "./nodes/types": {
+            "types": "./dist/nodes/types.d.ts",
+            "import": "./dist/nodes/types.js"
+        },
         "./edges": {
             "types": "./dist/edges.d.ts",
             "import": "./dist/edges.js"
