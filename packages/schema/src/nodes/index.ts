@@ -42,7 +42,10 @@ export function getNodeDescriptor(type: NodeType): NodeDescriptor<NodeType, unkn
 
 // ─── NodeTypeSchema ─────────────────────────────────────────────
 
-const NODE_TYPE_VALUES = Object.keys(NODE_DESCRIPTORS) as unknown as [string, ...string[]];
+const NODE_TYPE_VALUES = Object.keys(NODE_DESCRIPTORS) as unknown as readonly [
+    NodeType,
+    ...NodeType[],
+];
 export const NodeTypeSchema = z.enum(NODE_TYPE_VALUES);
 
 // ─── PipelineNode type (derived from NODE_DESCRIPTORS) ──────────
