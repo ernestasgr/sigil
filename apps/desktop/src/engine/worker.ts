@@ -6,30 +6,15 @@ import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 
 import {
     EngineChannel,
+    WorkerInboundSchema,
     type EngineBusEvent,
-    type EngineCreateWorkflow,
-    type EngineDeleteWorkflow,
-    type EngineDeleteWorkflowStateKey,
-    type EngineFireManualTrigger,
-    type EngineFireTestEvent,
-    type EngineGetWorkflow,
-    type EngineListPlugins,
     type EngineLog,
-    type EnginePing,
     type EnginePong,
-    type EngineReadProperties,
-    type EngineReadWorkflowState,
-    type EngineSaveProperties,
-    type EngineSetPermissionOverride,
-    type EngineSetWorkflowStateKey,
-    type EngineToggleWorkflow,
-    type EngineUpdateWorkflow,
     type EngineWorkflowsList,
 } from '../shared/ipc-channels.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import { createEngine } from './engine.js';
 import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
-import { assertNever } from '../shared/assert-never.js';
 import { createWorkflowActivator } from './workflow-activator.js';
 import { createWorkflowStore } from './workflow-store.js';
 
@@ -38,23 +23,6 @@ if (!parentPort) {
 }
 
 const port = parentPort;
-
-type WorkerInbound =
-    | EnginePing
-    | EngineFireTestEvent
-    | EngineFireManualTrigger
-    | EngineToggleWorkflow
-    | EngineCreateWorkflow
-    | EngineUpdateWorkflow
-    | EngineDeleteWorkflow
-    | EngineGetWorkflow
-    | EngineListPlugins
-    | EngineSetPermissionOverride
-    | EngineReadProperties
-    | EngineSaveProperties
-    | EngineReadWorkflowState
-    | EngineSetWorkflowStateKey
-    | EngineDeleteWorkflowStateKey;
 
 const userDataPath =
     typeof workerData === 'object' && workerData !== null
@@ -100,7 +68,20 @@ engine.bus.subscribe((event) => {
     }
 });
 
-port.on('message', (message: WorkerInbound) => {
+port.on('message', (raw: unknown) => {
+    const parsed = WorkerInboundSchema.safeParse(raw);
+    if (!parsed.success) {
+        const errMsg = parsed.error.issues
+            .map((i) => `${i.path.join('.')}: ${i.message}`)
+            .join('; ');
+        console.error(`[worker] invalid message envelope: ${errMsg}`);
+        port.postMessage({
+            type: EngineChannel.Log,
+            line: `[error] invalid message envelope: ${errMsg}`,
+        });
+        return;
+    }
+    const message = parsed.data;
     try {
         switch (message.type) {
             case EngineChannel.Ping: {
@@ -179,7 +160,9 @@ port.on('message', (message: WorkerInbound) => {
                         activator.activate(message.id);
                     }
                 } else {
-                    log(`Created workflow "${message.name}" via update for missing id (${summary.id})`);
+                    log(
+                        `Created workflow "${message.name}" via update for missing id (${summary.id})`,
+                    );
                 }
                 broadcastWorkflowsList();
                 port.postMessage({
@@ -301,7 +284,14 @@ port.on('message', (message: WorkerInbound) => {
                 break;
             }
             default: {
-                assertNever(message);
+                const _exhaustive: never = message;
+                void _exhaustive;
+                const errMsg = `[worker] unhandled message type: ${(message as unknown as { type: string }).type}`;
+                console.error(errMsg);
+                port.postMessage({
+                    type: EngineChannel.Log,
+                    line: `[error] unhandled message type (this is a bug)`,
+                });
             }
         }
     } catch (err) {
