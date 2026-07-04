@@ -9,6 +9,7 @@ import { CapabilitySchema } from '@sigil/schema/manifest';
 
 import {
     RendererChannel,
+    WorkflowIdSchema,
     type EngineBusEventPayload,
     type EnginePong,
 } from '../shared/ipc-channels.js';
@@ -131,9 +132,10 @@ function wireEngineIpc(): void {
     ipcMain.handle(
         RendererChannel.ToggleWorkflow,
         async (_event, id: unknown): Promise<WorkflowSummary | null> => {
-            if (typeof id !== 'string') throw new Error('Invalid workflow id');
+            const parsed = WorkflowIdSchema.safeParse(id);
+            if (!parsed.success) throw new Error('Invalid workflow id');
             if (!engine) throw new Error('Engine not ready');
-            return await engine.toggleWorkflow(id);
+            return await engine.toggleWorkflow(parsed.data);
         },
     );
 

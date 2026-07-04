@@ -7,8 +7,12 @@ import { app } from 'electron';
 import type { Capability } from '@sigil/schema/manifest';
 import type { CompiledPipeline } from '@sigil/schema';
 
+import { z } from 'zod';
+
 import {
     EngineChannel,
+    EngineMessageSchema,
+    EngineReadySchema,
     type EngineBusEventPayload,
     type EngineCreateWorkflow,
     type EngineDeleteWorkflow,
@@ -257,7 +261,18 @@ export function spawnEngine(): EngineHandle {
         pendingDeleteWorkflowStateKey.clear();
     }
 
-    worker.on('message', (message: EngineMessage | { type: 'engine:ready' }) => {
+    const engineMessageOrReadySchema = z.union([EngineMessageSchema, EngineReadySchema]);
+
+    worker.on('message', (raw: unknown) => {
+        const parsed = engineMessageOrReadySchema.safeParse(raw);
+        if (!parsed.success) {
+            console.error(
+                '[engine] invalid message envelope:',
+                parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+            );
+            return;
+        }
+        const message = parsed.data;
         if (message.type === 'engine:ready') {
             ready = true;
             for (const handler of readyHandlers) handler();
