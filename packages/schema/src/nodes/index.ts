@@ -2,6 +2,17 @@ import { z } from 'zod';
 
 import type { NodeDescriptor } from './types.js';
 
+import type { FileWatcherConfig } from './file-watcher.js';
+import type { ManualTriggerConfig } from './manual-trigger.js';
+import type { IfElseConfig } from './if-else.js';
+import type { SwitchConfig } from './switch.js';
+import type { FileManagerConfig } from './file-manager.js';
+import type { NotificationConfig } from './notification.js';
+import type { LogConfig } from './log.js';
+import type { DelayConfig } from './delay.js';
+import type { StateGetConfig } from './state-get.js';
+import type { StateSetConfig } from './state-set.js';
+
 import { FileWatcherDescriptor } from './file-watcher.js';
 import { ManualTriggerDescriptor } from './manual-trigger.js';
 import { IfElseDescriptor } from './if-else.js';
@@ -12,6 +23,19 @@ import { LogDescriptor } from './log.js';
 import { DelayDescriptor } from './delay.js';
 import { StateGetDescriptor } from './state-get.js';
 import { StateSetDescriptor } from './state-set.js';
+
+export type {
+    DelayConfig,
+    FileManagerConfig,
+    FileWatcherConfig,
+    IfElseConfig,
+    LogConfig,
+    ManualTriggerConfig,
+    NotificationConfig,
+    StateGetConfig,
+    StateSetConfig,
+    SwitchConfig,
+};
 
 // ─── Registry ───────────────────────────────────────────────────
 
@@ -50,13 +74,24 @@ export const NodeTypeSchema = z.enum(NODE_TYPE_VALUES);
 
 // ─── PipelineNode type (derived from NODE_DESCRIPTORS) ──────────
 
-type NodeConfigFor<K extends NodeType> = z.infer<(typeof NODE_DESCRIPTORS)[K]['configSchema']>;
+type NodeConfigMap = {
+    'file-watcher': FileWatcherConfig;
+    'manual-trigger': ManualTriggerConfig;
+    'if-else': IfElseConfig;
+    switch: SwitchConfig;
+    'file-manager': FileManagerConfig;
+    notification: NotificationConfig;
+    log: LogConfig;
+    delay: DelayConfig;
+    'state-get': StateGetConfig;
+    'state-set': StateSetConfig;
+};
 
 export type PipelineNode = {
     [K in NodeType]: {
         readonly id: string;
         readonly type: K;
-        readonly config: NodeConfigFor<K>;
+        readonly config: NodeConfigMap[K];
     };
 }[NodeType];
 

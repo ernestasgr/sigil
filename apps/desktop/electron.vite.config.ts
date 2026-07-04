@@ -30,11 +30,14 @@ export default defineConfig({
     },
     preload: {
         build: {
-            externalizeDeps: true,
+            externalizeDeps: false,
             lib: {
                 entry: resolve(__dirname, 'src/preload/index.ts'),
                 fileName: 'index',
                 formats: ['cjs'],
+            },
+            rollupOptions: {
+                external: ['electron'],
             },
         },
         resolve: {
