@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const CapabilitySchema = z.enum([
+    'state.read',
+    'state.write',
     'filesystem.read',
     'filesystem.write',
     'network',

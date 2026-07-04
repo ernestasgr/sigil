@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { stubPingCode, stubPingManifest } from './stub-plugin.js';
+import type { Manifest } from '@sigil/schema/manifest';
 import type { BusEvent } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
 import { createBridge } from './bridge.js';
@@ -32,6 +33,7 @@ function createTestStack(): PluginLoaderDeps & {
 
 function createRoutingStack(): PluginLoaderDeps & {
     bus: ReturnType<typeof createEventBus>;
+    permissionOverrides: ReturnType<typeof createPermissionOverrideStore>;
 } {
     const bus = createEventBus();
     const registry = createManifestRegistry();
@@ -40,7 +42,7 @@ function createRoutingStack(): PluginLoaderDeps & {
     const overrides = createPermissionOverrideStore();
     const broker = createCapabilityBroker(registry, overrides);
     const stateStore = createInMemoryPluginStateStore();
-    return { bus, registry, bridge, broker, stateStore };
+    return { bus, registry, bridge, broker, stateStore, permissionOverrides: overrides };
 }
 
 function pluginEvents(events: BusEvent[]): BusEvent[] {
@@ -222,5 +224,131 @@ describe('handleRpcRequest routing', () => {
         expect(response.ok).toBe(true);
         const logEvent = events.find((e) => e.name === 'log.output');
         expect(logEvent?.name === 'log.output' && logEvent.payload.message).toBe('log via rpc');
+    });
+
+    it('denies state.get for a plugin without state.read permission', () => {
+        const stack = createRoutingStack();
+        stack.registry.unregister('com.sigil.stub-ping');
+        const noPermManifest: Manifest = {
+            id: 'com.sigil.no-state',
+            version: '0.0.1',
+            permissions: [],
+            emits: ['stub.ping'],
+        };
+        stack.registry.register(noPermManifest);
+
+        const request: PluginRpcRequest = {
+            kind: PluginRpcKind.StateGet,
+            requestId: 'r6',
+            pluginId: 'com.sigil.no-state',
+            key: 'secret',
+        };
+
+        const response = handleRpcRequest(request, stack);
+
+        expect(response.ok).toBe(false);
+        if (!response.ok) {
+            expect(response.error).toBe('denied');
+        }
+    });
+
+    it('denies state.set for a plugin without state.write permission', () => {
+        const stack = createRoutingStack();
+        stack.registry.unregister('com.sigil.stub-ping');
+        const noPermManifest: Manifest = {
+            id: 'com.sigil.no-state',
+            version: '0.0.1',
+            permissions: [],
+            emits: ['stub.ping'],
+        };
+        stack.registry.register(noPermManifest);
+
+        const request: PluginRpcRequest = {
+            kind: PluginRpcKind.StateSet,
+            requestId: 'r7',
+            pluginId: 'com.sigil.no-state',
+            key: 'x',
+            value: 1,
+        };
+
+        const response = handleRpcRequest(request, stack);
+
+        expect(response.ok).toBe(false);
+        if (!response.ok) {
+            expect(response.error).toBe('denied');
+        }
+    });
+
+    it('allows state.get and state.set when the manifest grants the permissions', () => {
+        const stack = createRoutingStack();
+
+        const getRequest: PluginRpcRequest = {
+            kind: PluginRpcKind.StateGet,
+            requestId: 'r8',
+            pluginId: 'com.sigil.stub-ping',
+            key: 'counter',
+        };
+
+        const getResponse = handleRpcRequest(getRequest, stack);
+        expect(getResponse.ok).toBe(true);
+
+        const setRequest: PluginRpcRequest = {
+            kind: PluginRpcKind.StateSet,
+            requestId: 'r9',
+            pluginId: 'com.sigil.stub-ping',
+            key: 'counter',
+            value: 42,
+        };
+
+        const setResponse = handleRpcRequest(setRequest, stack);
+        expect(setResponse.ok).toBe(true);
+        expect(stack.stateStore.get('com.sigil.stub-ping', 'counter')).toBe(42);
+    });
+
+    it('re-checks permission on every call: revoke between two consecutive RPCs sees the second denied', () => {
+        const stack = createRoutingStack();
+
+        const setRequest: PluginRpcRequest = {
+            kind: PluginRpcKind.StateSet,
+            requestId: 'r10',
+            pluginId: 'com.sigil.stub-ping',
+            key: 'counter',
+            value: 1,
+        };
+
+        const firstResponse = handleRpcRequest(setRequest, stack);
+        expect(firstResponse.ok).toBe(true);
+
+        stack.permissionOverrides.set('com.sigil.stub-ping', []);
+
+        const secondResponse = handleRpcRequest(setRequest, stack);
+        expect(secondResponse.ok).toBe(false);
+        if (!secondResponse.ok) {
+            expect(secondResponse.error).toBe('denied');
+        }
+    });
+
+    it('does not mutate state store when state.set is denied', () => {
+        const stack = createRoutingStack();
+        stack.registry.unregister('com.sigil.stub-ping');
+        const noPermManifest: Manifest = {
+            id: 'com.sigil.no-state',
+            version: '0.0.1',
+            permissions: [],
+            emits: ['stub.ping'],
+        };
+        stack.registry.register(noPermManifest);
+
+        const request: PluginRpcRequest = {
+            kind: PluginRpcKind.StateSet,
+            requestId: 'r11',
+            pluginId: 'com.sigil.no-state',
+            key: 'should-not-exist',
+            value: 'leaked',
+        };
+
+        handleRpcRequest(request, stack);
+
+        expect(stack.stateStore.get('com.sigil.no-state', 'should-not-exist')).toBeUndefined();
     });
 });
