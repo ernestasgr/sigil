@@ -3,7 +3,7 @@ import type { Manifest } from '@sigil/schema/manifest';
 export const stubPingManifest: Manifest = {
     id: 'com.sigil.stub-ping',
     version: '0.0.1',
-    permissions: [],
+    permissions: ['state.read', 'state.write'],
     emits: ['stub.ping'],
 };
 

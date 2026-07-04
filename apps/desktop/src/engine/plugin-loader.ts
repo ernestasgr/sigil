@@ -7,7 +7,7 @@ import { parseManifest } from '@sigil/schema/manifest';
 import type { Manifest } from '@sigil/schema/manifest';
 
 import type { Bridge } from './bridge.js';
-import type { CapabilityBroker } from './capability-broker.js';
+import type { Capability, CapabilityBroker } from './capability-broker.js';
 import type { EventBus } from './event-bus.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 import {
@@ -121,6 +121,18 @@ export function handleRpcRequest(
                   };
         }
         case PluginRpcKind.StateGet: {
+            const readResult = deps.broker.request({
+                pluginId: request.pluginId,
+                capability: 'state.read' satisfies Capability,
+            });
+            if (!readResult.ok) {
+                return {
+                    kind: PluginLifecycleKind.Result,
+                    requestId: request.requestId,
+                    ok: false,
+                    error: 'denied',
+                };
+            }
             const value = deps.stateStore.get(request.pluginId, request.key);
             return {
                 kind: PluginLifecycleKind.Result,
@@ -130,6 +142,18 @@ export function handleRpcRequest(
             };
         }
         case PluginRpcKind.StateSet: {
+            const writeResult = deps.broker.request({
+                pluginId: request.pluginId,
+                capability: 'state.write' satisfies Capability,
+            });
+            if (!writeResult.ok) {
+                return {
+                    kind: PluginLifecycleKind.Result,
+                    requestId: request.requestId,
+                    ok: false,
+                    error: 'denied',
+                };
+            }
             deps.stateStore.set(request.pluginId, request.key, request.value);
             return {
                 kind: PluginLifecycleKind.Result,
