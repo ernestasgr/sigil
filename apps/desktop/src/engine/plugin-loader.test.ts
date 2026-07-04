@@ -14,7 +14,7 @@ import {
     handleRpcRequest,
     type PluginLoaderDeps,
 } from './plugin-loader.js';
-import type { PluginRpcRequest } from './plugin-rpc.js';
+import { PluginToEngineMessageSchema, type PluginRpcRequest } from './plugin-rpc.js';
 import { PluginRpcKind } from './plugin-rpc.js';
 
 function createTestStack(): PluginLoaderDeps & {
@@ -350,5 +350,37 @@ describe('handleRpcRequest routing', () => {
         handleRpcRequest(request, stack);
 
         expect(stack.stateStore.get('com.sigil.no-state', 'should-not-exist')).toBeUndefined();
+    });
+});
+
+describe('envelope validation', () => {
+    it('rejects a malformed PluginToEngineMessage', () => {
+        const malformed = { kind: 'plugin:unknown', payload: 'garbage' };
+        const result = PluginToEngineMessageSchema.safeParse(malformed);
+        expect(result.success).toBe(false);
+    });
+
+    it('rejects a null/undefined message', () => {
+        expect(PluginToEngineMessageSchema.safeParse(null).success).toBe(false);
+        expect(PluginToEngineMessageSchema.safeParse(undefined).success).toBe(false);
+    });
+
+    it('accepts a valid PluginRpcRequest', () => {
+        const request: PluginRpcRequest = {
+            kind: PluginRpcKind.StateGet,
+            requestId: 'r1',
+            pluginId: 'com.sigil.stub-ping',
+            key: 'counter',
+        };
+        const result = PluginToEngineMessageSchema.safeParse(request);
+        expect(result.success).toBe(true);
+    });
+
+    it('accepts a valid plugin:ready message', () => {
+        const result = PluginToEngineMessageSchema.safeParse({
+            kind: 'plugin:ready',
+            pluginId: 'com.sigil.stub-ping',
+        });
+        expect(result.success).toBe(true);
     });
 });

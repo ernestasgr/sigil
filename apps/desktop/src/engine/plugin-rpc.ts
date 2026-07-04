@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export const PluginRpcKind = {
     EventEmit: 'plugin:event.emit',
     StateGet: 'plugin:state.get',
@@ -11,58 +13,86 @@ export const PluginLifecycleKind = {
     Result: 'plugin:result',
 } as const;
 
-export type PluginRpcRequest =
-    | {
-          readonly kind: typeof PluginRpcKind.EventEmit;
-          readonly requestId: string;
-          readonly pluginId: string;
-          readonly eventName: string;
-          readonly payload: unknown;
-      }
-    | {
-          readonly kind: typeof PluginRpcKind.StateGet;
-          readonly requestId: string;
-          readonly pluginId: string;
-          readonly key: string;
-      }
-    | {
-          readonly kind: typeof PluginRpcKind.StateSet;
-          readonly requestId: string;
-          readonly pluginId: string;
-          readonly key: string;
-          readonly value: unknown;
-      }
-    | {
-          readonly kind: typeof PluginRpcKind.Log;
-          readonly requestId: string;
-          readonly pluginId: string;
-          readonly message: string;
-      };
+const PluginEventEmitRequestSchema = z.object({
+    kind: z.literal(PluginRpcKind.EventEmit),
+    requestId: z.string(),
+    pluginId: z.string(),
+    eventName: z.string(),
+    payload: z.unknown(),
+});
 
-export type PluginRpcResponse =
-    | {
-          readonly kind: typeof PluginLifecycleKind.Result;
-          readonly requestId: string;
-          readonly ok: true;
-          readonly value: unknown;
-      }
-    | {
-          readonly kind: typeof PluginLifecycleKind.Result;
-          readonly requestId: string;
-          readonly ok: false;
-          readonly error: string;
-      };
+const PluginStateGetRequestSchema = z.object({
+    kind: z.literal(PluginRpcKind.StateGet),
+    requestId: z.string(),
+    pluginId: z.string(),
+    key: z.string(),
+});
 
-export type PluginWorkerReady = {
-    readonly kind: typeof PluginLifecycleKind.Ready;
-    readonly pluginId: string;
-};
+const PluginStateSetRequestSchema = z.object({
+    kind: z.literal(PluginRpcKind.StateSet),
+    requestId: z.string(),
+    pluginId: z.string(),
+    key: z.string(),
+    value: z.unknown(),
+});
 
-export type PluginWorkerError = {
-    readonly kind: typeof PluginLifecycleKind.Error;
-    readonly pluginId: string;
-    readonly message: string;
-};
+const PluginLogRequestSchema = z.object({
+    kind: z.literal(PluginRpcKind.Log),
+    requestId: z.string(),
+    pluginId: z.string(),
+    message: z.string(),
+});
 
-export type PluginToEngineMessage = PluginRpcRequest | PluginWorkerReady | PluginWorkerError;
-export type EngineToPluginMessage = PluginRpcResponse;
+export const PluginRpcRequestSchema = z.discriminatedUnion('kind', [
+    PluginEventEmitRequestSchema,
+    PluginStateGetRequestSchema,
+    PluginStateSetRequestSchema,
+    PluginLogRequestSchema,
+]);
+export type PluginRpcRequest = z.infer<typeof PluginRpcRequestSchema>;
+
+export const PluginRpcResponseOkSchema = z.object({
+    kind: z.literal(PluginLifecycleKind.Result),
+    requestId: z.string(),
+    ok: z.literal(true),
+    value: z.unknown(),
+});
+
+export const PluginRpcResponseErrorSchema = z.object({
+    kind: z.literal(PluginLifecycleKind.Result),
+    requestId: z.string(),
+    ok: z.literal(false),
+    error: z.string(),
+});
+
+export const PluginRpcResponseSchema = z.discriminatedUnion('ok', [
+    PluginRpcResponseOkSchema,
+    PluginRpcResponseErrorSchema,
+]);
+export type PluginRpcResponse = z.infer<typeof PluginRpcResponseSchema>;
+
+export const PluginWorkerReadySchema = z.object({
+    kind: z.literal(PluginLifecycleKind.Ready),
+    pluginId: z.string(),
+});
+export type PluginWorkerReady = z.infer<typeof PluginWorkerReadySchema>;
+
+export const PluginWorkerErrorSchema = z.object({
+    kind: z.literal(PluginLifecycleKind.Error),
+    pluginId: z.string(),
+    message: z.string(),
+});
+export type PluginWorkerError = z.infer<typeof PluginWorkerErrorSchema>;
+
+export const PluginToEngineMessageSchema = z.discriminatedUnion('kind', [
+    PluginEventEmitRequestSchema,
+    PluginStateGetRequestSchema,
+    PluginStateSetRequestSchema,
+    PluginLogRequestSchema,
+    PluginWorkerReadySchema,
+    PluginWorkerErrorSchema,
+]);
+export type PluginToEngineMessage = z.infer<typeof PluginToEngineMessageSchema>;
+
+export const EngineToPluginMessageSchema = PluginRpcResponseSchema;
+export type EngineToPluginMessage = z.infer<typeof EngineToPluginMessageSchema>;

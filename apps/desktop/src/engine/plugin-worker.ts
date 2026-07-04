@@ -5,7 +5,7 @@ import { z } from 'zod';
 import {
     PluginLifecycleKind,
     PluginRpcKind,
-    type EngineToPluginMessage,
+    EngineToPluginMessageSchema,
     type PluginRpcRequest,
     type PluginToEngineMessage,
 } from './plugin-rpc.js';
@@ -74,7 +74,26 @@ const rpc: PluginSandboxRpc = {
         }),
 };
 
-port.on('message', (message: EngineToPluginMessage) => {
+port.on('message', (raw: unknown) => {
+    const parsed = EngineToPluginMessageSchema.safeParse(raw);
+    if (!parsed.success) {
+        console.error(
+            '[plugin-worker] invalid engine message envelope:',
+            parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+        );
+        const requestId =
+            typeof raw === 'object' && raw !== null && 'requestId' in raw
+                ? String((raw as Record<string, unknown>).requestId)
+                : '';
+        const entry = requestId ? pending.get(requestId) : undefined;
+        if (entry) {
+            pending.delete(requestId);
+            entry.reject(new Error('invalid engine message envelope'));
+        }
+        return;
+    }
+    const message = parsed.data;
+
     if (message.kind === PluginLifecycleKind.Result) {
         const entry = pending.get(message.requestId);
         if (entry) {

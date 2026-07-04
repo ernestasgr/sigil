@@ -13,9 +13,9 @@ import type { ManifestRegistry } from './manifest-registry.js';
 import {
     PluginLifecycleKind,
     PluginRpcKind,
+    PluginToEngineMessageSchema,
     type EngineToPluginMessage,
     type PluginRpcRequest,
-    type PluginToEngineMessage,
 } from './plugin-rpc.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -215,7 +215,23 @@ export function createPluginLoader(deps: PluginLoaderDeps) {
                 }
             }, 10000);
 
-            worker.on('message', (message: PluginToEngineMessage) => {
+            worker.on('message', (raw: unknown) => {
+                const parsed = PluginToEngineMessageSchema.safeParse(raw);
+                if (!parsed.success) {
+                    const requestId =
+                        typeof raw === 'object' && raw !== null && 'requestId' in raw
+                            ? String((raw as Record<string, unknown>).requestId)
+                            : '';
+                    worker.postMessage({
+                        kind: PluginLifecycleKind.Result,
+                        requestId,
+                        ok: false,
+                        error: 'invalid_message',
+                    } satisfies EngineToPluginMessage);
+                    return;
+                }
+                const message = parsed.data;
+
                 if (message.kind === PluginLifecycleKind.Ready) {
                     if (!settled) {
                         settled = true;
