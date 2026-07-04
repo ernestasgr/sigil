@@ -51,7 +51,7 @@ export const EngineDiagnosticPayloadSchema = z
 export type EngineDiagnosticPayload = z.infer<typeof EngineDiagnosticPayloadSchema>;
 
 export interface EventPayloadSchemaEntry {
-    readonly schema: z.ZodTypeAny;
+    readonly schema: z.ZodType;
     readonly label: string;
     readonly color: string;
 }
@@ -99,22 +99,46 @@ export const EventPayloadSchemaRegistry: Record<string, EventPayloadSchemaEntry>
     } satisfies EventPayloadSchemaEntry,
 };
 
-export function safeParsePayload(
-    name: string,
+type EventPayloadMap = {
+    'workflow.started': WorkflowRunPayload;
+    'workflow.completed': WorkflowRunPayload;
+    'workflow.error': WorkflowErrorPayload;
+    'manual.trigger.fired': z.infer<typeof FileEventPayloadSchema>;
+    'log.output': LogOutputPayload;
+    'notification.show': NotificationShowPayload;
+    'plugin.event': PluginBusEventPayload;
+    'engine.diagnostic': EngineDiagnosticPayload;
+};
+
+export function safeParsePayload<Name extends string>(
+    name: Name,
     payload: unknown,
-): { readonly ok: true; readonly data: unknown } | { readonly ok: false; readonly error: string } {
+):
+    | {
+          readonly ok: true;
+          readonly data: Name extends keyof EventPayloadMap ? EventPayloadMap[Name] : unknown;
+      }
+    | { readonly ok: false; readonly error: string } {
     const entry = EventPayloadSchemaRegistry[name];
     if (!entry) {
         return { ok: false, error: `Unknown event name: ${name}` };
     }
     const result = entry.schema.safeParse(payload);
     if (result.success) {
-        return { ok: true, data: result.data };
+        return {
+            ok: true,
+            data: result.data as Name extends keyof EventPayloadMap
+                ? EventPayloadMap[Name]
+                : unknown,
+        };
     }
     return { ok: false, error: result.error.message };
 }
 
-export function validateBusEventPayload(name: string, payload: unknown): string | undefined {
+export function validateBusEventPayload<Name extends string>(
+    name: Name,
+    payload: unknown,
+): string | undefined {
     const entry = EventPayloadSchemaRegistry[name];
     if (!entry) {
         return `Unknown event name: ${name}`;

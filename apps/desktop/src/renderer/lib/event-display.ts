@@ -12,7 +12,12 @@ export function payloadPreview(payload: unknown): string {
     if (!payload || typeof payload !== 'object') return String(payload);
     const obj = payload as Record<string, unknown>;
     const parts: string[] = [];
-    if (typeof obj.message === 'string') return obj.message;
+    if (typeof obj.message === 'string') {
+        if (typeof obj.kind === 'string') {
+            return `${obj.message} (${obj.kind})`;
+        }
+        return obj.message;
+    }
     if (typeof obj.pipelineId === 'string') parts.push(`pipeline=${obj.pipelineId}`);
     if (typeof obj.pluginId === 'string') parts.push(`plugin=${obj.pluginId}`);
     if (typeof obj.eventName === 'string') parts.push(`event=${obj.eventName}`);

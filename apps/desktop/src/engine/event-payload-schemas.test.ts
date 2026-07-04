@@ -47,6 +47,22 @@ describe('EventPayloadSchemaRegistry', () => {
     });
 
     it.each([
+        ['log.output', { message: 'hello' }, { message: 'hello' }],
+        ['notification.show', { title: 'Sigil', body: 'Done' }, { title: 'Sigil', body: 'Done' }],
+        [
+            'engine.diagnostic',
+            { message: 'watcher active', kind: 'activation' },
+            { message: 'watcher active', kind: 'activation' },
+        ],
+    ])('returns typed data via safeParsePayload for %s', (name, payload, expected) => {
+        const result = safeParsePayload(name, payload);
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.data).toEqual(expected);
+        }
+    });
+
+    it.each([
         ['workflow.started', {}],
         ['workflow.completed', { pipelineId: 42 }],
         ['workflow.error', { pipelineId: 'p1' }],
