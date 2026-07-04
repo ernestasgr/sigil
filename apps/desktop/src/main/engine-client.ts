@@ -14,23 +14,9 @@ import {
     EngineMessageSchema,
     EngineReadySchema,
     type EngineBusEventPayload,
-    type EngineCreateWorkflow,
-    type EngineDeleteWorkflow,
-    type EngineDeleteWorkflowStateKey,
-    type EngineFireManualTrigger,
-    type EngineFireTestEvent,
-    type EngineGetWorkflow,
-    type EngineGetWorkflowResult,
-    type EngineListPlugins,
     type EngineMessage,
     type EnginePong,
-    type EngineReadProperties,
-    type EngineReadWorkflowState,
-    type EngineSaveProperties,
-    type EngineSetPermissionOverride,
-    type EngineSetWorkflowStateKey,
-    type EngineToggleWorkflow,
-    type EngineUpdateWorkflow,
+    type EngineGetWorkflowResult,
 } from '../shared/ipc-channels.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
@@ -82,184 +68,152 @@ export type EngineHandle = {
     readonly onBusEvent: (handler: (event: EngineBusEventPayload) => void) => () => void;
 };
 
+type PendingEntry = {
+    readonly resolve: (value: unknown) => void;
+    readonly reject: (err: Error) => void;
+    readonly timer: NodeJS.Timeout;
+};
+
+export type RpcClientProps = {
+    readonly postMessage: (msg: unknown) => void;
+    readonly logHandlers: Set<(line: string) => void>;
+    readonly workflowsListHandlers: Set<(workflows: readonly WorkflowSummary[]) => void>;
+    readonly busEventHandlers: Set<(event: EngineBusEventPayload) => void>;
+};
+
+export type RpcClient = {
+    readonly rpc: <Res>(
+        channel: string,
+        payload: Record<string, unknown>,
+        timeoutMs: number,
+        idField?: 'correlationId' | 'id',
+    ) => Promise<Res>;
+    readonly rejectAll: (reason: string) => void;
+    readonly dispatch: (message: EngineMessage) => void;
+};
+
+function assertNever(x: never, message?: string): never {
+    throw new Error(message ?? `Unhandled case: ${JSON.stringify(x)}`);
+}
+
+export function createRpcClient(props: RpcClientProps): RpcClient {
+    const { postMessage, logHandlers, workflowsListHandlers, busEventHandlers } = props;
+    const pending = new Map<string, PendingEntry>();
+
+    function rpc<Res>(
+        channel: string,
+        payload: Record<string, unknown>,
+        timeoutMs: number,
+        idField: 'correlationId' | 'id' = 'correlationId',
+    ): Promise<Res> {
+        const id = randomUUID();
+        return new Promise<Res>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                pending.delete(id);
+                reject(new Error(`${channel} timed out after ${timeoutMs}ms`));
+            }, timeoutMs);
+            pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
+            postMessage({ ...payload, [idField]: id, type: channel });
+        });
+    }
+
+    function rejectAll(reason: string) {
+        for (const [, entry] of pending) {
+            clearTimeout(entry.timer);
+            entry.reject(new Error(reason));
+        }
+        pending.clear();
+    }
+
+    function dispatch(message: EngineMessage): void {
+        switch (message.type) {
+            case EngineChannel.Pong: {
+                const entry = pending.get(message.id);
+                if (entry) {
+                    pending.delete(message.id);
+                    clearTimeout(entry.timer);
+                    entry.resolve(message);
+                }
+                return;
+            }
+            case EngineChannel.Log: {
+                for (const handler of [...logHandlers]) handler(message.line);
+                return;
+            }
+            case EngineChannel.WorkflowsList: {
+                for (const handler of [...workflowsListHandlers]) handler(message.workflows);
+                return;
+            }
+            case EngineChannel.BusEvent: {
+                for (const handler of [...busEventHandlers]) handler(message.event);
+                return;
+            }
+            case EngineChannel.GetWorkflowResult:
+            case EngineChannel.CreateWorkflowResult:
+            case EngineChannel.UpdateWorkflowResult:
+            case EngineChannel.DeleteWorkflowResult:
+            case EngineChannel.ToggleWorkflowResult:
+            case EngineChannel.ListPluginsResult:
+            case EngineChannel.SetPermissionOverrideResult:
+            case EngineChannel.ReadPropertiesResult:
+            case EngineChannel.SavePropertiesResult:
+            case EngineChannel.ReadWorkflowStateResult:
+            case EngineChannel.SetWorkflowStateKeyResult:
+            case EngineChannel.DeleteWorkflowStateKeyResult: {
+                const entry = pending.get(message.correlationId);
+                if (entry) {
+                    pending.delete(message.correlationId);
+                    clearTimeout(entry.timer);
+                    entry.resolve(message);
+                }
+                return;
+            }
+            // Request types the main process should never receive from the worker
+            case EngineChannel.Ping:
+            case EngineChannel.FireTestEvent:
+            case EngineChannel.FireManualTrigger:
+            case EngineChannel.ToggleWorkflow:
+            case EngineChannel.CreateWorkflow:
+            case EngineChannel.UpdateWorkflow:
+            case EngineChannel.DeleteWorkflow:
+            case EngineChannel.GetWorkflow:
+            case EngineChannel.ListPlugins:
+            case EngineChannel.SetPermissionOverride:
+            case EngineChannel.ReadProperties:
+            case EngineChannel.SaveProperties:
+            case EngineChannel.ReadWorkflowState:
+            case EngineChannel.SetWorkflowStateKey:
+            case EngineChannel.DeleteWorkflowStateKey: {
+                console.warn(`[engine] unexpected message from worker: ${message.type}`);
+                return;
+            }
+            default:
+                return assertNever(message);
+        }
+    }
+
+    return { rpc, rejectAll, dispatch };
+}
+
 export function spawnEngine(): EngineHandle {
     const workerPath = resolvePath(__dirname, 'worker.js');
     const userDataPath = app.getPath('userData');
     const worker = new Worker(workerPath, { workerData: { userDataPath } });
 
-    const pendingPings = new Map<
-        string,
-        { resolve: (pong: EnginePong) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }
-    >();
-    const pendingGetWorkflows = new Map<
-        string,
-        {
-            resolve: (result: EngineGetWorkflowResult) => void;
-            reject: (err: Error) => void;
-            timer: NodeJS.Timeout;
-        }
-    >();
-    const pendingCreateWorkflows = new Map<
-        string,
-        {
-            resolve: (value: WorkflowSummary) => void;
-            reject: (err: Error) => void;
-            timer: NodeJS.Timeout;
-        }
-    >();
-    const pendingUpdateWorkflows = new Map<
-        string,
-        {
-            resolve: (value: WorkflowSummary) => void;
-            reject: (err: Error) => void;
-            timer: NodeJS.Timeout;
-        }
-    >();
-    const pendingDeleteWorkflows = new Map<
-        string,
-        {
-            resolve: (value: boolean) => void;
-            reject: (err: Error) => void;
-            timer: NodeJS.Timeout;
-        }
-    >();
-    const pendingToggles = new Map<
-        string,
-        {
-            resolve: (value: WorkflowSummary | null) => void;
-            reject: (err: Error) => void;
-            timer: NodeJS.Timeout;
-        }
-    >();
-    const pendingListPlugins = new Map<
-        string,
-        {
-            resolve: (value: readonly PluginInfo[]) => void;
-            reject: (err: Error) => void;
-            timer: NodeJS.Timeout;
-        }
-    >();
-    const pendingSetPermissionOverrides = new Map<
-        string,
-        {
-            resolve: (value: boolean) => void;
-            reject: (err: Error) => void;
-            timer: NodeJS.Timeout;
-        }
-    >();
-    const pendingReadProperties = new Map<
-        string,
-        {
-            resolve: (value: Record<string, unknown>) => void;
-            reject: (err: Error) => void;
-            timer: NodeJS.Timeout;
-        }
-    >();
-    const pendingSaveProperties = new Map<
-        string,
-        {
-            resolve: (value: boolean) => void;
-            reject: (err: Error) => void;
-            timer: NodeJS.Timeout;
-        }
-    >();
-    const pendingReadWorkflowState = new Map<
-        string,
-        {
-            resolve: (value: readonly WorkflowStateEntry[]) => void;
-            reject: (err: Error) => void;
-            timer: NodeJS.Timeout;
-        }
-    >();
-    const pendingSetWorkflowStateKey = new Map<
-        string,
-        {
-            resolve: (value: boolean) => void;
-            reject: (err: Error) => void;
-            timer: NodeJS.Timeout;
-        }
-    >();
-    const pendingDeleteWorkflowStateKey = new Map<
-        string,
-        {
-            resolve: (value: boolean) => void;
-            reject: (err: Error) => void;
-            timer: NodeJS.Timeout;
-        }
-    >();
-    const readyHandlers = new Set<() => void>();
     const logHandlers = new Set<(line: string) => void>();
     const workflowsListHandlers = new Set<(workflows: readonly WorkflowSummary[]) => void>();
     const busEventHandlers = new Set<(event: EngineBusEventPayload) => void>();
+    const readyHandlers = new Set<() => void>();
     let ready = false;
 
-    function rejectAllPending(reason: string) {
-        for (const [, entry] of pendingPings) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
-        }
-        pendingPings.clear();
-        for (const [, entry] of pendingGetWorkflows) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
-        }
-        pendingGetWorkflows.clear();
-        for (const [, entry] of pendingCreateWorkflows) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
-        }
-        pendingCreateWorkflows.clear();
-        for (const [, entry] of pendingUpdateWorkflows) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
-        }
-        pendingUpdateWorkflows.clear();
-        for (const [, entry] of pendingDeleteWorkflows) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
-        }
-        pendingDeleteWorkflows.clear();
-        for (const [, entry] of pendingToggles) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
-        }
-        pendingToggles.clear();
-        for (const [, entry] of pendingListPlugins) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
-        }
-        pendingListPlugins.clear();
-        for (const [, entry] of pendingSetPermissionOverrides) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
-        }
-        pendingSetPermissionOverrides.clear();
-        for (const [, entry] of pendingReadProperties) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
-        }
-        pendingReadProperties.clear();
-        for (const [, entry] of pendingSaveProperties) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
-        }
-        pendingSaveProperties.clear();
-        for (const [, entry] of pendingReadWorkflowState) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
-        }
-        pendingReadWorkflowState.clear();
-        for (const [, entry] of pendingSetWorkflowStateKey) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
-        }
-        pendingSetWorkflowStateKey.clear();
-        for (const [, entry] of pendingDeleteWorkflowStateKey) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
-        }
-        pendingDeleteWorkflowStateKey.clear();
-    }
+    const client = createRpcClient({
+        postMessage: (msg: unknown) => {
+            worker.postMessage(msg);
+        },
+        logHandlers,
+        workflowsListHandlers,
+        busEventHandlers,
+    });
 
     const engineMessageOrReadySchema = z.union([EngineMessageSchema, EngineReadySchema]);
 
@@ -278,212 +232,48 @@ export function spawnEngine(): EngineHandle {
             for (const handler of readyHandlers) handler();
             return;
         }
-        if (message.type === EngineChannel.Pong) {
-            const entry = pendingPings.get(message.id);
-            if (entry) {
-                pendingPings.delete(message.id);
-                clearTimeout(entry.timer);
-                entry.resolve(message);
-            }
-            return;
-        }
-        if (message.type === EngineChannel.Log) {
-            for (const handler of [...logHandlers]) handler(message.line);
-            return;
-        }
-        if (message.type === EngineChannel.WorkflowsList) {
-            for (const handler of [...workflowsListHandlers]) handler(message.workflows);
-            return;
-        }
-        if (message.type === EngineChannel.GetWorkflowResult) {
-            const entry = pendingGetWorkflows.get(message.correlationId);
-            if (entry) {
-                pendingGetWorkflows.delete(message.correlationId);
-                clearTimeout(entry.timer);
-                entry.resolve(message);
-            }
-            return;
-        }
-        if (message.type === EngineChannel.CreateWorkflowResult) {
-            const entry = pendingCreateWorkflows.get(message.correlationId);
-            if (entry) {
-                pendingCreateWorkflows.delete(message.correlationId);
-                clearTimeout(entry.timer);
-                entry.resolve(message.summary);
-            }
-            return;
-        }
-        if (message.type === EngineChannel.UpdateWorkflowResult) {
-            const entry = pendingUpdateWorkflows.get(message.correlationId);
-            if (entry) {
-                pendingUpdateWorkflows.delete(message.correlationId);
-                clearTimeout(entry.timer);
-                entry.resolve(message.summary);
-            }
-            return;
-        }
-        if (message.type === EngineChannel.DeleteWorkflowResult) {
-            const entry = pendingDeleteWorkflows.get(message.correlationId);
-            if (entry) {
-                pendingDeleteWorkflows.delete(message.correlationId);
-                clearTimeout(entry.timer);
-                entry.resolve(message.success);
-            }
-            return;
-        }
-        if (message.type === EngineChannel.ToggleWorkflowResult) {
-            const entry = pendingToggles.get(message.correlationId);
-            if (entry) {
-                pendingToggles.delete(message.correlationId);
-                clearTimeout(entry.timer);
-                entry.resolve(message.summary);
-            }
-            return;
-        }
-        if (message.type === EngineChannel.BusEvent) {
-            for (const handler of [...busEventHandlers]) handler(message.event);
-            return;
-        }
-        if (message.type === EngineChannel.ListPluginsResult) {
-            const entry = pendingListPlugins.get(message.correlationId);
-            if (entry) {
-                pendingListPlugins.delete(message.correlationId);
-                clearTimeout(entry.timer);
-                entry.resolve(message.plugins);
-            }
-            return;
-        }
-        if (message.type === EngineChannel.SetPermissionOverrideResult) {
-            const entry = pendingSetPermissionOverrides.get(message.correlationId);
-            if (entry) {
-                pendingSetPermissionOverrides.delete(message.correlationId);
-                clearTimeout(entry.timer);
-                entry.resolve(message.ok);
-            }
-            return;
-        }
-        if (message.type === EngineChannel.ReadPropertiesResult) {
-            const entry = pendingReadProperties.get(message.correlationId);
-            if (entry) {
-                pendingReadProperties.delete(message.correlationId);
-                clearTimeout(entry.timer);
-                entry.resolve(message.properties);
-            }
-            return;
-        }
-        if (message.type === EngineChannel.SavePropertiesResult) {
-            const entry = pendingSaveProperties.get(message.correlationId);
-            if (entry) {
-                pendingSaveProperties.delete(message.correlationId);
-                clearTimeout(entry.timer);
-                entry.resolve(message.ok);
-            }
-            return;
-        }
-        if (message.type === EngineChannel.ReadWorkflowStateResult) {
-            const entry = pendingReadWorkflowState.get(message.correlationId);
-            if (entry) {
-                pendingReadWorkflowState.delete(message.correlationId);
-                clearTimeout(entry.timer);
-                entry.resolve(message.entries);
-            }
-            return;
-        }
-        if (message.type === EngineChannel.SetWorkflowStateKeyResult) {
-            const entry = pendingSetWorkflowStateKey.get(message.correlationId);
-            if (entry) {
-                pendingSetWorkflowStateKey.delete(message.correlationId);
-                clearTimeout(entry.timer);
-                entry.resolve(message.ok);
-            }
-            return;
-        }
-        if (message.type === EngineChannel.DeleteWorkflowStateKeyResult) {
-            const entry = pendingDeleteWorkflowStateKey.get(message.correlationId);
-            if (entry) {
-                pendingDeleteWorkflowStateKey.delete(message.correlationId);
-                clearTimeout(entry.timer);
-                entry.resolve(message.ok);
-            }
-            return;
-        }
+        client.dispatch(message);
     });
 
     worker.on('error', (err) => {
         console.error('[engine] worker error:', err);
-        rejectAllPending('engine worker error');
+        client.rejectAll('engine worker error');
     });
 
     worker.on('exit', (code) => {
         if (code !== 0) {
             console.warn(`[engine] worker exited with code ${code}`);
         }
-        rejectAllPending(`engine worker exited with code ${code}`);
+        client.rejectAll(`engine worker exited with code ${code}`);
     });
 
     return {
         ping(timeoutMs = 5000): Promise<EnginePong> {
-            const id = randomUUID();
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    pendingPings.delete(id);
-                    reject(new Error(`engine ping timed out after ${timeoutMs}ms`));
-                }, timeoutMs);
-
-                pendingPings.set(id, { resolve, reject, timer });
-
-                const ping: EngineMessage = { id, type: EngineChannel.Ping };
-                worker.postMessage(ping);
-            });
+            return client.rpc<EnginePong>(EngineChannel.Ping, {}, timeoutMs, 'id');
         },
         fireTestEvent(): void {
-            const fire: EngineFireTestEvent = { type: EngineChannel.FireTestEvent };
-            worker.postMessage(fire);
+            worker.postMessage({ type: EngineChannel.FireTestEvent });
         },
         fireManualTrigger(pipeline: CompiledPipeline): void {
-            const msg: EngineFireManualTrigger = {
-                type: EngineChannel.FireManualTrigger,
-                pipeline,
-            };
-            worker.postMessage(msg);
+            worker.postMessage({ type: EngineChannel.FireManualTrigger, pipeline });
         },
         toggleWorkflow(id: string): Promise<WorkflowSummary | null> {
-            const correlationId = randomUUID();
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    pendingToggles.delete(correlationId);
-                    reject(new Error(`toggleWorkflow timed out after 5000ms`));
-                }, 5000);
-                pendingToggles.set(correlationId, { resolve, reject, timer });
-                const msg: EngineToggleWorkflow = {
-                    type: EngineChannel.ToggleWorkflow,
-                    correlationId,
-                    id,
-                };
-                worker.postMessage(msg);
-            });
+            return client
+                .rpc<{
+                    summary: WorkflowSummary | null;
+                }>(EngineChannel.ToggleWorkflow, { id }, 5000)
+                .then((r) => r.summary);
         },
         createWorkflow(
             name: string,
             pipeline: CompiledPipeline,
             positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
         ): Promise<WorkflowSummary> {
-            const correlationId = randomUUID();
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    pendingCreateWorkflows.delete(correlationId);
-                    reject(new Error(`createWorkflow timed out after 5000ms`));
-                }, 5000);
-                pendingCreateWorkflows.set(correlationId, { resolve, reject, timer });
-                const msg: EngineCreateWorkflow = {
-                    type: EngineChannel.CreateWorkflow,
-                    correlationId,
-                    name,
-                    pipeline,
-                    positions,
-                };
-                worker.postMessage(msg);
-            });
+            return client
+                .rpc<{
+                    summary: WorkflowSummary;
+                }>(EngineChannel.CreateWorkflow, { name, pipeline, positions }, 5000)
+                .then((r) => r.summary);
         },
         updateWorkflow(
             id: string,
@@ -491,191 +281,74 @@ export function spawnEngine(): EngineHandle {
             pipeline: CompiledPipeline,
             positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
         ): Promise<WorkflowSummary> {
-            const correlationId = randomUUID();
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    pendingUpdateWorkflows.delete(correlationId);
-                    reject(new Error(`updateWorkflow timed out after 5000ms`));
-                }, 5000);
-                pendingUpdateWorkflows.set(correlationId, { resolve, reject, timer });
-                const msg: EngineUpdateWorkflow = {
-                    type: EngineChannel.UpdateWorkflow,
-                    correlationId,
-                    id,
-                    name,
-                    pipeline,
-                    positions,
-                };
-                worker.postMessage(msg);
-            });
+            return client
+                .rpc<{
+                    summary: WorkflowSummary;
+                }>(EngineChannel.UpdateWorkflow, { id, name, pipeline, positions }, 5000)
+                .then((r) => r.summary);
         },
         deleteWorkflow(id: string): Promise<boolean> {
-            const correlationId = randomUUID();
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    pendingDeleteWorkflows.delete(correlationId);
-                    reject(new Error(`deleteWorkflow timed out after 5000ms`));
-                }, 5000);
-                pendingDeleteWorkflows.set(correlationId, { resolve, reject, timer });
-                const msg: EngineDeleteWorkflow = {
-                    type: EngineChannel.DeleteWorkflow,
-                    correlationId,
-                    id,
-                };
-                worker.postMessage(msg);
-            });
+            return client
+                .rpc<{ success: boolean }>(EngineChannel.DeleteWorkflow, { id }, 5000)
+                .then((r) => r.success);
         },
         getWorkflow(id: string, timeoutMs = 5000): Promise<EngineGetWorkflowResult> {
-            const correlationId = randomUUID();
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    pendingGetWorkflows.delete(correlationId);
-                    reject(new Error(`getWorkflow timed out after ${timeoutMs}ms`));
-                }, timeoutMs);
-
-                pendingGetWorkflows.set(correlationId, { resolve, reject, timer });
-
-                const msg: EngineGetWorkflow = {
-                    type: EngineChannel.GetWorkflow,
-                    id,
-                    correlationId,
-                };
-                worker.postMessage(msg);
-            });
+            return client.rpc<EngineGetWorkflowResult>(
+                EngineChannel.GetWorkflow,
+                { id },
+                timeoutMs,
+            );
         },
         listPlugins(timeoutMs = 5000): Promise<readonly PluginInfo[]> {
-            const correlationId = randomUUID();
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    pendingListPlugins.delete(correlationId);
-                    reject(new Error(`listPlugins timed out after ${timeoutMs}ms`));
-                }, timeoutMs);
-
-                pendingListPlugins.set(correlationId, { resolve, reject, timer });
-
-                const msg: EngineListPlugins = {
-                    type: EngineChannel.ListPlugins,
-                    correlationId,
-                };
-                worker.postMessage(msg);
-            });
+            return client
+                .rpc<{ plugins: readonly PluginInfo[] }>(EngineChannel.ListPlugins, {}, timeoutMs)
+                .then((r) => r.plugins);
         },
         setPermissionOverride(
             pluginId: string,
             overrides: readonly Capability[],
         ): Promise<boolean> {
-            const correlationId = randomUUID();
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    pendingSetPermissionOverrides.delete(correlationId);
-                    reject(new Error(`setPermissionOverride timed out after 5000ms`));
-                }, 5000);
-
-                pendingSetPermissionOverrides.set(correlationId, { resolve, reject, timer });
-
-                const msg: EngineSetPermissionOverride = {
-                    type: EngineChannel.SetPermissionOverride,
-                    correlationId,
-                    pluginId,
-                    overrides,
-                };
-                worker.postMessage(msg);
-            });
+            return client
+                .rpc<{
+                    ok: boolean;
+                }>(EngineChannel.SetPermissionOverride, { pluginId, overrides }, 5000)
+                .then((r) => r.ok);
         },
         readProperties(timeoutMs = 5000): Promise<Record<string, unknown>> {
-            const correlationId = randomUUID();
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    pendingReadProperties.delete(correlationId);
-                    reject(new Error(`readProperties timed out after ${timeoutMs}ms`));
-                }, timeoutMs);
-
-                pendingReadProperties.set(correlationId, { resolve, reject, timer });
-
-                const msg: EngineReadProperties = {
-                    type: EngineChannel.ReadProperties,
-                    correlationId,
-                };
-                worker.postMessage(msg);
-            });
+            return client
+                .rpc<{
+                    properties: Record<string, unknown>;
+                }>(EngineChannel.ReadProperties, {}, timeoutMs)
+                .then((r) => r.properties);
         },
         saveProperties(properties: Record<string, unknown>): Promise<boolean> {
-            const correlationId = randomUUID();
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    pendingSaveProperties.delete(correlationId);
-                    reject(new Error(`saveProperties timed out after 5000ms`));
-                }, 5000);
-
-                pendingSaveProperties.set(correlationId, { resolve, reject, timer });
-
-                const msg: EngineSaveProperties = {
-                    type: EngineChannel.SaveProperties,
-                    correlationId,
-                    properties,
-                };
-                worker.postMessage(msg);
-            });
+            return client
+                .rpc<{ ok: boolean }>(EngineChannel.SaveProperties, { properties }, 5000)
+                .then((r) => r.ok);
         },
         readWorkflowState(
             workflowId: string,
             timeoutMs = 5000,
         ): Promise<readonly WorkflowStateEntry[]> {
-            const correlationId = randomUUID();
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    pendingReadWorkflowState.delete(correlationId);
-                    reject(new Error(`readWorkflowState timed out after ${timeoutMs}ms`));
-                }, timeoutMs);
-
-                pendingReadWorkflowState.set(correlationId, { resolve, reject, timer });
-
-                const msg: EngineReadWorkflowState = {
-                    type: EngineChannel.ReadWorkflowState,
-                    correlationId,
-                    workflowId,
-                };
-                worker.postMessage(msg);
-            });
+            return client
+                .rpc<{
+                    entries: readonly WorkflowStateEntry[];
+                }>(EngineChannel.ReadWorkflowState, { workflowId }, timeoutMs)
+                .then((r) => r.entries);
         },
         setWorkflowStateKey(workflowId: string, key: string, value: string): Promise<boolean> {
-            const correlationId = randomUUID();
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    pendingSetWorkflowStateKey.delete(correlationId);
-                    reject(new Error(`setWorkflowStateKey timed out after 5000ms`));
-                }, 5000);
-
-                pendingSetWorkflowStateKey.set(correlationId, { resolve, reject, timer });
-
-                const msg: EngineSetWorkflowStateKey = {
-                    type: EngineChannel.SetWorkflowStateKey,
-                    correlationId,
-                    workflowId,
-                    key,
-                    value,
-                };
-                worker.postMessage(msg);
-            });
+            return client
+                .rpc<{
+                    ok: boolean;
+                }>(EngineChannel.SetWorkflowStateKey, { workflowId, key, value }, 5000)
+                .then((r) => r.ok);
         },
         deleteWorkflowStateKey(workflowId: string, key: string): Promise<boolean> {
-            const correlationId = randomUUID();
-            return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    pendingDeleteWorkflowStateKey.delete(correlationId);
-                    reject(new Error(`deleteWorkflowStateKey timed out after 5000ms`));
-                }, 5000);
-
-                pendingDeleteWorkflowStateKey.set(correlationId, { resolve, reject, timer });
-
-                const msg: EngineDeleteWorkflowStateKey = {
-                    type: EngineChannel.DeleteWorkflowStateKey,
-                    correlationId,
-                    workflowId,
-                    key,
-                };
-                worker.postMessage(msg);
-            });
+            return client
+                .rpc<{
+                    ok: boolean;
+                }>(EngineChannel.DeleteWorkflowStateKey, { workflowId, key }, 5000)
+                .then((r) => r.ok);
         },
         terminate(): Promise<number> {
             return worker.terminate();
