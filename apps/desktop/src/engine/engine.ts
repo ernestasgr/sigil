@@ -111,7 +111,7 @@ export function createEngine(options?: EngineOptions): Engine {
                         const detail =
                             'error' in result.error ? result.error.error : result.error.pluginId;
                         bus.next({
-                            name: 'log.output',
+                            name: 'engine.diagnostic',
                             payload: {
                                 message: `[engine] failed to load ${pluginId} plugin: ${result.error.kind}: ${detail}`,
                             },

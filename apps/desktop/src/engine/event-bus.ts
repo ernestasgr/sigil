@@ -2,39 +2,53 @@ import { Subject } from 'rxjs';
 
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 
-export interface LogOutputPayload {
-    readonly message: string;
-}
+import {
+    EngineDiagnosticPayloadSchema,
+    LogOutputPayloadSchema,
+    NotificationShowPayloadSchema,
+    PluginBusEventPayloadSchema,
+    WorkflowErrorPayloadSchema,
+    WorkflowRunPayloadSchema,
+    type EngineDiagnosticPayload,
+    type LogOutputPayload,
+    type NotificationShowPayload,
+    type PluginBusEventPayload,
+    type WorkflowErrorPayload,
+    type WorkflowRunPayload,
+} from './event-payload-schemas.js';
 
-export interface WorkflowRunPayload {
-    readonly pipelineId: string;
-}
+// Re-export derived types for consumers
+export type {
+    EngineDiagnosticPayload,
+    LogOutputPayload,
+    NotificationShowPayload,
+    PluginBusEventPayload,
+    WorkflowErrorPayload,
+    WorkflowRunPayload,
+};
 
-export interface WorkflowErrorPayload {
-    readonly pipelineId: string;
-    readonly nodeId: string;
-    readonly message: string;
-}
-
-export interface NotificationShowPayload {
-    readonly title: string;
-    readonly body: string;
-}
-
-export interface PluginBusEventPayload {
-    readonly pluginId: string;
-    readonly eventName: string;
-    readonly data: Readonly<Record<string, unknown>>;
-}
+// Re-export schemas for consumers that need them
+export {
+    EngineDiagnosticPayloadSchema,
+    LogOutputPayloadSchema,
+    NotificationShowPayloadSchema,
+    PluginBusEventPayloadSchema,
+    WorkflowErrorPayloadSchema,
+    WorkflowRunPayloadSchema,
+};
 
 export type BusEvent =
     | { readonly name: 'workflow.started'; readonly payload: WorkflowRunPayload }
     | { readonly name: 'workflow.completed'; readonly payload: WorkflowRunPayload }
     | { readonly name: 'workflow.error'; readonly payload: WorkflowErrorPayload }
-    | { readonly name: 'manual.trigger.fired'; readonly payload: FileEventPayload }
+    | {
+          readonly name: 'manual.trigger.fired';
+          readonly payload: FileEventPayload;
+      }
     | { readonly name: 'log.output'; readonly payload: LogOutputPayload }
     | { readonly name: 'notification.show'; readonly payload: NotificationShowPayload }
-    | { readonly name: 'plugin.event'; readonly payload: PluginBusEventPayload };
+    | { readonly name: 'plugin.event'; readonly payload: PluginBusEventPayload }
+    | { readonly name: 'engine.diagnostic'; readonly payload: EngineDiagnosticPayload };
 
 export type EventBus = Subject<BusEvent>;
 
