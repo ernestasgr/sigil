@@ -36,7 +36,7 @@ export function createWorkflowActivator(
                     const rawConfig = trigger.config;
                     if (!rawConfig || typeof rawConfig !== 'object') {
                         engine.bus.next({
-                            name: 'log.output',
+                            name: 'engine.diagnostic',
                             payload: {
                                 message: `[activator] file-watcher trigger for "${data.name}" (${workflowId}) has invalid config — cannot activate`,
                             },
@@ -46,7 +46,7 @@ export function createWorkflowActivator(
                     const config = rawConfig as Record<string, unknown>;
                     if (typeof config.path !== 'string') {
                         engine.bus.next({
-                            name: 'log.output',
+                            name: 'engine.diagnostic',
                             payload: {
                                 message: `[activator] file-watcher trigger for "${data.name}" (${workflowId}) is missing path — cannot activate`,
                             },
@@ -73,7 +73,7 @@ export function createWorkflowActivator(
                             };
                             void engine.execute(data.pipeline, seedCtx).catch((err: unknown) => {
                                 engine.bus.next({
-                                    name: 'log.output',
+                                    name: 'engine.diagnostic',
                                     payload: {
                                         message: `[activator] workflow ${data.name} (${workflowId}) execution failed: ${err instanceof Error ? err.message : String(err)}`,
                                     },
@@ -87,7 +87,7 @@ export function createWorkflowActivator(
                     };
 
                     engine.bus.next({
-                        name: 'log.output',
+                        name: 'engine.diagnostic',
                         payload: {
                             message: `[activator] file-watcher trigger active for "${data.name}" — watching ${config.path}`,
                         },
@@ -96,7 +96,7 @@ export function createWorkflowActivator(
                 }
                 case 'manual-trigger': {
                     engine.bus.next({
-                        name: 'log.output',
+                        name: 'engine.diagnostic',
                         payload: {
                             message: `[activator] manual trigger ready for "${data.name}"`,
                         },
@@ -106,7 +106,7 @@ export function createWorkflowActivator(
                 }
                 default: {
                     engine.bus.next({
-                        name: 'log.output',
+                        name: 'engine.diagnostic',
                         payload: {
                             message: `[activator] unknown trigger type "${trigger.type}" for "${data.name}" — cannot activate`,
                         },

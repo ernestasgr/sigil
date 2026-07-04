@@ -1,43 +1,11 @@
+import { EventPayloadSchemaRegistry } from '../../engine/event-payload-schemas.js';
+
 export function eventNameLabel(name: string): string {
-    switch (name) {
-        case 'workflow.started':
-            return 'Workflow Started';
-        case 'workflow.completed':
-            return 'Workflow Completed';
-        case 'workflow.error':
-            return 'Workflow Error';
-        case 'manual.trigger.fired':
-            return 'Manual Trigger';
-        case 'log.output':
-            return 'Log';
-        case 'notification.show':
-            return 'Notification';
-        case 'plugin.event':
-            return 'Plugin Event';
-        default:
-            return name;
-    }
+    return EventPayloadSchemaRegistry[name]?.label ?? name;
 }
 
 export function eventColor(name: string): string {
-    switch (name) {
-        case 'workflow.started':
-            return 'text-gilt';
-        case 'workflow.completed':
-            return 'text-verdigris';
-        case 'workflow.error':
-            return 'text-old-blood';
-        case 'manual.trigger.fired':
-            return 'text-gilt';
-        case 'log.output':
-            return 'text-veil';
-        case 'notification.show':
-            return 'text-gilt';
-        case 'plugin.event':
-            return 'text-veil';
-        default:
-            return 'text-veil';
-    }
+    return EventPayloadSchemaRegistry[name]?.color ?? 'text-veil';
 }
 
 export function payloadPreview(payload: unknown): string {
@@ -52,6 +20,7 @@ export function payloadPreview(payload: unknown): string {
     if (typeof obj.name === 'string') parts.push(`name=${obj.name}`);
     if (typeof obj.nodeId === 'string') parts.push(`node=${obj.nodeId}`);
     if (typeof obj.title === 'string') parts.push(`title=${obj.title}`);
+    if (typeof obj.kind === 'string') parts.push(`kind=${obj.kind}`);
     if (parts.length === 0) {
         try {
             return JSON.stringify(payload).slice(0, 80);

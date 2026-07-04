@@ -56,7 +56,7 @@ function broadcastWorkflowsList(): void {
 }
 
 function log(message: string): void {
-    engine.bus.next({ name: 'log.output', payload: { message } });
+    engine.bus.next({ name: 'engine.diagnostic', payload: { message } });
 }
 
 engine.bus.subscribe((event) => {

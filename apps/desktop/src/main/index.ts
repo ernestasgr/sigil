@@ -7,6 +7,8 @@ import { parsePipeline, type CompiledPipeline } from '@sigil/schema';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import { CapabilitySchema } from '@sigil/schema/manifest';
 
+import type { NotificationShowPayload } from '../engine/event-payload-schemas.js';
+import { safeParsePayload } from '../engine/event-payload-schemas.js';
 import {
     RendererChannel,
     WorkflowIdSchema,
@@ -387,8 +389,11 @@ function handleOsNotifications(): void {
     if (!engine) return;
     const unsubscribe = engine.onBusEvent((event: EngineBusEventPayload) => {
         if (event.name === 'notification.show') {
-            const { title, body } = event.payload as { title: string; body: string };
-            new Notification({ title, body }).show();
+            const result = safeParsePayload(event.name, event.payload);
+            if (result.ok) {
+                const { title, body } = result.data as NotificationShowPayload;
+                new Notification({ title, body }).show();
+            }
         }
     });
     app.on('before-quit', unsubscribe);
