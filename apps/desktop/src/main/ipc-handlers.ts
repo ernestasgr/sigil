@@ -270,7 +270,7 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         PushChannel
     >;
 
-    const _exhaustive: Record<InvokeChannel, true> = {
+    void ({
         [RendererChannel.RendererReady]: true,
         [RendererChannel.EnginePong]: true,
         [RendererChannel.FireTestEvent]: true,
@@ -288,6 +288,5 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         [RendererChannel.ReadWorkflowState]: true,
         [RendererChannel.SetWorkflowStateKey]: true,
         [RendererChannel.DeleteWorkflowStateKey]: true,
-    };
-    void _exhaustive;
+    } satisfies Record<InvokeChannel, true>);
 }
