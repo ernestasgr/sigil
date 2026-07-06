@@ -96,7 +96,7 @@ function ensureDir(dirPath: string): void {
 function handleConflict(
     destPath: string,
     onConflict: ConflictPolicy,
-    style: CollisionSuffixStyle,
+    style: CollisionSuffixStyle | undefined,
 ): { resolvedPath: string; shouldSkip: boolean } {
     if (!existsSync(destPath)) {
         return { resolvedPath: destPath, shouldSkip: false };
@@ -108,6 +108,11 @@ function handleConflict(
         case 'overwrite':
             return { resolvedPath: destPath, shouldSkip: false };
         case 'auto-rename': {
+            if (style === undefined) {
+                throw new Error(
+                    'File-manager: collisionSuffixStyle is required when onConflict is "auto-rename"',
+                );
+            }
             const resolvedPath = findAvailablePath(destPath, style);
             return { resolvedPath, shouldSkip: false };
         }
@@ -167,7 +172,7 @@ export const fileManagerHandler: NodeHandler = {
 
         // collisionSuffixStyle is not part of the shared NodeHandlerDeps;
         // the walker adds it per-node for file-manager handlers only.
-        const typed = deps as unknown as { readonly collisionSuffixStyle: CollisionSuffixStyle };
+        const typed = deps as unknown as { readonly collisionSuffixStyle?: CollisionSuffixStyle };
         const { collisionSuffixStyle } = typed;
 
         checkPermissions(deps.capabilityBroker, FILE_MANAGER_PLUGIN_ID);

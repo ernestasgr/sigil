@@ -802,6 +802,56 @@ describe('executePipeline — file-manager', () => {
         expect(errorEvent?.name === 'workflow.error' && errorEvent.payload.nodeId).toBe('fm');
     });
 
+    it('auto-rename collision policy: renames file through the DAG using collisionSuffixStyle from settings', async () => {
+        const dir = tmpDir();
+        const srcDir = join(dir, 'src');
+        const dstDir = join(dir, 'dst');
+        mkdirSync(srcDir);
+        mkdirSync(dstDir);
+        const srcPath = join(srcDir, 'file.txt');
+        touch(srcPath, 'auto-rename-content');
+        const dstPath = join(dstDir, 'file.txt');
+        touch(dstPath, 'existing-content');
+
+        const bus = createEventBus();
+        const events = captureEvents(bus);
+
+        const settings: ExecutorSettings = {
+            notifyOnWorkflowError: true,
+            collisionSuffixStyle: 'underscore',
+        };
+
+        await executePipeline(
+            pipeline(
+                [
+                    triggerWithPayload({
+                        path: srcPath,
+                        name: 'file.txt',
+                        ext: 'txt',
+                        size: 19,
+                        dir: srcDir,
+                    }),
+                    fileManager('fm', 'move', dstDir, 'auto-rename'),
+                ],
+                [edge('t-to-fm', 'trigger', 'fm', 'out')],
+            ),
+            bus,
+            settings,
+            undefined,
+            undefined,
+            allowAllBroker(),
+        );
+
+        expect(existsSync(srcPath)).toBe(false);
+        expect(existsSync(dstPath)).toBe(true);
+        expect(existsSync(join(dstDir, 'file_2.txt'))).toBe(true);
+        expect(events.map((e) => e.name)).toEqual([
+            'workflow.started',
+            'manual.trigger.fired',
+            'workflow.completed',
+        ]);
+    });
+
     it('default deny-all capability broker blocks file operations through the DAG', async () => {
         const dir = tmpDir();
         const srcDir = join(dir, 'src');
