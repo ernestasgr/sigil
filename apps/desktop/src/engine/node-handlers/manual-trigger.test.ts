@@ -20,18 +20,16 @@ const triggerNode: PipelineNode = {
     config: { eventName: 'file.created', payload },
 };
 
-function buildDeps(): NodeHandlerDeps {
-    const bus = createEventBus();
+function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
     return {
-        bus,
+        bus: createEventBus(),
         sleep: vi.fn(),
         resolveTemplate: vi.fn(),
         evaluateCondition: vi.fn(),
         matchSwitchCase: vi.fn(),
         state: { get: vi.fn(), set: vi.fn(), flush: vi.fn() },
         capabilityBroker: { request: vi.fn() },
-        pluginId: 'com.sigil.file-manager',
-        collisionSuffixStyle: 'windows',
+        ...overrides,
     };
 }
 

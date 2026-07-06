@@ -4,6 +4,7 @@ import { basename, dirname, join, parse } from 'node:path';
 import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
 
 import type { CapabilityBroker } from '../capability-broker.js';
+import { FILE_MANAGER_PLUGIN_ID } from '../file-manager-plugin.js';
 import type { NodeHandler, NodeRunResult } from './types.js';
 
 type FileAction = 'move' | 'copy' | 'rename';
@@ -164,7 +165,12 @@ export const fileManagerHandler: NodeHandler = {
             throw new Error('File-manager: payload.path is missing or empty');
         }
 
-        checkPermissions(deps.capabilityBroker, deps.pluginId);
+        // collisionSuffixStyle is not part of the shared NodeHandlerDeps;
+        // the walker adds it per-node for file-manager handlers only.
+        const typed = deps as unknown as { readonly collisionSuffixStyle: CollisionSuffixStyle };
+        const { collisionSuffixStyle } = typed;
+
+        checkPermissions(deps.capabilityBroker, FILE_MANAGER_PLUGIN_ID);
 
         const destInfo = computeDest(action, sourcePath, destination);
 
@@ -173,7 +179,7 @@ export const fileManagerHandler: NodeHandler = {
         const { resolvedPath, shouldSkip } = handleConflict(
             destInfo.fullPath,
             onConflict,
-            deps.collisionSuffixStyle,
+            collisionSuffixStyle,
         );
 
         if (shouldSkip) {

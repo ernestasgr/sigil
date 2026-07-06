@@ -24,7 +24,7 @@ const logNode: PipelineNode = {
     config: { message: 'File {{payload.name}} arrived' },
 };
 
-function buildDeps(): NodeHandlerDeps {
+function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
     return {
         bus: createEventBus(),
         sleep: vi.fn(),
@@ -33,8 +33,7 @@ function buildDeps(): NodeHandlerDeps {
         matchSwitchCase: vi.fn(),
         state: { get: vi.fn(), set: vi.fn(), flush: vi.fn() },
         capabilityBroker: { request: vi.fn() },
-        pluginId: 'com.sigil.file-manager',
-        collisionSuffixStyle: 'windows',
+        ...overrides,
     };
 }
 
