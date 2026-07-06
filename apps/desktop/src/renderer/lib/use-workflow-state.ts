@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import type { WorkflowStateEntry } from '../../shared/ipc-channels.js';
+import type { SigilAdapter } from './sigil-adapter.js';
+import { createSigilAdapter } from './sigil-adapter.js';
 
 export interface UseWorkflowStateResult {
     readonly entries: readonly WorkflowStateEntry[];
@@ -9,7 +11,8 @@ export interface UseWorkflowStateResult {
     readonly refresh: () => void;
 }
 
-export function useWorkflowState(workflowId: string): UseWorkflowStateResult {
+export function useWorkflowState(workflowId: string, sigil?: SigilAdapter): UseWorkflowStateResult {
+    const adapter = sigil ?? createSigilAdapter();
     const [entries, setEntries] = useState<readonly WorkflowStateEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<unknown>(undefined);
@@ -17,7 +20,7 @@ export function useWorkflowState(workflowId: string): UseWorkflowStateResult {
     const refresh = useCallback(() => {
         setLoading(true);
         setError(undefined);
-        window.sigil
+        adapter
             .readWorkflowState(workflowId)
             .then(setEntries)
             .catch((err: unknown) => {
@@ -25,7 +28,7 @@ export function useWorkflowState(workflowId: string): UseWorkflowStateResult {
                 setError(err);
             })
             .finally(() => setLoading(false));
-    }, [workflowId]);
+    }, [workflowId, adapter]);
 
     useEffect(() => {
         refresh();

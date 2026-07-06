@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 
 import { cn } from '../../lib/utils.js';
 import { Button } from '../../components/ui/button.js';
+import { useSigil } from '../../lib/sigil-context.js';
 import { useBuilderStore } from '../builder-store.js';
 import type { NodeSpec } from '../node-registry.js';
 import { CATEGORY_TEXT, nodeTypeDef } from '../node-registry.js';
@@ -11,6 +12,7 @@ export function PropertiesPanel(): ReactElement {
     const nodes = useBuilderStore((state) => state.nodes);
     const updateSpec = useBuilderStore((state) => state.updateSpec);
     const removeNode = useBuilderStore((state) => state.removeNode);
+    const sigil = useSigil();
 
     const node = selectedNodeId ? nodes.find((entry) => entry.id === selectedNodeId) : undefined;
 
@@ -62,7 +64,7 @@ export function PropertiesPanel(): ReactElement {
                         onClick={() => {
                             const result = useBuilderStore.getState().compile();
                             if (result.ok) {
-                                window.sigil.fireManualTrigger(result.value).catch((err: unknown) => {
+                                sigil.fireManualTrigger(result.value).catch((err: unknown) => {
                                     console.error('Failed to fire manual trigger:', err);
                                 });
                             }

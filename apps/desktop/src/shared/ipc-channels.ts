@@ -13,7 +13,7 @@ const WorkflowSummarySchema = z
     .readonly();
 
 const NodePositionSchema = z.object({ x: z.number(), y: z.number() }).readonly();
-const NodePositionRecordSchema = z.record(z.string(), NodePositionSchema).readonly();
+export const NodePositionRecordSchema = z.record(z.string(), NodePositionSchema).readonly();
 
 const WorkflowStateEntrySchema = z
     .object({

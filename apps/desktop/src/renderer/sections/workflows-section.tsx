@@ -4,6 +4,7 @@ import type { CompiledPipeline } from '@sigil/schema';
 
 import { SectionShell } from '../components/section-shell.js';
 import { Button } from '../components/ui/button.js';
+import { useSigil } from '../lib/sigil-context.js';
 import { useAppStore } from '../store/app-store.js';
 import { useBuilderStore } from '../workflow-builder/builder-store.js';
 import { WorkflowBuilder } from '../workflow-builder/workflow-builder.js';
@@ -15,6 +16,7 @@ export function WorkflowsSection(): ReactElement {
     const setEditingWorkflowId = useAppStore((state) => state.setEditingWorkflowId);
     const workflows = useAppStore((state) => state.workflows);
     const [loading, setLoading] = useState(false);
+    const sigil = useSigil();
 
     useEffect(() => {
         return () => {
@@ -33,7 +35,7 @@ export function WorkflowsSection(): ReactElement {
         async (id: string) => {
             setLoading(true);
             try {
-                const result = await window.sigil.getWorkflow(id);
+                const result = await sigil.getWorkflow(id);
                 if (result) {
                     useBuilderStore
                         .getState()
@@ -58,9 +60,9 @@ export function WorkflowsSection(): ReactElement {
             const positions = useBuilderStore.getState().getPositions();
             try {
                 if (editingWorkflowId) {
-                    await window.sigil.updateWorkflow(editingWorkflowId, name, pipeline, positions);
+                    await sigil.updateWorkflow(editingWorkflowId, name, pipeline, positions);
                 } else {
-                    await window.sigil.createWorkflow(name, pipeline, positions);
+                    await sigil.createWorkflow(name, pipeline, positions);
                 }
                 setWorkflowView('list');
                 setEditingWorkflowId(null);
@@ -76,21 +78,27 @@ export function WorkflowsSection(): ReactElement {
         setEditingWorkflowId(null);
     }, [setWorkflowView, setEditingWorkflowId]);
 
-    const handleToggle = useCallback(async (id: string) => {
-        try {
-            await window.sigil.toggleWorkflow(id);
-        } catch (err) {
-            console.error('Failed to toggle workflow:', err);
-        }
-    }, []);
+    const handleToggle = useCallback(
+        async (id: string) => {
+            try {
+                await sigil.toggleWorkflow(id);
+            } catch (err) {
+                console.error('Failed to toggle workflow:', err);
+            }
+        },
+        [sigil],
+    );
 
-    const handleDelete = useCallback(async (id: string) => {
-        try {
-            await window.sigil.deleteWorkflow(id);
-        } catch (err) {
-            console.error('Failed to delete workflow:', err);
-        }
-    }, []);
+    const handleDelete = useCallback(
+        async (id: string) => {
+            try {
+                await sigil.deleteWorkflow(id);
+            } catch (err) {
+                console.error('Failed to delete workflow:', err);
+            }
+        },
+        [sigil],
+    );
 
     if (workflowView === 'builder') {
         return <WorkflowBuilder onSave={handleSave} onCancel={handleCancel} />;

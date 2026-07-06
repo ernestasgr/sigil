@@ -1,24 +1,13 @@
-import { app, BrowserWindow, dialog, ipcMain, Notification } from 'electron';
-import { stat } from 'node:fs/promises';
-import { basename, dirname, extname, resolve as resolvePath } from 'node:path';
+import { app, BrowserWindow, Notification } from 'electron';
+import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-import { parsePipeline, type CompiledPipeline } from '@sigil/schema';
-import type { FileEventPayload } from '@sigil/schema/file-event-payload';
-import { CapabilitySchema } from '@sigil/schema/manifest';
 
 import type { NotificationShowPayload } from '../engine/event-payload-schemas.js';
 import { safeParsePayload } from '../engine/event-payload-schemas.js';
-import {
-    RendererChannel,
-    WorkflowIdSchema,
-    type EngineBusEventPayload,
-    type EnginePong,
-} from '../shared/ipc-channels.js';
-import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
-import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
-import type { PluginInfo } from '../shared/plugin-info.js';
+import { RendererChannel, type EngineBusEventPayload } from '../shared/ipc-channels.js';
+import type { WorkflowSummary } from '../shared/workflow.js';
 import { spawnEngine, type EngineHandle } from './engine-client.js';
+import { registerIpcHandlers } from './ipc-handlers.js';
 import { createTray, type TrayController } from './tray.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -102,257 +91,6 @@ function handleWorkflowsListChange(next: readonly WorkflowSummary[]): void {
     broadcastWorkflowsList(next);
 }
 
-function isRecordOfNodePositions(value: unknown): value is Readonly<Record<string, NodePosition>> {
-    if (!value || typeof value !== 'object') return false;
-    for (const val of Object.values(value as Record<string, unknown>)) {
-        if (!val || typeof val !== 'object') return false;
-        if (typeof (val as Record<string, unknown>).x !== 'number') return false;
-        if (typeof (val as Record<string, unknown>).y !== 'number') return false;
-    }
-    return true;
-}
-
-function wireEngineIpc(): void {
-    ipcMain.handle(RendererChannel.RendererReady, async (): Promise<void> => {
-        broadcastRendererReadyState();
-    });
-
-    ipcMain.handle(RendererChannel.EnginePong, async (): Promise<EnginePong | null> => {
-        if (!engine) return null;
-        try {
-            return await engine.ping();
-        } catch (err) {
-            console.error('[main] engine ping failed:', err);
-            return null;
-        }
-    });
-
-    ipcMain.handle(RendererChannel.FireTestEvent, async (): Promise<void> => {
-        engine?.fireTestEvent();
-    });
-
-    ipcMain.handle(
-        RendererChannel.ToggleWorkflow,
-        async (_event, id: unknown): Promise<WorkflowSummary | null> => {
-            const parsed = WorkflowIdSchema.safeParse(id);
-            if (!parsed.success) throw new Error('Invalid workflow id');
-            if (!engine) throw new Error('Engine not ready');
-            return await engine.toggleWorkflow(parsed.data);
-        },
-    );
-
-    ipcMain.handle(
-        RendererChannel.CreateWorkflow,
-        async (
-            _event,
-            name: unknown,
-            pipeline: unknown,
-            positions: unknown,
-        ): Promise<WorkflowSummary> => {
-            if (typeof name !== 'string') throw new Error('Invalid workflow name');
-            const parsed = parsePipeline(pipeline);
-            if (!parsed.ok) throw new Error(`Invalid pipeline: ${parsed.error}`);
-            if (!isRecordOfNodePositions(positions)) throw new Error('Invalid positions');
-            if (!engine) throw new Error('Engine not ready');
-            return await engine.createWorkflow(name, parsed.value, positions);
-        },
-    );
-
-    ipcMain.handle(
-        RendererChannel.UpdateWorkflow,
-        async (
-            _event,
-            id: unknown,
-            name: unknown,
-            pipeline: unknown,
-            positions: unknown,
-        ): Promise<WorkflowSummary> => {
-            if (typeof id !== 'string') throw new Error('Invalid workflow id');
-            if (typeof name !== 'string') throw new Error('Invalid workflow name');
-            const parsed = parsePipeline(pipeline);
-            if (!parsed.ok) throw new Error(`Invalid pipeline: ${parsed.error}`);
-            if (!isRecordOfNodePositions(positions)) throw new Error('Invalid positions');
-            if (!engine) throw new Error('Engine not ready');
-            return await engine.updateWorkflow(id, name, parsed.value, positions);
-        },
-    );
-
-    ipcMain.handle(
-        RendererChannel.DeleteWorkflow,
-        async (_event, id: unknown): Promise<boolean> => {
-            if (typeof id !== 'string') throw new Error('Invalid workflow id');
-            if (!engine) throw new Error('Engine not ready');
-            return await engine.deleteWorkflow(id);
-        },
-    );
-
-    ipcMain.handle(
-        RendererChannel.GetWorkflow,
-        async (
-            _event,
-            id: unknown,
-        ): Promise<{
-            readonly name: string;
-            readonly pipeline: CompiledPipeline;
-            readonly positions: Readonly<
-                Record<string, { readonly x: number; readonly y: number }>
-            >;
-        } | null> => {
-            if (typeof id !== 'string' || !engine) return null;
-            try {
-                const result = await engine.getWorkflow(id);
-                if (result.found) {
-                    return {
-                        name: result.name,
-                        pipeline: result.pipeline,
-                        positions: result.positions,
-                    };
-                }
-                return null;
-            } catch (err) {
-                console.error('[main] getWorkflow failed:', err);
-                return null;
-            }
-        },
-    );
-
-    ipcMain.handle(RendererChannel.ListPlugins, async (): Promise<readonly PluginInfo[]> => {
-        if (!engine) return [];
-        try {
-            return await engine.listPlugins();
-        } catch (err) {
-            console.error('[main] listPlugins failed:', err);
-            return [];
-        }
-    });
-
-    ipcMain.handle(
-        RendererChannel.SetPermissionOverride,
-        async (_event, pluginId: unknown, overrides: unknown): Promise<boolean> => {
-            if (typeof pluginId !== 'string') throw new Error('Invalid pluginId');
-            if (!Array.isArray(overrides)) throw new Error('Invalid overrides: expected an array');
-            if (!overrides.every((c: unknown) => CapabilitySchema.safeParse(c).success)) {
-                throw new Error('Invalid overrides: contains invalid capability');
-            }
-            if (!engine) return false;
-            try {
-                return await engine.setPermissionOverride(
-                    pluginId,
-                    overrides as readonly import('@sigil/schema/manifest').Capability[],
-                );
-            } catch (err) {
-                console.error('[main] setPermissionOverride failed:', err);
-                return false;
-            }
-        },
-    );
-
-    ipcMain.handle(RendererChannel.ReadProperties, async (): Promise<Record<string, unknown>> => {
-        if (!engine) return {};
-        try {
-            return await engine.readProperties();
-        } catch (err) {
-            console.error('[main] readProperties failed:', err);
-            return {};
-        }
-    });
-
-    ipcMain.handle(
-        RendererChannel.SaveProperties,
-        async (_event, properties: unknown): Promise<boolean> => {
-            if (!engine) return false;
-            try {
-                return await engine.saveProperties(properties as Record<string, unknown>);
-            } catch (err) {
-                console.error('[main] saveProperties failed:', err);
-                return false;
-            }
-        },
-    );
-
-    ipcMain.handle(RendererChannel.OpenFileDialog, async (): Promise<FileEventPayload | null> => {
-        if (!mainWindow) return null;
-        try {
-            const result = await dialog.showOpenDialog(mainWindow, {
-                properties: ['openFile'],
-            });
-            if (result.canceled || result.filePaths.length === 0) return null;
-            const filePath = result.filePaths[0];
-            if (!filePath) return null;
-            const stats = await stat(filePath);
-            return {
-                path: filePath,
-                name: basename(filePath),
-                ext: extname(filePath).replace('.', ''),
-                size: stats.size,
-                dir: dirname(filePath),
-            };
-        } catch (err) {
-            console.error('[main] openFileDialog failed:', err);
-            return null;
-        }
-    });
-
-    ipcMain.handle(
-        RendererChannel.FireManualTrigger,
-        async (_event, pipeline: unknown): Promise<void> => {
-            const parsed = parsePipeline(pipeline);
-            if (!parsed.ok) throw new Error(`Invalid pipeline: ${parsed.error}`);
-            if (!engine) throw new Error('Engine not ready');
-            engine.fireManualTrigger(parsed.value);
-        },
-    );
-
-    ipcMain.handle(
-        RendererChannel.ReadWorkflowState,
-        async (_event, workflowId: unknown): Promise<readonly WorkflowStateEntry[]> => {
-            if (typeof workflowId !== 'string') throw new Error('Invalid workflowId');
-            if (!engine) return [];
-            try {
-                return await engine.readWorkflowState(workflowId);
-            } catch (err) {
-                console.error('[main] readWorkflowState failed:', err);
-                return [];
-            }
-        },
-    );
-
-    ipcMain.handle(
-        RendererChannel.SetWorkflowStateKey,
-        async (_event, workflowId: unknown, key: unknown, value: unknown): Promise<boolean> => {
-            if (typeof workflowId !== 'string') throw new Error('Invalid workflowId');
-            if (typeof key !== 'string') throw new Error('Invalid key');
-            if (typeof value !== 'string') throw new Error('Invalid value');
-            if (!engine) return false;
-            try {
-                return await engine.setWorkflowStateKey(workflowId, key, value);
-            } catch (err) {
-                console.error('[main] setWorkflowStateKey failed:', err);
-                return false;
-            }
-        },
-    );
-
-    ipcMain.handle(
-        RendererChannel.DeleteWorkflowStateKey,
-        async (_event, workflowId: unknown, key: unknown): Promise<boolean> => {
-            if (typeof workflowId !== 'string') throw new Error('Invalid workflowId');
-            if (typeof key !== 'string') throw new Error('Invalid key');
-            if (!engine) return false;
-            try {
-                return await engine.deleteWorkflowStateKey(workflowId, key);
-            } catch (err) {
-                console.error('[main] deleteWorkflowStateKey failed:', err);
-                return false;
-            }
-        },
-    );
-}
-
-function broadcastRendererReadyState(): void {
-    broadcastWorkflowsList(workflows);
-}
-
 function forwardEngineLogsToRenderer(): void {
     if (!engine) return;
     const unsubscribe = engine.onLog((line) => {
@@ -406,7 +144,13 @@ app.whenReady().then(() => {
         console.log('[main] engine worker ready');
     });
 
-    wireEngineIpc();
+    registerIpcHandlers({
+        getEngine: () => engine,
+        getMainWindow: () => mainWindow,
+        onRendererReady: () => {
+            broadcastWorkflowsList(workflows);
+        },
+    });
     forwardEngineLogsToRenderer();
     forwardBusEventsToRenderer();
     handleOsNotifications();
