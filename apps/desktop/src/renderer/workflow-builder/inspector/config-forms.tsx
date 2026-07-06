@@ -23,6 +23,7 @@ import {
 import type { ReactElement } from 'react';
 
 import { Button } from '../../components/ui/button.js';
+import { useSigil } from '../../lib/sigil-context.js';
 import { Checkbox, NumberInput, SelectInput, StringList, TextInput } from './form-fields.js';
 
 type FieldValueKind = 'string' | 'number' | 'boolean';
@@ -123,9 +124,10 @@ export function ManualTriggerConfigForm({
     onChange,
 }: ConfigFormProps<ManualTriggerConfig>): ReactElement {
     const { payload } = config;
+    const sigil = useSigil();
 
     const handleBrowse = async (): Promise<void> => {
-        const fileInfo: FileEventPayload | null = await window.sigil.openFileDialog();
+        const fileInfo: FileEventPayload | null = await sigil.openFileDialog();
         if (fileInfo) {
             onChange({ ...config, payload: { ...payload, ...fileInfo } });
         }

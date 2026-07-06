@@ -10,6 +10,7 @@ import type { PluginInfo } from '../../shared/plugin-info.js';
 import type { WorkflowSummary } from '../../shared/workflow.js';
 import { Button } from '../components/ui/button.js';
 import { SectionShell } from '../components/section-shell.js';
+import { useSigil } from '../lib/sigil-context.js';
 import { useAppStore } from '../store/app-store.js';
 
 const ALL_CAPABILITIES: readonly Capability[] =
@@ -429,7 +430,11 @@ function WorkflowStateCard({
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    if (window.confirm(`Delete state key "${entry.key}"?`)) {
+                                                    if (
+                                                        window.confirm(
+                                                            `Delete state key "${entry.key}"?`,
+                                                        )
+                                                    ) {
                                                         onDeleteKey(entry.key);
                                                     }
                                                 }}
@@ -450,10 +455,11 @@ function WorkflowStateCard({
 }
 
 async function fetchStateEntries(
+    sigil: import('../lib/sigil-adapter.js').SigilAdapter,
     workflowId: string,
 ): Promise<readonly WorkflowStateEntry[]> {
     try {
-        return await window.sigil.readWorkflowState(workflowId);
+        return await sigil.readWorkflowState(workflowId);
     } catch {
         return [];
     }
@@ -461,8 +467,10 @@ async function fetchStateEntries(
 
 function WorkflowStatePanel({
     workflows,
+    sigil,
 }: {
     readonly workflows: readonly WorkflowSummary[];
+    readonly sigil: import('../lib/sigil-adapter.js').SigilAdapter;
 }): ReactElement {
     const [stateMap, setStateMap] = useState<
         Readonly<Record<string, readonly WorkflowStateEntry[]>>
@@ -473,7 +481,7 @@ function WorkflowStatePanel({
         setLoading(true);
         Promise.all(
             workflows.map(async (wf) => {
-                const entries = await fetchStateEntries(wf.id);
+                const entries = await fetchStateEntries(sigil, wf.id);
                 return { id: wf.id, entries } as const;
             }),
         )
@@ -486,44 +494,50 @@ function WorkflowStatePanel({
             })
             .catch(() => setStateMap({}))
             .finally(() => setLoading(false));
-    }, [workflows]);
+    }, [workflows, sigil]);
 
     useEffect(() => {
         loadAllState();
     }, [loadAllState]);
 
-    const handleSetKey = useCallback(async (workflowId: string, key: string, value: string) => {
-        try {
-            const ok = await window.sigil.setWorkflowStateKey(workflowId, key, value);
-            if (ok) {
-                setStateMap((prev) => {
-                    const entries = prev[workflowId] ?? [];
-                    const existing = entries.findIndex((e) => e.key === key);
-                    const updated =
-                        existing >= 0
-                            ? entries.map((e) => (e.key === key ? { ...e, value } : e))
-                            : [...entries, { key, value }];
-                    return { ...prev, [workflowId]: updated };
-                });
+    const handleSetKey = useCallback(
+        async (workflowId: string, key: string, value: string) => {
+            try {
+                const ok = await sigil.setWorkflowStateKey(workflowId, key, value);
+                if (ok) {
+                    setStateMap((prev) => {
+                        const entries = prev[workflowId] ?? [];
+                        const existing = entries.findIndex((e) => e.key === key);
+                        const updated =
+                            existing >= 0
+                                ? entries.map((e) => (e.key === key ? { ...e, value } : e))
+                                : [...entries, { key, value }];
+                        return { ...prev, [workflowId]: updated };
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to set workflow state key:', err);
             }
-        } catch (err) {
-            console.error('Failed to set workflow state key:', err);
-        }
-    }, []);
+        },
+        [sigil],
+    );
 
-    const handleDeleteKey = useCallback(async (workflowId: string, key: string) => {
-        try {
-            const ok = await window.sigil.deleteWorkflowStateKey(workflowId, key);
-            if (ok) {
-                setStateMap((prev) => ({
-                    ...prev,
-                    [workflowId]: (prev[workflowId] ?? []).filter((e) => e.key !== key),
-                }));
+    const handleDeleteKey = useCallback(
+        async (workflowId: string, key: string) => {
+            try {
+                const ok = await sigil.deleteWorkflowStateKey(workflowId, key);
+                if (ok) {
+                    setStateMap((prev) => ({
+                        ...prev,
+                        [workflowId]: (prev[workflowId] ?? []).filter((e) => e.key !== key),
+                    }));
+                }
+            } catch (err) {
+                console.error('Failed to delete workflow state key:', err);
             }
-        } catch (err) {
-            console.error('Failed to delete workflow state key:', err);
-        }
-    }, []);
+        },
+        [sigil],
+    );
 
     if (loading) {
         return <p className="font-manuscript text-veil italic">Loading workflow state...</p>;
@@ -549,7 +563,7 @@ function WorkflowStatePanel({
                     workflow={wf}
                     entries={stateMap[wf.id] ?? []}
                     onRefresh={async () => {
-                        const entries = await fetchStateEntries(wf.id);
+                        const entries = await fetchStateEntries(sigil, wf.id);
                         setStateMap((prev) => ({ ...prev, [wf.id]: entries }));
                     }}
                     onSetKey={(key, value) => handleSetKey(wf.id, key, value)}
@@ -569,20 +583,22 @@ export function SettingsSection(): ReactElement {
         'permissions',
     );
     const workflows = useAppStore((state) => state.workflows);
+    const sigil = useSigil();
+
     const loadData = useCallback(() => {
         setPluginsLoading(true);
         setPropertiesLoading(true);
-        window.sigil
+        sigil
             .listPlugins()
             .then(setPlugins)
             .catch(() => setPlugins([]))
             .finally(() => setPluginsLoading(false));
-        window.sigil
+        sigil
             .readProperties()
             .then(setProperties)
             .catch(() => setProperties({}))
             .finally(() => setPropertiesLoading(false));
-    }, []);
+    }, [sigil]);
 
     useEffect(() => {
         loadData();
@@ -590,7 +606,7 @@ export function SettingsSection(): ReactElement {
 
     const handlePermissionOverride = useCallback(
         (pluginId: string, overrides: readonly Capability[]) => {
-            window.sigil
+            sigil
                 .setPermissionOverride(pluginId, overrides)
                 .then((ok) => {
                     if (ok) {
@@ -607,21 +623,24 @@ export function SettingsSection(): ReactElement {
                     console.error('Failed to set permission override:', err);
                 });
         },
-        [],
+        [sigil],
     );
 
-    const handlePropertiesSave = useCallback((props: Record<string, unknown>) => {
-        window.sigil
-            .saveProperties(props)
-            .then((ok) => {
-                if (ok) {
-                    setProperties(props);
-                }
-            })
-            .catch((err: unknown) => {
-                console.error('Failed to save properties:', err);
-            });
-    }, []);
+    const handlePropertiesSave = useCallback(
+        (props: Record<string, unknown>) => {
+            sigil
+                .saveProperties(props)
+                .then((ok) => {
+                    if (ok) {
+                        setProperties(props);
+                    }
+                })
+                .catch((err: unknown) => {
+                    console.error('Failed to save properties:', err);
+                });
+        },
+        [sigil],
+    );
 
     const handlePropertiesCancel = useCallback(() => {
         loadData();
@@ -685,7 +704,7 @@ export function SettingsSection(): ReactElement {
                         />
                     )
                 ) : (
-                    <WorkflowStatePanel workflows={workflows} />
+                    <WorkflowStatePanel workflows={workflows} sigil={sigil} />
                 )}
             </div>
         </SectionShell>

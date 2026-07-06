@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 
 import type { PluginInfo } from '../../shared/plugin-info.js';
 import { SectionShell } from '../components/section-shell.js';
+import { useSigil } from '../lib/sigil-context.js';
 
 function PluginCard({ info }: { readonly info: PluginInfo }): ReactElement {
     return (
@@ -82,10 +83,11 @@ function PluginCard({ info }: { readonly info: PluginInfo }): ReactElement {
 export function PluginsSection(): ReactElement {
     const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
     const [loading, setLoading] = useState(true);
+    const sigil = useSigil();
 
     const load = useCallback(() => {
         setLoading(true);
-        window.sigil
+        sigil
             .listPlugins()
             .then(setPlugins)
             .catch((err: unknown) => {
@@ -93,7 +95,7 @@ export function PluginsSection(): ReactElement {
                 setPlugins([]);
             })
             .finally(() => setLoading(false));
-    }, []);
+    }, [sigil]);
 
     useEffect(() => {
         load();
