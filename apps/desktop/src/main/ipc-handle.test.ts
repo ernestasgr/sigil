@@ -97,6 +97,18 @@ describe('ipcHandle', () => {
         await expect((wrapped as Function)({})).rejects.toThrow('handler error');
     });
 
+    it('passes valid single-element tuple invocation through to the handler', async () => {
+        const handler = vi.fn().mockResolvedValue('ok');
+        const schema = z.tuple([z.string()]);
+        ipcHandle('test:single-tuple', schema, handler);
+
+        const [, wrapped] = mockHandle.mock.lastCall as [string, (...args: unknown[]) => unknown];
+        const result = await (wrapped as Function)({}, 'hello');
+
+        expect(handler).toHaveBeenCalledWith(['hello']);
+        expect(result).toBe('ok');
+    });
+
     it('handles handlers with no arguments when no args are passed from ipcMain', async () => {
         const handler = vi.fn().mockResolvedValue('noop');
         ipcHandle('test:empty', z.undefined(), handler);
