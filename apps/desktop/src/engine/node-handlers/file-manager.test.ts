@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PipelineNode } from '@sigil/schema/nodes';
+import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import type { CapabilityBroker } from '../capability-broker.js';
 import { createEventBus } from '../event-bus.js';
@@ -31,7 +32,11 @@ function fileManagerNode(
     } as PipelineNode;
 }
 
-function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
+type FileManagerTestDeps = NodeHandlerDeps & {
+    readonly collisionSuffixStyle: CollisionSuffixStyle;
+};
+
+function buildDeps(overrides?: Partial<FileManagerTestDeps>): FileManagerTestDeps {
     return {
         bus: createEventBus(),
         sleep: vi.fn(),
@@ -40,7 +45,6 @@ function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
         matchSwitchCase: vi.fn(),
         state: { get: vi.fn(), set: vi.fn(), flush: vi.fn() },
         capabilityBroker: { request: vi.fn().mockReturnValue({ ok: true }) },
-        pluginId: 'com.sigil.file-manager',
         collisionSuffixStyle: 'windows',
         ...overrides,
     };
@@ -374,7 +378,7 @@ describe('file-manager handler', () => {
             const { fileManagerHandler } = await import('./file-manager.js');
             await fileManagerHandler.execute(
                 { node, ctx: context },
-                buildDeps({ capabilityBroker: broker, pluginId: 'com.sigil.file-manager' }),
+                buildDeps({ capabilityBroker: broker }),
             );
 
             expect(request).toHaveBeenCalledWith({

@@ -111,7 +111,7 @@ export async function executePipeline(
             return;
         }
 
-        const deps: NodeHandlerDeps = {
+        const baseDeps: NodeHandlerDeps = {
             bus,
             sleep,
             resolveTemplate,
@@ -119,15 +119,22 @@ export async function executePipeline(
             matchSwitchCase,
             state,
             capabilityBroker: capabilityBroker ?? createDenyAllCapabilityBroker(),
-            pluginId: 'com.sigil.file-manager',
-            collisionSuffixStyle: settings.collisionSuffixStyle,
         };
+
+        function nodeDeps(node: PipelineNode): NodeHandlerDeps {
+            if (node.type === 'file-manager') {
+                return Object.assign({}, baseDeps, {
+                    collisionSuffixStyle: settings.collisionSuffixStyle,
+                });
+            }
+            return baseDeps;
+        }
 
         let triggerResult: NodeRunResult;
         try {
             triggerResult = await nodeHandlers[triggerNode.type].execute(
                 { node: triggerNode, ctx: seedContext ?? SEED_CONTEXT },
-                deps,
+                nodeDeps(triggerNode),
             );
         } catch (err) {
             reportNodeError(bus, settings, runPayload, triggerNode.id, err);
@@ -167,7 +174,7 @@ export async function executePipeline(
             try {
                 const { outputCtx, activePort } = await nodeHandlers[node.type].execute(
                     { node, ctx: entry.ctx },
-                    deps,
+                    nodeDeps(node),
                 );
                 scheduleDownstream(entry.nodeId, activePort, outputCtx);
             } catch (err) {
