@@ -37,7 +37,7 @@ const engine = createEngine({
 
 const workflowsDir = join(userDataPath ?? '', 'workflows');
 const store = createWorkflowStore(workflowsDir);
-const activator = createWorkflowActivator(engine, store, engine.fileWatcherManager);
+const activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
 
 process.on('exit', () => {
     activator.dispose();
@@ -100,11 +100,30 @@ port.on('message', (raw: unknown) => {
     }
 });
 
-// Load built-in plugins before activating workflows so that plugins are
-// registered before any workflow's first node runs.
-await engine.loadBuiltinPlugins().catch((err: unknown) => {
-    log(`Failed to load built-in plugins: ${err instanceof Error ? err.message : String(err)}`);
+// Register builtin node manifests (permission identities) and load any
+// user-installed TS node plugins before activating workflows.
+engine.registerBuiltinManifests();
+
+const pluginsDir = join(userDataPath ?? '', 'plugins');
+const pluginResults = await engine.loadNodePlugins(pluginsDir).catch((err: unknown) => {
+    log(`Failed to load node plugins: ${err instanceof Error ? err.message : String(err)}`);
+    return [] as const;
 });
+for (const result of pluginResults) {
+    if (!result.ok) {
+        const err = result.error;
+        const dir = 'dir' in err ? err.dir : '(unknown dir)';
+        const detail =
+            'error' in err
+                ? err.error
+                : 'pluginId' in err
+                  ? err.pluginId
+                  : 'nodeType' in err
+                    ? err.nodeType
+                    : err.kind;
+        log(`Plugin load failed (${dir}): ${err.kind}: ${detail}`);
+    }
+}
 
 for (const wf of store.list()) {
     if (wf.enabled) {

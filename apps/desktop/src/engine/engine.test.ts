@@ -53,6 +53,39 @@ describe('createEngine', () => {
         expect(engine.workflowStateStore).toBeDefined();
         engine.dispose();
     });
+
+    it('exposes a handler registry with all builtin handlers', () => {
+        const engine = createEngine();
+
+        expect(engine.handlerRegistry.has('manual-trigger')).toBe(true);
+        expect(engine.handlerRegistry.has('file-watcher')).toBe(true);
+        expect(engine.handlerRegistry.has('file-manager')).toBe(true);
+        expect(engine.handlerRegistry.has('log')).toBe(true);
+        engine.dispose();
+    });
+
+    it('registerBuiltinManifests registers file-watcher and file-manager manifests', () => {
+        const engine = createEngine();
+
+        expect(engine.registry.has('com.sigil.file-watcher')).toBe(false);
+        expect(engine.registry.has('com.sigil.file-manager')).toBe(false);
+
+        engine.registerBuiltinManifests();
+
+        expect(engine.registry.has('com.sigil.file-watcher')).toBe(true);
+        expect(engine.registry.has('com.sigil.file-manager')).toBe(true);
+        engine.dispose();
+    });
+
+    it('registerBuiltinManifests is idempotent', () => {
+        const engine = createEngine();
+
+        engine.registerBuiltinManifests();
+        engine.registerBuiltinManifests();
+
+        expect(engine.registry.all()).toHaveLength(2);
+        engine.dispose();
+    });
 });
 
 describe('createEngine — databasePath from properties', () => {

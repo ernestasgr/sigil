@@ -6,6 +6,7 @@ import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
 import type { CapabilityBroker } from '../capability-broker.js';
 import { FILE_MANAGER_PLUGIN_ID } from '../file-manager-plugin.js';
 import type { NodeHandler, NodeRunResult } from './types.js';
+import { narrowNode } from './types.js';
 
 type FileAction = 'move' | 'copy' | 'rename';
 type ConflictPolicy = 'skip' | 'overwrite' | 'auto-rename' | 'error';
@@ -158,13 +159,9 @@ function updatePayload(
 
 export const fileManagerHandler: NodeHandler = {
     async execute({ node, ctx }, deps): Promise<NodeRunResult> {
-        if (node.type !== 'file-manager') {
-            throw new Error(
-                `Node handler registry mismatch: expected "file-manager", got "${node.type}"`,
-            );
-        }
+        const typedNode = narrowNode(node, 'file-manager');
 
-        const { action, destination, onConflict } = node.config;
+        const { action, destination, onConflict } = typedNode.config;
         const sourcePath = ctx.payload.path;
         if (typeof sourcePath !== 'string' || sourcePath === '') {
             throw new Error('File-manager: payload.path is missing or empty');
@@ -172,8 +169,10 @@ export const fileManagerHandler: NodeHandler = {
 
         // collisionSuffixStyle is not part of the shared NodeHandlerDeps;
         // the walker adds it per-node for file-manager handlers only.
-        const typed = deps as unknown as { readonly collisionSuffixStyle?: CollisionSuffixStyle };
-        const { collisionSuffixStyle } = typed;
+        const typedDeps = deps as unknown as {
+            readonly collisionSuffixStyle?: CollisionSuffixStyle;
+        };
+        const { collisionSuffixStyle } = typedDeps;
 
         checkPermissions(deps.capabilityBroker, FILE_MANAGER_PLUGIN_ID);
 

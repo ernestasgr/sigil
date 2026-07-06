@@ -23,6 +23,7 @@ export type { NotificationConfig } from './notification.js';
 export type { StateGetConfig } from './state-get.js';
 export type { StateSetConfig } from './state-set.js';
 export type { SwitchConfig } from './switch.js';
+export type { NodeDescriptor } from './types.js';
 
 // ─── Registry ───────────────────────────────────────────────────
 
@@ -59,13 +60,13 @@ const NODE_TYPE_VALUES = Object.keys(NODE_DESCRIPTORS) as unknown as readonly [
 ];
 export const NodeTypeSchema = z.enum(NODE_TYPE_VALUES);
 
-// ─── PipelineNode type (derived from NODE_DESCRIPTORS) ──────────
+// ─── BuiltinPipelineNode (derived from NODE_DESCRIPTORS) ────────
 
 type NodeConfigMap = {
     [K in keyof typeof NODE_DESCRIPTORS]: z.infer<(typeof NODE_DESCRIPTORS)[K]['configSchema']>;
 };
 
-export type PipelineNode = {
+export type BuiltinPipelineNode = {
     [K in NodeType]: {
         readonly id: string;
         readonly type: K;
@@ -73,9 +74,30 @@ export type PipelineNode = {
     };
 }[NodeType];
 
+// ─── PluginPipelineNode ─────────────────────────────────────────
+
+export interface PluginPipelineNode {
+    readonly id: string;
+    readonly type: string;
+    readonly pluginId: string;
+    readonly config: unknown;
+}
+
+// ─── PipelineNode (builtin | plugin) ────────────────────────────
+
+export type PipelineNode = BuiltinPipelineNode | PluginPipelineNode;
+
+export function isPluginNode(node: PipelineNode): node is PluginPipelineNode {
+    return 'pluginId' in node;
+}
+
+export function isBuiltinNode(node: PipelineNode): node is BuiltinPipelineNode {
+    return !('pluginId' in node);
+}
+
 // ─── PipelineNodeSchema (derived from NODE_DESCRIPTORS) ─────────
 
-const nodeSchemas = Object.values(NODE_DESCRIPTORS).map((descriptor) =>
+const builtinNodeSchemas = Object.values(NODE_DESCRIPTORS).map((descriptor) =>
     z.object({
         id: z.string().min(1),
         type: z.literal(descriptor.type),
@@ -83,13 +105,49 @@ const nodeSchemas = Object.values(NODE_DESCRIPTORS).map((descriptor) =>
     }),
 );
 
-export const PipelineNodeSchema = z.discriminatedUnion(
+/* eslint-disable @typescript-eslint/no-explicit-any -- Zod discriminatedUnion requires a concrete tuple type; dynamic arrays need this cast */
+const BuiltinPipelineNodeSchema = z.discriminatedUnion(
     'type',
-    nodeSchemas as unknown as readonly [z.ZodObject<any, any>, ...z.ZodObject<any, any>[]],
-) as unknown as z.ZodType<PipelineNode>;
+    builtinNodeSchemas as unknown as readonly [z.ZodObject<any, any>, ...z.ZodObject<any, any>[]],
+);
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+const PluginPipelineNodeSchema = z.object({
+    id: z.string().min(1),
+    type: z.string().min(1),
+    pluginId: z.string().min(1),
+    config: z.unknown(),
+});
+
+export const PipelineNodeSchema = z.unknown().superRefine((data, ctx) => {
+    if (typeof data !== 'object' || data === null) {
+        ctx.addIssue({
+            code: 'custom',
+            message: 'Pipeline node must be an object',
+            path: [],
+        });
+        return;
+    }
+    const obj = data as Record<string, unknown>;
+    const isPlugin = 'pluginId' in obj && typeof obj.pluginId === 'string';
+    const schema = isPlugin ? PluginPipelineNodeSchema : BuiltinPipelineNodeSchema;
+    const result = schema.safeParse(data);
+    if (!result.success) {
+        for (const issue of result.error.issues) {
+            ctx.addIssue({
+                code: 'custom',
+                message: issue.message,
+                path: issue.path,
+            });
+        }
+    }
+}) as unknown as z.ZodType<PipelineNode>;
 
 // ─── Output ports ───────────────────────────────────────────────
 
 export function outputPortsForNode(node: PipelineNode): readonly string[] {
+    if (isPluginNode(node)) {
+        return [];
+    }
     return nodeDescriptors[node.type].getOutputPorts(node.config);
 }

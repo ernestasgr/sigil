@@ -15,7 +15,14 @@ import type { CapabilityBroker } from './capability-broker.js';
 import type { BusEvent } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
 import { executePipeline, type ExecutorSettings } from './dag-executor.js';
+import { createBuiltinHandlers } from './node-handlers/registry.js';
+import { createNodeHandlerRegistry } from './node-registry.js';
+import { createFileWatcherManager } from './file-watcher-manager.js';
 import { createWorkflowStateStore } from './workflow-state.js';
+
+const handlerRegistry = createNodeHandlerRegistry(
+    createBuiltinHandlers({ fileWatcherManager: createFileWatcherManager() }),
+);
 
 function captureEvents(bus: ReturnType<typeof createEventBus>): BusEvent[] {
     const events: BusEvent[] = [];
@@ -65,7 +72,7 @@ describe('executePipeline — tracer sample', () => {
         const bus = createEventBus();
         const events = captureEvents(bus);
 
-        await executePipeline(sampleManualTriggerToLog, bus);
+        await executePipeline(sampleManualTriggerToLog, bus, handlerRegistry);
 
         const logEvent = events.find((event) => event.name === 'log.output');
         expect(logEvent).toBeDefined();
@@ -78,7 +85,7 @@ describe('executePipeline — tracer sample', () => {
         const bus = createEventBus();
         const events = captureEvents(bus);
 
-        await executePipeline(sampleManualTriggerToLog, bus);
+        await executePipeline(sampleManualTriggerToLog, bus, handlerRegistry);
 
         expect(events.map((event) => event.name)).toEqual([
             'workflow.started',
@@ -92,7 +99,7 @@ describe('executePipeline — tracer sample', () => {
         const bus = createEventBus();
         const events = captureEvents(bus);
 
-        await executePipeline(sampleManualTriggerToLog, bus);
+        await executePipeline(sampleManualTriggerToLog, bus, handlerRegistry);
 
         const triggerEvent = events.find((event) => event.name === 'manual.trigger.fired');
         expect(triggerEvent?.name === 'manual.trigger.fired' && triggerEvent.payload).toEqual(
@@ -132,7 +139,7 @@ describe('executePipeline — if/else branching', () => {
         const bus = createEventBus();
         const events = captureEvents(bus);
 
-        await executePipeline(branchPipeline('pdf'), bus);
+        await executePipeline(branchPipeline('pdf'), bus, handlerRegistry);
 
         const messages = events
             .filter((event) => event.name === 'log.output')
@@ -144,7 +151,7 @@ describe('executePipeline — if/else branching', () => {
         const bus = createEventBus();
         const events = captureEvents(bus);
 
-        await executePipeline(branchPipeline('png'), bus);
+        await executePipeline(branchPipeline('png'), bus, handlerRegistry);
 
         const messages = events
             .filter((event) => event.name === 'log.output')
@@ -179,7 +186,7 @@ describe('executePipeline — switch branching', () => {
         const bus = createEventBus();
         const events = captureEvents(bus);
 
-        await executePipeline(switchPipeline(['pdf', 'png']), bus);
+        await executePipeline(switchPipeline(['pdf', 'png']), bus, handlerRegistry);
 
         const messages = events
             .filter((event) => event.name === 'log.output')
@@ -191,7 +198,7 @@ describe('executePipeline — switch branching', () => {
         const bus = createEventBus();
         const events = captureEvents(bus);
 
-        await executePipeline(switchPipeline(['jpg', 'png']), bus);
+        await executePipeline(switchPipeline(['jpg', 'png']), bus, handlerRegistry);
 
         const messages = events
             .filter((event) => event.name === 'log.output')
@@ -215,6 +222,7 @@ describe('executePipeline — fan-out', () => {
                 ],
             ),
             bus,
+            handlerRegistry,
         );
 
         const messages = events
@@ -247,6 +255,7 @@ describe('executePipeline — delay', () => {
                 ],
             ),
             bus,
+            handlerRegistry,
             undefined,
             fakeSleep,
         );
@@ -282,6 +291,7 @@ describe('executePipeline — notification', () => {
                 [edge('t-to-notify', 'trigger', 'notify', 'out')],
             ),
             bus,
+            handlerRegistry,
         );
 
         const notificationEvent = events.find((event) => event.name === 'notification.show');
@@ -324,6 +334,7 @@ describe('executePipeline — context pass-through', () => {
                 ],
             ),
             bus,
+            handlerRegistry,
             undefined,
             fakeSleep,
         );
@@ -355,7 +366,7 @@ describe('executePipeline — error handling', () => {
         const bus = createEventBus();
         const events = captureEvents(bus);
 
-        await executePipeline(errorPipeline(), bus, undefined, failingSleep);
+        await executePipeline(errorPipeline(), bus, handlerRegistry, undefined, failingSleep);
 
         const errorEvent = events.find((event) => event.name === 'workflow.error');
         expect(errorEvent).toBeDefined();
@@ -378,7 +389,7 @@ describe('executePipeline — error handling', () => {
             collisionSuffixStyle: 'windows',
         };
 
-        await executePipeline(errorPipeline(), bus, settings, failingSleep);
+        await executePipeline(errorPipeline(), bus, handlerRegistry, settings, failingSleep);
 
         const notificationEvent = events.find((event) => event.name === 'notification.show');
         expect(notificationEvent).toBeDefined();
@@ -392,7 +403,7 @@ describe('executePipeline — error handling', () => {
             collisionSuffixStyle: 'windows',
         };
 
-        await executePipeline(errorPipeline(), bus, settings, failingSleep);
+        await executePipeline(errorPipeline(), bus, handlerRegistry, settings, failingSleep);
 
         expect(events.some((event) => event.name === 'notification.show')).toBe(false);
         expect(events.some((event) => event.name === 'workflow.error')).toBe(true);
@@ -432,6 +443,7 @@ describe('executePipeline — workflow state', () => {
                 ],
             ),
             bus,
+            handlerRegistry,
             undefined,
             undefined,
             store,
@@ -458,6 +470,7 @@ describe('executePipeline — workflow state', () => {
                 [edge('t-to-set', 'trigger', 'set', 'out')],
             ),
             bus,
+            handlerRegistry,
             undefined,
             undefined,
             store,
@@ -480,6 +493,7 @@ describe('executePipeline — workflow state', () => {
                 ],
             ),
             bus,
+            handlerRegistry,
             undefined,
             undefined,
             store,
@@ -513,6 +527,7 @@ describe('executePipeline — workflow state', () => {
                 ],
             ),
             bus,
+            handlerRegistry,
             undefined,
             undefined,
             store,
@@ -549,6 +564,7 @@ describe('executePipeline — workflow state', () => {
                 ],
             ),
             bus,
+            handlerRegistry,
             undefined,
             failingSleep,
             store,
@@ -623,6 +639,7 @@ describe('executePipeline — file-manager', () => {
                 [edge('t-to-fm', 'trigger', 'fm', 'out')],
             ),
             bus,
+            handlerRegistry,
             undefined,
             undefined,
             undefined,
@@ -665,6 +682,7 @@ describe('executePipeline — file-manager', () => {
                 [edge('t-to-fm', 'trigger', 'fm', 'out')],
             ),
             bus,
+            handlerRegistry,
             undefined,
             undefined,
             undefined,
@@ -703,6 +721,7 @@ describe('executePipeline — file-manager', () => {
                 [edge('t-to-fm', 'trigger', 'fm', 'out')],
             ),
             bus,
+            handlerRegistry,
             undefined,
             undefined,
             undefined,
@@ -747,6 +766,7 @@ describe('executePipeline — file-manager', () => {
                 [edge('t-to-fm', 'trigger', 'fm', 'out')],
             ),
             bus,
+            handlerRegistry,
             undefined,
             undefined,
             undefined,
@@ -791,6 +811,7 @@ describe('executePipeline — file-manager', () => {
                 [edge('t-to-fm', 'trigger', 'fm', 'out')],
             ),
             bus,
+            handlerRegistry,
             undefined,
             undefined,
             undefined,
@@ -836,6 +857,7 @@ describe('executePipeline — file-manager', () => {
                 [edge('t-to-fm', 'trigger', 'fm', 'out')],
             ),
             bus,
+            handlerRegistry,
             settings,
             undefined,
             undefined,
@@ -879,6 +901,7 @@ describe('executePipeline — file-manager', () => {
                 [edge('t-to-fm', 'trigger', 'fm', 'out')],
             ),
             bus,
+            handlerRegistry,
         );
 
         const errorEvent = events.find((e) => e.name === 'workflow.error');
@@ -914,6 +937,7 @@ describe('executePipeline — file-manager', () => {
                 [edge('t-to-fm', 'trigger', 'fm', 'out'), edge('fm-to-log', 'fm', 'log', 'out')],
             ),
             bus,
+            handlerRegistry,
             undefined,
             undefined,
             undefined,

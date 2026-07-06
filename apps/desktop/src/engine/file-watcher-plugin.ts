@@ -8,14 +8,3 @@ export const fileWatcherManifest: Manifest = {
     permissions: ['state.write', 'filesystem.read'],
     emits: ['file.created', 'file.modified', 'file.deleted'],
 };
-
-export const fileWatcherPluginCode = `
-async function start() {
-    await log('file-watcher plugin starting');
-    await state.set('watcherVersion', '0.0.1');
-}
-
-start().catch(function(err) {
-    log('file-watcher startup error: ' + err.message);
-});
-`;

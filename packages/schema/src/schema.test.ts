@@ -122,6 +122,37 @@ describe('CompiledPipelineSchema', () => {
         expect(result.ok === false && result.error.length).toBeGreaterThan(0);
     });
 
+    it('accepts a plugin node with a pluginId and unknown config', () => {
+        const valid = {
+            id: 'p',
+            workflowId: 'w',
+            schemaVersion: 1,
+            nodes: [
+                {
+                    id: 'n',
+                    type: 'my-plugin-node',
+                    pluginId: 'com.sigil.my-plugin',
+                    config: { anything: true },
+                },
+            ],
+            edges: [],
+        };
+        const result = parsePipeline(valid);
+        expect(result.ok).toBe(true);
+    });
+
+    it('rejects a plugin node without a pluginId', () => {
+        const invalid = {
+            id: 'p',
+            workflowId: 'w',
+            schemaVersion: 1,
+            nodes: [{ id: 'n', type: 'my-plugin-node', config: {} }],
+            edges: [],
+        };
+        const result = parsePipeline(invalid);
+        expect(result.ok).toBe(false);
+    });
+
     it('rejects a missing required config field with a clear error', () => {
         const invalid = {
             id: 'p',

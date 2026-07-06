@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PipelineEdgeSchema } from './edges.js';
-import { PipelineNodeSchema, outputPortsForNode } from './nodes/index.js';
+import { PipelineNodeSchema, outputPortsForNode, isPluginNode } from './nodes/index.js';
 
 export const PipelineSchemaVersionSchema = z.literal(1);
 export type PipelineSchemaVersion = z.infer<typeof PipelineSchemaVersionSchema>;
@@ -55,13 +55,15 @@ export const CompiledPipelineSchema = z
                 });
             }
 
-            const allowedPorts = outputPortsForNode(sourceNode);
-            if (!allowedPorts.includes(edge.sourcePort)) {
-                ctx.addIssue({
-                    code: 'custom',
-                    message: `Edge "${edge.id}" has invalid sourcePort "${edge.sourcePort}" for node "${sourceNode.id}" (${sourceNode.type}). Allowed ports: ${allowedPorts.join(', ')}`,
-                    path: ['edges'],
-                });
+            if (!isPluginNode(sourceNode)) {
+                const allowedPorts = outputPortsForNode(sourceNode);
+                if (!allowedPorts.includes(edge.sourcePort)) {
+                    ctx.addIssue({
+                        code: 'custom',
+                        message: `Edge "${edge.id}" has invalid sourcePort "${edge.sourcePort}" for node "${sourceNode.id}" (${sourceNode.type}). Allowed ports: ${allowedPorts.join(', ')}`,
+                        path: ['edges'],
+                    });
+                }
             }
         }
     });

@@ -7,7 +7,7 @@ import type { CapabilityBroker } from './capability-broker.js';
 import { evaluateCondition, matchSwitchCase } from './condition-evaluator.js';
 import type { EventBus, WorkflowRunPayload } from './event-bus.js';
 import { resolveTemplate } from './template.js';
-import { nodeHandlers } from './node-handlers/registry.js';
+import type { NodeHandlerRegistry } from './node-registry.js';
 import type { NodeHandlerDeps, NodeRunResult, Sleep } from './node-handlers/types.js';
 import { createInMemoryWorkflowStateStore, type WorkflowStateStore } from './workflow-state.js';
 
@@ -87,6 +87,7 @@ function reportNodeError(
 export async function executePipeline(
     pipeline: CompiledPipeline,
     bus: EventBus,
+    handlerRegistry: NodeHandlerRegistry,
     settings: ExecutorSettings = DEFAULT_EXECUTOR_SETTINGS,
     sleep: Sleep = DEFAULT_SLEEP,
     stateStore: WorkflowStateStore = createInMemoryWorkflowStateStore(),
@@ -132,7 +133,11 @@ export async function executePipeline(
 
         let triggerResult: NodeRunResult;
         try {
-            triggerResult = await nodeHandlers[triggerNode.type].execute(
+            const triggerHandler = handlerRegistry.get(triggerNode.type);
+            if (!triggerHandler) {
+                throw new Error(`No handler registered for node type "${triggerNode.type}"`);
+            }
+            triggerResult = await triggerHandler.execute(
                 { node: triggerNode, ctx: seedContext ?? SEED_CONTEXT },
                 nodeDeps(triggerNode),
             );
@@ -172,7 +177,11 @@ export async function executePipeline(
             if (!node) continue;
 
             try {
-                const { outputCtx, activePort } = await nodeHandlers[node.type].execute(
+                const handler = handlerRegistry.get(node.type);
+                if (!handler) {
+                    throw new Error(`No handler registered for node type "${node.type}"`);
+                }
+                const { outputCtx, activePort } = await handler.execute(
                     { node, ctx: entry.ctx },
                     nodeDeps(node),
                 );
