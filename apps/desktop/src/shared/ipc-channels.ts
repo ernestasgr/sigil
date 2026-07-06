@@ -368,6 +368,7 @@ export const WorkerInboundSchema = z.union([
     EngineSetWorkflowStateKeySchema,
     EngineDeleteWorkflowStateKeySchema,
 ]);
+export type WorkerInbound = z.infer<typeof WorkerInboundSchema>;
 
 export const RendererChannel = {
     EnginePong: 'renderer:engine-pong',
