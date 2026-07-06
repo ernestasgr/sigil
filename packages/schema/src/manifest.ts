@@ -19,6 +19,7 @@ export const ManifestSchema = z.object({
     version: z.string().min(1),
     permissions: z.array(CapabilitySchema),
     emits: z.array(z.string().min(1)).min(1),
+    nodeType: z.string().min(1).optional(),
 });
 export type Manifest = z.infer<typeof ManifestSchema>;
 

@@ -1,17 +1,46 @@
-import type { NodeHandler, NodeRunResult } from './types.js';
+import { randomUUID } from 'node:crypto';
 
-export const fileWatcherHandler: NodeHandler = {
-    async execute({ node, ctx }): Promise<NodeRunResult> {
-        if (node.type !== 'file-watcher') {
-            throw new Error(
-                `Node handler registry mismatch: expected "file-watcher", got "${node.type}"`,
+import type { FileWatcherConfig } from '@sigil/schema/nodes';
+import type { WorkflowContext } from '@sigil/schema/workflow-context';
+
+import type { FileWatcherManager } from '../file-watcher-manager.js';
+import type { TriggerHandler, NodeRunResult } from './types.js';
+
+export function createFileWatcherHandler(manager: FileWatcherManager): TriggerHandler {
+    return {
+        activate: (config, onEvent) => {
+            const c = config as FileWatcherConfig;
+            const subscriberId = `trigger:${randomUUID()}`;
+
+            manager.registerSubscriber(
+                {
+                    id: subscriberId,
+                    path: c.path,
+                    recursive: c.recursive,
+                    events: c.events,
+                    ignorePatterns: c.ignorePatterns,
+                },
+                (fileEvent) => {
+                    const seedCtx: WorkflowContext = {
+                        event: fileEvent.eventName,
+                        payload: fileEvent.payload as Record<string, unknown>,
+                        vars: {},
+                    };
+                    onEvent(seedCtx);
+                },
             );
-        }
-        if (!ctx.event) {
-            throw new Error(
-                'Node type "file-watcher" requires an external event context — execute the pipeline with a seed context',
-            );
-        }
-        return { outputCtx: ctx, activePort: 'out' };
-    },
-};
+
+            return () => {
+                manager.unregisterSubscriber(subscriberId);
+            };
+        },
+        async execute({ ctx }): Promise<NodeRunResult> {
+            if (!ctx.event) {
+                throw new Error(
+                    'Node type "file-watcher" requires an external event context — execute the pipeline with a seed context',
+                );
+            }
+            return { outputCtx: ctx, activePort: 'out' };
+        },
+    };
+}

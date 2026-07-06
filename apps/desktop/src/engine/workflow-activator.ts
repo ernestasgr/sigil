@@ -1,7 +1,8 @@
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
 import type { Engine } from './engine.js';
-import type { FileWatcherManager } from './file-watcher-manager.js';
+import type { NodeHandlerRegistry } from './node-registry.js';
+import { isTriggerHandler } from './node-handlers/types.js';
 import type { WorkflowStore } from './workflow-store.js';
 
 export interface WorkflowActivator {
@@ -15,7 +16,7 @@ export interface WorkflowActivator {
 export function createWorkflowActivator(
     engine: Engine,
     store: WorkflowStore,
-    fileWatcherManager: FileWatcherManager,
+    handlerRegistry: NodeHandlerRegistry,
 ): WorkflowActivator {
     const active = new Map<string, () => void>();
 
@@ -29,94 +30,57 @@ export function createWorkflowActivator(
             const trigger = data.pipeline.nodes[0];
             if (!trigger) return false;
 
-            let teardown: () => void;
-
-            switch (trigger.type) {
-                case 'file-watcher': {
-                    const rawConfig = trigger.config;
-                    if (!rawConfig || typeof rawConfig !== 'object') {
-                        engine.bus.next({
-                            name: 'engine.diagnostic',
-                            payload: {
-                                message: `[activator] file-watcher trigger for "${data.name}" (${workflowId}) has invalid config — cannot activate`,
-                            },
-                        });
-                        return false;
-                    }
-                    const config = rawConfig as Record<string, unknown>;
-                    if (typeof config.path !== 'string') {
-                        engine.bus.next({
-                            name: 'engine.diagnostic',
-                            payload: {
-                                message: `[activator] file-watcher trigger for "${data.name}" (${workflowId}) is missing path — cannot activate`,
-                            },
-                        });
-                        return false;
-                    }
-                    const subscriberId = `workflow:${workflowId}`;
-
-                    fileWatcherManager.registerSubscriber(
-                        {
-                            id: subscriberId,
-                            path: config.path,
-                            recursive: config.recursive === true,
-                            events: Array.isArray(config.events) ? config.events : [],
-                            ignorePatterns: Array.isArray(config.ignorePatterns)
-                                ? config.ignorePatterns
-                                : undefined,
-                        },
-                        (fileEvent) => {
-                            const seedCtx: WorkflowContext = {
-                                event: fileEvent.eventName,
-                                payload: fileEvent.payload as Record<string, unknown>,
-                                vars: {},
-                            };
-                            void engine.execute(data.pipeline, seedCtx).catch((err: unknown) => {
-                                engine.bus.next({
-                                    name: 'engine.diagnostic',
-                                    payload: {
-                                        message: `[activator] workflow ${data.name} (${workflowId}) execution failed: ${err instanceof Error ? err.message : String(err)}`,
-                                    },
-                                });
-                            });
-                        },
-                    );
-
-                    teardown = () => {
-                        fileWatcherManager.unregisterSubscriber(subscriberId);
-                    };
-
-                    engine.bus.next({
-                        name: 'engine.diagnostic',
-                        payload: {
-                            message: `[activator] file-watcher trigger active for "${data.name}" — watching ${config.path}`,
-                        },
-                    });
-                    break;
-                }
-                case 'manual-trigger': {
-                    engine.bus.next({
-                        name: 'engine.diagnostic',
-                        payload: {
-                            message: `[activator] manual trigger ready for "${data.name}"`,
-                        },
-                    });
-                    teardown = () => {};
-                    break;
-                }
-                default: {
-                    engine.bus.next({
-                        name: 'engine.diagnostic',
-                        payload: {
-                            message: `[activator] unknown trigger type "${trigger.type}" for "${data.name}" — cannot activate`,
-                        },
-                    });
-                    return false;
-                }
+            const handler = handlerRegistry.get(trigger.type);
+            if (!handler) {
+                engine.bus.next({
+                    name: 'engine.diagnostic',
+                    payload: {
+                        message: `[activator] no handler registered for trigger type "${trigger.type}" on "${data.name}" (${workflowId}) — cannot activate`,
+                    },
+                });
+                return false;
             }
 
-            active.set(workflowId, teardown);
-            return true;
+            if (!isTriggerHandler(handler)) {
+                engine.bus.next({
+                    name: 'engine.diagnostic',
+                    payload: {
+                        message: `[activator] node type "${trigger.type}" on "${data.name}" (${workflowId}) is not a trigger — cannot activate`,
+                    },
+                });
+                return false;
+            }
+
+            const onEvent = (ctx: WorkflowContext): void => {
+                void engine.execute(data.pipeline, ctx).catch((err: unknown) => {
+                    engine.bus.next({
+                        name: 'engine.diagnostic',
+                        payload: {
+                            message: `[activator] workflow ${data.name} (${workflowId}) execution failed: ${err instanceof Error ? err.message : String(err)}`,
+                        },
+                    });
+                });
+            };
+
+            try {
+                const teardown = handler.activate(trigger.config, onEvent);
+                active.set(workflowId, teardown);
+                engine.bus.next({
+                    name: 'engine.diagnostic',
+                    payload: {
+                        message: `[activator] trigger "${trigger.type}" active for "${data.name}" (${workflowId})`,
+                    },
+                });
+                return true;
+            } catch (err) {
+                engine.bus.next({
+                    name: 'engine.diagnostic',
+                    payload: {
+                        message: `[activator] failed to activate trigger "${trigger.type}" for "${data.name}" (${workflowId}): ${err instanceof Error ? err.message : String(err)}`,
+                    },
+                });
+                return false;
+            }
         },
 
         deactivate(workflowId: string): boolean {

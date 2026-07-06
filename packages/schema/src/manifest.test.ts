@@ -72,6 +72,27 @@ describe('ManifestSchema', () => {
         });
         expect(result.success).toBe(false);
     });
+
+    it('accepts a manifest with a nodeType', () => {
+        const result = ManifestSchema.safeParse({
+            id: 'com.sigil.my-plugin',
+            version: '0.0.1',
+            permissions: [],
+            emits: ['my.event'],
+            nodeType: 'my-plugin-node',
+        });
+        expect(result.success).toBe(true);
+    });
+
+    it('accepts a manifest without a nodeType (non-node plugin)', () => {
+        const result = ManifestSchema.safeParse({
+            id: 'com.sigil.stub-ping',
+            version: '0.0.1',
+            permissions: [],
+            emits: ['stub.ping'],
+        });
+        expect(result.success).toBe(true);
+    });
 });
 
 describe('parseManifest', () => {

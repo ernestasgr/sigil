@@ -16,19 +16,14 @@ import { createCapabilityBroker } from './capability-broker.js';
 import { executePipeline, type ExecutorSettings } from './dag-executor.js';
 import type { EventBus } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
-import {
-    FILE_MANAGER_PLUGIN_ID,
-    fileManagerManifest,
-    fileManagerPluginCode,
-} from './file-manager-plugin.js';
-import {
-    FILE_WATCHER_PLUGIN_ID,
-    fileWatcherManifest,
-    fileWatcherPluginCode,
-} from './file-watcher-plugin.js';
+import { fileManagerManifest } from './file-manager-plugin.js';
+import { fileWatcherManifest } from './file-watcher-plugin.js';
 import { createFileWatcherManager, type FileWatcherManager } from './file-watcher-manager.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 import { createManifestRegistry } from './manifest-registry.js';
+import { createBuiltinHandlers } from './node-handlers/registry.js';
+import { createNodeHandlerRegistry, type NodeHandlerRegistry } from './node-registry.js';
+import { loadNodePlugins, type NodePluginLoadResult } from './node-plugin-loader.js';
 import type { PermissionOverrideStore } from './permission-override-store.js';
 import { createPermissionOverrideStore } from './permission-override-store.js';
 import { createInMemoryPluginStateStore, createPluginLoader } from './plugin-loader.js';
@@ -51,7 +46,9 @@ export interface Engine {
     readonly workflowStateStore: WorkflowStateStore;
     readonly settings: ExecutorSettings;
     readonly fileWatcherManager: FileWatcherManager;
-    readonly loadBuiltinPlugins: () => Promise<void>;
+    readonly handlerRegistry: NodeHandlerRegistry;
+    readonly registerBuiltinManifests: () => void;
+    readonly loadNodePlugins: (dir: string) => Promise<readonly NodePluginLoadResult[]>;
     readonly execute: (pipeline: CompiledPipeline, seedContext?: WorkflowContext) => Promise<void>;
     readonly dispose: () => void;
 }
@@ -88,6 +85,9 @@ export function createEngine(options?: EngineOptions): Engine {
     const workflowStateStore = createWorkflowStateStore(database);
 
     const fileWatcherManager = createFileWatcherManager();
+    const handlerRegistry = createNodeHandlerRegistry(
+        createBuiltinHandlers({ fileWatcherManager }),
+    );
 
     return {
         bus,
@@ -100,30 +100,22 @@ export function createEngine(options?: EngineOptions): Engine {
         workflowStateStore,
         settings,
         fileWatcherManager,
-        loadBuiltinPlugins: async (): Promise<void> => {
-            for (const [pluginId, manifest, code] of [
-                [FILE_WATCHER_PLUGIN_ID, fileWatcherManifest, fileWatcherPluginCode] as const,
-                [FILE_MANAGER_PLUGIN_ID, fileManagerManifest, fileManagerPluginCode] as const,
-            ]) {
-                if (!registry.has(pluginId)) {
-                    const result = await loader.load(manifest, code);
-                    if (!result.ok) {
-                        const detail =
-                            'error' in result.error ? result.error.error : result.error.pluginId;
-                        bus.next({
-                            name: 'engine.diagnostic',
-                            payload: {
-                                message: `[engine] failed to load ${pluginId} plugin: ${result.error.kind}: ${detail}`,
-                            },
-                        });
-                    }
+        handlerRegistry,
+        registerBuiltinManifests: (): void => {
+            for (const manifest of [fileWatcherManifest, fileManagerManifest]) {
+                if (!registry.has(manifest.id)) {
+                    registry.register(manifest);
                 }
             }
+        },
+        loadNodePlugins: async (dir: string): Promise<readonly NodePluginLoadResult[]> => {
+            return loadNodePlugins(dir, { manifestRegistry: registry, handlerRegistry });
         },
         execute: (pipeline, seedContext) =>
             executePipeline(
                 pipeline,
                 bus,
+                handlerRegistry,
                 settings,
                 undefined,
                 workflowStateStore,

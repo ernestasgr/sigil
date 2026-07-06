@@ -1,6 +1,6 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
 import type { SwitchConfig } from '@sigil/schema/nodes/switch';
-import type { PipelineNode, NodeType } from '@sigil/schema/nodes';
+import type { NodeDescriptor, PipelineNode, NodeType } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
 import type { CapabilityBroker } from '../capability-broker.js';
@@ -34,6 +34,19 @@ export interface NodeHandlerInput {
 
 export interface NodeHandler {
     readonly execute: (input: NodeHandlerInput, deps: NodeHandlerDeps) => Promise<NodeRunResult>;
+}
+
+export interface TriggerHandler extends NodeHandler {
+    readonly activate: (config: unknown, onEvent: (ctx: WorkflowContext) => void) => () => void;
+}
+
+export function isTriggerHandler(handler: NodeHandler): handler is TriggerHandler {
+    return 'activate' in handler;
+}
+
+export interface NodePluginModule {
+    readonly descriptor: NodeDescriptor<string, unknown>;
+    readonly handler: NodeHandler;
 }
 
 export function narrowNode<K extends NodeType>(

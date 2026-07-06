@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { getNodeDescriptor, type NodeType, type PipelineNode } from '@sigil/schema/nodes';
+import { getNodeDescriptor, type NodeType, type BuiltinPipelineNode } from '@sigil/schema/nodes';
 
 import type { ConfigFormProps } from './inspector/config-forms.js';
 import {
@@ -19,9 +19,9 @@ export type NodeCategory = 'trigger' | 'logic' | 'system' | 'state' | 'utility';
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
-export type NodeSpec = DistributiveOmit<PipelineNode, 'id'>;
+export type NodeSpec = DistributiveOmit<BuiltinPipelineNode, 'id'>;
 
-type NodeConfigOf<K extends NodeType> = Extract<PipelineNode, { type: K }>['config'];
+type NodeConfigOf<K extends NodeType> = Extract<BuiltinPipelineNode, { type: K }>['config'];
 
 interface NodeRegistryEntry<K extends NodeType> {
     readonly type: K;
