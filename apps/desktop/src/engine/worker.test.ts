@@ -23,6 +23,11 @@ import {
 
 import { dispatch, type DispatchSubsystems } from './dispatch.js';
 
+vi.mock('./properties-loader.js', () => ({
+    readPropertiesFile: () => ({ loadedKey: 'loadedValue' }),
+    writePropertiesFile: () => ({ ok: true }) as const,
+}));
+
 function createFakeSubsystems(): {
     subsystems: DispatchSubsystems;
     postMessage: ReturnType<typeof vi.fn>;
@@ -459,11 +464,11 @@ describe('dispatch', () => {
         expect(postMessage).toHaveBeenCalledWith({
             type: EngineChannel.ReadPropertiesResult,
             correlationId: 'corr-8',
-            properties: expect.any(Object),
+            properties: { loadedKey: 'loadedValue' },
         });
     });
 
-    it('routes SaveProperties and posts a result with the correct type and correlationId', () => {
+    it('routes SaveProperties and posts ok:true result', () => {
         const { subsystems, postMessage } = createFakeSubsystems();
 
         const message: EngineSaveProperties = {
@@ -473,12 +478,11 @@ describe('dispatch', () => {
         };
         dispatch(message, subsystems);
 
-        expect(postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({
-                type: EngineChannel.SavePropertiesResult,
-                correlationId: 'corr-9',
-            }),
-        );
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.SavePropertiesResult,
+            correlationId: 'corr-9',
+            ok: true,
+        });
     });
 
     it('routes ReadWorkflowState and posts entries', () => {
@@ -549,6 +553,21 @@ describe('dispatch', () => {
             expect(postMessage).toHaveBeenCalledWith({
                 type: EngineChannel.Log,
                 line: '[error] engine.execute failed: test error',
+            });
+        });
+    });
+
+    it('FireManualTrigger posts an error log when engine.execute rejects', async () => {
+        const { subsystems, postMessage, engine } = createFakeSubsystems();
+        engine.execute.mockRejectedValue(new Error('manual trigger error'));
+        const pipeline = { id: 'p-1' } as CompiledPipeline;
+
+        dispatch({ type: EngineChannel.FireManualTrigger, pipeline }, subsystems);
+
+        await vi.waitFor(() => {
+            expect(postMessage).toHaveBeenCalledWith({
+                type: EngineChannel.Log,
+                line: '[error] manual trigger execution failed: manual trigger error',
             });
         });
     });
