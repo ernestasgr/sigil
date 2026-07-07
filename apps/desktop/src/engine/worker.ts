@@ -112,16 +112,37 @@ const pluginResults = await engine.loadNodePlugins(pluginsDir).catch((err: unkno
 for (const result of pluginResults) {
     if (!result.ok) {
         const err = result.error;
-        const dir = 'dir' in err ? err.dir : '(unknown dir)';
-        const detail =
-            'error' in err
-                ? err.error
-                : 'pluginId' in err
-                  ? err.pluginId
-                  : 'nodeType' in err
-                    ? err.nodeType
-                    : err.kind;
-        log(`Plugin load failed (${dir}): ${err.kind}: ${detail}`);
+        switch (err.kind) {
+            case 'type_mismatch':
+                log(
+                    `Plugin load failed (${err.dir}): type mismatch — manifest "${err.manifestType}" vs handler "${err.descriptorType}"`,
+                );
+                break;
+            case 'invalid_manifest':
+                log(`Plugin load failed (${err.dir}): invalid manifest — ${err.error}`);
+                break;
+            case 'import_error':
+                log(`Plugin load failed (${err.dir}): import error — ${err.error}`);
+                break;
+            case 'invalid_handler_module':
+                log(`Plugin load failed (${err.dir}): invalid handler module — ${err.error}`);
+                break;
+            case 'duplicate':
+                log(`Plugin load failed (${err.dir}): duplicate plugin — ${err.pluginId}`);
+                break;
+            case 'duplicate_type':
+                log(`Plugin load failed (${err.dir}): duplicate type — ${err.nodeType}`);
+                break;
+            case 'missing_manifest':
+                log(`Plugin load failed (${err.dir}): missing manifest`);
+                break;
+            case 'missing_handler':
+                log(`Plugin load failed (${err.dir}): missing handler`);
+                break;
+            case 'missing_node_type':
+                log(`Plugin load failed (${err.dir}): missing node type`);
+                break;
+        }
     }
 }
 

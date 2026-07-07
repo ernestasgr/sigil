@@ -1,5 +1,6 @@
 import type { NodeType } from '@sigil/schema/nodes';
 
+import type { CapabilityBroker } from '../capability-broker.js';
 import type { FileWatcherManager } from '../file-watcher-manager.js';
 import type { NodeHandler } from './types.js';
 import { manualTriggerHandler } from './manual-trigger.js';
@@ -15,6 +16,7 @@ import { stateSetHandler } from './state-set.js';
 
 export interface BuiltinHandlerDeps {
     readonly fileWatcherManager: FileWatcherManager;
+    readonly capabilityBroker: CapabilityBroker;
 }
 
 export function createBuiltinHandlers(
@@ -22,7 +24,7 @@ export function createBuiltinHandlers(
 ): Readonly<Record<NodeType, NodeHandler>> {
     return {
         'manual-trigger': manualTriggerHandler,
-        'file-watcher': createFileWatcherHandler(deps.fileWatcherManager),
+        'file-watcher': createFileWatcherHandler(deps.fileWatcherManager, deps.capabilityBroker),
         'if-else': ifElseHandler,
         switch: switchHandler,
         log: logHandler,

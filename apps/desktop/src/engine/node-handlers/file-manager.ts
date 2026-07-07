@@ -167,12 +167,7 @@ export const fileManagerHandler: NodeHandler = {
             throw new Error('File-manager: payload.path is missing or empty');
         }
 
-        // collisionSuffixStyle is not part of the shared NodeHandlerDeps;
-        // the walker adds it per-node for file-manager handlers only.
-        const typedDeps = deps as unknown as {
-            readonly collisionSuffixStyle?: CollisionSuffixStyle;
-        };
-        const { collisionSuffixStyle } = typedDeps;
+        const { collisionSuffixStyle } = deps;
 
         checkPermissions(deps.capabilityBroker, FILE_MANAGER_PLUGIN_ID);
 
