@@ -31,19 +31,20 @@ function writePlugin(dir: string, manifest: Record<string, unknown>, handlerCode
 
 const GREET_PLUGIN_HANDLER = `
 import { z } from 'zod';
+import type { NodeHandler, NodePluginModule } from '../../node-handlers/types.js';
 
 const GreetConfigSchema = z.object({ name: z.string() });
 
 export const descriptor = {
-    type: 'greet',
+    type: 'greet' as const,
     configSchema: GreetConfigSchema,
     defaultConfig: { name: 'world' },
-    getOutputPorts: () => ['out'],
+    getOutputPorts: () => ['out'] as const,
 };
 
-export const handler = {
+export const handler: NodeHandler = {
     async execute({ node, ctx }, deps) {
-        const config = node.config;
+        const config = node.config as { name: string };
         deps.bus.next({ name: 'greet.output', payload: { message: 'hello ' + config.name } });
         return { outputCtx: ctx, activePort: 'out' };
     },
@@ -52,19 +53,20 @@ export const handler = {
 
 const TRIGGER_PLUGIN_HANDLER = `
 import { z } from 'zod';
+import type { TriggerHandler, NodePluginModule } from '../../node-handlers/types.js';
 
 const TickConfigSchema = z.object({ intervalMs: z.number() });
 
 export const descriptor = {
-    type: 'tick-trigger',
+    type: 'tick-trigger' as const,
     configSchema: TickConfigSchema,
     defaultConfig: { intervalMs: 100 },
-    getOutputPorts: () => ['out'],
+    getOutputPorts: () => ['out'] as const,
 };
 
-export const handler = {
+export const handler: TriggerHandler = {
     activate(config, onEvent) {
-        const c = config;
+        const c = config as { intervalMs: number };
         const timer = setInterval(() => {
             onEvent({ event: 'tick', payload: { ts: Date.now() }, vars: {} });
         }, c.intervalMs);
