@@ -66,10 +66,10 @@ function isNodePluginModule(value: unknown): value is NodePluginModule {
 }
 
 function resolveHandlerPath(pluginDir: string): string | undefined {
-    const tsPath = join(pluginDir, 'handler.ts');
-    if (existsSync(tsPath)) return tsPath;
     const jsPath = join(pluginDir, 'handler.js');
     if (existsSync(jsPath)) return jsPath;
+    const tsPath = join(pluginDir, 'handler.ts');
+    if (existsSync(tsPath)) return tsPath;
     return undefined;
 }
 
