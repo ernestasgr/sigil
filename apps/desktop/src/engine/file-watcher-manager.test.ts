@@ -5,7 +5,16 @@ import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
 import { createBridge } from './bridge.js';
 import { createEventBus } from './event-bus.js';
 import type { BusEvent } from './event-bus.js';
-import { FILE_WATCHER_PLUGIN_ID, fileWatcherManifest } from './file-watcher-plugin.js';
+import { FILE_WATCHER_PLUGIN_ID } from './plugin-ids.js';
+
+import type { Manifest } from '@sigil/schema/manifest';
+
+const fileWatcherManifest: Manifest = {
+    id: 'com.sigil.file-watcher',
+    version: '0.0.1',
+    permissions: ['state.write', 'filesystem.read'],
+    emits: ['file.created', 'file.modified', 'file.deleted'],
+};
 import {
     createFileWatcherManager,
     type CreateWatcherFn,

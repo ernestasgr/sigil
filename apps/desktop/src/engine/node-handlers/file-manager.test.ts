@@ -83,7 +83,8 @@ describe('file-manager handler', () => {
                 payload: { path: srcPath, name: 'report.pdf', ext: 'pdf', size: 5, dir: srcDir },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             const result = await fileManagerHandler.execute({ node, ctx: context }, buildDeps());
 
             expect(existsSync(srcPath)).toBe(false);
@@ -113,7 +114,8 @@ describe('file-manager handler', () => {
                 payload: { path: srcPath, name: 'file.txt', ext: 'txt', size: 4, dir: srcDir },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             await fileManagerHandler.execute({ node, ctx: context }, buildDeps());
 
             expect(existsSync(join(dstDir, 'file.txt'))).toBe(true);
@@ -137,7 +139,8 @@ describe('file-manager handler', () => {
                 payload: { path: srcPath, name: 'file.txt', ext: 'txt', size: 7, dir: srcDir },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             const result = await fileManagerHandler.execute({ node, ctx: context }, buildDeps());
 
             expect(existsSync(srcPath)).toBe(true);
@@ -160,7 +163,8 @@ describe('file-manager handler', () => {
                 payload: { path: srcPath, name: 'old-name.txt', ext: 'txt', size: 4, dir },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             const result = await fileManagerHandler.execute({ node, ctx: context }, buildDeps());
 
             expect(existsSync(srcPath)).toBe(false);
@@ -192,7 +196,8 @@ describe('file-manager handler', () => {
                 payload: { path: srcPath, name: 'file.txt', ext: 'txt', size: 3, dir: srcDir },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             const result = await fileManagerHandler.execute({ node, ctx: context }, buildDeps());
 
             expect(existsSync(srcPath)).toBe(true);
@@ -219,7 +224,8 @@ describe('file-manager handler', () => {
                 payload: { path: srcPath, name: 'file.txt', ext: 'txt', size: 3, dir: srcDir },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             const result = await fileManagerHandler.execute({ node, ctx: context }, buildDeps());
 
             expect(existsSync(srcPath)).toBe(false);
@@ -245,7 +251,8 @@ describe('file-manager handler', () => {
                 payload: { path: srcPath, name: 'file.txt', ext: 'txt', size: 3, dir: srcDir },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             await expect(
                 fileManagerHandler.execute({ node, ctx: context }, buildDeps()),
             ).rejects.toThrow(/destination exists/i);
@@ -268,7 +275,8 @@ describe('file-manager handler', () => {
                 payload: { path: srcPath, name: 'source.txt', ext: 'txt', size: 3, dir },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             const result = await fileManagerHandler.execute(
                 { node, ctx: context },
                 buildDeps({ collisionSuffixStyle: 'windows' }),
@@ -294,7 +302,8 @@ describe('file-manager handler', () => {
                 payload: { path: srcPath, name: 'source.txt', ext: 'txt', size: 3, dir },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             const result = await fileManagerHandler.execute(
                 { node, ctx: context },
                 buildDeps({ collisionSuffixStyle: 'underscore' }),
@@ -320,7 +329,8 @@ describe('file-manager handler', () => {
                 payload: { path: srcPath, name: 'source.txt', ext: 'txt', size: 3, dir },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             const result = await fileManagerHandler.execute(
                 { node, ctx: context },
                 buildDeps({ collisionSuffixStyle: 'hyphen' }),
@@ -346,7 +356,8 @@ describe('file-manager handler', () => {
                 payload: { path: srcPath, name: 'source.txt', ext: 'txt', size: 3, dir },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             const result = await fileManagerHandler.execute(
                 { node, ctx: context },
                 buildDeps({ collisionSuffixStyle: 'windows' }),
@@ -375,7 +386,8 @@ describe('file-manager handler', () => {
                 payload: { path: srcPath, name: 'file.txt', ext: 'txt', size: 0, dir },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             await fileManagerHandler.execute(
                 { node, ctx: context },
                 buildDeps({ capabilityBroker: broker }),
@@ -414,7 +426,8 @@ describe('file-manager handler', () => {
                 payload: { path: srcPath, name: 'file.txt', ext: 'txt', size: 0, dir },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             await expect(
                 fileManagerHandler.execute(
                     { node, ctx: context },
@@ -443,7 +456,8 @@ describe('file-manager handler', () => {
                 },
             });
 
-            const { fileManagerHandler } = await import('./file-manager.js');
+            const { handler: fileManagerHandler } =
+                await import('../../builtin-plugins/file-manager/handler.js');
             const result = await fileManagerHandler.execute({ node, ctx: context }, buildDeps());
 
             expect(result.outputCtx.payload.size).toBe(42);

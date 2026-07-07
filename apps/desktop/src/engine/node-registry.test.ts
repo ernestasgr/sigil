@@ -1,18 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { CapabilityBroker } from './capability-broker.js';
 import type { NodeHandler } from './node-handlers/types.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
-import { createFileWatcherManager } from './file-watcher-manager.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
 
-const testBroker: CapabilityBroker = { request: () => ({ ok: true }) };
-
 function testHandlers() {
-    return createBuiltinHandlers({
-        fileWatcherManager: createFileWatcherManager(),
-        capabilityBroker: testBroker,
-    });
+    return createBuiltinHandlers();
 }
 
 describe('NodeHandlerRegistry', () => {
@@ -20,13 +13,11 @@ describe('NodeHandlerRegistry', () => {
         const registry = createNodeHandlerRegistry(testHandlers());
 
         expect(registry.has('manual-trigger')).toBe(true);
-        expect(registry.has('file-watcher')).toBe(true);
         expect(registry.has('if-else')).toBe(true);
         expect(registry.has('switch')).toBe(true);
         expect(registry.has('log')).toBe(true);
         expect(registry.has('delay')).toBe(true);
         expect(registry.has('notification')).toBe(true);
-        expect(registry.has('file-manager')).toBe(true);
         expect(registry.has('state-get')).toBe(true);
         expect(registry.has('state-set')).toBe(true);
     });

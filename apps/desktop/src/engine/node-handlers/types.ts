@@ -6,6 +6,7 @@ import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
 import type { CapabilityBroker } from '../capability-broker.js';
 import type { EventBus } from '../event-bus.js';
+import type { FileWatcherManager } from '../file-watcher-manager.js';
 import type { WorkflowState } from '../workflow-state.js';
 
 export interface NodeRunResult {
@@ -46,9 +47,14 @@ export function isTriggerHandler(handler: NodeHandler): handler is TriggerHandle
     return 'activate' in handler;
 }
 
+export interface KernelDeps {
+    readonly fileWatcherManager: FileWatcherManager;
+    readonly capabilityBroker: CapabilityBroker;
+}
+
 export interface NodePluginModule {
     readonly descriptor: NodeDescriptor<string, unknown>;
-    readonly handler: NodeHandler;
+    readonly handler: NodeHandler | ((kernel: KernelDeps) => NodeHandler);
 }
 
 export function narrowNode<K extends NodeType>(

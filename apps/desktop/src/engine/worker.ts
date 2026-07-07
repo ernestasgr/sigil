@@ -100,10 +100,8 @@ port.on('message', (raw: unknown) => {
     }
 });
 
-// Register builtin node manifests (permission identities) and load any
-// user-installed TS node plugins before activating workflows.
-engine.registerBuiltinManifests();
-
+// Load builtin node plugins (file-watcher, file-manager) first, then any
+// user-installed TS node plugins from the user data directory.
 const pluginsDir = join(userDataPath ?? '', 'plugins');
 const pluginResults = await engine.loadNodePlugins(pluginsDir).catch((err: unknown) => {
     log(`Failed to load node plugins: ${err instanceof Error ? err.message : String(err)}`);

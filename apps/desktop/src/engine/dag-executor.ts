@@ -120,16 +120,8 @@ export async function executePipeline(
             matchSwitchCase,
             state,
             capabilityBroker: capabilityBroker ?? createDenyAllCapabilityBroker(),
+            collisionSuffixStyle: settings.collisionSuffixStyle,
         };
-
-        function nodeDeps(node: PipelineNode): NodeHandlerDeps {
-            if (node.type === 'file-manager') {
-                return Object.assign({}, baseDeps, {
-                    collisionSuffixStyle: settings.collisionSuffixStyle,
-                });
-            }
-            return baseDeps;
-        }
 
         let triggerResult: NodeRunResult;
         try {
@@ -139,7 +131,7 @@ export async function executePipeline(
             }
             triggerResult = await triggerHandler.execute(
                 { node: triggerNode, ctx: seedContext ?? SEED_CONTEXT },
-                nodeDeps(triggerNode),
+                baseDeps,
             );
         } catch (err) {
             reportNodeError(bus, settings, runPayload, triggerNode.id, err);
@@ -183,7 +175,7 @@ export async function executePipeline(
                 }
                 const { outputCtx, activePort } = await handler.execute(
                     { node, ctx: entry.ctx },
-                    nodeDeps(node),
+                    baseDeps,
                 );
                 scheduleDownstream(entry.nodeId, activePort, outputCtx);
             } catch (err) {

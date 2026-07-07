@@ -1,20 +1,28 @@
 import { randomUUID } from 'node:crypto';
 
-import type { FileWatcherConfig } from '@sigil/schema/nodes';
+import { FileWatcherConfigSchema } from '@sigil/schema/nodes/file-watcher';
+import type { FileWatcherConfig } from '@sigil/schema/nodes/file-watcher';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
-import type { CapabilityBroker } from '../capability-broker.js';
-import { FILE_WATCHER_PLUGIN_ID } from '../file-watcher-plugin.js';
-import type { FileWatcherManager } from '../file-watcher-manager.js';
-import type { TriggerHandler, NodeRunResult } from './types.js';
+import type {
+    KernelDeps,
+    NodeRunResult,
+    TriggerHandler,
+} from '../../engine/node-handlers/types.js';
 
-export function createFileWatcherHandler(
-    manager: FileWatcherManager,
-    capabilityBroker: CapabilityBroker,
-): TriggerHandler {
+const FILE_WATCHER_PLUGIN_ID = 'com.sigil.file-watcher';
+
+export const descriptor = {
+    type: 'file-watcher' as const,
+    configSchema: FileWatcherConfigSchema,
+    defaultConfig: { path: '/', recursive: true, events: ['file.created'] },
+    getOutputPorts: () => ['out'] as const,
+};
+
+export function handler(kernel: KernelDeps): TriggerHandler {
     return {
         activate: (config, onEvent) => {
-            const result = capabilityBroker.request({
+            const result = kernel.capabilityBroker.request({
                 pluginId: FILE_WATCHER_PLUGIN_ID,
                 capability: 'filesystem.read',
             });
@@ -25,7 +33,7 @@ export function createFileWatcherHandler(
             const c = config as FileWatcherConfig;
             const subscriberId = `trigger:${randomUUID()}`;
 
-            manager.registerSubscriber(
+            kernel.fileWatcherManager.registerSubscriber(
                 {
                     id: subscriberId,
                     path: c.path,
@@ -44,7 +52,7 @@ export function createFileWatcherHandler(
             );
 
             return () => {
-                manager.unregisterSubscriber(subscriberId);
+                kernel.fileWatcherManager.unregisterSubscriber(subscriberId);
             };
         },
         async execute({ ctx }): Promise<NodeRunResult> {

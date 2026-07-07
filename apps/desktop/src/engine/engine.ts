@@ -8,6 +8,9 @@ import {
 } from '@sigil/schema/properties-file';
 
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import { resolve as resolvePath } from 'node:path';
+
+import { fileURLToPath } from 'node:url';
 
 import type { Bridge } from './bridge.js';
 import { createBridge } from './bridge.js';
@@ -16,8 +19,6 @@ import { createCapabilityBroker } from './capability-broker.js';
 import { executePipeline, type ExecutorSettings } from './dag-executor.js';
 import type { EventBus } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
-import { fileManagerManifest } from './file-manager-plugin.js';
-import { fileWatcherManifest } from './file-watcher-plugin.js';
 import { createFileWatcherManager, type FileWatcherManager } from './file-watcher-manager.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 import { createManifestRegistry } from './manifest-registry.js';
@@ -48,7 +49,7 @@ export interface Engine {
     readonly fileWatcherManager: FileWatcherManager;
     readonly handlerRegistry: NodeHandlerRegistry;
     readonly registerBuiltinManifests: () => void;
-    readonly loadNodePlugins: (dir: string) => Promise<readonly NodePluginLoadResult[]>;
+    readonly loadNodePlugins: (dir?: string) => Promise<readonly NodePluginLoadResult[]>;
     readonly execute: (pipeline: CompiledPipeline, seedContext?: WorkflowContext) => Promise<void>;
     readonly dispose: () => void;
 }
@@ -85,9 +86,12 @@ export function createEngine(options?: EngineOptions): Engine {
     const workflowStateStore = createWorkflowStateStore(database);
 
     const fileWatcherManager = createFileWatcherManager();
-    const handlerRegistry = createNodeHandlerRegistry(
-        createBuiltinHandlers({ fileWatcherManager, capabilityBroker }),
+
+    const builtinPluginsDir = resolvePath(
+        fileURLToPath(new URL('../builtin-plugins', import.meta.url)),
     );
+
+    const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
 
     return {
         bus,
@@ -102,14 +106,17 @@ export function createEngine(options?: EngineOptions): Engine {
         fileWatcherManager,
         handlerRegistry,
         registerBuiltinManifests: (): void => {
-            for (const manifest of [fileWatcherManifest, fileManagerManifest]) {
-                if (!registry.has(manifest.id)) {
-                    registry.register(manifest);
-                }
-            }
+            /* builtin manifests are now loaded as part of loadNodePlugins */
         },
-        loadNodePlugins: async (dir: string): Promise<readonly NodePluginLoadResult[]> => {
-            return loadNodePlugins(dir, { manifestRegistry: registry, handlerRegistry });
+        loadNodePlugins: async (dir?: string): Promise<readonly NodePluginLoadResult[]> => {
+            const kernel = { fileWatcherManager, capabilityBroker };
+            const deps = { manifestRegistry: registry, handlerRegistry, kernel };
+            const builtinResults = await loadNodePlugins(builtinPluginsDir, deps);
+            if (dir) {
+                const userResults = await loadNodePlugins(dir, deps);
+                return [...builtinResults, ...userResults];
+            }
+            return builtinResults;
         },
         execute: (pipeline, seedContext) =>
             executePipeline(

@@ -10,7 +10,7 @@ import type { NodeDescriptor } from '@sigil/schema/nodes';
 
 import type { ManifestRegistry } from './manifest-registry.js';
 import type { NodeHandlerRegistry } from './node-registry.js';
-import type { NodeHandler, NodePluginModule } from './node-handlers/types.js';
+import type { KernelDeps, NodeHandler, NodePluginModule } from './node-handlers/types.js';
 
 export type NodePluginLoadError =
     | { readonly kind: 'invalid_manifest'; readonly dir: string; readonly error: string }
@@ -40,6 +40,7 @@ export type NodePluginLoadResult =
 export interface NodePluginLoaderDeps {
     readonly manifestRegistry: ManifestRegistry;
     readonly handlerRegistry: NodeHandlerRegistry;
+    readonly kernel?: KernelDeps;
 }
 
 function isNodePluginModule(value: unknown): value is NodePluginModule {
@@ -60,11 +61,12 @@ function isNodePluginModule(value: unknown): value is NodePluginModule {
     ) {
         return false;
     }
-    return (
+    const handlerIsFactory = typeof obj.handler === 'function';
+    const handlerIsObject =
         typeof obj.handler === 'object' &&
         obj.handler !== null &&
-        typeof (obj.handler as Record<string, unknown>).execute === 'function'
-    );
+        typeof (obj.handler as Record<string, unknown>).execute === 'function';
+    return handlerIsFactory || handlerIsObject;
 }
 
 function resolveHandlerPath(pluginDir: string): string | undefined {
@@ -164,18 +166,21 @@ export async function loadNodePlugin(
         };
     }
 
+    const handler: NodeHandler =
+        typeof module.handler === 'function' ? module.handler(deps.kernel!) : module.handler;
+
     const registerResult = deps.manifestRegistry.register(manifest);
     if (!registerResult.ok) {
         return { ok: false, error: { kind: 'duplicate', dir: pluginDir, pluginId: manifest.id } };
     }
 
-    deps.handlerRegistry.register(module.descriptor.type, module.handler);
+    deps.handlerRegistry.register(module.descriptor.type, handler);
 
     return {
         ok: true,
         manifest,
         descriptor: module.descriptor,
-        handler: module.handler,
+        handler,
     };
 }
 
