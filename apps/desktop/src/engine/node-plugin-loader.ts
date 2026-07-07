@@ -1,3 +1,5 @@
+import 'tsx';
+
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -66,10 +68,10 @@ function isNodePluginModule(value: unknown): value is NodePluginModule {
 }
 
 function resolveHandlerPath(pluginDir: string): string | undefined {
-    const jsPath = join(pluginDir, 'handler.js');
-    if (existsSync(jsPath)) return jsPath;
     const tsPath = join(pluginDir, 'handler.ts');
     if (existsSync(tsPath)) return tsPath;
+    const jsPath = join(pluginDir, 'handler.js');
+    if (existsSync(jsPath)) return jsPath;
     return undefined;
 }
 

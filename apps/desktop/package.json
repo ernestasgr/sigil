@@ -28,6 +28,7 @@
         "react-dom": "19.2.7",
         "rxjs": "7.8.2",
         "tailwind-merge": "3.6.0",
+        "tsx": "^4.22.4",
         "zustand": "5.0.14"
     },
     "devDependencies": {
