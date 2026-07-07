@@ -1,0 +1,7 @@
+{
+    "id": "com.sigil.file-manager",
+    "version": "0.0.1",
+    "permissions": ["state.write", "filesystem.read", "filesystem.write"],
+    "emits": ["file-manager.completed"],
+    "nodeType": "file-manager"
+}

@@ -54,34 +54,30 @@ describe('createEngine', () => {
         engine.dispose();
     });
 
-    it('exposes a handler registry with all builtin handlers', () => {
+    it('exposes a handler registry with builtin + plugin handlers after loadNodePlugins', async () => {
         const engine = createEngine();
 
         expect(engine.handlerRegistry.has('manual-trigger')).toBe(true);
+        expect(engine.handlerRegistry.has('file-watcher')).toBe(false);
+        expect(engine.handlerRegistry.has('file-manager')).toBe(false);
+
+        await engine.loadNodePlugins();
+
         expect(engine.handlerRegistry.has('file-watcher')).toBe(true);
         expect(engine.handlerRegistry.has('file-manager')).toBe(true);
-        expect(engine.handlerRegistry.has('log')).toBe(true);
-        engine.dispose();
-    });
-
-    it('registerBuiltinManifests registers file-watcher and file-manager manifests', () => {
-        const engine = createEngine();
-
-        expect(engine.registry.has('com.sigil.file-watcher')).toBe(false);
-        expect(engine.registry.has('com.sigil.file-manager')).toBe(false);
-
-        engine.registerBuiltinManifests();
-
         expect(engine.registry.has('com.sigil.file-watcher')).toBe(true);
         expect(engine.registry.has('com.sigil.file-manager')).toBe(true);
         engine.dispose();
     });
 
-    it('registerBuiltinManifests is idempotent', () => {
+    it('loadNodePlugins is idempotent (duplicate_type rejection)', async () => {
         const engine = createEngine();
 
-        engine.registerBuiltinManifests();
-        engine.registerBuiltinManifests();
+        const first = await engine.loadNodePlugins();
+        expect(first.filter((r) => r.ok)).toHaveLength(2);
+
+        const second = await engine.loadNodePlugins();
+        expect(second.filter((r) => r.ok)).toHaveLength(0);
 
         expect(engine.registry.all()).toHaveLength(2);
         engine.dispose();

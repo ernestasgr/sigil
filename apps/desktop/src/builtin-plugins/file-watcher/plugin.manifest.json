@@ -1,0 +1,7 @@
+{
+    "id": "com.sigil.file-watcher",
+    "version": "0.0.1",
+    "permissions": ["state.write", "filesystem.read"],
+    "emits": ["file.created", "file.modified", "file.deleted"],
+    "nodeType": "file-watcher"
+}

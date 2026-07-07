@@ -17,7 +17,6 @@ import { createEventBus } from './event-bus.js';
 import { executePipeline, type ExecutorSettings } from './dag-executor.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
-import { createFileWatcherManager } from './file-watcher-manager.js';
 import { createWorkflowStateStore } from './workflow-state.js';
 
 function captureEvents(bus: ReturnType<typeof createEventBus>): BusEvent[] {
@@ -67,12 +66,7 @@ describe('dag-executor', () => {
     let handlerRegistry: ReturnType<typeof createNodeHandlerRegistry>;
 
     beforeEach(() => {
-        handlerRegistry = createNodeHandlerRegistry(
-            createBuiltinHandlers({
-                fileWatcherManager: createFileWatcherManager(),
-                capabilityBroker: { request: () => ({ ok: true }) },
-            }),
-        );
+        handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
     });
 
     describe('executePipeline — tracer sample', () => {
@@ -591,6 +585,13 @@ describe('dag-executor', () => {
     });
 
     describe('executePipeline — file-manager', () => {
+        beforeEach(async () => {
+            if (!handlerRegistry.has('file-manager')) {
+                const mod = await import('../builtin-plugins/file-manager/handler.js');
+                handlerRegistry.register('file-manager', mod.handler);
+            }
+        });
+
         function tmpDir(): string {
             const dir = join(tmpdir(), 'sigil-fm-dag-test', randomUUID());
             mkdirSync(dir, { recursive: true });

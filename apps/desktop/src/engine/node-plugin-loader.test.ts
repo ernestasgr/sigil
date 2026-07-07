@@ -5,21 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createManifestRegistry } from './manifest-registry.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
-import type { CapabilityBroker } from './capability-broker.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
-import { createFileWatcherManager } from './file-watcher-manager.js';
 import { loadNodePlugin, loadNodePlugins } from './node-plugin-loader.js';
-
-const testBroker: CapabilityBroker = { request: () => ({ ok: true }) };
 
 function createRegistries() {
     const manifestRegistry = createManifestRegistry();
-    const handlerRegistry = createNodeHandlerRegistry(
-        createBuiltinHandlers({
-            fileWatcherManager: createFileWatcherManager(),
-            capabilityBroker: testBroker,
-        }),
-    );
+    const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
     return { manifestRegistry, handlerRegistry };
 }
 

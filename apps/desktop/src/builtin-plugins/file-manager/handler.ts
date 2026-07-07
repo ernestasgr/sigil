@@ -1,12 +1,14 @@
 import { copyFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import { basename, dirname, join, parse } from 'node:path';
 
+import { FileManagerConfigSchema } from '@sigil/schema/nodes/file-manager';
 import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
 
-import type { CapabilityBroker } from '../capability-broker.js';
-import { FILE_MANAGER_PLUGIN_ID } from '../file-manager-plugin.js';
-import type { NodeHandler, NodeRunResult } from './types.js';
-import { narrowNode } from './types.js';
+import type { CapabilityBroker } from '../../engine/capability-broker.js';
+import type { NodeHandler, NodeRunResult } from '../../engine/node-handlers/types.js';
+import { narrowNode } from '../../engine/node-handlers/types.js';
+
+const FILE_MANAGER_PLUGIN_ID = 'com.sigil.file-manager';
 
 type FileAction = 'move' | 'copy' | 'rename';
 type ConflictPolicy = 'skip' | 'overwrite' | 'auto-rename' | 'error';
@@ -157,7 +159,14 @@ function updatePayload(
     };
 }
 
-export const fileManagerHandler: NodeHandler = {
+export const descriptor = {
+    type: 'file-manager' as const,
+    configSchema: FileManagerConfigSchema,
+    defaultConfig: { action: 'move', destination: '/', onConflict: 'skip' },
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler: NodeHandler = {
     async execute({ node, ctx }, deps): Promise<NodeRunResult> {
         const typedNode = narrowNode(node, 'file-manager');
 
