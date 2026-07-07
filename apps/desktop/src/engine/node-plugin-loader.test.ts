@@ -5,14 +5,20 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createManifestRegistry } from './manifest-registry.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
+import type { CapabilityBroker } from './capability-broker.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
 import { createFileWatcherManager } from './file-watcher-manager.js';
 import { loadNodePlugin, loadNodePlugins } from './node-plugin-loader.js';
 
+const testBroker: CapabilityBroker = { request: () => ({ ok: true }) };
+
 function createRegistries() {
     const manifestRegistry = createManifestRegistry();
     const handlerRegistry = createNodeHandlerRegistry(
-        createBuiltinHandlers({ fileWatcherManager: createFileWatcherManager() }),
+        createBuiltinHandlers({
+            fileWatcherManager: createFileWatcherManager(),
+            capabilityBroker: testBroker,
+        }),
     );
     return { manifestRegistry, handlerRegistry };
 }
@@ -254,6 +260,52 @@ describe('loadNodePlugin', () => {
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.error.kind).toBe('duplicate');
+        }
+    });
+
+    it('fails when handler module has a syntax error (import_error)', async () => {
+        const pluginDir = join(tempDir, 'syntax-error');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.broken',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'broken',
+            },
+            'export const handler = {',
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.error.kind).toBe('import_error');
+        }
+    });
+
+    it('fails when handler module loads but does not expose a valid entrypoint (invalid_handler_module)', async () => {
+        const pluginDir = join(tempDir, 'bad-module');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.bad-module',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'bad-module',
+            },
+            'export const foo = 42;',
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.error.kind).toBe('invalid_handler_module');
         }
     });
 

@@ -1,15 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import type { CapabilityBroker } from './capability-broker.js';
 import type { NodeHandler } from './node-handlers/types.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
 import { createFileWatcherManager } from './file-watcher-manager.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
 
+const testBroker: CapabilityBroker = { request: () => ({ ok: true }) };
+
+function testHandlers() {
+    return createBuiltinHandlers({
+        fileWatcherManager: createFileWatcherManager(),
+        capabilityBroker: testBroker,
+    });
+}
+
 describe('NodeHandlerRegistry', () => {
     it('pre-registers all builtin handlers', () => {
-        const registry = createNodeHandlerRegistry(
-            createBuiltinHandlers({ fileWatcherManager: createFileWatcherManager() }),
-        );
+        const registry = createNodeHandlerRegistry(testHandlers());
 
         expect(registry.has('manual-trigger')).toBe(true);
         expect(registry.has('file-watcher')).toBe(true);
@@ -24,9 +32,7 @@ describe('NodeHandlerRegistry', () => {
     });
 
     it('get returns the handler for a registered type', () => {
-        const registry = createNodeHandlerRegistry(
-            createBuiltinHandlers({ fileWatcherManager: createFileWatcherManager() }),
-        );
+        const registry = createNodeHandlerRegistry(testHandlers());
 
         const handler = registry.get('log');
         expect(handler).toBeDefined();
@@ -34,17 +40,13 @@ describe('NodeHandlerRegistry', () => {
     });
 
     it('get returns undefined for an unregistered type', () => {
-        const registry = createNodeHandlerRegistry(
-            createBuiltinHandlers({ fileWatcherManager: createFileWatcherManager() }),
-        );
+        const registry = createNodeHandlerRegistry(testHandlers());
 
         expect(registry.get('nonexistent')).toBeUndefined();
     });
 
     it('register adds a new handler', () => {
-        const registry = createNodeHandlerRegistry(
-            createBuiltinHandlers({ fileWatcherManager: createFileWatcherManager() }),
-        );
+        const registry = createNodeHandlerRegistry(testHandlers());
 
         const customHandler: NodeHandler = {
             execute: vi.fn() as unknown as NodeHandler['execute'],
@@ -57,9 +59,7 @@ describe('NodeHandlerRegistry', () => {
     });
 
     it('register overwrites an existing handler', () => {
-        const registry = createNodeHandlerRegistry(
-            createBuiltinHandlers({ fileWatcherManager: createFileWatcherManager() }),
-        );
+        const registry = createNodeHandlerRegistry(testHandlers());
 
         const original = registry.get('log');
         const replacement: NodeHandler = {

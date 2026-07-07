@@ -3,12 +3,25 @@ import { randomUUID } from 'node:crypto';
 import type { FileWatcherConfig } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
+import type { CapabilityBroker } from '../capability-broker.js';
+import { FILE_WATCHER_PLUGIN_ID } from '../file-watcher-plugin.js';
 import type { FileWatcherManager } from '../file-watcher-manager.js';
 import type { TriggerHandler, NodeRunResult } from './types.js';
 
-export function createFileWatcherHandler(manager: FileWatcherManager): TriggerHandler {
+export function createFileWatcherHandler(
+    manager: FileWatcherManager,
+    capabilityBroker: CapabilityBroker,
+): TriggerHandler {
     return {
         activate: (config, onEvent) => {
+            const result = capabilityBroker.request({
+                pluginId: FILE_WATCHER_PLUGIN_ID,
+                capability: 'filesystem.read',
+            });
+            if (!result.ok) {
+                throw new Error(`Permission denied: ${result.error.capability}`);
+            }
+
             const c = config as FileWatcherConfig;
             const subscriberId = `trigger:${randomUUID()}`;
 

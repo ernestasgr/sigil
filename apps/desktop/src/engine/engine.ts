@@ -86,7 +86,7 @@ export function createEngine(options?: EngineOptions): Engine {
 
     const fileWatcherManager = createFileWatcherManager();
     const handlerRegistry = createNodeHandlerRegistry(
-        createBuiltinHandlers({ fileWatcherManager }),
+        createBuiltinHandlers({ fileWatcherManager, capabilityBroker }),
     );
 
     return {

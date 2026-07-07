@@ -43,11 +43,22 @@ export interface NodePluginLoaderDeps {
 function isNodePluginModule(value: unknown): value is NodePluginModule {
     if (typeof value !== 'object' || value === null) return false;
     const obj = value as Record<string, unknown>;
+    if (
+        typeof obj.descriptor !== 'object' ||
+        obj.descriptor === null ||
+        typeof (obj.descriptor as Record<string, unknown>).type !== 'string'
+    ) {
+        return false;
+    }
+    const configSchema = (obj.descriptor as Record<string, unknown>).configSchema;
+    if (
+        typeof configSchema !== 'object' ||
+        configSchema === null ||
+        typeof (configSchema as Record<string, unknown>).safeParse !== 'function'
+    ) {
+        return false;
+    }
     return (
-        typeof obj.descriptor === 'object' &&
-        obj.descriptor !== null &&
-        typeof (obj.descriptor as Record<string, unknown>).type === 'string' &&
-        typeof (obj.descriptor as Record<string, unknown>).configSchema === 'object' &&
         typeof obj.handler === 'object' &&
         obj.handler !== null &&
         typeof (obj.handler as Record<string, unknown>).execute === 'function'
@@ -71,7 +82,19 @@ export async function loadNodePlugin(
         return { ok: false, error: { kind: 'missing_manifest', dir: pluginDir } };
     }
 
-    const rawManifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    let rawManifest: unknown;
+    try {
+        rawManifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    } catch (err) {
+        return {
+            ok: false,
+            error: {
+                kind: 'invalid_manifest',
+                dir: pluginDir,
+                error: err instanceof Error ? err.message : String(err),
+            },
+        };
+    }
     const parsed = parseManifest(rawManifest);
     if (!parsed.ok) {
         return {
