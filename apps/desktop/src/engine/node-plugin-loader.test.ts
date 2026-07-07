@@ -26,7 +26,7 @@ function createRegistries() {
 function writePlugin(dir: string, manifest: Record<string, unknown>, handlerCode: string): void {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'plugin.manifest.json'), JSON.stringify(manifest));
-    writeFileSync(join(dir, 'handler.js'), handlerCode);
+    writeFileSync(join(dir, 'handler.ts'), handlerCode);
 }
 
 const GREET_PLUGIN_HANDLER = `
