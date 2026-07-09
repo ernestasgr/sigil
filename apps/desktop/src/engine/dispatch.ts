@@ -23,6 +23,7 @@ import { assertNever } from '../shared/assert-never.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import type { Engine } from './engine.js';
 import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
+import { updatePluginPermissions } from './node-plugin-loader.js';
 import type { WorkflowActivator } from './workflow-activator.js';
 import type { WorkflowStore } from './workflow-store.js';
 
@@ -180,6 +181,7 @@ function handleSetPermissionOverride(
     subsystems: DispatchSubsystems,
 ): void {
     subsystems.engine.permissionOverrides.set(message.pluginId, message.overrides);
+    updatePluginPermissions(message.pluginId, message.overrides);
     subsystems.postMessage({
         type: EngineChannel.SetPermissionOverrideResult,
         correlationId: message.correlationId,

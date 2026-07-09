@@ -8,7 +8,7 @@ import {
 } from '@sigil/schema/properties-file';
 
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import { resolve as resolvePath } from 'node:path';
+import { resolve as resolvePath, dirname } from 'node:path';
 
 import { fileURLToPath } from 'node:url';
 
@@ -27,13 +27,12 @@ import { createNodeHandlerRegistry, type NodeHandlerRegistry } from './node-regi
 import { loadNodePlugins, type NodePluginLoadResult } from './node-plugin-loader.js';
 import type { PermissionOverrideStore } from './permission-override-store.js';
 import { createPermissionOverrideStore } from './permission-override-store.js';
-import { createInMemoryPluginStateStore, createPluginLoader } from './plugin-loader.js';
-import type { PluginLoader, PluginStateStore } from './plugin-loader.js';
 import { createWorkflowStateStore, type WorkflowStateStore } from './workflow-state.js';
 
 export interface EngineOptions {
     readonly properties?: unknown;
     readonly defaultDatabasePath?: string;
+    readonly permissionOverridesPath?: string;
 }
 
 export interface Engine {
@@ -42,8 +41,6 @@ export interface Engine {
     readonly capabilityBroker: CapabilityBroker;
     readonly registry: ManifestRegistry;
     readonly permissionOverrides: PermissionOverrideStore;
-    readonly loader: PluginLoader;
-    readonly stateStore: PluginStateStore;
     readonly workflowStateStore: WorkflowStateStore;
     readonly settings: ExecutorSettings;
     readonly fileWatcherManager: FileWatcherManager;
@@ -64,17 +61,9 @@ export function resolveSettings(properties: ResolvedProperties): ExecutorSetting
 export function createEngine(options?: EngineOptions): Engine {
     const bus = createEventBus();
     const registry = createManifestRegistry();
-    const permissionOverrides = createPermissionOverrideStore();
+    const permissionOverrides = createPermissionOverrideStore(options?.permissionOverridesPath);
     const bridge = createBridge(bus, registry);
     const capabilityBroker = createCapabilityBroker(registry, permissionOverrides);
-    const stateStore = createInMemoryPluginStateStore();
-    const loader = createPluginLoader({
-        bus,
-        registry,
-        bridge,
-        broker: capabilityBroker,
-        stateStore,
-    });
 
     const propertiesResult = loadPropertiesFile(options?.properties, {
         databasePath: options?.defaultDatabasePath,
@@ -87,9 +76,8 @@ export function createEngine(options?: EngineOptions): Engine {
 
     const fileWatcherManager = createFileWatcherManager();
 
-    const builtinPluginsDir = resolvePath(
-        fileURLToPath(new URL('../builtin-plugins', import.meta.url)),
-    );
+    const __filename = fileURLToPath(import.meta.url);
+    const builtinPluginsDir = resolvePath(dirname(__filename), '../../src/builtin-plugins');
 
     const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
 
@@ -99,8 +87,6 @@ export function createEngine(options?: EngineOptions): Engine {
         capabilityBroker,
         permissionOverrides,
         registry,
-        loader,
-        stateStore,
         workflowStateStore,
         settings,
         fileWatcherManager,
@@ -110,7 +96,12 @@ export function createEngine(options?: EngineOptions): Engine {
         },
         loadNodePlugins: async (dir?: string): Promise<readonly NodePluginLoadResult[]> => {
             const kernel = { fileWatcherManager, capabilityBroker };
-            const deps = { manifestRegistry: registry, handlerRegistry, kernel };
+            const deps = {
+                manifestRegistry: registry,
+                handlerRegistry,
+                kernel,
+                permissionOverrides,
+            };
             const builtinResults = await loadNodePlugins(builtinPluginsDir, deps);
             if (dir) {
                 const userResults = await loadNodePlugins(dir, deps);

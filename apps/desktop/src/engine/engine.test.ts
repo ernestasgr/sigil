@@ -144,4 +144,24 @@ describe('createEngine — databasePath from properties', () => {
         expect(fromFallback.workflowStateStore.forWorkflow('wf').get('k')).toBeUndefined();
         fromFallback.dispose();
     });
+
+    it('resolves builtinPluginsDir and loads file-manager and file-watcher', async () => {
+        const engine = createEngine();
+        const results = await engine.loadNodePlugins();
+
+        const successes = results.filter((r) => r.ok);
+        expect(successes.length).toBeGreaterThanOrEqual(2);
+
+        expect(engine.handlerRegistry.has('file-manager')).toBe(true);
+        expect(engine.handlerRegistry.has('file-watcher')).toBe(true);
+        expect(engine.registry.has('com.sigil.file-manager')).toBe(true);
+        expect(engine.registry.has('com.sigil.file-watcher')).toBe(true);
+
+        const manifests = engine.registry.all();
+        const ids = manifests.map((m) => m.id);
+        expect(ids).toContain('com.sigil.file-manager');
+        expect(ids).toContain('com.sigil.file-watcher');
+
+        engine.dispose();
+    });
 });

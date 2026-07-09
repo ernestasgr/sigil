@@ -77,6 +77,9 @@ importers:
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.1
       lucide-react:
         specifier: 1.21.0
         version: 1.21.0(react@19.2.7)

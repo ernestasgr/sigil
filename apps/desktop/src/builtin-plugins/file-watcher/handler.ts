@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-import { FileWatcherConfigSchema } from '@sigil/schema/nodes/file-watcher';
 import type { FileWatcherConfig } from '@sigil/schema/nodes/file-watcher';
+import { FileWatcherConfigSchema } from '@sigil/schema/nodes/file-watcher';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
 import type {

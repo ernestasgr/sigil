@@ -14,7 +14,7 @@ export default defineConfig({
                 entry: {
                     index: resolve(__dirname, 'src/main/index.ts'),
                     worker: resolve(__dirname, 'src/engine/worker.ts'),
-                    'plugin-worker': resolve(__dirname, 'src/engine/plugin-worker.ts'),
+                    'plugin-worker': resolve(__dirname, 'src/engine/plugin-node-worker.ts'),
                 },
                 formats: ['es'],
             },
