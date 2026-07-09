@@ -20,8 +20,15 @@ import type {
     TriggerHandler,
     NodeHandlerDeps,
     KernelDeps,
+    Sleep,
+    ResolveTemplate,
+    EvaluateCondition,
+    MatchSwitchCase,
 } from './node-handlers/types.js';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
+import type { Capability } from '@sigil/schema/manifest';
+import type { EventBus } from './event-bus.js';
 
 if (!parentPort) {
     throw new Error('plugin-node-worker must be spawned as a worker_thread');
@@ -97,30 +104,31 @@ function rpcWithCallback(
 
 // ─── Build proxied deps (NodeHandlerDeps) ───────────────────
 
-function createProxiedDeps(): NodeHandlerDeps {
+function createProxiedDeps(collisionSuffixStyle?: CollisionSuffixStyle): NodeHandlerDeps {
     const rpc =
         (method: string) =>
         (...args: unknown[]): Promise<unknown> =>
             depRpcCall(method, args);
 
     return {
-        bus: { next: rpc('bus.next') },
-        sleep: rpc('sleep'),
-        resolveTemplate: rpc('resolveTemplate'),
-        evaluateCondition: rpc('evaluateCondition'),
-        matchSwitchCase: rpc('matchSwitchCase'),
+        bus: { next: rpc('bus.next') as EventBus['next'] } as EventBus,
+        sleep: rpc('sleep') as unknown as Sleep,
+        resolveTemplate: rpc('resolveTemplate') as unknown as ResolveTemplate,
+        evaluateCondition: rpc('evaluateCondition') as unknown as EvaluateCondition,
+        matchSwitchCase: rpc('matchSwitchCase') as unknown as MatchSwitchCase,
         state: {
-            get: rpc('state.get'),
-            set: rpc('state.set'),
-            flush: rpc('state.flush'),
+            get: rpc('state.get') as unknown as (key: string) => string | undefined,
+            set: rpc('state.set') as unknown as (key: string, value: string) => void,
+            flush: rpc('state.flush') as unknown as () => void,
         },
         capabilityBroker: {
-            request: ({ capability }: { pluginId: string; capability: string }) =>
+            request: ({ capability }: { pluginId: string; capability: Capability }) =>
                 permissions.has(capability)
                     ? { ok: true as const }
                     : { ok: false as const, error: { kind: 'denied' as const, capability } },
         },
-    } as unknown as NodeHandlerDeps;
+        collisionSuffixStyle,
+    };
 }
 
 // ─── Build proxied kernel (KernelDeps, for factory handlers) ─
@@ -323,6 +331,8 @@ function buildChildProcessModule(): Record<string, unknown> {
  * directly (not a spread copy), meaning every property access goes through the
  * get trap → always reads from the latest module.
  */
+type AnyFn = (...args: unknown[]) => unknown;
+
 function createLiveModuleProxy(getCurrent: () => Record<string, unknown>): Record<string, unknown> {
     return new Proxy({} as Record<string, unknown>, {
         get(_, prop) {
@@ -332,7 +342,7 @@ function createLiveModuleProxy(getCurrent: () => Record<string, unknown>): Recor
             if (prop in mod) {
                 const val = (mod as Record<string, unknown>)[prop as string];
                 return typeof val === 'function'
-                    ? (...args: unknown[]) => (val as Function)(...args)
+                    ? (...args: unknown[]) => (val as AnyFn)(...args)
                     : val;
             }
             return undefined;
@@ -448,7 +458,9 @@ async function loadHandler(): Promise<{
     } catch (err) {
         const msg =
             err instanceof Error ? `${err.message}\n${err.stack?.substring(0, 2000)}` : String(err);
-        throw new Error(`Plugin sandbox evaluation failed: ${msg}`);
+        throw new Error(`Plugin sandbox evaluation failed: ${msg}`, {
+            cause: err instanceof Error ? err : undefined,
+        });
     }
 
     const exports = (ctx as unknown as Record<string, unknown>).__plugin__ as
@@ -540,7 +552,14 @@ async function main(): Promise<void> {
 
     port.on('message', async (raw: unknown) => {
         const parsed = NodePluginMainToWorkerSchema.safeParse(raw);
-        if (!parsed.success) return;
+        if (!parsed.success) {
+            console.warn(
+                `[plugin-worker:${data.pluginId}] failed to parse incoming message:`,
+                parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+                JSON.stringify(raw),
+            );
+            return;
+        }
         const msg = parsed.data;
 
         switch (msg.kind) {
@@ -622,9 +641,11 @@ async function handleExecute(
             }
         }
 
-        const node = { id: '', type: msg.nodeType, config: msg.nodeConfig };
+        const node = { id: '', type: msg.nodeType, config: msg.nodeConfig } as const;
         const ctx = msg.ctx as WorkflowContext;
-        const deps = createProxiedDeps();
+        const deps = createProxiedDeps(
+            msg.deps?.collisionSuffixStyle as CollisionSuffixStyle | undefined,
+        );
         const result = await handler.execute({ node, ctx } as never, deps);
         sendResult(result);
     } catch (err) {
