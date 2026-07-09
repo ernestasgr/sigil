@@ -40,7 +40,7 @@ const engine = createEngine({
 
 const workflowsDir = join(userDataPath ?? '', 'workflows');
 const store = createWorkflowStore(workflowsDir);
-const activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
+const activator = createWorkflowActivator(engine, store, engine.handlerRegistry, broadcastWorkflowsList);
 
 process.on('exit', () => {
     activator.dispose();

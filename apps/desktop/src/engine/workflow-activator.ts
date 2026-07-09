@@ -17,6 +17,7 @@ export function createWorkflowActivator(
     engine: Engine,
     store: WorkflowStore,
     handlerRegistry: NodeHandlerRegistry,
+    onStateChange?: () => void,
 ): WorkflowActivator {
     const active = new Map<string, () => void>();
 
@@ -69,6 +70,7 @@ export function createWorkflowActivator(
                         message: `[activator] trigger "${trigger.type}" deactivated for "${data.name}" (${workflowId}) — activation failed in worker`,
                     },
                 });
+                onStateChange?.();
             };
 
             try {
