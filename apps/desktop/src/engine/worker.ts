@@ -30,9 +30,12 @@ const cwdPropertiesPath = join(process.cwd(), 'sigil.properties.json');
 const userDataPropertiesPath = join(userDataPath ?? '', 'sigil.properties.json');
 const propertiesPath = existsSync(cwdPropertiesPath) ? cwdPropertiesPath : userDataPropertiesPath;
 
+const overridesPath = join(userDataPath ?? '', 'permission-overrides.json');
+
 const engine = createEngine({
     properties: readPropertiesFile(propertiesPath),
     defaultDatabasePath: join(userDataPath ?? '', 'sigil.db'),
+    permissionOverridesPath: overridesPath,
 });
 
 const workflowsDir = join(userDataPath ?? '', 'workflows');

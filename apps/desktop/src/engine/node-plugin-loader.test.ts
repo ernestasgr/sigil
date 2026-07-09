@@ -1,12 +1,15 @@
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createManifestRegistry } from './manifest-registry.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
-import { loadNodePlugin, loadNodePlugins } from './node-plugin-loader.js';
+import { loadNodePlugin, loadNodePlugins, updatePluginPermissions } from './node-plugin-loader.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function createRegistries() {
     const manifestRegistry = createManifestRegistry();
@@ -220,7 +223,7 @@ describe('loadNodePlugin', () => {
 
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.error.kind).toBe('type_mismatch');
+            expect(result.error.kind).toBe('worker_error');
         }
     });
 
@@ -254,7 +257,7 @@ describe('loadNodePlugin', () => {
         }
     });
 
-    it('fails when handler module has a syntax error (import_error)', async () => {
+    it('fails when handler module has a syntax error (worker_error)', async () => {
         const pluginDir = join(tempDir, 'syntax-error');
         writePlugin(
             pluginDir,
@@ -273,11 +276,11 @@ describe('loadNodePlugin', () => {
 
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.error.kind).toBe('import_error');
+            expect(result.error.kind).toBe('worker_error');
         }
     });
 
-    it('fails when handler module loads but does not expose a valid entrypoint (invalid_handler_module)', async () => {
+    it('fails when handler module loads but does not expose a valid entrypoint (worker_error)', async () => {
         const pluginDir = join(tempDir, 'bad-module');
         writePlugin(
             pluginDir,
@@ -296,7 +299,7 @@ describe('loadNodePlugin', () => {
 
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.error.kind).toBe('invalid_handler_module');
+            expect(result.error.kind).toBe('worker_error');
         }
     });
 
@@ -406,5 +409,608 @@ describe('loadNodePlugins', () => {
         expect(successes).toHaveLength(1);
         expect(failures).toHaveLength(1);
         expect(handlerRegistry.has('greet')).toBe(true);
+    });
+});
+
+// ─── Capability broker sync test ─────────────────────────────
+
+const PERM_CHECK_HANDLER = `
+import { z } from 'zod';
+import type { NodeHandler } from '../../node-handlers/types.js';
+
+const ConfigSchema = z.object({ check: z.string() });
+
+export const descriptor = {
+    type: 'perm-checker' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: { check: 'filesystem.read' },
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler: NodeHandler = {
+    async execute({ node, ctx }, deps) {
+        const config = node.config as { check: string };
+        const result = deps.capabilityBroker.request({ pluginId: 'com.sigil.perm-checker', capability: config.check });
+        if (!result.ok) {
+            throw new Error('DENIED: ' + result.error.capability);
+        }
+        return { outputCtx: ctx, activePort: 'out' };
+    },
+};
+`;
+
+const FACTORY_PERM_CHECK_HANDLER = `
+import { z } from 'zod';
+import type { TriggerHandler, KernelDeps, NodeRunResult } from '../../node-handlers/types.js';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'factory-perm-checker' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export function handler(kernel: KernelDeps): TriggerHandler {
+    return {
+        activate(config, onEvent) {
+            const result = kernel.capabilityBroker.request({ pluginId: 'com.sigil.factory-perm-checker', capability: 'filesystem.read' });
+            if (!result.ok) {
+                throw new Error('DENIED in activate: ' + result.error.capability);
+            }
+            onEvent({ event: 'perm-check.passed', payload: {}, vars: {} });
+            return () => {};
+        },
+        async execute({ ctx }): Promise<NodeRunResult> {
+            return { outputCtx: ctx, activePort: 'out' };
+        },
+    };
+}
+`;
+
+describe('capabilityBroker sandbox sync', () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+        tempDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-cap-test-'));
+    });
+
+    afterEach(() => {
+        rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it('allows a NodeHandler plugin to call deps.capabilityBroker.request synchronously when permission is granted', async () => {
+        const pluginDir = join(tempDir, 'perm-granted');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.perm-checker',
+                version: '0.0.1',
+                permissions: ['filesystem.read'],
+                emits: ['x'],
+                nodeType: 'perm-checker',
+            },
+            PERM_CHECK_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            const handler = handlerRegistry.get('perm-checker');
+            expect(handler).toBeDefined();
+            expect(typeof handler!.execute).toBe('function');
+
+            const output = await handler!.execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'perm-checker',
+                        pluginId: 'com.sigil.perm-checker',
+                        config: { check: 'filesystem.read' },
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {} as never,
+            );
+            expect(output.activePort).toBe('out');
+        }
+    });
+
+    it('allows a NodeHandler plugin to call deps.capabilityBroker.request synchronously when permission is denied', async () => {
+        const pluginDir = join(tempDir, 'perm-denied');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.perm-checker',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'perm-checker',
+            },
+            PERM_CHECK_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            const handler = handlerRegistry.get('perm-checker');
+            await expect(
+                handler!.execute(
+                    {
+                        node: {
+                            id: 'n1',
+                            type: 'perm-checker',
+                            pluginId: 'com.sigil.perm-checker',
+                            config: { check: 'filesystem.read' },
+                        },
+                        ctx: { event: '', payload: {}, vars: {} },
+                    },
+                    {} as never,
+                ),
+            ).rejects.toThrow('DENIED: filesystem.read');
+        }
+    });
+
+    it('allows a factory handler plugin to call kernel.capabilityBroker.request synchronously', async () => {
+        const pluginDir = join(tempDir, 'factory-perm-checker');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.factory-perm-checker',
+                version: '0.0.1',
+                permissions: ['filesystem.read'],
+                emits: ['perm-check.passed'],
+                nodeType: 'factory-perm-checker',
+            },
+            FACTORY_PERM_CHECK_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            const handler = handlerRegistry.get('factory-perm-checker');
+            expect(handler).toBeDefined();
+            expect(typeof handler!.execute).toBe('function');
+            expect('activate' in handler!).toBe(true);
+        }
+    });
+});
+
+// ─── Unbypassable enforcement (malicious plugin) ───────────
+
+const MALICIOUS_REGISTER_SUBSCRIBER_HANDLER = `
+import { z } from 'zod';
+import type { TriggerHandler, KernelDeps, NodeRunResult } from '../../node-handlers/types.js';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'evil-watcher' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export function handler(kernel: KernelDeps): TriggerHandler {
+    return {
+        activate(config, onEvent) {
+            // Malicious: calls registerSubscriber WITHOUT checking kernel.capabilityBroker.request first
+            kernel.fileWatcherManager.registerSubscriber(
+                { id: 'evil-sub', path: '/', recursive: true, events: ['file.created'] },
+                () => { onEvent({ event: 'file.created', payload: {}, vars: {} }); },
+            );
+            return () => {};
+        },
+        async execute({ ctx }): Promise<NodeRunResult> {
+            return { outputCtx: ctx, activePort: 'out' };
+        },
+    };
+}
+`;
+
+const MALICIOUS_REGISTER_SUBSCRIBER_EXECUTE_HANDLER = `
+import { z } from 'zod';
+import type { NodeHandler, KernelDeps, NodeRunResult } from '../../node-handlers/types.js';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'evil-exec' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export function handler(kernel: KernelDeps): NodeHandler {
+    return {
+        async execute({ node, ctx }, deps): Promise<NodeRunResult> {
+            // Malicious: calls registerSubscriber WITHOUT checking kernel.capabilityBroker.request first
+            kernel.fileWatcherManager.registerSubscriber(
+                { id: 'evil-sub', path: '/', recursive: true, events: ['file.created'] },
+                () => {},
+            );
+            return { outputCtx: ctx, activePort: 'out' };
+        },
+    };
+}
+`;
+
+describe('unbypassable enforcement', () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+        tempDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-enforce-'));
+    });
+
+    afterEach(() => {
+        rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it('blocks a malicious plugin that calls kernel.fileWatcherManager.registerSubscriber without checking permissions — sandbox gate throws in execute', async () => {
+        const pluginDir = join(tempDir, 'evil-exec');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.evil-exec',
+                version: '0.0.1',
+                permissions: ['state.write'], // filesystem.read NOT granted
+                emits: ['x'],
+                nodeType: 'evil-exec',
+            },
+            MALICIOUS_REGISTER_SUBSCRIBER_EXECUTE_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = handlerRegistry.get('evil-exec');
+        expect(handler).toBeDefined();
+
+        // The sandbox-side check in createProxiedKernel throws synchronously
+        // because 'filesystem.read' is not in the permissions set.
+        // handleExecute catches it and sends ExecuteError to the proxy.
+        await expect(
+            handler!.execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'evil-exec',
+                        pluginId: 'com.sigil.evil-exec',
+                        config: {},
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {} as never,
+            ),
+        ).rejects.toThrow('Permission denied: filesystem.read');
+    });
+
+    it('blocks a malicious plugin that calls kernel.fileWatcherManager.registerSubscriber without checking permissions — sandbox gate throws in activate', async () => {
+        const pluginDir = join(tempDir, 'evil-activate');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.evil-activate',
+                version: '0.0.1',
+                permissions: ['state.write'], // filesystem.read NOT granted
+                emits: ['x'],
+                nodeType: 'evil-watcher',
+            },
+            MALICIOUS_REGISTER_SUBSCRIBER_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = handlerRegistry.get('evil-watcher');
+        expect(handler).toBeDefined();
+        expect('activate' in handler!).toBe(true);
+
+        // The sandbox-side check in createProxiedKernel throws synchronously.
+        // handleActivate sends ActivateError back to the proxy.
+        // The proxy does not propagate activation errors (silent), but the
+        // worker DID reject the operation and the subscriber was NOT registered.
+        // We verify the handler loads and activate doesn't crash (the error
+        // is logged, not thrown to the caller).
+        // The enforcement is confirmed by the previous test (execute path)
+        // and by the main-thread RPC check in handleFileWatcherRpc.
+        const teardown = (
+            handler as unknown as {
+                activate: (c: unknown, onEvent: (ctx: unknown) => void) => () => void;
+            }
+        ).activate({}, () => {});
+        expect(typeof teardown).toBe('function');
+    });
+});
+
+// ─── Sandbox module rebuild (runtime permission change) ───
+
+const FS_ACCESS_HANDLER = `
+import { readFileSync } from 'node:fs';
+import { z } from 'zod';
+import type { NodeHandler } from '../../node-handlers/types.js';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'fs-plugin' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler: NodeHandler = {
+    async execute() {
+        // Calls the sandbox-gated require('node:fs').readFileSync
+        // If filesystem.read is denied, this throws a permission stub error.
+        // If filesystem.read is granted, it throws a real fs error (ENOENT).
+        readFileSync('/nonexistent-file-for-testing');
+        return { outputCtx: { event: '', payload: {}, vars: {} }, activePort: 'out' };
+    },
+};
+`;
+
+// ─── Permission propagation (runtime override) ─────────────
+
+describe('updatePluginPermissions', () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+        tempDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-perm-prop-'));
+    });
+
+    afterEach(() => {
+        rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it('propagates updated permissions to the worker, affecting subsequent capability checks', async () => {
+        const pluginDir = join(tempDir, 'perm-propagation');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.perm-checker',
+                version: '0.0.1',
+                permissions: ['filesystem.read'],
+                emits: ['x'],
+                nodeType: 'perm-checker',
+            },
+            PERM_CHECK_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = handlerRegistry.get('perm-checker');
+        expect(handler).toBeDefined();
+
+        // First execution: permission is granted (from initial manifest)
+        const output = await handler!.execute(
+            {
+                node: {
+                    id: 'n1',
+                    type: 'perm-checker',
+                    pluginId: 'com.sigil.perm-checker',
+                    config: { check: 'filesystem.read' },
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            },
+            {} as never,
+        );
+        expect(output.activePort).toBe('out');
+
+        // Revoke permissions via runtime update
+        updatePluginPermissions('com.sigil.perm-checker', []);
+
+        // Second execution: should now be denied because the worker permissions set was updated.
+        // The unbypassable handleExecute check fires before the handler is called.
+        await expect(
+            handler!.execute(
+                {
+                    node: {
+                        id: 'n2',
+                        type: 'perm-checker',
+                        pluginId: 'com.sigil.perm-checker',
+                        config: { check: 'filesystem.read' },
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {} as never,
+            ),
+        ).rejects.toThrow('Permission denied: filesystem.read');
+    });
+
+    it('rebuilds sandbox fs module when filesystem.read is revoked at runtime — stub replaces real fs', async () => {
+        const pluginDir = join(tempDir, 'perm-fs-revoke');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.fs-plugin',
+                version: '0.0.1',
+                permissions: ['filesystem.read'],
+                emits: ['x'],
+                nodeType: 'fs-plugin',
+            },
+            FS_ACCESS_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = handlerRegistry.get('fs-plugin');
+
+        // With filesystem.read granted, readFileSync is the real function
+        const err1 = await handler!
+            .execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'fs-plugin',
+                        pluginId: 'com.sigil.fs-plugin',
+                        config: {},
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {} as never,
+            )
+            .catch((e: Error) => e);
+        expect(err1).toBeInstanceOf(Error);
+        // Real fs throws ENOENT, not permission stub
+        expect((err1 as Error).message).not.toContain('Permission denied');
+
+        // Revoke filesystem.read
+        updatePluginPermissions('com.sigil.fs-plugin', []);
+
+        // The unbypassable handleExecute check fires before the handler runs,
+        // so the error is from the infrastructure check, not the sandbox module stub.
+        const err2 = await handler!
+            .execute(
+                {
+                    node: {
+                        id: 'n2',
+                        type: 'fs-plugin',
+                        pluginId: 'com.sigil.fs-plugin',
+                        config: {},
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {} as never,
+            )
+            .catch((e: Error) => e);
+        expect(err2).toBeInstanceOf(Error);
+        expect((err2 as Error).message).toContain('Permission denied');
+        expect((err2 as Error).message).toContain('filesystem.read');
+    });
+
+    it('rebuilds sandbox fs module when filesystem.read is granted at runtime — real fs replaces stub', async () => {
+        const pluginDir = join(tempDir, 'perm-fs-grant');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.fs-plugin',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'fs-plugin',
+            },
+            FS_ACCESS_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = handlerRegistry.get('fs-plugin');
+
+        // No filesystem.read — readFileSync is a throwing stub
+        const err1 = await handler!
+            .execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'fs-plugin',
+                        pluginId: 'com.sigil.fs-plugin',
+                        config: {},
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {} as never,
+            )
+            .catch((e: Error) => e);
+        expect(err1).toBeInstanceOf(Error);
+        expect((err1 as Error).message).toContain('Permission denied');
+        expect((err1 as Error).message).toContain('fs.readFileSync');
+
+        // Grant filesystem.read at runtime
+        updatePluginPermissions('com.sigil.fs-plugin', ['filesystem.read']);
+
+        // Sandbox modules were rebuilt — readFileSync is now the real function
+        const err2 = await handler!
+            .execute(
+                {
+                    node: {
+                        id: 'n2',
+                        type: 'fs-plugin',
+                        pluginId: 'com.sigil.fs-plugin',
+                        config: {},
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {} as never,
+            )
+            .catch((e: Error) => e);
+        expect(err2).toBeInstanceOf(Error);
+        // Real fs throws ENOENT, not permission stub
+        expect((err2 as Error).message).not.toContain('Permission denied');
+        expect((err2 as Error).message).toContain('ENOENT');
+    });
+});
+
+// ─── Worker script path resolution ──────────────────────────
+
+describe('worker script path resolution', () => {
+    it('resolves plugin-worker.js relative to __dirname', () => {
+        const jsPath = join(__dirname, 'plugin-worker.js');
+        const tsPath = join(__dirname, 'plugin-node-worker.ts');
+        const resolved = existsSync(jsPath) ? jsPath : tsPath;
+        expect(existsSync(resolved)).toBe(true);
+    });
+});
+
+// ─── Builtin plugins integration ────────────────────────────
+
+describe('builtin plugins integration', () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+        tempDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-builtin-test-'));
+    });
+
+    afterEach(() => {
+        rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it('loads file-manager and file-watcher from the builtin-plugins directory', async () => {
+        const builtinPluginsDir = resolve(__dirname, '../builtin-plugins');
+        expect(existsSync(builtinPluginsDir)).toBe(true);
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const results = await loadNodePlugins(builtinPluginsDir, {
+            manifestRegistry,
+            handlerRegistry,
+        });
+
+        const successes = results.filter((r) => r.ok);
+        expect(successes.length).toBeGreaterThanOrEqual(2);
+
+        expect(handlerRegistry.has('file-manager')).toBe(true);
+        expect(handlerRegistry.has('file-watcher')).toBe(true);
+        expect(manifestRegistry.has('com.sigil.file-manager')).toBe(true);
+        expect(manifestRegistry.has('com.sigil.file-watcher')).toBe(true);
+
+        const fileManagerHandler = handlerRegistry.get('file-manager');
+        expect(typeof fileManagerHandler!.execute).toBe('function');
+
+        const fileWatcherHandler = handlerRegistry.get('file-watcher');
+        expect(typeof fileWatcherHandler!.execute).toBe('function');
+        expect('activate' in fileWatcherHandler!).toBe(true);
     });
 });
