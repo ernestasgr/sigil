@@ -598,6 +598,10 @@ async function main(): Promise<void> {
                     permissions.add(p);
                 }
                 rebuildPermissionGatedModules();
+                if (depsTeardown) {
+                    depsTeardown();
+                    depsTeardown = undefined;
+                }
                 break;
             }
         }
