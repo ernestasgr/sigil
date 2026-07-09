@@ -63,6 +63,7 @@ export interface NodePluginLoaderDeps {
     readonly handlerRegistry: NodeHandlerRegistry;
     readonly kernel?: KernelDeps;
     readonly permissionOverrides?: PermissionOverrideStore;
+    readonly diagnostic?: (message: string) => void;
 }
 
 function resolveHandlerPath(pluginDir: string): string | undefined {
@@ -192,6 +193,7 @@ export async function loadNodePlugin(
         worker,
         loaded.isTrigger,
         deps.kernel,
+        deps.diagnostic,
     );
     deps.handlerRegistry.register(manifest.nodeType, handler);
 
@@ -229,6 +231,7 @@ function createWorkerNodeHandlerProxy(
     worker: Worker,
     isTrigger: boolean,
     kernel?: KernelDeps,
+    diagnostic?: (message: string) => void,
 ): NodeHandler {
     const pendingExecutes = new Map<
         string,
@@ -258,13 +261,14 @@ function createWorkerNodeHandlerProxy(
                 }
                 break;
             }
-            case NodePluginWorkerKind.ActivateResult:
             case NodePluginWorkerKind.ActivateError: {
                 const pending = pendingActivates.get(msg.requestId);
                 if (!pending) break;
-                if (msg.kind === NodePluginWorkerKind.ActivateError) {
-                    console.warn(`[proxy] activation error for plugin "${pluginId}": ${msg.error}`);
-                }
+                console.warn(`[proxy] activation error for plugin "${pluginId}": ${msg.error}`);
+                diagnostic?.(`[proxy] activation error for plugin "${pluginId}": ${msg.error}`);
+                break;
+            }
+            case NodePluginWorkerKind.ActivateResult: {
                 break;
             }
             case NodePluginWorkerKind.ActivateEvent: {

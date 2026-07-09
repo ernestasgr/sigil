@@ -101,6 +101,9 @@ export function createEngine(options?: EngineOptions): Engine {
                 handlerRegistry,
                 kernel,
                 permissionOverrides,
+                diagnostic: (message: string): void => {
+                    bus.next({ name: 'engine.diagnostic', payload: { message } });
+                },
             };
             const builtinResults = await loadNodePlugins(builtinPluginsDir, deps);
             if (dir) {
