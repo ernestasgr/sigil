@@ -1,34 +1,34 @@
-import { parentPort, workerData } from 'node:worker_threads';
-import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname } from 'node:path';
 import vm from 'node:vm';
+import { parentPort, workerData } from 'node:worker_threads';
 import { z } from 'zod';
 
+import type { Capability } from '@sigil/schema/manifest';
+import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
+import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import type { EventBus } from './event-bus.js';
+import type {
+    EvaluateCondition,
+    KernelDeps,
+    MatchSwitchCase,
+    NodeHandler,
+    NodeHandlerDeps,
+    NodeRunResult,
+    ResolveTemplate,
+    Sleep,
+    TriggerHandler,
+} from './node-handlers/types.js';
 import {
-    NodePluginWorkerKind,
     NodePluginMainToWorkerSchema,
-    type NodePluginWorkerToMain,
-    type NodePluginWorkerExecuteRequest,
+    NodePluginWorkerKind,
     type NodePluginWorkerCallbackInvoke,
+    type NodePluginWorkerExecuteRequest,
+    type NodePluginWorkerToMain,
     type NodePluginWorkerUpdatePermissions,
 } from './plugin-node-rpc.js';
-import type {
-    NodeHandler,
-    NodeRunResult,
-    TriggerHandler,
-    NodeHandlerDeps,
-    KernelDeps,
-    Sleep,
-    ResolveTemplate,
-    EvaluateCondition,
-    MatchSwitchCase,
-} from './node-handlers/types.js';
-import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
-import type { Capability } from '@sigil/schema/manifest';
-import type { EventBus } from './event-bus.js';
 
 if (!parentPort) {
     throw new Error('plugin-node-worker must be spawned as a worker_thread');
@@ -598,10 +598,6 @@ async function main(): Promise<void> {
                     permissions.add(p);
                 }
                 rebuildPermissionGatedModules();
-                if (depsTeardown) {
-                    depsTeardown();
-                    depsTeardown = undefined;
-                }
                 break;
             }
         }
