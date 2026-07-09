@@ -289,13 +289,34 @@ function createWorkerNodeHandlerProxy(
         async execute({ node, ctx }, deps): Promise<NodeRunResult> {
             const requestId = randomUUID();
             return new Promise<NodeRunResult>((resolve, reject) => {
-                pendingExecutes.set(requestId, { resolve, reject, deps });
+                const timer = setTimeout(() => {
+                    if (pendingExecutes.has(requestId)) {
+                        pendingExecutes.delete(requestId);
+                        reject(new Error('Execute request timed out after 30s'));
+                    }
+                }, 30_000);
+
+                pendingExecutes.set(requestId, {
+                    resolve: (result) => {
+                        clearTimeout(timer);
+                        resolve(result);
+                    },
+                    reject: (err) => {
+                        clearTimeout(timer);
+                        reject(err);
+                    },
+                    deps,
+                });
+
                 worker.postMessage({
                     kind: NodePluginWorkerKind.ExecuteRequest,
                     requestId,
                     nodeType: node.type,
                     nodeConfig: node.config,
                     ctx,
+                    deps: {
+                        collisionSuffixStyle: deps.collisionSuffixStyle,
+                    },
                 });
             });
         },
