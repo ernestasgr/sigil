@@ -264,8 +264,10 @@ function createWorkerNodeHandlerProxy(
             case NodePluginWorkerKind.ActivateError: {
                 const pending = pendingActivates.get(msg.requestId);
                 if (!pending) break;
+                pendingActivates.delete(msg.requestId);
                 console.warn(`[proxy] activation error for plugin "${pluginId}": ${msg.error}`);
                 diagnostic?.(`[proxy] activation error for plugin "${pluginId}": ${msg.error}`);
+                (pending.onEvent as unknown as { _deactivate?: () => void })?._deactivate?.();
                 break;
             }
             case NodePluginWorkerKind.ActivateResult: {

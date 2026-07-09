@@ -61,6 +61,15 @@ export function createWorkflowActivator(
                     });
                 });
             };
+            (onEvent as unknown as { _deactivate: () => void })._deactivate = (): void => {
+                active.delete(workflowId);
+                engine.bus.next({
+                    name: 'engine.diagnostic',
+                    payload: {
+                        message: `[activator] trigger "${trigger.type}" deactivated for "${data.name}" (${workflowId}) — activation failed in worker`,
+                    },
+                });
+            };
 
             try {
                 const teardown = handler.activate(trigger.config, onEvent);
