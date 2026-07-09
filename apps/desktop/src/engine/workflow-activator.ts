@@ -63,11 +63,13 @@ export function createWorkflowActivator(
                 });
             };
             (onEvent as unknown as { _deactivate: () => void })._deactivate = (): void => {
+                if (!active.has(workflowId)) return;
                 active.delete(workflowId);
+                store.setEnabled(workflowId, false);
                 engine.bus.next({
                     name: 'engine.diagnostic',
                     payload: {
-                        message: `[activator] trigger "${trigger.type}" deactivated for "${data.name}" (${workflowId}) — activation failed in worker`,
+                        message: `[activator] trigger "${trigger.type}" disabled for "${data.name}" (${workflowId}) — activation failed in worker`,
                     },
                 });
                 onStateChange?.();

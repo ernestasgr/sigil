@@ -44,6 +44,7 @@ export interface WorkflowStore {
         positions: Readonly<Record<string, NodePosition>>,
     ) => WorkflowSummary;
     readonly remove: (id: string) => boolean;
+    readonly setEnabled: (id: string, enabled: boolean) => WorkflowSummary | null;
     readonly toggle: (id: string) => WorkflowSummary | null;
 }
 
@@ -210,6 +211,14 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
             return true;
         },
 
+        setEnabled: (id, enabled) => {
+            const stored = workflows.get(id);
+            if (!stored) return null;
+            const updated: StoredWorkflow = { ...stored, enabled };
+            workflows.set(id, updated);
+            writeWorkflowFile(storageDir, updated);
+            return toSummary(updated);
+        },
         toggle: (id) => {
             const stored = workflows.get(id);
             if (!stored) return null;
