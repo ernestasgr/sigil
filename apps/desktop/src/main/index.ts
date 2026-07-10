@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Notification } from 'electron';
+import { Either } from 'effect';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -128,8 +129,8 @@ function handleOsNotifications(): void {
     const unsubscribe = engine.onBusEvent((event: EngineBusEventPayload) => {
         if (event.name === 'notification.show') {
             const result = safeParsePayload(event.name, event.payload);
-            if (result.ok) {
-                const { title, body } = result.data as NotificationShowPayload;
+            if (Either.isRight(result)) {
+                const { title, body } = result.right as NotificationShowPayload;
                 new Notification({ title, body }).show();
             }
         }

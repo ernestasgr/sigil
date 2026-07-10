@@ -1,3 +1,5 @@
+import { Either, Option } from 'effect';
+
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
@@ -126,10 +128,10 @@ export async function executePipeline(
         let triggerResult: NodeRunResult;
         try {
             const triggerHandler = handlerRegistry.get(triggerNode.type);
-            if (!triggerHandler) {
+            if (Option.isNone(triggerHandler)) {
                 throw new Error(`No handler registered for node type "${triggerNode.type}"`);
             }
-            triggerResult = await triggerHandler.execute(
+            triggerResult = await triggerHandler.value.execute(
                 { node: triggerNode, ctx: seedContext ?? SEED_CONTEXT },
                 baseDeps,
             );
@@ -154,26 +156,24 @@ export async function executePipeline(
         scheduleDownstream(triggerNode.id, triggerResult.activePort, triggerResult.outputCtx);
 
         while (queue.length > 0) {
-            let nextIdx = 0;
-            for (let i = 1; i < queue.length; i++) {
-                if (
-                    (topoIndex.get(queue[i].nodeId) ?? 0) <
-                    (topoIndex.get(queue[nextIdx].nodeId) ?? 0)
-                ) {
-                    nextIdx = i;
-                }
-            }
-            const entry = queue.splice(nextIdx, 1)[0];
+            const nextIdx = queue.reduce(
+                (best, _, i) =>
+                    (topoIndex.get(queue[i].nodeId) ?? 0) < (topoIndex.get(queue[best].nodeId) ?? 0)
+                        ? i
+                        : best,
+                0,
+            );
+            const [entry] = queue.splice(nextIdx, 1);
             if (entry === undefined) continue;
             const node = nodeById.get(entry.nodeId);
             if (!node) continue;
 
             try {
                 const handler = handlerRegistry.get(node.type);
-                if (!handler) {
+                if (Option.isNone(handler)) {
                     throw new Error(`No handler registered for node type "${node.type}"`);
                 }
-                const { outputCtx, activePort } = await handler.execute(
+                const { outputCtx, activePort } = await handler.value.execute(
                     { node, ctx: entry.ctx },
                     baseDeps,
                 );
@@ -192,9 +192,6 @@ export async function executePipeline(
 
 function createDenyAllCapabilityBroker(): CapabilityBroker {
     return {
-        request: ({ capability }) => ({
-            ok: false,
-            error: { kind: 'denied', capability },
-        }),
+        request: ({ capability }) => Either.left({ kind: 'denied' as const, capability }),
     };
 }

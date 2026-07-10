@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Either } from 'effect';
 
 import type { PipelineCondition } from '@sigil/schema/conditions';
 import type { SwitchConfig } from '@sigil/schema/nodes/switch';
@@ -20,33 +21,27 @@ const ctx: WorkflowContext = {
 
 describe('coerceForComparison', () => {
     it('coerces a numeric string to a number', () => {
-        expect(coerceForComparison('5', 'number')).toEqual({ ok: true, value: 5 });
+        expect(coerceForComparison('5', 'number')).toEqual(Either.right(5));
     });
 
     it('fails coercion for a non-numeric string in number context', () => {
-        expect(coerceForComparison('abc', 'number')).toEqual({
-            ok: false,
-            error: 'coercion_failed',
-        });
+        expect(coerceForComparison('abc', 'number')).toEqual(Either.left('coercion_failed'));
     });
 
     it('coerces the string "true" case-insensitively to boolean true', () => {
-        expect(coerceForComparison('TRUE', 'boolean')).toEqual({ ok: true, value: true });
+        expect(coerceForComparison('TRUE', 'boolean')).toEqual(Either.right(true));
     });
 
     it('fails boolean coercion for a non-boolean string', () => {
-        expect(coerceForComparison('yes', 'boolean')).toEqual({
-            ok: false,
-            error: 'coercion_failed',
-        });
+        expect(coerceForComparison('yes', 'boolean')).toEqual(Either.left('coercion_failed'));
     });
 
     it('passes a real boolean through in boolean context', () => {
-        expect(coerceForComparison(false, 'boolean')).toEqual({ ok: true, value: false });
+        expect(coerceForComparison(false, 'boolean')).toEqual(Either.right(false));
     });
 
     it('coerces any value to a string in string context', () => {
-        expect(coerceForComparison(42, 'string')).toEqual({ ok: true, value: '42' });
+        expect(coerceForComparison(42, 'string')).toEqual(Either.right('42'));
     });
 });
 

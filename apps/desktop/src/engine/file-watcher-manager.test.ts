@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Either } from 'effect';
 
 import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
 
@@ -96,7 +97,7 @@ describe('Bridge + Manifest validation seam', () => {
             },
         });
 
-        expect(result.ok).toBe(true);
+        expect(Either.isRight(result)).toBe(true);
         expect(busEvents).toHaveLength(1);
         expect(busEvents[0]?.name).toBe('plugin.event');
         if (busEvents[0]?.name === 'plugin.event') {
@@ -147,9 +148,9 @@ describe('Bridge + Manifest validation seam', () => {
             payload: {},
         });
 
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-            expect(result.error.kind).toBe('undeclared');
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left.kind).toBe('undeclared');
         }
         expect(busEvents).toHaveLength(0);
     });

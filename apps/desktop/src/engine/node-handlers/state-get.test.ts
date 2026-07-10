@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Option } from 'effect';
 
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
@@ -39,7 +40,7 @@ function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
 
 describe('state-get handler', () => {
     it('reads the key from state and assigns it to vars[assignTo]', async () => {
-        const state = { ...buildDeps().state, get: vi.fn().mockReturnValue('42') };
+        const state = { ...buildDeps().state, get: vi.fn().mockReturnValue(Option.some('42')) };
         const deps = { ...buildDeps(), state };
 
         const { stateGetHandler } = await import('./state-get.js');
@@ -51,7 +52,7 @@ describe('state-get handler', () => {
     });
 
     it('preserves the original payload metadata and existing vars', async () => {
-        const state = { ...buildDeps().state, get: vi.fn().mockReturnValue('42') };
+        const state = { ...buildDeps().state, get: vi.fn().mockReturnValue(Option.some('42')) };
         const deps = { ...buildDeps(), state };
 
         const { stateGetHandler } = await import('./state-get.js');
@@ -63,7 +64,7 @@ describe('state-get handler', () => {
     });
 
     it('produces a new context rather than mutating the input', async () => {
-        const state = { ...buildDeps().state, get: vi.fn().mockReturnValue('42') };
+        const state = { ...buildDeps().state, get: vi.fn().mockReturnValue(Option.some('42')) };
         const deps = { ...buildDeps(), state };
 
         const { stateGetHandler } = await import('./state-get.js');
@@ -75,7 +76,7 @@ describe('state-get handler', () => {
     });
 
     it('assigns undefined when the key is missing without dropping other vars', async () => {
-        const state = { ...buildDeps().state, get: vi.fn().mockReturnValue(undefined) };
+        const state = { ...buildDeps().state, get: vi.fn().mockReturnValue(Option.none()) };
         const deps = { ...buildDeps(), state };
 
         const { stateGetHandler } = await import('./state-get.js');

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Option } from 'effect';
 
 import type { CompiledPipeline } from '@sigil/schema';
 import { parsePipeline } from '@sigil/schema';
@@ -126,15 +127,15 @@ describe('WorkflowStore', () => {
         const summary = store.create('My Workflow', samplePipeline, samplePositions);
 
         const result = store.get(summary.id);
-        expect(result).not.toBeNull();
-        expect(result?.name).toBe('My Workflow');
-        expect(result?.pipeline).toEqual(samplePipeline);
-        expect(result?.positions).toEqual(samplePositions);
+        expect(Option.isSome(result)).toBe(true);
+        expect(Option.getOrThrow(result).name).toBe('My Workflow');
+        expect(Option.getOrThrow(result).pipeline).toEqual(samplePipeline);
+        expect(Option.getOrThrow(result).positions).toEqual(samplePositions);
     });
 
-    it('returns null for get() on a non-existent workflow', () => {
+    it('returns None for get() on a non-existent workflow', () => {
         const result = store.get('nonexistent');
-        expect(result).toBeNull();
+        expect(Option.isNone(result)).toBe(true);
     });
 
     it('deletes a workflow file', () => {
@@ -158,7 +159,8 @@ describe('WorkflowStore', () => {
         expect(wfBefore?.enabled).toBe(false);
 
         const toggled = store.toggle(summary.id);
-        expect(toggled?.enabled).toBe(true);
+        expect(Option.isSome(toggled)).toBe(true);
+        expect(Option.getOrThrow(toggled).enabled).toBe(true);
 
         const wfAfter = store.list().find((w) => w.id === summary.id);
         expect(wfAfter?.enabled).toBe(true);
@@ -167,9 +169,9 @@ describe('WorkflowStore', () => {
         expect(raw.enabled).toBe(true);
     });
 
-    it('returns null when toggling a non-existent workflow', () => {
+    it('returns None when toggling a non-existent workflow', () => {
         const toggled = store.toggle('nonexistent');
-        expect(toggled).toBeNull();
+        expect(Option.isNone(toggled)).toBe(true);
     });
 
     it('saves an updated pipeline via save()', () => {
@@ -200,9 +202,10 @@ describe('WorkflowStore', () => {
         expect(saved.id).toBe(summary.id);
 
         const loaded = store.get(summary.id);
-        expect(loaded?.pipeline.nodes).toHaveLength(2);
-        expect(loaded?.pipeline.nodes[1].type).toBe('delay');
-        expect(loaded?.positions).toEqual(updatedPositions);
+        expect(Option.isSome(loaded)).toBe(true);
+        expect(Option.getOrThrow(loaded).pipeline.nodes).toHaveLength(2);
+        expect(Option.getOrThrow(loaded).pipeline.nodes[1].type).toBe('delay');
+        expect(Option.getOrThrow(loaded).positions).toEqual(updatedPositions);
     });
 
     it('reads pre-existing JSON files on startup', () => {
@@ -226,9 +229,9 @@ describe('WorkflowStore', () => {
         expect(list[0]).toEqual({ id: 'wf-pre', name: 'Pre-existing', enabled: true });
 
         const loaded = store.get('wf-pre');
-        expect(loaded).not.toBeNull();
-        expect(loaded?.positions).toEqual({ 'node-a': { x: 10, y: 20 } });
-        expect(loaded && parsePipeline(loaded.pipeline).ok).toBe(true);
+        expect(Option.isSome(loaded)).toBe(true);
+        expect(Option.getOrThrow(loaded).positions).toEqual({ 'node-a': { x: 10, y: 20 } });
+        expect(parsePipeline(Option.getOrThrow(loaded).pipeline).ok).toBe(true);
     });
 
     it('skips invalid JSON files on startup', () => {
@@ -254,9 +257,9 @@ describe('WorkflowStore', () => {
         expect(saved.enabled).toBe(false);
 
         const loaded = store.get('new-id');
-        expect(loaded).not.toBeNull();
-        expect(loaded?.pipeline).toEqual(samplePipeline);
-        expect(loaded?.positions).toEqual(samplePositions);
+        expect(Option.isSome(loaded)).toBe(true);
+        expect(Option.getOrThrow(loaded).pipeline).toEqual(samplePipeline);
+        expect(Option.getOrThrow(loaded).positions).toEqual(samplePositions);
 
         const filePath = join(dir, 'new-id.json');
         expect(existsSync(filePath)).toBe(true);
@@ -267,6 +270,7 @@ describe('WorkflowStore', () => {
         store.toggle(summary.id);
 
         const loaded = store.get(summary.id);
-        expect(loaded?.positions).toEqual(samplePositions);
+        expect(Option.isSome(loaded)).toBe(true);
+        expect(Option.getOrThrow(loaded).positions).toEqual(samplePositions);
     });
 });

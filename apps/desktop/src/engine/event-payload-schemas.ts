@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
+import { Either, Option, pipe } from 'effect';
 
 export const WorkflowRunPayloadSchema = z
     .object({
@@ -113,39 +114,35 @@ type EventPayloadMap = {
 export function safeParsePayload<Name extends string>(
     name: Name,
     payload: unknown,
-):
-    | {
-          readonly ok: true;
-          readonly data: Name extends keyof EventPayloadMap ? EventPayloadMap[Name] : unknown;
-      }
-    | { readonly ok: false; readonly error: string } {
-    const entry = EventPayloadSchemaRegistry[name];
-    if (!entry) {
-        return { ok: false, error: `Unknown event name: ${name}` };
-    }
-    const result = entry.schema.safeParse(payload);
-    if (result.success) {
-        return {
-            ok: true,
-            data: result.data as Name extends keyof EventPayloadMap
-                ? EventPayloadMap[Name]
-                : unknown,
-        };
-    }
-    return { ok: false, error: result.error.message };
+): Either.Either<Name extends keyof EventPayloadMap ? EventPayloadMap[Name] : unknown, string> {
+    return pipe(
+        Option.fromNullable(EventPayloadSchemaRegistry[name]),
+        Either.fromOption(() => `Unknown event name: ${name}`),
+        Either.flatMap((entry) => {
+            const result = entry.schema.safeParse(payload);
+            return result.success
+                ? Either.right(
+                      result.data as Name extends keyof EventPayloadMap
+                          ? EventPayloadMap[Name]
+                          : unknown,
+                  )
+                : Either.left(`Invalid payload for ${name}: ${result.error.message}`);
+        }),
+    );
 }
 
 export function validateBusEventPayload<Name extends string>(
     name: Name,
     payload: unknown,
-): string | undefined {
-    const entry = EventPayloadSchemaRegistry[name];
-    if (!entry) {
-        return `Unknown event name: ${name}`;
-    }
-    const result = entry.schema.safeParse(payload);
-    if (!result.success) {
-        return `Invalid payload for ${name}: ${result.error.message}`;
-    }
-    return undefined;
+): Either.Either<void, string> {
+    return pipe(
+        Option.fromNullable(EventPayloadSchemaRegistry[name]),
+        Either.fromOption(() => `Unknown event name: ${name}`),
+        Either.flatMap((entry) => {
+            const result = entry.schema.safeParse(payload);
+            return result.success
+                ? Either.right(undefined)
+                : Either.left(`Invalid payload for ${name}: ${result.error.message}`);
+        }),
+    );
 }

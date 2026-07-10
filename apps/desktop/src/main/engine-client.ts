@@ -3,11 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { app } from 'electron';
-
 import type { Capability } from '@sigil/schema/manifest';
 import type { CompiledPipeline } from '@sigil/schema';
 
 import { z } from 'zod';
+import { Option } from 'effect';
 
 import {
     EngineChannel,
@@ -28,7 +28,7 @@ export type EngineHandle = {
     readonly ping: (timeoutMs?: number) => Promise<EnginePong>;
     readonly fireTestEvent: () => void;
     readonly fireManualTrigger: (pipeline: CompiledPipeline) => void;
-    readonly toggleWorkflow: (id: string) => Promise<WorkflowSummary | null>;
+    readonly toggleWorkflow: (id: string) => Promise<Option.Option<WorkflowSummary>>;
     readonly createWorkflow: (
         name: string,
         pipeline: CompiledPipeline,
@@ -92,10 +92,6 @@ export type RpcClient = {
     readonly dispatch: (message: EngineMessage) => void;
 };
 
-function assertNever(x: never, message?: string): never {
-    throw new Error(message ?? `Unhandled case: ${JSON.stringify(x)}`);
-}
-
 export function createRpcClient(props: RpcClientProps): RpcClient {
     const { postMessage, logHandlers, workflowsListHandlers, busEventHandlers } = props;
     const pending = new Map<string, PendingEntry>();
@@ -125,6 +121,15 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
         pending.clear();
     }
 
+    function resolvePending(correlationId: string, message: EngineMessage): void {
+        const entry = pending.get(correlationId);
+        if (entry) {
+            pending.delete(correlationId);
+            clearTimeout(entry.timer);
+            entry.resolve(message);
+        }
+    }
+
     function dispatch(message: EngineMessage): void {
         switch (message.type) {
             case EngineChannel.Pong: {
@@ -134,20 +139,17 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
                     clearTimeout(entry.timer);
                     entry.resolve(message);
                 }
-                return;
+                break;
             }
-            case EngineChannel.Log: {
+            case EngineChannel.Log:
                 for (const handler of [...logHandlers]) handler(message.line);
-                return;
-            }
-            case EngineChannel.WorkflowsList: {
+                break;
+            case EngineChannel.WorkflowsList:
                 for (const handler of [...workflowsListHandlers]) handler(message.workflows);
-                return;
-            }
-            case EngineChannel.BusEvent: {
+                break;
+            case EngineChannel.BusEvent:
                 for (const handler of [...busEventHandlers]) handler(message.event);
-                return;
-            }
+                break;
             case EngineChannel.GetWorkflowResult:
             case EngineChannel.CreateWorkflowResult:
             case EngineChannel.UpdateWorkflowResult:
@@ -159,16 +161,9 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
             case EngineChannel.SavePropertiesResult:
             case EngineChannel.ReadWorkflowStateResult:
             case EngineChannel.SetWorkflowStateKeyResult:
-            case EngineChannel.DeleteWorkflowStateKeyResult: {
-                const entry = pending.get(message.correlationId);
-                if (entry) {
-                    pending.delete(message.correlationId);
-                    clearTimeout(entry.timer);
-                    entry.resolve(message);
-                }
-                return;
-            }
-            // Request types the main process should never receive from the worker
+            case EngineChannel.DeleteWorkflowStateKeyResult:
+                resolvePending(message.correlationId, message);
+                break;
             case EngineChannel.Ping:
             case EngineChannel.FireTestEvent:
             case EngineChannel.FireManualTrigger:
@@ -183,12 +178,9 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
             case EngineChannel.SaveProperties:
             case EngineChannel.ReadWorkflowState:
             case EngineChannel.SetWorkflowStateKey:
-            case EngineChannel.DeleteWorkflowStateKey: {
+            case EngineChannel.DeleteWorkflowStateKey:
                 console.warn(`[engine] unexpected message from worker: ${message.type}`);
-                return;
-            }
-            default:
-                return assertNever(message);
+                break;
         }
     }
 
@@ -257,12 +249,12 @@ export function spawnEngine(): EngineHandle {
         fireManualTrigger(pipeline: CompiledPipeline): void {
             worker.postMessage({ type: EngineChannel.FireManualTrigger, pipeline });
         },
-        toggleWorkflow(id: string): Promise<WorkflowSummary | null> {
+        toggleWorkflow(id: string): Promise<Option.Option<WorkflowSummary>> {
             return client
                 .rpc<{
                     summary: WorkflowSummary | null;
                 }>(EngineChannel.ToggleWorkflow, { id }, 5000)
-                .then((r) => r.summary);
+                .then((r) => Option.fromNullable(r.summary));
         },
         createWorkflow(
             name: string,

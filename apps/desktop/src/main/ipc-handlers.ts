@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { dialog } from 'electron';
 import type { BrowserWindow } from 'electron';
+import { Option } from 'effect';
 import { stat } from 'node:fs/promises';
 import { basename, dirname, extname } from 'node:path';
 
@@ -54,7 +55,7 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         async (id): Promise<WorkflowSummary | null> => {
             const engine = h.getEngine();
             if (!engine) throw new Error('Engine not ready');
-            return await engine.toggleWorkflow(id);
+            return Option.getOrNull(await engine.toggleWorkflow(id));
         },
     );
 

@@ -1,3 +1,4 @@
+import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -43,7 +44,7 @@ describe('EventPayloadSchemaRegistry', () => {
         ['engine.diagnostic', { message: 'watcher active' }],
     ])('accepts a valid payload for %s', (name, payload) => {
         const result = safeParsePayload(name, payload);
-        expect(result.ok).toBe(true);
+        expect(Either.isRight(result)).toBe(true);
     });
 
     it.each([
@@ -56,9 +57,9 @@ describe('EventPayloadSchemaRegistry', () => {
         ],
     ])('returns typed data via safeParsePayload for %s', (name, payload, expected) => {
         const result = safeParsePayload(name, payload);
-        expect(result.ok).toBe(true);
-        if (result.ok) {
-            expect(result.data).toEqual(expected);
+        expect(Either.isRight(result)).toBe(true);
+        if (Either.isRight(result)) {
+            expect(result.right).toEqual(expected);
         }
     });
 
@@ -73,14 +74,14 @@ describe('EventPayloadSchemaRegistry', () => {
         ['engine.diagnostic', { message: 42 }],
     ])('rejects an invalid payload for %s', (name, payload) => {
         const result = safeParsePayload(name, payload);
-        expect(result.ok).toBe(false);
+        expect(Either.isLeft(result)).toBe(true);
     });
 
     it('returns an error for an unknown event name', () => {
         const result = safeParsePayload('nonexistent.event', { message: 'x' });
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-            expect(result.error).toContain('Unknown event name');
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left).toContain('Unknown event name');
         }
     });
 
@@ -199,20 +200,24 @@ describe('EngineDiagnosticPayloadSchema', () => {
 });
 
 describe('validateBusEventPayload', () => {
-    it('returns undefined for a valid payload', () => {
-        const error = validateBusEventPayload('log.output', { message: 'hi' });
-        expect(error).toBeUndefined();
+    it('returns Right for a valid payload', () => {
+        const result = validateBusEventPayload('log.output', { message: 'hi' });
+        expect(Either.isRight(result)).toBe(true);
     });
 
-    it('returns an error string for an invalid payload', () => {
-        const error = validateBusEventPayload('log.output', {});
-        expect(error).toBeDefined();
-        expect(error).toContain('Invalid payload');
+    it('returns Left with error for an invalid payload', () => {
+        const result = validateBusEventPayload('log.output', {});
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left).toContain('Invalid payload');
+        }
     });
 
-    it('returns an error for an unknown event name', () => {
-        const error = validateBusEventPayload('unknown.event', { message: 'x' });
-        expect(error).toBeDefined();
-        expect(error).toContain('Unknown event name');
+    it('returns Left with error for an unknown event name', () => {
+        const result = validateBusEventPayload('unknown.event', { message: 'x' });
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left).toContain('Unknown event name');
+        }
     });
 });

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Option } from 'effect';
 
 import { createManifestRegistry } from './manifest-registry.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
@@ -416,6 +417,7 @@ describe('loadNodePlugins', () => {
 
 const PERM_CHECK_HANDLER = `
 import { z } from 'zod';
+import { Either } from 'effect';
 import type { NodeHandler } from '../../node-handlers/types.js';
 
 const ConfigSchema = z.object({ check: z.string() });
@@ -431,8 +433,8 @@ export const handler: NodeHandler = {
     async execute({ node, ctx }, deps) {
         const config = node.config as { check: string };
         const result = deps.capabilityBroker.request({ pluginId: 'com.sigil.perm-checker', capability: config.check });
-        if (!result.ok) {
-            throw new Error('DENIED: ' + result.error.capability);
+        if (Either.isLeft(result)) {
+            throw new Error('DENIED: ' + result.left.capability);
         }
         return { outputCtx: ctx, activePort: 'out' };
     },
@@ -441,6 +443,7 @@ export const handler: NodeHandler = {
 
 const FACTORY_PERM_CHECK_HANDLER = `
 import { z } from 'zod';
+import { Either } from 'effect';
 import type { TriggerHandler, KernelDeps, NodeRunResult } from '../../node-handlers/types.js';
 
 const ConfigSchema = z.object({});
@@ -456,8 +459,8 @@ export function handler(kernel: KernelDeps): TriggerHandler {
     return {
         activate(config, onEvent) {
             const result = kernel.capabilityBroker.request({ pluginId: 'com.sigil.factory-perm-checker', capability: 'filesystem.read' });
-            if (!result.ok) {
-                throw new Error('DENIED in activate: ' + result.error.capability);
+            if (Either.isLeft(result)) {
+                throw new Error('DENIED in activate: ' + result.left.capability);
             }
             onEvent({ event: 'perm-check.passed', payload: {}, vars: {} });
             return () => {};
@@ -500,10 +503,10 @@ describe('capabilityBroker sandbox sync', () => {
         expect(result.ok).toBe(true);
         if (result.ok) {
             const handler = handlerRegistry.get('perm-checker');
-            expect(handler).toBeDefined();
-            expect(typeof handler!.execute).toBe('function');
+            expect(Option.isSome(handler)).toBe(true);
+            expect(typeof Option.getOrThrow(handler).execute).toBe('function');
 
-            const output = await handler!.execute(
+            const output = await Option.getOrThrow(handler).execute(
                 {
                     node: {
                         id: 'n1',
@@ -540,7 +543,7 @@ describe('capabilityBroker sandbox sync', () => {
         if (result.ok) {
             const handler = handlerRegistry.get('perm-checker');
             await expect(
-                handler!.execute(
+                Option.getOrThrow(handler).execute(
                     {
                         node: {
                             id: 'n1',
@@ -576,9 +579,9 @@ describe('capabilityBroker sandbox sync', () => {
         expect(result.ok).toBe(true);
         if (result.ok) {
             const handler = handlerRegistry.get('factory-perm-checker');
-            expect(handler).toBeDefined();
-            expect(typeof handler!.execute).toBe('function');
-            expect('activate' in handler!).toBe(true);
+            expect(Option.isSome(handler)).toBe(true);
+            expect(typeof Option.getOrThrow(handler).execute).toBe('function');
+            expect('activate' in Option.getOrThrow(handler)).toBe(true);
         }
     });
 });
@@ -674,13 +677,13 @@ describe('unbypassable enforcement', () => {
         if (!result.ok) return;
 
         const handler = handlerRegistry.get('evil-exec');
-        expect(handler).toBeDefined();
+        expect(Option.isSome(handler)).toBe(true);
 
         // The sandbox-side check in createProxiedKernel throws synchronously
         // because 'filesystem.read' is not in the permissions set.
         // handleExecute catches it and sends ExecuteError to the proxy.
         await expect(
-            handler!.execute(
+            Option.getOrThrow(handler).execute(
                 {
                     node: {
                         id: 'n1',
@@ -716,8 +719,8 @@ describe('unbypassable enforcement', () => {
         if (!result.ok) return;
 
         const handler = handlerRegistry.get('evil-watcher');
-        expect(handler).toBeDefined();
-        expect('activate' in handler!).toBe(true);
+        expect(Option.isSome(handler)).toBe(true);
+        expect('activate' in Option.getOrThrow(handler)).toBe(true);
 
         // The sandbox-side check in createProxiedKernel throws synchronously.
         // handleActivate sends ActivateError back to the proxy.
@@ -728,7 +731,7 @@ describe('unbypassable enforcement', () => {
         // The enforcement is confirmed by the previous test (execute path)
         // and by the main-thread RPC check in handleFileWatcherRpc.
         const teardown = (
-            handler as unknown as {
+            Option.getOrThrow(handler) as unknown as {
                 activate: (c: unknown, onEvent: (ctx: unknown) => void) => () => void;
             }
         ).activate({}, () => {});
@@ -797,10 +800,10 @@ describe('updatePluginPermissions', () => {
         if (!result.ok) return;
 
         const handler = handlerRegistry.get('perm-checker');
-        expect(handler).toBeDefined();
+        expect(Option.isSome(handler)).toBe(true);
 
         // First execution: permission is granted (from initial manifest)
-        const output = await handler!.execute(
+        const output = await Option.getOrThrow(handler).execute(
             {
                 node: {
                     id: 'n1',
@@ -820,7 +823,7 @@ describe('updatePluginPermissions', () => {
         // Second execution: should now be denied because the worker permissions set was updated.
         // The unbypassable handleExecute check fires before the handler is called.
         await expect(
-            handler!.execute(
+            Option.getOrThrow(handler).execute(
                 {
                     node: {
                         id: 'n2',
@@ -857,7 +860,7 @@ describe('updatePluginPermissions', () => {
         const handler = handlerRegistry.get('fs-plugin');
 
         // With filesystem.read granted, readFileSync is the real function
-        const err1 = await handler!
+        const err1 = await Option.getOrThrow(handler)
             .execute(
                 {
                     node: {
@@ -880,7 +883,7 @@ describe('updatePluginPermissions', () => {
 
         // The unbypassable handleExecute check fires before the handler runs,
         // so the error is from the infrastructure check, not the sandbox module stub.
-        const err2 = await handler!
+        const err2 = await Option.getOrThrow(handler)
             .execute(
                 {
                     node: {
@@ -921,7 +924,7 @@ describe('updatePluginPermissions', () => {
         const handler = handlerRegistry.get('fs-plugin');
 
         // No filesystem.read — readFileSync is a throwing stub
-        const err1 = await handler!
+        const err1 = await Option.getOrThrow(handler)
             .execute(
                 {
                     node: {
@@ -943,7 +946,7 @@ describe('updatePluginPermissions', () => {
         updatePluginPermissions('com.sigil.fs-plugin', ['filesystem.read']);
 
         // Sandbox modules were rebuilt — readFileSync is now the real function
-        const err2 = await handler!
+        const err2 = await Option.getOrThrow(handler)
             .execute(
                 {
                     node: {
@@ -1007,10 +1010,10 @@ describe('builtin plugins integration', () => {
         expect(manifestRegistry.has('com.sigil.file-watcher')).toBe(true);
 
         const fileManagerHandler = handlerRegistry.get('file-manager');
-        expect(typeof fileManagerHandler!.execute).toBe('function');
+        expect(typeof Option.getOrThrow(fileManagerHandler).execute).toBe('function');
 
         const fileWatcherHandler = handlerRegistry.get('file-watcher');
-        expect(typeof fileWatcherHandler!.execute).toBe('function');
-        expect('activate' in fileWatcherHandler!).toBe(true);
+        expect(typeof Option.getOrThrow(fileWatcherHandler).execute).toBe('function');
+        expect('activate' in Option.getOrThrow(fileWatcherHandler)).toBe(true);
     });
 });

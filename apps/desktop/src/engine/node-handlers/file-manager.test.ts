@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
+import { Either } from 'effect';
 
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
@@ -44,7 +45,7 @@ function buildDeps(overrides?: Partial<FileManagerTestDeps>): FileManagerTestDep
         evaluateCondition: vi.fn(),
         matchSwitchCase: vi.fn(),
         state: { get: vi.fn(), set: vi.fn(), flush: vi.fn() },
-        capabilityBroker: { request: vi.fn().mockReturnValue({ ok: true }) },
+        capabilityBroker: { request: vi.fn().mockReturnValue(Either.right(undefined)) },
         collisionSuffixStyle: 'windows',
         ...overrides,
     };
@@ -376,7 +377,7 @@ describe('file-manager handler', () => {
             const dstDir = join(dir, 'dest');
             mkdirSync(dstDir);
 
-            const request = vi.fn().mockReturnValue({ ok: true });
+            const request = vi.fn().mockReturnValue(Either.right(undefined));
             const broker: CapabilityBroker = { request };
 
             const node = fileManagerNode({
@@ -414,8 +415,8 @@ describe('file-manager handler', () => {
                 .fn()
                 .mockImplementation(({ capability }: { capability: string }) =>
                     capability === 'filesystem.write'
-                        ? { ok: false, error: { kind: 'denied', capability } }
-                        : { ok: true },
+                        ? Either.left({ kind: 'denied' as const, capability })
+                        : Either.right(undefined),
                 );
             const broker: CapabilityBroker = { request };
 

@@ -1,6 +1,6 @@
 import { Menu, Tray, nativeImage } from 'electron';
+import { Match } from 'effect';
 
-import { assertNever } from '../shared/assert-never.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 import { solidColorPngDataUrl } from './tray-icon.js';
 import { buildTrayMenu, type TrayMenuItem } from './tray-menu.js';
@@ -28,22 +28,17 @@ function iconForState(workflowsActive: boolean): Electron.NativeImage {
 }
 
 function labelForItem(item: TrayMenuItem): string {
-    switch (item.kind) {
-        case 'workflow-toggle': {
-            const check = item.workflow.enabled ? '✓ ' : '  ';
-            return `${check}${item.workflow.name}`;
-        }
-        case 'no-workflows':
-            return 'No workflows';
-        case 'open-app':
-            return 'Open Sigil';
-        case 'separator':
-            return '';
-        case 'quit':
-            return 'Quit Sigil';
-        default:
-            return assertNever(item);
-    }
+    return Match.value(item).pipe(
+        Match.when({ kind: 'workflow-toggle' }, (i) => {
+            const check = i.workflow.enabled ? '✓ ' : '  ';
+            return `${check}${i.workflow.name}`;
+        }),
+        Match.when({ kind: 'no-workflows' }, () => 'No workflows'),
+        Match.when({ kind: 'open-app' }, () => 'Open Sigil'),
+        Match.when({ kind: 'separator' }, () => ''),
+        Match.when({ kind: 'quit' }, () => 'Quit Sigil'),
+        Match.exhaustive,
+    );
 }
 
 export function createTray(handlers: TrayHandlers): TrayController {
@@ -53,23 +48,16 @@ export function createTray(handlers: TrayHandlers): TrayController {
     tray.setToolTip('Sigil — Inactive');
 
     function dispatch(item: TrayMenuItem): void {
-        switch (item.kind) {
-            case 'workflow-toggle':
-                handlers.onToggleWorkflow(item.workflow.id);
-                return;
-            case 'no-workflows':
-                return;
-            case 'open-app':
-                handlers.onOpenApp();
-                return;
-            case 'quit':
-                handlers.onQuit();
-                return;
-            case 'separator':
-                return;
-            default:
-                assertNever(item);
-        }
+        Match.value(item).pipe(
+            Match.when({ kind: 'workflow-toggle' }, (i) =>
+                handlers.onToggleWorkflow(i.workflow.id),
+            ),
+            Match.when({ kind: 'no-workflows' }, () => {}),
+            Match.when({ kind: 'open-app' }, () => handlers.onOpenApp()),
+            Match.when({ kind: 'quit' }, () => handlers.onQuit()),
+            Match.when({ kind: 'separator' }, () => {}),
+            Match.exhaustive,
+        );
     }
 
     function rebuild(): void {

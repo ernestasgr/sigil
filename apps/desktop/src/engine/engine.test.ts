@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
@@ -103,7 +104,9 @@ describe('createEngine — databasePath from properties', () => {
         engine.dispose();
 
         const reader = createEngine({ properties: { databasePath: dbPath } });
-        expect(reader.workflowStateStore.forWorkflow('wf').get('k')).toBe('persisted');
+        expect(Option.getOrThrow(reader.workflowStateStore.forWorkflow('wf').get('k'))).toBe(
+            'persisted',
+        );
         reader.dispose();
     });
 
@@ -121,7 +124,9 @@ describe('createEngine — databasePath from properties', () => {
             properties: {},
             defaultDatabasePath: dbPath,
         });
-        expect(reader.workflowStateStore.forWorkflow('wf').get('k')).toBe('default-used');
+        expect(Option.getOrThrow(reader.workflowStateStore.forWorkflow('wf').get('k'))).toBe(
+            'default-used',
+        );
         reader.dispose();
     });
 
@@ -137,11 +142,15 @@ describe('createEngine — databasePath from properties', () => {
         engine.dispose();
 
         const fromExplicit = createEngine({ properties: { databasePath: explicit } });
-        expect(fromExplicit.workflowStateStore.forWorkflow('wf').get('k')).toBe('explicit-wins');
+        expect(Option.getOrThrow(fromExplicit.workflowStateStore.forWorkflow('wf').get('k'))).toBe(
+            'explicit-wins',
+        );
         fromExplicit.dispose();
 
         const fromFallback = createEngine({ properties: { databasePath: fallback } });
-        expect(fromFallback.workflowStateStore.forWorkflow('wf').get('k')).toBeUndefined();
+        expect(Option.isNone(fromFallback.workflowStateStore.forWorkflow('wf').get('k'))).toBe(
+            true,
+        );
         fromFallback.dispose();
     });
 

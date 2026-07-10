@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
+import { Either, Option } from 'effect';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { CompiledPipeline } from '@sigil/schema';
@@ -479,7 +480,9 @@ describe('dag-executor', () => {
             );
 
             const reader = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
-            expect(reader.forWorkflow('test-workflow').get('counter')).toBe('report.pdf');
+            expect(Option.getOrThrow(reader.forWorkflow('test-workflow').get('counter'))).toBe(
+                'report.pdf',
+            );
             reader.dispose();
 
             await executePipeline(
@@ -576,7 +579,9 @@ describe('dag-executor', () => {
 
             expect(events.some((event) => event.name === 'workflow.error')).toBe(true);
             const reader = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
-            expect(reader.forWorkflow('test-workflow').get('counter')).toBe('report.pdf');
+            expect(Option.getOrThrow(reader.forWorkflow('test-workflow').get('counter'))).toBe(
+                'report.pdf',
+            );
             reader.dispose();
 
             store.dispose();
@@ -603,7 +608,7 @@ describe('dag-executor', () => {
         }
 
         function allowAllBroker(): CapabilityBroker {
-            return { request: () => ({ ok: true }) };
+            return { request: () => Either.right(undefined) };
         }
 
         const fileManager = (

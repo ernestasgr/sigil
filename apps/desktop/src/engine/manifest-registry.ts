@@ -1,13 +1,12 @@
 import type { Manifest } from '@sigil/schema/manifest';
+import { Either, Option } from 'effect';
 
-export type ManifestRegistryResult =
-    | { readonly ok: true; readonly value: Manifest }
-    | { readonly ok: false; readonly error: 'duplicate' };
+export type ManifestRegistryResult = Either.Either<Manifest, 'duplicate'>;
 
 export interface ManifestRegistry {
     readonly register: (manifest: Manifest) => ManifestRegistryResult;
     readonly unregister: (pluginId: string) => void;
-    readonly get: (pluginId: string) => Manifest | undefined;
+    readonly get: (pluginId: string) => Option.Option<Manifest>;
     readonly has: (pluginId: string) => boolean;
     readonly all: () => readonly Manifest[];
 }
@@ -21,18 +20,18 @@ export function createManifestRegistry(): ManifestRegistry {
     return {
         register: (manifest) => {
             if (manifests.has(manifest.id)) {
-                return { ok: false, error: 'duplicate' };
+                return Either.left('duplicate');
             }
             const snapshot = cloneManifest(manifest);
             manifests.set(manifest.id, snapshot);
-            return { ok: true, value: snapshot };
+            return Either.right(snapshot);
         },
         unregister: (pluginId) => {
             manifests.delete(pluginId);
         },
         get: (pluginId) => {
             const manifest = manifests.get(pluginId);
-            return manifest ? cloneManifest(manifest) : undefined;
+            return manifest ? Option.some(cloneManifest(manifest)) : Option.none();
         },
         has: (pluginId) => manifests.has(pluginId),
         all: () => [...manifests.values()].map(cloneManifest),

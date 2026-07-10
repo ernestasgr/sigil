@@ -14,6 +14,7 @@ import { readPropertiesFile } from './properties-loader.js';
 import { createWorkflowActivator } from './workflow-activator.js';
 import { createWorkflowStore } from './workflow-store.js';
 import { dispatch, type DispatchSubsystems } from './dispatch.js';
+import { Effect, Match } from 'effect';
 
 if (!parentPort) {
     throw new Error('engine worker must be spawned as a worker_thread');
@@ -33,14 +34,22 @@ const propertiesPath = existsSync(cwdPropertiesPath) ? cwdPropertiesPath : userD
 const overridesPath = join(userDataPath ?? '', 'permission-overrides.json');
 
 const engine = createEngine({
-    properties: readPropertiesFile(propertiesPath),
+    properties: readPropertiesFile(propertiesPath).pipe(
+        Effect.catchAll(() => Effect.succeed({})),
+        Effect.runSync,
+    ),
     defaultDatabasePath: join(userDataPath ?? '', 'sigil.db'),
     permissionOverridesPath: overridesPath,
 });
 
 const workflowsDir = join(userDataPath ?? '', 'workflows');
 const store = createWorkflowStore(workflowsDir);
-const activator = createWorkflowActivator(engine, store, engine.handlerRegistry, broadcastWorkflowsList);
+const activator = createWorkflowActivator(
+    engine,
+    store,
+    engine.handlerRegistry,
+    broadcastWorkflowsList,
+);
 
 process.on('exit', () => {
     activator.dispose();
@@ -113,37 +122,41 @@ const pluginResults = await engine.loadNodePlugins(pluginsDir).catch((err: unkno
 for (const result of pluginResults) {
     if (!result.ok) {
         const err = result.error;
-        switch (err.kind) {
-            case 'type_mismatch':
+        Match.value(err).pipe(
+            Match.when({ kind: 'type_mismatch' }, (e) =>
                 log(
-                    `Plugin load failed (${err.dir}): type mismatch — manifest "${err.manifestType}" vs handler "${err.descriptorType}"`,
-                );
-                break;
-            case 'invalid_manifest':
-                log(`Plugin load failed (${err.dir}): invalid manifest — ${err.error}`);
-                break;
-            case 'import_error':
-                log(`Plugin load failed (${err.dir}): import error — ${err.error}`);
-                break;
-            case 'invalid_handler_module':
-                log(`Plugin load failed (${err.dir}): invalid handler module — ${err.error}`);
-                break;
-            case 'duplicate':
-                log(`Plugin load failed (${err.dir}): duplicate plugin — ${err.pluginId}`);
-                break;
-            case 'duplicate_type':
-                log(`Plugin load failed (${err.dir}): duplicate type — ${err.nodeType}`);
-                break;
-            case 'missing_manifest':
-                log(`Plugin load failed (${err.dir}): missing manifest`);
-                break;
-            case 'missing_handler':
-                log(`Plugin load failed (${err.dir}): missing handler`);
-                break;
-            case 'missing_node_type':
-                log(`Plugin load failed (${err.dir}): missing node type`);
-                break;
-        }
+                    `Plugin load failed (${e.dir}): type mismatch — manifest "${e.manifestType}" vs handler "${e.descriptorType}"`,
+                ),
+            ),
+            Match.when({ kind: 'invalid_manifest' }, (e) =>
+                log(`Plugin load failed (${e.dir}): invalid manifest — ${e.error}`),
+            ),
+            Match.when({ kind: 'import_error' }, (e) =>
+                log(`Plugin load failed (${e.dir}): import error — ${e.error}`),
+            ),
+            Match.when({ kind: 'invalid_handler_module' }, (e) =>
+                log(`Plugin load failed (${e.dir}): invalid handler module — ${e.error}`),
+            ),
+            Match.when({ kind: 'duplicate' }, (e) =>
+                log(`Plugin load failed (${e.dir}): duplicate plugin — ${e.pluginId}`),
+            ),
+            Match.when({ kind: 'duplicate_type' }, (e) =>
+                log(`Plugin load failed (${e.dir}): duplicate type — ${e.nodeType}`),
+            ),
+            Match.when({ kind: 'missing_manifest' }, (e) =>
+                log(`Plugin load failed (${e.dir}): missing manifest`),
+            ),
+            Match.when({ kind: 'missing_handler' }, (e) =>
+                log(`Plugin load failed (${e.dir}): missing handler`),
+            ),
+            Match.when({ kind: 'missing_node_type' }, (e) =>
+                log(`Plugin load failed (${e.dir}): missing node type`),
+            ),
+            Match.when({ kind: 'worker_error' }, (e) =>
+                log(`Plugin load failed (${e.dir}): worker error — ${e.error}`),
+            ),
+            Match.exhaustive,
+        );
     }
 }
 
