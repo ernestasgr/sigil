@@ -8,24 +8,29 @@ export function eventColor(name: string): string {
     return EventPayloadSchemaRegistry[name]?.color ?? 'text-veil';
 }
 
+const PAYLOAD_FIELDS = [
+    ['pipeline', 'pipelineId'],
+    ['plugin', 'pluginId'],
+    ['event', 'eventName'],
+    ['path', 'path'],
+    ['name', 'name'],
+    ['node', 'nodeId'],
+    ['title', 'title'],
+    ['kind', 'kind'],
+] as const satisfies readonly (readonly [string, string])[];
+
 export function payloadPreview(payload: unknown): string {
     if (!payload || typeof payload !== 'object') return String(payload);
     const obj = payload as Record<string, unknown>;
-    const parts: string[] = [];
+
     if (typeof obj.message === 'string') {
-        if (typeof obj.kind === 'string') {
-            return `${obj.message} (${obj.kind})`;
-        }
-        return obj.message;
+        return typeof obj.kind === 'string' ? `${obj.message} (${obj.kind})` : obj.message;
     }
-    if (typeof obj.pipelineId === 'string') parts.push(`pipeline=${obj.pipelineId}`);
-    if (typeof obj.pluginId === 'string') parts.push(`plugin=${obj.pluginId}`);
-    if (typeof obj.eventName === 'string') parts.push(`event=${obj.eventName}`);
-    if (typeof obj.path === 'string') parts.push(`path=${obj.path}`);
-    if (typeof obj.name === 'string') parts.push(`name=${obj.name}`);
-    if (typeof obj.nodeId === 'string') parts.push(`node=${obj.nodeId}`);
-    if (typeof obj.title === 'string') parts.push(`title=${obj.title}`);
-    if (typeof obj.kind === 'string') parts.push(`kind=${obj.kind}`);
+
+    const parts = PAYLOAD_FIELDS.filter(([, key]) => typeof obj[key] === 'string').map(
+        ([label, key]) => `${label}=${obj[key]}`,
+    );
+
     if (parts.length === 0) {
         try {
             return JSON.stringify(payload).slice(0, 80);

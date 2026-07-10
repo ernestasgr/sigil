@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createInMemoryWorkflowStateStore, createWorkflowStateStore } from './workflow-state.js';
@@ -13,7 +14,7 @@ describe('createWorkflowStateStore — get/set', () => {
         const store = createStore(database);
         const state = store.forWorkflow('wf-a');
 
-        expect(state.get('missing')).toBeUndefined();
+        expect(Option.isNone(state.get('missing'))).toBe(true);
 
         store.dispose();
         database.close();
@@ -26,8 +27,8 @@ describe('createWorkflowStateStore — get/set', () => {
         store.forWorkflow('wf-a').set('k', 'a-value');
         store.forWorkflow('wf-b').set('k', 'b-value');
 
-        expect(store.forWorkflow('wf-a').get('k')).toBe('a-value');
-        expect(store.forWorkflow('wf-b').get('k')).toBe('b-value');
+        expect(Option.getOrThrow(store.forWorkflow('wf-a').get('k'))).toBe('a-value');
+        expect(Option.getOrThrow(store.forWorkflow('wf-b').get('k'))).toBe('b-value');
 
         store.dispose();
         database.close();
@@ -41,7 +42,7 @@ describe('createWorkflowStateStore — write coalescing', () => {
         const state = store.forWorkflow('wf-a');
 
         state.set('k', 'buffered');
-        expect(state.get('k')).toBe('buffered');
+        expect(Option.getOrThrow(state.get('k'))).toBe('buffered');
 
         store.dispose();
         database.close();
@@ -59,7 +60,7 @@ describe('createWorkflowStateStore — write coalescing', () => {
             )
             .run();
 
-        expect(state.get('k')).toBe('buffered');
+        expect(Option.getOrThrow(state.get('k'))).toBe('buffered');
 
         store.dispose();
         database.close();
@@ -74,7 +75,7 @@ describe('createWorkflowStateStore — write coalescing', () => {
         state.set('k', 'second');
         state.set('k', 'third');
 
-        expect(state.get('k')).toBe('third');
+        expect(Option.getOrThrow(state.get('k'))).toBe('third');
 
         store.dispose();
         database.close();
@@ -90,7 +91,7 @@ describe('createWorkflowStateStore — flush', () => {
         store.forWorkflow('wf-a').flush();
 
         const reader = createStore(database);
-        expect(reader.forWorkflow('wf-a').get('k')).toBe('persisted');
+        expect(Option.getOrThrow(reader.forWorkflow('wf-a').get('k'))).toBe('persisted');
 
         store.dispose();
         reader.dispose();
@@ -108,7 +109,7 @@ describe('createWorkflowStateStore — flush', () => {
         state.flush();
 
         const reader = createStore(database);
-        expect(reader.forWorkflow('wf-a').get('k')).toBe('second');
+        expect(Option.getOrThrow(reader.forWorkflow('wf-a').get('k'))).toBe('second');
 
         store.dispose();
         reader.dispose();
@@ -129,7 +130,7 @@ describe('createWorkflowStateStore — flush', () => {
             )
             .run();
 
-        expect(state.get('k')).toBe('overwritten');
+        expect(Option.getOrThrow(state.get('k'))).toBe('overwritten');
 
         store.dispose();
         database.close();
@@ -144,8 +145,8 @@ describe('createWorkflowStateStore — flush', () => {
         store.flushAll();
 
         const reader = createStore(database);
-        expect(reader.forWorkflow('wf-a').get('k1')).toBe('a');
-        expect(reader.forWorkflow('wf-b').get('k2')).toBe('b');
+        expect(Option.getOrThrow(reader.forWorkflow('wf-a').get('k1'))).toBe('a');
+        expect(Option.getOrThrow(reader.forWorkflow('wf-b').get('k2'))).toBe('b');
 
         store.dispose();
         reader.dispose();
@@ -165,11 +166,11 @@ describe('createWorkflowStateStore — interval flush', () => {
         const reader = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
 
         writer.forWorkflow('wf-a').set('k', 'interval');
-        expect(reader.forWorkflow('wf-a').get('k')).toBeUndefined();
+        expect(Option.isNone(reader.forWorkflow('wf-a').get('k'))).toBe(true);
 
         vi.advanceTimersByTime(250);
 
-        expect(reader.forWorkflow('wf-a').get('k')).toBe('interval');
+        expect(Option.getOrThrow(reader.forWorkflow('wf-a').get('k'))).toBe('interval');
 
         writer.dispose();
         reader.dispose();
@@ -185,7 +186,7 @@ describe('createWorkflowStateStore — interval flush', () => {
         writer.forWorkflow('wf-a').set('k', 'interval');
         vi.advanceTimersByTime(249);
 
-        expect(reader.forWorkflow('wf-a').get('k')).toBeUndefined();
+        expect(Option.isNone(reader.forWorkflow('wf-a').get('k'))).toBe(true);
 
         writer.dispose();
         reader.dispose();
@@ -203,12 +204,12 @@ describe('createWorkflowStateStore — dispose', () => {
         writer.forWorkflow('wf-a').set('k', 'on-dispose');
         writer.dispose();
 
-        expect(reader.forWorkflow('wf-a').get('k')).toBe('on-dispose');
+        expect(Option.getOrThrow(reader.forWorkflow('wf-a').get('k'))).toBe('on-dispose');
 
         vi.advanceTimersByTime(1000);
 
         writer.forWorkflow('wf-a').set('k2', 'after-dispose');
-        expect(reader.forWorkflow('wf-a').get('k2')).toBeUndefined();
+        expect(Option.isNone(reader.forWorkflow('wf-a').get('k2'))).toBe(true);
 
         reader.dispose();
         database.close();
@@ -225,7 +226,7 @@ describe('createWorkflowStateStore — persistence across executions', () => {
         first.dispose();
 
         const second = createStore(database);
-        expect(second.forWorkflow('wf-a').get('last-run')).toBe('2026-06-24');
+        expect(Option.getOrThrow(second.forWorkflow('wf-a').get('last-run'))).toBe('2026-06-24');
 
         second.dispose();
         database.close();

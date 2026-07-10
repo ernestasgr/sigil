@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { Option } from 'effect';
 
 import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
 
@@ -16,7 +17,7 @@ export const workflowStateTable = sqliteTable(
 );
 
 export interface WorkflowState {
-    readonly get: (key: string) => string | undefined;
+    readonly get: (key: string) => Option.Option<string>;
     readonly set: (key: string, value: string) => void;
     readonly flush: () => void;
 }
@@ -86,9 +87,9 @@ export function createWorkflowStateStore(
 
     function forWorkflow(workflowId: string): WorkflowState {
         return {
-            get(key: string): string | undefined {
+            get(key: string): Option.Option<string> {
                 const pending = buffer.get(workflowId);
-                if (pending?.has(key)) return pending.get(key);
+                if (pending?.has(key)) return Option.some(pending.get(key)!);
                 const row = db
                     .select({ value: workflowStateTable.value })
                     .from(workflowStateTable)
@@ -99,7 +100,7 @@ export function createWorkflowStateStore(
                         ),
                     )
                     .get();
-                return row?.value;
+                return row?.value ? Option.some(row.value) : Option.none();
             },
             set(key: string, value: string): void {
                 let pending = buffer.get(workflowId);
@@ -160,7 +161,10 @@ export function createInMemoryWorkflowStateStore(): WorkflowStateStore {
         }
         const pendingMap = pending;
         return {
-            get: (key: string): string | undefined => pendingMap.get(key),
+            get: (key: string): Option.Option<string> => {
+                const val = pendingMap.get(key);
+                return val !== undefined ? Option.some(val) : Option.none();
+            },
             set: (key: string, value: string): void => {
                 pendingMap.set(key, value);
             },

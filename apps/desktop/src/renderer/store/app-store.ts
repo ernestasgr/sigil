@@ -20,8 +20,14 @@ export interface BusEventEntry {
 
 const LOG_CAP = 200;
 const BUS_EVENT_CAP = 500;
-let nextLogId = 0;
-let nextBusEventId = 0;
+
+function createIdCounter(): () => number {
+    let next = 0;
+    return () => next++;
+}
+
+const nextLogId = createIdCounter();
+const nextBusEventId = createIdCounter();
 
 export interface AppState {
     readonly activeSection: Section;
@@ -53,7 +59,7 @@ export const useAppStore = create<AppState>((set) => ({
     },
     appendLog: (line) => {
         set((state) => {
-            const entry: LogEntry = { id: nextLogId++, line };
+            const entry: LogEntry = { id: nextLogId(), line };
             const logs = [...state.logs, entry];
             if (logs.length <= LOG_CAP) return { logs };
             return { logs: logs.slice(logs.length - LOG_CAP) };
@@ -62,7 +68,7 @@ export const useAppStore = create<AppState>((set) => ({
     appendBusEvent: (event) => {
         set((state) => {
             const entry: BusEventEntry = {
-                id: nextBusEventId++,
+                id: nextBusEventId(),
                 name: event.name,
                 payload: event.payload,
                 timestamp: Date.now(),

@@ -133,18 +133,28 @@ notifications) into clearly named functions and keep them at the edges.
 
 ## 3. Errors
 
-**Prefer `Result` types over throwing for expected failure.** A failed
-condition coercion, an unmatched Switch case, or a file-collision policy
-of `"error"` are expected outcomes of normal operation, not exceptional
-states — model them as data, not exceptions, in the layers that produce
-them.
+**Prefer `Either` from Effect over throwing for expected failure.** A
+failed condition coercion, an unmatched Switch case, or a file-collision
+policy of `"error"` are expected outcomes of normal operation, not
+exceptional states — model them as data, not exceptions, in the layers
+that produce them.
 
 ```typescript
-type Result<T, E> =
-  | { ok: true; value: T }
-  | { ok: false; error: E };
+import { Either } from 'effect';
 
-function coerceForComparison(raw: string, expectedType: "string" | "number" | "boolean"): Result<string | number | boolean, "coercion_failed"> { ... }
+function coerceForComparison(raw: string, expectedType: "string" | "number" | "boolean"): Either.Either<string | number | boolean, "coercion_failed"> { ... }
+```
+
+**Use `Either.isRight()` / `Either.isLeft()` to branch**:
+
+```typescript
+import { Either } from 'effect';
+
+const result = writePropertiesFile(path, props);
+if (Either.isLeft(result)) {
+    // handle error — result.left is the error value
+}
+// result.right is the success value
 ```
 
 **Reserve `throw` for genuinely unexpected/programmer errors** —

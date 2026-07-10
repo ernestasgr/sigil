@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { Option } from 'effect';
 
 import { parsePipeline, type CompiledPipeline, type PipelineSchemaVersion } from '@sigil/schema';
 
@@ -27,11 +28,11 @@ export interface StoredWorkflow {
 
 export interface WorkflowStore {
     readonly list: () => readonly WorkflowSummary[];
-    readonly get: (id: string) => {
+    readonly get: (id: string) => Option.Option<{
         readonly pipeline: CompiledPipeline;
         readonly name: string;
         readonly positions: Readonly<Record<string, NodePosition>>;
-    } | null;
+    }>;
     readonly save: (
         id: string,
         name: string,
@@ -44,8 +45,8 @@ export interface WorkflowStore {
         positions: Readonly<Record<string, NodePosition>>,
     ) => WorkflowSummary;
     readonly remove: (id: string) => boolean;
-    readonly setEnabled: (id: string, enabled: boolean) => WorkflowSummary | null;
-    readonly toggle: (id: string) => WorkflowSummary | null;
+    readonly setEnabled: (id: string, enabled: boolean) => Option.Option<WorkflowSummary>;
+    readonly toggle: (id: string) => Option.Option<WorkflowSummary>;
 }
 
 function filePath(dir: string, id: string): string {
@@ -71,10 +72,10 @@ function readPositions(raw: Record<string, unknown>): Record<string, NodePositio
     return positions;
 }
 
-function readWorkflowFile(filePath: string): StoredWorkflow | null {
+function readWorkflowFile(filePath: string): Option.Option<StoredWorkflow> {
     try {
         const raw = JSON.parse(readFileSync(filePath, 'utf-8')) as Record<string, unknown>;
-        if (typeof raw.id !== 'string' || typeof raw.name !== 'string') return null;
+        if (typeof raw.id !== 'string' || typeof raw.name !== 'string') return Option.none();
         const pipeline = {
             id: typeof raw.pipelineId === 'string' ? raw.pipelineId : raw.id,
             workflowId: typeof raw.workflowId === 'string' ? raw.workflowId : raw.id,
@@ -83,8 +84,8 @@ function readWorkflowFile(filePath: string): StoredWorkflow | null {
             edges: Array.isArray(raw.edges) ? raw.edges : [],
         };
         const parseResult = parsePipeline(pipeline);
-        if (!parseResult.ok) return null;
-        return {
+        if (!parseResult.ok) return Option.none();
+        return Option.some({
             id: raw.id as string,
             name: raw.name as string,
             enabled: typeof raw.enabled === 'boolean' ? (raw.enabled as boolean) : false,
@@ -94,9 +95,9 @@ function readWorkflowFile(filePath: string): StoredWorkflow | null {
             schemaVersion: pipeline.schemaVersion,
             nodes: pipeline.nodes,
             edges: pipeline.edges,
-        };
+        });
     } catch {
-        return null;
+        return Option.none();
     }
 }
 
@@ -129,8 +130,8 @@ function loadAll(dir: string): Map<string, StoredWorkflow> {
     for (const entry of entries) {
         if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
         const stored = readWorkflowFile(join(dir, entry.name));
-        if (stored) {
-            workflows.set(stored.id, stored);
+        if (Option.isSome(stored)) {
+            workflows.set(stored.value.id, stored.value);
         }
     }
     return workflows;
@@ -144,7 +145,7 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
 
         get: (id) => {
             const stored = workflows.get(id);
-            if (!stored) return null;
+            if (!stored) return Option.none();
             const pipeline: CompiledPipeline = {
                 id: stored.pipelineId,
                 workflowId: stored.workflowId,
@@ -152,7 +153,7 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
                 nodes: stored.nodes as CompiledPipeline['nodes'],
                 edges: stored.edges as CompiledPipeline['edges'],
             };
-            return { pipeline, name: stored.name, positions: stored.positions };
+            return Option.some({ pipeline, name: stored.name, positions: stored.positions });
         },
 
         create: (name, pipeline, positions) => {
@@ -213,19 +214,19 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
 
         setEnabled: (id, enabled) => {
             const stored = workflows.get(id);
-            if (!stored) return null;
+            if (!stored) return Option.none();
             const updated: StoredWorkflow = { ...stored, enabled };
             workflows.set(id, updated);
             writeWorkflowFile(storageDir, updated);
-            return toSummary(updated);
+            return Option.some(toSummary(updated));
         },
         toggle: (id) => {
             const stored = workflows.get(id);
-            if (!stored) return null;
+            if (!stored) return Option.none();
             const updated: StoredWorkflow = { ...stored, enabled: !stored.enabled };
             workflows.set(id, updated);
             writeWorkflowFile(storageDir, updated);
-            return toSummary(updated);
+            return Option.some(toSummary(updated));
         },
     };
 }

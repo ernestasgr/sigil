@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { Effect, Option } from 'effect';
 
 import type { Capability } from '@sigil/schema/manifest';
 
@@ -9,11 +10,12 @@ export interface PermissionOverrideStore {
     readonly all: () => Readonly<Record<string, readonly Capability[]>>;
 }
 
-function loadOverrides(path?: string): Map<string, readonly Capability[]> {
+function loadOverrides(path: Option.Option<string>): Map<string, readonly Capability[]> {
     const map = new Map<string, readonly Capability[]>();
-    if (!path || !existsSync(path)) return map;
-    try {
-        const raw = JSON.parse(readFileSync(path, 'utf-8'));
+    if (Option.isNone(path) || !existsSync(path.value)) return map;
+
+    Effect.try(() => {
+        const raw = JSON.parse(readFileSync(path.value, 'utf-8'));
         if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
             for (const [id, caps] of Object.entries(raw)) {
                 if (Array.isArray(caps)) {
@@ -21,30 +23,34 @@ function loadOverrides(path?: string): Map<string, readonly Capability[]> {
                 }
             }
         }
-    } catch {
-        // ignore corrupt file, start fresh
-    }
+    }).pipe(
+        Effect.catchAll(() => Effect.void),
+        Effect.runSync,
+    );
+
     return map;
 }
 
 function saveOverrides(
-    path: string | undefined,
+    path: Option.Option<string>,
     overrides: Map<string, readonly Capability[]>,
 ): void {
-    if (!path) return;
+    if (Option.isNone(path)) return;
     const obj: Record<string, readonly string[]> = {};
     for (const [id, caps] of overrides) {
         obj[id] = caps;
     }
-    try {
-        writeFileSync(path, JSON.stringify(obj, null, 2), 'utf-8');
-    } catch {
-        // best-effort persistence
-    }
+    Effect.try(() => {
+        writeFileSync(path.value, JSON.stringify(obj, null, 2), 'utf-8');
+    }).pipe(
+        Effect.catchAll(() => Effect.void),
+        Effect.runSync,
+    );
 }
 
 export function createPermissionOverrideStore(persistencePath?: string): PermissionOverrideStore {
-    const overrides = loadOverrides(persistencePath);
+    const pathOption = Option.fromNullable(persistencePath ?? null);
+    const overrides = loadOverrides(pathOption);
 
     return {
         get: (pluginId) => {
@@ -56,7 +62,7 @@ export function createPermissionOverrideStore(persistencePath?: string): Permiss
         },
         set: (pluginId, caps) => {
             overrides.set(pluginId, [...caps]);
-            saveOverrides(persistencePath, overrides);
+            saveOverrides(pathOption, overrides);
         },
         all: () => {
             const snapshot: Record<string, readonly Capability[]> = {};

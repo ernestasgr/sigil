@@ -1,32 +1,24 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { Effect, Either } from 'effect';
 
-export type WriteResult = { readonly ok: true } | { readonly ok: false; readonly error: string };
+export type WriteResult = Either.Either<void, string>;
 
-export function readPropertiesFile(filePath: string): unknown {
-    let content: string;
-    try {
-        content = readFileSync(filePath, 'utf-8');
-    } catch {
-        return {};
-    }
-    try {
+export function readPropertiesFile(filePath: string): Effect.Effect<unknown, unknown> {
+    return Effect.try(() => {
+        const content = readFileSync(filePath, 'utf-8');
         return JSON.parse(content);
-    } catch {
-        return {};
-    }
+    });
 }
 
 export function writePropertiesFile(
     filePath: string,
     properties: Record<string, unknown>,
 ): WriteResult {
-    try {
+    return Effect.try(() => {
         writeFileSync(filePath, JSON.stringify(properties, null, 4), 'utf-8');
-        return { ok: true };
-    } catch (err) {
-        return {
-            ok: false,
-            error: err instanceof Error ? err.message : String(err),
-        };
-    }
+    }).pipe(
+        Effect.mapError((errVal) => (errVal instanceof Error ? errVal.message : String(errVal))),
+        Effect.either,
+        Effect.runSync,
+    );
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Either } from 'effect';
 
 import type { Manifest } from '@sigil/schema/manifest';
 
@@ -30,7 +31,7 @@ describe('createBridge', () => {
             payload: { message: 'hello' },
         });
 
-        expect(result.ok).toBe(true);
+        expect(Either.isRight(result)).toBe(true);
         expect(received).toHaveLength(1);
         expect(received[0]?.name).toBe('plugin.event');
         if (received[0]?.name === 'plugin.event') {
@@ -55,10 +56,10 @@ describe('createBridge', () => {
             payload: { secret: 'data' },
         });
 
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-            expect(result.error.kind).toBe('undeclared');
-            expect(result.error.eventName).toBe('evil.exfil');
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left.kind).toBe('undeclared');
+            expect(result.left.eventName).toBe('evil.exfil');
         }
         expect(received).toHaveLength(0);
     });
@@ -77,7 +78,7 @@ describe('createBridge', () => {
             payload: {},
         });
 
-        expect(result.ok).toBe(false);
+        expect(Either.isLeft(result)).toBe(true);
         expect(received).toHaveLength(0);
     });
 
@@ -115,7 +116,7 @@ describe('createBridge', () => {
 
         const result = bridge.log('com.sigil.stub-ping', 'plugin says hi');
 
-        expect(result.ok).toBe(true);
+        expect(Either.isRight(result)).toBe(true);
         const logEvent = received.find((e) => e.name === 'log.output');
         expect(logEvent?.name === 'log.output' && logEvent.payload.message).toBe('plugin says hi');
     });

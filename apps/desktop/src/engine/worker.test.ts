@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Effect, Either, Option } from 'effect';
 
 import type { CompiledPipeline } from '@sigil/schema';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
@@ -24,8 +25,8 @@ import {
 import { dispatch, type DispatchSubsystems } from './dispatch.js';
 
 vi.mock('./properties-loader.js', () => ({
-    readPropertiesFile: () => ({ loadedKey: 'loadedValue' }),
-    writePropertiesFile: () => ({ ok: true }) as const,
+    readPropertiesFile: () => Effect.succeed({ loadedKey: 'loadedValue' }),
+    writePropertiesFile: () => Either.right(undefined),
 }));
 
 function createFakeSubsystems(): {
@@ -171,8 +172,8 @@ describe('dispatch', () => {
             createFakeSubsystems();
         const before = { id: 'wf-1', name: 'Test WF', enabled: false };
         const toggled = { id: 'wf-1', name: 'Test WF', enabled: true };
-        store.get.mockReturnValue(before);
-        store.toggle.mockReturnValue(toggled);
+        store.get.mockReturnValue(Option.some(before));
+        store.toggle.mockReturnValue(Option.some(toggled));
 
         const message: EngineToggleWorkflow = {
             type: EngineChannel.ToggleWorkflow,
@@ -198,8 +199,8 @@ describe('dispatch', () => {
         const { subsystems, store, activator, log } = createFakeSubsystems();
         const before = { id: 'wf-1', name: 'Test WF', enabled: true };
         const toggled = { id: 'wf-1', name: 'Test WF', enabled: false };
-        store.get.mockReturnValue(before);
-        store.toggle.mockReturnValue(toggled);
+        store.get.mockReturnValue(Option.some(before));
+        store.toggle.mockReturnValue(Option.some(toggled));
 
         dispatch(
             { type: EngineChannel.ToggleWorkflow, correlationId: 'c-1', id: 'wf-1' },
@@ -213,8 +214,8 @@ describe('dispatch', () => {
 
     it('routes ToggleWorkflow and does nothing extra when toggle returns null', () => {
         const { subsystems, store, activator, log } = createFakeSubsystems();
-        store.get.mockReturnValue(null);
-        store.toggle.mockReturnValue(null);
+        store.get.mockReturnValue(Option.none());
+        store.toggle.mockReturnValue(Option.none());
 
         dispatch(
             { type: EngineChannel.ToggleWorkflow, correlationId: 'c-1', id: 'wf-1' },
@@ -256,7 +257,7 @@ describe('dispatch', () => {
             createFakeSubsystems();
         const existing = { id: 'wf-1', name: 'Old', enabled: true };
         const summary = { id: 'wf-1', name: 'Updated', enabled: true };
-        store.get.mockReturnValue(existing);
+        store.get.mockReturnValue(Option.some(existing));
         store.save.mockReturnValue(summary);
 
         const message: EngineUpdateWorkflow = {
@@ -284,7 +285,7 @@ describe('dispatch', () => {
 
     it('routes UpdateWorkflow and reactivates only if enabled', () => {
         const { subsystems, activator, store } = createFakeSubsystems();
-        store.get.mockReturnValue({ id: 'wf-1', name: 'Old', enabled: false });
+        store.get.mockReturnValue(Option.some({ id: 'wf-1', name: 'Old', enabled: false }));
         store.save.mockReturnValue({ id: 'wf-1', name: 'Updated', enabled: false });
 
         dispatch(
@@ -304,7 +305,7 @@ describe('dispatch', () => {
 
     it('routes UpdateWorkflow and treats it as create when the id is missing', () => {
         const { subsystems, store, log } = createFakeSubsystems();
-        store.get.mockReturnValue(null);
+        store.get.mockReturnValue(Option.none());
         store.save.mockReturnValue({ id: 'wf-1', name: 'New', enabled: false });
 
         dispatch(
@@ -359,11 +360,13 @@ describe('dispatch', () => {
 
     it('routes GetWorkflow and posts found result when workflow exists', () => {
         const { subsystems, postMessage, store } = createFakeSubsystems();
-        store.get.mockReturnValue({
-            name: 'My WF',
-            pipeline: { id: 'p-1' } as CompiledPipeline,
-            positions: { node1: { x: 1, y: 2 } },
-        });
+        store.get.mockReturnValue(
+            Option.some({
+                name: 'My WF',
+                pipeline: { id: 'p-1' } as CompiledPipeline,
+                positions: { node1: { x: 1, y: 2 } },
+            }),
+        );
 
         const message: EngineGetWorkflow = {
             type: EngineChannel.GetWorkflow,
@@ -385,7 +388,7 @@ describe('dispatch', () => {
 
     it('routes GetWorkflow and posts not-found result when workflow is missing', () => {
         const { subsystems, postMessage, store } = createFakeSubsystems();
-        store.get.mockReturnValue(null);
+        store.get.mockReturnValue(Option.none());
 
         dispatch(
             { type: EngineChannel.GetWorkflow, correlationId: 'c', id: 'missing' },

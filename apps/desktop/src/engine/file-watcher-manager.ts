@@ -3,6 +3,7 @@ import { join, parse } from 'node:path';
 
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
+import { Option } from 'effect';
 
 export interface WatcherHandle {
     readonly close: () => void;
@@ -133,9 +134,9 @@ export function createFileWatcherManager(
 
             const fullPath = join(path, filename);
 
-            let stats: { readonly size: number } | undefined;
+            let stats: Option.Option<{ readonly size: number }> = Option.none();
             try {
-                stats = resolvedGetFileStats(fullPath);
+                stats = Option.some(resolvedGetFileStats(fullPath));
             } catch {
                 // stat failed — event may be a deletion or a race
             }
@@ -143,13 +144,13 @@ export function createFileWatcherManager(
             let eventName: 'file.created' | 'file.modified' | 'file.deleted';
             if (eventType === 'change') {
                 eventName = 'file.modified';
-            } else if (stats !== undefined) {
+            } else if (Option.isSome(stats)) {
                 eventName = 'file.created';
             } else {
                 eventName = 'file.deleted';
             }
 
-            const size = stats?.size ?? 0;
+            const size = Option.getOrUndefined(stats)?.size ?? 0;
             const payload = buildFileEventPayload(fullPath, size);
 
             for (const sub of subscribersList) {

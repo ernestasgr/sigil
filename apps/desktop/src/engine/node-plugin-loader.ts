@@ -5,6 +5,7 @@ import { join, resolve as resolvePath, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { randomUUID } from 'node:crypto';
+import { Either, Option } from 'effect';
 
 import { parseManifest } from '@sigil/schema/manifest';
 import type { Manifest } from '@sigil/schema/manifest';
@@ -20,6 +21,7 @@ import type {
     NodeRunResult,
 } from './node-handlers/types.js';
 import type { PermissionOverrideStore } from './permission-override-store.js';
+import { getDeactivationHook } from './workflow-activator.js';
 import type {
     NodePluginWorkerLoaded,
     NodePluginWorkerLoadError,
@@ -66,12 +68,12 @@ export interface NodePluginLoaderDeps {
     readonly diagnostic?: (message: string) => void;
 }
 
-function resolveHandlerPath(pluginDir: string): string | undefined {
+function resolveHandlerPath(pluginDir: string): Option.Option<string> {
     const tsPath = join(pluginDir, 'handler.ts');
-    if (existsSync(tsPath)) return tsPath;
+    if (existsSync(tsPath)) return Option.some(tsPath);
     const jsPath = join(pluginDir, 'handler.js');
-    if (existsSync(jsPath)) return jsPath;
-    return undefined;
+    if (existsSync(jsPath)) return Option.some(jsPath);
+    return Option.none();
 }
 
 // ─── Unified plugin loader (Worker-based for all plugins) ────
@@ -122,7 +124,7 @@ export async function loadNodePlugin(
         };
     }
 
-    const handlerPath = resolveHandlerPath(pluginDir);
+    const handlerPath = Option.getOrUndefined(resolveHandlerPath(pluginDir));
     if (!handlerPath) {
         return { ok: false, error: { kind: 'missing_handler', dir: pluginDir } };
     }
@@ -182,7 +184,7 @@ export async function loadNodePlugin(
     }
 
     const registerResult = deps.manifestRegistry.register(manifest);
-    if (!registerResult.ok) {
+    if (Either.isLeft(registerResult)) {
         pluginWorkers.delete(manifest.id);
         worker.terminate().catch(() => {});
         return { ok: false, error: { kind: 'duplicate', dir: pluginDir, pluginId: manifest.id } };
@@ -267,7 +269,7 @@ function createWorkerNodeHandlerProxy(
                 pendingActivates.delete(msg.requestId);
                 console.warn(`[proxy] activation error for plugin "${pluginId}": ${msg.error}`);
                 diagnostic?.(`[proxy] activation error for plugin "${pluginId}": ${msg.error}`);
-                (pending.onEvent as unknown as { _deactivate?: () => void })?._deactivate?.();
+                Option.getOrUndefined(getDeactivationHook(pending.onEvent))?.();
                 break;
             }
             case NodePluginWorkerKind.ActivateResult: {
@@ -475,10 +477,13 @@ async function handleCapabilityRpc(
         if (msg.method === 'capabilityBroker.request') {
             const [req] = msg.args as [Parameters<KernelDeps['capabilityBroker']['request']>[0]];
             const result = kernel.capabilityBroker.request(req);
+            const value = Either.isRight(result)
+                ? { ok: true as const }
+                : { ok: false as const, error: result.left };
             worker.postMessage({
                 kind: NodePluginWorkerKind.DepsRpcResult,
                 requestId: msg.requestId,
-                value: result,
+                value,
             });
         } else {
             worker.postMessage({

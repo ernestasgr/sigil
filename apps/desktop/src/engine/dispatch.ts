@@ -19,9 +19,9 @@ import {
     type EngineUpdateWorkflow,
     type WorkerInbound,
 } from '../shared/ipc-channels.js';
-import { assertNever } from '../shared/assert-never.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import type { Engine } from './engine.js';
+import { Effect, Either, Match, Option } from 'effect';
 import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
 import { updatePluginPermissions } from './node-plugin-loader.js';
 import type { WorkflowActivator } from './workflow-activator.js';
@@ -72,9 +72,9 @@ function handleFireManualTrigger(
 function handleToggleWorkflow(message: EngineToggleWorkflow, subsystems: DispatchSubsystems): void {
     const before = subsystems.store.get(message.id);
     const toggled = subsystems.store.toggle(message.id);
-    if (before && toggled) {
-        subsystems.log(`"${before.name}" ${toggled.enabled ? 'enabled' : 'disabled'}`);
-        if (toggled.enabled) {
+    if (Option.isSome(before) && Option.isSome(toggled)) {
+        subsystems.log(`"${before.value.name}" ${toggled.value.enabled ? 'enabled' : 'disabled'}`);
+        if (toggled.value.enabled) {
             subsystems.activator.activate(message.id);
         } else {
             subsystems.activator.deactivate(message.id);
@@ -84,7 +84,7 @@ function handleToggleWorkflow(message: EngineToggleWorkflow, subsystems: Dispatc
     subsystems.postMessage({
         type: EngineChannel.ToggleWorkflowResult,
         correlationId: message.correlationId,
-        summary: toggled,
+        summary: Option.getOrUndefined(toggled),
     });
 }
 
@@ -101,7 +101,7 @@ function handleCreateWorkflow(message: EngineCreateWorkflow, subsystems: Dispatc
 
 function handleUpdateWorkflow(message: EngineUpdateWorkflow, subsystems: DispatchSubsystems): void {
     subsystems.activator.deactivate(message.id);
-    const existed = subsystems.store.get(message.id) !== null;
+    const existed = Option.isSome(subsystems.store.get(message.id));
     const summary = subsystems.store.save(
         message.id,
         message.name,
@@ -142,14 +142,14 @@ function handleDeleteWorkflow(message: EngineDeleteWorkflow, subsystems: Dispatc
 
 function handleGetWorkflow(message: EngineGetWorkflow, subsystems: DispatchSubsystems): void {
     const data = subsystems.store.get(message.id);
-    if (data) {
+    if (Option.isSome(data)) {
         subsystems.postMessage({
             type: EngineChannel.GetWorkflowResult,
             correlationId: message.correlationId,
             found: true,
-            name: data.name,
-            pipeline: data.pipeline,
-            positions: data.positions,
+            name: data.value.name,
+            pipeline: data.value.pipeline,
+            positions: data.value.positions,
         });
     } else {
         subsystems.postMessage({
@@ -190,7 +190,10 @@ function handleSetPermissionOverride(
 }
 
 function handleReadProperties(message: EngineReadProperties, subsystems: DispatchSubsystems): void {
-    const current = readPropertiesFile(subsystems.propertiesPath);
+    const current = readPropertiesFile(subsystems.propertiesPath).pipe(
+        Effect.catchAll(() => Effect.succeed({})),
+        Effect.runSync,
+    );
     const properties =
         current && typeof current === 'object' && !Array.isArray(current)
             ? (current as Record<string, unknown>)
@@ -204,13 +207,13 @@ function handleReadProperties(message: EngineReadProperties, subsystems: Dispatc
 
 function handleSaveProperties(message: EngineSaveProperties, subsystems: DispatchSubsystems): void {
     const result = writePropertiesFile(subsystems.propertiesPath, message.properties);
-    if (!result.ok) {
-        subsystems.log(`Failed to save properties: ${result.error}`);
+    if (Either.isLeft(result)) {
+        subsystems.log(`Failed to save properties: ${result.left}`);
     }
     subsystems.postMessage({
         type: EngineChannel.SavePropertiesResult,
         correlationId: message.correlationId,
-        ok: result.ok,
+        ok: Either.isRight(result),
     });
 }
 
@@ -251,38 +254,48 @@ function handleDeleteWorkflowStateKey(
 }
 
 export function dispatch(message: WorkerInbound, subsystems: DispatchSubsystems): void {
-    switch (message.type) {
-        case EngineChannel.Ping:
-            return handlePing(message, subsystems);
-        case EngineChannel.FireTestEvent:
-            return handleFireTestEvent(subsystems);
-        case EngineChannel.FireManualTrigger:
-            return handleFireManualTrigger(message, subsystems);
-        case EngineChannel.ToggleWorkflow:
-            return handleToggleWorkflow(message, subsystems);
-        case EngineChannel.CreateWorkflow:
-            return handleCreateWorkflow(message, subsystems);
-        case EngineChannel.UpdateWorkflow:
-            return handleUpdateWorkflow(message, subsystems);
-        case EngineChannel.DeleteWorkflow:
-            return handleDeleteWorkflow(message, subsystems);
-        case EngineChannel.GetWorkflow:
-            return handleGetWorkflow(message, subsystems);
-        case EngineChannel.ListPlugins:
-            return handleListPlugins(message, subsystems);
-        case EngineChannel.SetPermissionOverride:
-            return handleSetPermissionOverride(message, subsystems);
-        case EngineChannel.ReadProperties:
-            return handleReadProperties(message, subsystems);
-        case EngineChannel.SaveProperties:
-            return handleSaveProperties(message, subsystems);
-        case EngineChannel.ReadWorkflowState:
-            return handleReadWorkflowState(message, subsystems);
-        case EngineChannel.SetWorkflowStateKey:
-            return handleSetWorkflowStateKey(message, subsystems);
-        case EngineChannel.DeleteWorkflowStateKey:
-            return handleDeleteWorkflowStateKey(message, subsystems);
-        default:
-            return assertNever(message);
-    }
+    Match.value(message).pipe(
+        Match.when({ type: EngineChannel.Ping }, (msg) => handlePing(msg, subsystems)),
+        Match.when({ type: EngineChannel.FireTestEvent }, () => handleFireTestEvent(subsystems)),
+        Match.when({ type: EngineChannel.FireManualTrigger }, (msg) =>
+            handleFireManualTrigger(msg, subsystems),
+        ),
+        Match.when({ type: EngineChannel.ToggleWorkflow }, (msg) =>
+            handleToggleWorkflow(msg, subsystems),
+        ),
+        Match.when({ type: EngineChannel.CreateWorkflow }, (msg) =>
+            handleCreateWorkflow(msg, subsystems),
+        ),
+        Match.when({ type: EngineChannel.UpdateWorkflow }, (msg) =>
+            handleUpdateWorkflow(msg, subsystems),
+        ),
+        Match.when({ type: EngineChannel.DeleteWorkflow }, (msg) =>
+            handleDeleteWorkflow(msg, subsystems),
+        ),
+        Match.when({ type: EngineChannel.GetWorkflow }, (msg) =>
+            handleGetWorkflow(msg, subsystems),
+        ),
+        Match.when({ type: EngineChannel.ListPlugins }, (msg) =>
+            handleListPlugins(msg, subsystems),
+        ),
+        Match.when({ type: EngineChannel.SetPermissionOverride }, (msg) =>
+            handleSetPermissionOverride(msg, subsystems),
+        ),
+        Match.when({ type: EngineChannel.ReadProperties }, (msg) =>
+            handleReadProperties(msg, subsystems),
+        ),
+        Match.when({ type: EngineChannel.SaveProperties }, (msg) =>
+            handleSaveProperties(msg, subsystems),
+        ),
+        Match.when({ type: EngineChannel.ReadWorkflowState }, (msg) =>
+            handleReadWorkflowState(msg, subsystems),
+        ),
+        Match.when({ type: EngineChannel.SetWorkflowStateKey }, (msg) =>
+            handleSetWorkflowStateKey(msg, subsystems),
+        ),
+        Match.when({ type: EngineChannel.DeleteWorkflowStateKey }, (msg) =>
+            handleDeleteWorkflowStateKey(msg, subsystems),
+        ),
+        Match.exhaustive,
+    );
 }

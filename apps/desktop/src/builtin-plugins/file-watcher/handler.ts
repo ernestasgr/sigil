@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { Either } from 'effect';
+
 import type { FileWatcherConfig } from '@sigil/schema/nodes/file-watcher';
 import { FileWatcherConfigSchema } from '@sigil/schema/nodes/file-watcher';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
@@ -26,8 +28,8 @@ export function handler(kernel: KernelDeps): TriggerHandler {
                 pluginId: FILE_WATCHER_PLUGIN_ID,
                 capability: 'filesystem.read',
             });
-            if (!result.ok) {
-                throw new Error(`Permission denied: ${result.error.capability}`);
+            if (Either.isLeft(result)) {
+                throw new Error(`Permission denied: ${result.left.capability}`);
             }
 
             const c = config as FileWatcherConfig;

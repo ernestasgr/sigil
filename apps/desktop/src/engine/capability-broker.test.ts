@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Either } from 'effect';
 
 import type { Manifest } from '@sigil/schema/manifest';
 
@@ -32,7 +33,7 @@ describe('createCapabilityBroker', () => {
             capability: 'filesystem.read',
         });
 
-        expect(result.ok).toBe(true);
+        expect(Either.isRight(result)).toBe(true);
     });
 
     it('rejects a capability not declared in the manifest', () => {
@@ -46,10 +47,10 @@ describe('createCapabilityBroker', () => {
             capability: 'filesystem.write',
         });
 
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-            expect(result.error.kind).toBe('denied');
-            expect(result.error.capability).toBe('filesystem.write');
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left.kind).toBe('denied');
+            expect(result.left.capability).toBe('filesystem.write');
         }
     });
 
@@ -64,7 +65,7 @@ describe('createCapabilityBroker', () => {
             capability: 'network',
         });
 
-        expect(result.ok).toBe(false);
+        expect(Either.isLeft(result)).toBe(true);
     });
 
     it('rejects a capability for an unknown plugin', () => {
@@ -77,7 +78,7 @@ describe('createCapabilityBroker', () => {
             capability: 'filesystem.read',
         });
 
-        expect(result.ok).toBe(false);
+        expect(Either.isLeft(result)).toBe(true);
     });
 
     it('re-checks permissions on every call, not just at load time', () => {
@@ -95,8 +96,8 @@ describe('createCapabilityBroker', () => {
             capability: 'filesystem.read',
         });
 
-        expect(first.ok).toBe(true);
-        expect(second.ok).toBe(true);
+        expect(Either.isRight(first)).toBe(true);
+        expect(Either.isRight(second)).toBe(true);
     });
 
     it('permits a capability granted via override even if not in manifest', () => {
@@ -111,7 +112,7 @@ describe('createCapabilityBroker', () => {
             capability: 'network',
         });
 
-        expect(result.ok).toBe(true);
+        expect(Either.isRight(result)).toBe(true);
     });
 
     it('rejects a capability revoked via override even if in manifest', () => {
@@ -126,10 +127,10 @@ describe('createCapabilityBroker', () => {
             capability: 'filesystem.read',
         });
 
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-            expect(result.error.kind).toBe('denied');
-            expect(result.error.capability).toBe('filesystem.read');
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left.kind).toBe('denied');
+            expect(result.left.capability).toBe('filesystem.read');
         }
     });
 
@@ -144,13 +145,13 @@ describe('createCapabilityBroker', () => {
             pluginId: 'com.sigil.reader',
             capability: 'filesystem.write',
         });
-        expect(granted.ok).toBe(true);
+        expect(Either.isRight(granted)).toBe(true);
 
         overrides.set('com.sigil.reader', ['filesystem.read']);
         const revoked = broker.request({
             pluginId: 'com.sigil.reader',
             capability: 'filesystem.write',
         });
-        expect(revoked.ok).toBe(false);
+        expect(Either.isLeft(revoked)).toBe(true);
     });
 });

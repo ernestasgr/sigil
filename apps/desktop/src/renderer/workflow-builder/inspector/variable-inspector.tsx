@@ -9,8 +9,11 @@ interface VariableInspectorProps {
 }
 
 export function VariableInspector({ workflowId }: VariableInspectorProps): ReactElement {
-    const { entries: stateEntries, loading: stateLoading, refresh: refreshState } =
-        useWorkflowState(workflowId);
+    const {
+        entries: stateEntries,
+        loading: stateLoading,
+        refresh: refreshState,
+    } = useWorkflowState(workflowId);
     const [activeTab, setActiveTab] = useState<'state' | 'output'>('output');
     const allLogs = useAppStore((state) => state.logs);
     const logEndRef = useRef<HTMLDivElement>(null);

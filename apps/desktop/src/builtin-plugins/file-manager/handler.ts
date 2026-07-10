@@ -1,6 +1,8 @@
 import { copyFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import { basename, dirname, join, parse } from 'node:path';
 
+import { Either } from 'effect';
+
 import { FileManagerConfigSchema } from '@sigil/schema/nodes/file-manager';
 import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
 
@@ -81,12 +83,12 @@ function findAvailablePath(originalPath: string, style: CollisionSuffixStyle): s
 
 function checkPermissions(broker: CapabilityBroker, pluginId: string): void {
     const readResult = broker.request({ pluginId, capability: 'filesystem.read' });
-    if (!readResult.ok) {
-        throw new Error(`Permission denied: ${readResult.error.capability}`);
+    if (Either.isLeft(readResult)) {
+        throw new Error(`Permission denied: ${readResult.left.capability}`);
     }
     const writeResult = broker.request({ pluginId, capability: 'filesystem.write' });
-    if (!writeResult.ok) {
-        throw new Error(`Permission denied: ${writeResult.error.capability}`);
+    if (Either.isLeft(writeResult)) {
+        throw new Error(`Permission denied: ${writeResult.left.capability}`);
     }
 }
 

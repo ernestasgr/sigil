@@ -1,12 +1,9 @@
+import { Either, Option } from 'effect';
 import type { BusEvent, EventBus } from './event-bus.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 
-export type EmissionResult =
-    | { readonly ok: true }
-    | {
-          readonly ok: false;
-          readonly error: { readonly kind: 'undeclared'; readonly eventName: string };
-      };
+export type EmissionError = { readonly kind: 'undeclared'; readonly eventName: string };
+export type EmissionResult = Either.Either<void, EmissionError>;
 
 export type BridgeEmissionResult = EmissionResult;
 
@@ -24,8 +21,8 @@ export function createBridge(bus: EventBus, registry: ManifestRegistry): Bridge 
     return {
         emit: (pluginId, emission) => {
             const manifest = registry.get(pluginId);
-            if (!manifest || !manifest.emits.includes(emission.eventName)) {
-                return { ok: false, error: { kind: 'undeclared', eventName: emission.eventName } };
+            if (Option.isNone(manifest) || !manifest.value.emits.includes(emission.eventName)) {
+                return Either.left({ kind: 'undeclared', eventName: emission.eventName });
             }
             const event: BusEvent = {
                 name: 'plugin.event',
@@ -36,14 +33,14 @@ export function createBridge(bus: EventBus, registry: ManifestRegistry): Bridge 
                 },
             };
             bus.next(event);
-            return { ok: true };
+            return Either.right(undefined);
         },
         log: (pluginId, message) => {
             if (!registry.has(pluginId)) {
-                return { ok: false, error: { kind: 'undeclared', eventName: 'log.output' } };
+                return Either.left({ kind: 'undeclared', eventName: 'log.output' });
             }
             bus.next({ name: 'log.output', payload: { message } });
-            return { ok: true };
+            return Either.right(undefined);
         },
     };
 }

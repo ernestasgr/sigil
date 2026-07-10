@@ -2,8 +2,7 @@ import type { PipelineCondition } from '@sigil/schema/conditions';
 import type { BooleanOperator, NumberOperator, StringOperator } from '@sigil/schema/operators';
 import type { SwitchConfig } from '@sigil/schema/nodes/switch';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
-
-import { assertNever } from '../shared/assert-never.js';
+import { Either, Match, pipe } from 'effect';
 
 export type ComparisonContext = 'string' | 'number' | 'boolean';
 export type CoercionError = 'coercion_failed';
@@ -11,47 +10,37 @@ export type CoercionError = 'coercion_failed';
 export function coerceForComparison(
     raw: unknown,
     context: 'string',
-):
-    | { readonly ok: true; readonly value: string }
-    | { readonly ok: false; readonly error: CoercionError };
+): Either.Either<string, CoercionError>;
 export function coerceForComparison(
     raw: unknown,
     context: 'number',
-):
-    | { readonly ok: true; readonly value: number }
-    | { readonly ok: false; readonly error: CoercionError };
+): Either.Either<number, CoercionError>;
 export function coerceForComparison(
     raw: unknown,
     context: 'boolean',
-):
-    | { readonly ok: true; readonly value: boolean }
-    | { readonly ok: false; readonly error: CoercionError };
+): Either.Either<boolean, CoercionError>;
 export function coerceForComparison(
     raw: unknown,
     context: ComparisonContext,
-):
-    | { readonly ok: true; readonly value: string | number | boolean }
-    | { readonly ok: false; readonly error: CoercionError } {
-    switch (context) {
-        case 'string':
-            return { ok: true, value: String(raw) };
-        case 'number': {
+): Either.Either<string | number | boolean, CoercionError> {
+    return Match.value(context).pipe(
+        Match.when('string', () => Either.right(String(raw))),
+        Match.when('number', () => {
             const n = Number(raw);
-            if (Number.isNaN(n)) return { ok: false, error: 'coercion_failed' };
-            return { ok: true, value: n };
-        }
-        case 'boolean': {
-            if (typeof raw === 'boolean') return { ok: true, value: raw };
+            if (Number.isNaN(n)) return Either.left('coercion_failed' as CoercionError);
+            return Either.right(n);
+        }),
+        Match.when('boolean', () => {
+            if (typeof raw === 'boolean') return Either.right(raw);
             if (typeof raw === 'string') {
                 const lower = raw.toLowerCase();
-                if (lower === 'true') return { ok: true, value: true };
-                if (lower === 'false') return { ok: true, value: false };
+                if (lower === 'true') return Either.right(true);
+                if (lower === 'false') return Either.right(false);
             }
-            return { ok: false, error: 'coercion_failed' };
-        }
-        default:
-            return assertNever(context);
-    }
+            return Either.left('coercion_failed' as CoercionError);
+        }),
+        Match.exhaustive,
+    );
 }
 
 function parseRegexLiteral(value: string): { readonly pattern: string; readonly flags: string } {
@@ -63,111 +52,94 @@ function parseRegexLiteral(value: string): { readonly pattern: string; readonly 
 }
 
 function compareString(operator: StringOperator, left: string, right: string): boolean {
-    switch (operator) {
-        case 'equals':
-            return left.toLowerCase() === right.toLowerCase();
-        case 'not_equals':
-            return left.toLowerCase() !== right.toLowerCase();
-        case 'contains':
-            return left.toLowerCase().includes(right.toLowerCase());
-        case 'not_contains':
-            return !left.toLowerCase().includes(right.toLowerCase());
-        case 'starts_with':
-            return left.toLowerCase().startsWith(right.toLowerCase());
-        case 'ends_with':
-            return left.toLowerCase().endsWith(right.toLowerCase());
-        case 'matches': {
+    return Match.value(operator).pipe(
+        Match.when('equals', () => left.toLowerCase() === right.toLowerCase()),
+        Match.when('not_equals', () => left.toLowerCase() !== right.toLowerCase()),
+        Match.when('contains', () => left.toLowerCase().includes(right.toLowerCase())),
+        Match.when('not_contains', () => !left.toLowerCase().includes(right.toLowerCase())),
+        Match.when('starts_with', () => left.toLowerCase().startsWith(right.toLowerCase())),
+        Match.when('ends_with', () => left.toLowerCase().endsWith(right.toLowerCase())),
+        Match.when('matches', () => {
             const { pattern, flags } = parseRegexLiteral(right);
             try {
                 return new RegExp(pattern, flags).test(left);
             } catch {
                 return false;
             }
-        }
-        default:
-            return assertNever(operator);
-    }
+        }),
+        Match.exhaustive,
+    );
 }
 
 function compareNumber(operator: NumberOperator, left: number, right: number): boolean {
-    switch (operator) {
-        case 'equals':
-            return left === right;
-        case 'not_equals':
-            return left !== right;
-        case 'gt':
-            return left > right;
-        case 'lt':
-            return left < right;
-        case 'gte':
-            return left >= right;
-        case 'lte':
-            return left <= right;
-        default:
-            return assertNever(operator);
-    }
+    return Match.value(operator).pipe(
+        Match.when('equals', () => left === right),
+        Match.when('not_equals', () => left !== right),
+        Match.when('gt', () => left > right),
+        Match.when('lt', () => left < right),
+        Match.when('gte', () => left >= right),
+        Match.when('lte', () => left <= right),
+        Match.exhaustive,
+    );
 }
 
 function compareBoolean(operator: BooleanOperator, left: boolean, right: boolean): boolean {
-    switch (operator) {
-        case 'equals':
-            return left === right;
-        case 'not_equals':
-            return left !== right;
-        default:
-            return assertNever(operator);
-    }
+    return Match.value(operator).pipe(
+        Match.when('equals', () => left === right),
+        Match.when('not_equals', () => left !== right),
+        Match.exhaustive,
+    );
 }
 
 function compareWithCondition(raw: unknown, condition: PipelineCondition): boolean {
     if (raw === undefined || raw === null) return false;
 
-    if (typeof condition.value === 'string') {
-        const field = coerceForComparison(raw, 'string');
-        const value = coerceForComparison(condition.value, 'string');
-        if (!field.ok || !value.ok) return false;
-        return compareString(condition.operator, field.value, value.value);
-    }
-    if (typeof condition.value === 'number') {
-        const field = coerceForComparison(raw, 'number');
-        const value = coerceForComparison(condition.value, 'number');
-        if (!field.ok || !value.ok) return false;
-        return compareNumber(condition.operator, field.value, value.value);
-    }
-    const field = coerceForComparison(raw, 'boolean');
-    const value = coerceForComparison(condition.value, 'boolean');
-    if (!field.ok || !value.ok) return false;
-    return compareBoolean(condition.operator, field.value, value.value);
+    const runComparison = <T extends 'string' | 'number' | 'boolean'>(
+        type: T,
+        compareFn: (op: never, left: never, right: never) => boolean,
+    ): boolean =>
+        pipe(
+            coerceForComparison(raw, type as never),
+            Either.flatMap((leftVal) =>
+                pipe(
+                    coerceForComparison(condition.value, type as never),
+                    Either.map((rightVal) =>
+                        compareFn(condition.operator as never, leftVal as never, rightVal as never),
+                    ),
+                ),
+            ),
+            Either.getOrElse(() => false),
+        );
+
+    return Match.value(typeof condition.value).pipe(
+        Match.when('string', () => runComparison('string', compareString)),
+        Match.when('number', () => runComparison('number', compareNumber)),
+        Match.orElse(() => runComparison('boolean', compareBoolean)),
+    );
 }
 
 export function evaluateCondition(condition: PipelineCondition, ctx: WorkflowContext): boolean {
-    switch (condition.target) {
-        case 'event':
-            return compareWithCondition(ctx.event, condition);
-        case 'payload':
-            return compareWithCondition(ctx.payload[condition.field], condition);
-        case 'vars':
-            return compareWithCondition(ctx.vars[condition.field], condition);
-        default:
-            return assertNever(condition);
-    }
+    return Match.value(condition).pipe(
+        Match.when({ target: 'event' }, (c) => compareWithCondition(ctx.event, c)),
+        Match.when({ target: 'payload' }, (c) => compareWithCondition(ctx.payload[c.field], c)),
+        Match.when({ target: 'vars' }, (c) => compareWithCondition(ctx.vars[c.field], c)),
+        Match.exhaustive,
+    );
 }
 
 function matchStringCase(cases: readonly string[], raw: unknown): string {
     if (raw === undefined || raw === null) return 'default';
     const fieldStr = String(raw).toLowerCase();
-    for (const caseValue of cases) {
-        if (caseValue.toLowerCase() === fieldStr) return caseValue;
-    }
-    return 'default';
+    return cases.find((c) => c.toLowerCase() === fieldStr) ?? 'default';
 }
 
 function matchNumberCase(cases: readonly string[], raw: number): string {
-    for (const caseValue of cases) {
-        const caseNum = Number(caseValue);
-        if (!Number.isNaN(caseNum) && caseNum === raw) return caseValue;
-    }
-    return 'default';
+    return (
+        cases.find((c) => {
+            const caseNum = Number(c);
+            return !Number.isNaN(caseNum) && caseNum === raw;
+        }) ?? 'default'
+    );
 }
 
 function matchFieldCase(cases: readonly string[], raw: unknown): string {
@@ -176,14 +148,10 @@ function matchFieldCase(cases: readonly string[], raw: unknown): string {
 }
 
 export function matchSwitchCase(config: SwitchConfig, ctx: WorkflowContext): string {
-    switch (config.target) {
-        case 'event':
-            return matchStringCase(config.cases, ctx.event);
-        case 'payload':
-            return matchFieldCase(config.cases, ctx.payload[config.field]);
-        case 'vars':
-            return matchFieldCase(config.cases, ctx.vars[config.field]);
-        default:
-            return assertNever(config);
-    }
+    return Match.value(config).pipe(
+        Match.when({ target: 'event' }, (c) => matchStringCase(c.cases, ctx.event)),
+        Match.when({ target: 'payload' }, (c) => matchFieldCase(c.cases, ctx.payload[c.field])),
+        Match.when({ target: 'vars' }, (c) => matchFieldCase(c.cases, ctx.vars[c.field])),
+        Match.exhaustive,
+    );
 }

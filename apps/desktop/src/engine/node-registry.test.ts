@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Option } from 'effect';
 
 import type { NodeHandler } from './node-handlers/types.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
@@ -22,18 +23,18 @@ describe('NodeHandlerRegistry', () => {
         expect(registry.has('state-set')).toBe(true);
     });
 
-    it('get returns the handler for a registered type', () => {
+    it('get returns Some for a registered type', () => {
         const registry = createNodeHandlerRegistry(testHandlers());
 
         const handler = registry.get('log');
-        expect(handler).toBeDefined();
-        expect(typeof handler?.execute).toBe('function');
+        expect(Option.isSome(handler)).toBe(true);
+        expect(typeof Option.getOrThrow(handler).execute).toBe('function');
     });
 
-    it('get returns undefined for an unregistered type', () => {
+    it('get returns None for an unregistered type', () => {
         const registry = createNodeHandlerRegistry(testHandlers());
 
-        expect(registry.get('nonexistent')).toBeUndefined();
+        expect(Option.isNone(registry.get('nonexistent'))).toBe(true);
     });
 
     it('register adds a new handler', () => {
@@ -46,19 +47,19 @@ describe('NodeHandlerRegistry', () => {
         expect(registry.has('custom')).toBe(false);
         registry.register('custom', customHandler);
         expect(registry.has('custom')).toBe(true);
-        expect(registry.get('custom')).toBe(customHandler);
+        expect(Option.getOrThrow(registry.get('custom'))).toBe(customHandler);
     });
 
     it('register overwrites an existing handler', () => {
         const registry = createNodeHandlerRegistry(testHandlers());
 
-        const original = registry.get('log');
+        const original = Option.getOrThrow(registry.get('log'));
         const replacement: NodeHandler = {
             execute: vi.fn() as unknown as NodeHandler['execute'],
         };
 
         registry.register('log', replacement);
-        expect(registry.get('log')).toBe(replacement);
-        expect(registry.get('log')).not.toBe(original);
+        expect(Option.getOrThrow(registry.get('log'))).toBe(replacement);
+        expect(Option.getOrThrow(registry.get('log'))).not.toBe(original);
     });
 });

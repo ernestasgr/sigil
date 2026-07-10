@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Effect, Either } from 'effect';
 
 import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
 
@@ -23,23 +24,23 @@ describe('readPropertiesFile', () => {
             JSON.stringify({ notifyOnWorkflowError: false, databasePath: '/data/sigil.db' }),
         );
 
-        expect(readPropertiesFile(filePath)).toEqual({
+        expect(Effect.runSync(readPropertiesFile(filePath))).toEqual({
             notifyOnWorkflowError: false,
             databasePath: '/data/sigil.db',
         });
     });
 
-    it('returns an empty object when the file does not exist', () => {
+    it('returns an error when the file does not exist', () => {
         const filePath = join(tempDir, 'missing.properties.json');
 
-        expect(readPropertiesFile(filePath)).toEqual({});
+        expect(() => Effect.runSync(readPropertiesFile(filePath))).toThrow();
     });
 
-    it('returns an empty object when the file contains invalid JSON', () => {
+    it('returns an error when the file contains invalid JSON', () => {
         const filePath = join(tempDir, 'sigil.properties.json');
         writeFileSync(filePath, '{ not valid json');
 
-        expect(readPropertiesFile(filePath)).toEqual({});
+        expect(() => Effect.runSync(readPropertiesFile(filePath))).toThrow();
     });
 });
 
@@ -51,7 +52,7 @@ describe('writePropertiesFile', () => {
             databasePath: '/data/sigil.db',
         });
 
-        expect(result.ok).toBe(true);
+        expect(Either.isRight(result)).toBe(true);
 
         const contents = readFileSync(filePath, 'utf-8');
         expect(JSON.parse(contents)).toEqual({
@@ -60,13 +61,13 @@ describe('writePropertiesFile', () => {
         });
     });
 
-    it('returns ok:false when the directory does not exist', () => {
+    it('returns Left when the directory does not exist', () => {
         const filePath = join(tempDir, 'missing-dir', 'sigil.properties.json');
         const result = writePropertiesFile(filePath, { notifyOnWorkflowError: true });
 
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-            expect(result.error).toBeTruthy();
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left).toBeTruthy();
         }
     });
 });

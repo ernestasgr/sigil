@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import vm from 'node:vm';
 import { parentPort, workerData } from 'node:worker_threads';
+import { Either, Option } from 'effect';
 import { z } from 'zod';
 
 import type { Capability } from '@sigil/schema/manifest';
@@ -84,7 +85,7 @@ function depRpcCall(method: string, args: readonly unknown[]): Promise<unknown> 
     });
 }
 
-let depsTeardown: (() => void) | undefined;
+let depsTeardown: Option.Option<() => void> = Option.none();
 
 // ─── Callback registry (for registerSubscriber etc.) ─────────
 
@@ -117,15 +118,15 @@ function createProxiedDeps(collisionSuffixStyle?: CollisionSuffixStyle): NodeHan
         evaluateCondition: rpc('evaluateCondition') as unknown as EvaluateCondition,
         matchSwitchCase: rpc('matchSwitchCase') as unknown as MatchSwitchCase,
         state: {
-            get: rpc('state.get') as unknown as (key: string) => string | undefined,
+            get: rpc('state.get') as unknown as (key: string) => Option.Option<string>,
             set: rpc('state.set') as unknown as (key: string, value: string) => void,
             flush: rpc('state.flush') as unknown as () => void,
         },
         capabilityBroker: {
             request: ({ capability }: { pluginId: string; capability: Capability }) =>
                 permissions.has(capability)
-                    ? { ok: true as const }
-                    : { ok: false as const, error: { kind: 'denied' as const, capability } },
+                    ? Either.right(undefined)
+                    : Either.left({ kind: 'denied' as const, capability }),
         },
         collisionSuffixStyle,
     };
@@ -441,7 +442,7 @@ async function loadHandler(): Promise<{
     const code = result.outputFiles[0].text;
     buildSandboxModules();
 
-    const ctx = vm.createContext({
+    const vmContext: Record<string, unknown> = {
         require: (id: string): unknown => {
             const mod = sandboxModules[id];
             if (mod) return mod;
@@ -451,7 +452,26 @@ async function loadHandler(): Promise<{
             );
         },
         console,
-    } as Record<string, unknown>);
+        process: { env: {} },
+        global: undefined,
+        globalThis: undefined,
+        Buffer,
+        setTimeout,
+        clearTimeout,
+        setInterval,
+        clearInterval,
+        URL,
+        URLSearchParams,
+        TextEncoder,
+        TextDecoder,
+        structuredClone,
+        btoa,
+        atob,
+    };
+    vmContext.global = vmContext;
+    vmContext.globalThis = vmContext;
+
+    const ctx = vm.createContext(vmContext);
 
     try {
         vm.runInContext(code, ctx, { timeout: 5000 });
@@ -588,7 +608,7 @@ async function main(): Promise<void> {
                 break;
             }
             case NodePluginWorkerKind.Teardown: {
-                depsTeardown?.();
+                Option.getOrUndefined(depsTeardown)?.();
                 break;
             }
             case NodePluginWorkerKind.UpdatePermissions: {
@@ -600,6 +620,8 @@ async function main(): Promise<void> {
                 rebuildPermissionGatedModules();
                 break;
             }
+            default:
+                throw new Error(`Unhandled message kind: ${(msg as { kind: string }).kind}`);
         }
     });
 }
@@ -678,7 +700,7 @@ async function handleActivate(
             });
         };
 
-        depsTeardown = trigger.activate(msg.config, onEvent);
+        depsTeardown = Option.some(trigger.activate(msg.config, onEvent));
         send({
             kind: NodePluginWorkerKind.ActivateResult,
             requestId: msg.requestId,
