@@ -23,7 +23,7 @@ import {
 import type { ReactElement } from 'react';
 
 import { Button } from '../../components/ui/button.js';
-import { useSigil } from '../../lib/sigil-context.js';
+import { useSigil } from '../../lib/use-sigil.js';
 import { Checkbox, NumberInput, SelectInput, StringList, TextInput } from './form-fields.js';
 
 type FieldValueKind = 'string' | 'number' | 'boolean';

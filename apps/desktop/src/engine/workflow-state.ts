@@ -89,7 +89,8 @@ export function createWorkflowStateStore(
         return {
             get(key: string): Option.Option<string> {
                 const pending = buffer.get(workflowId);
-                if (pending?.has(key)) return Option.some(pending.get(key)!);
+                const pendingValue = pending?.get(key);
+                if (pendingValue !== undefined) return Option.some(pendingValue);
                 const row = db
                     .select({ value: workflowStateTable.value })
                     .from(workflowStateTable)

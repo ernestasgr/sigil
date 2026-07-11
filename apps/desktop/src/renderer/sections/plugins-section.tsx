@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 
 import type { PluginInfo } from '../../shared/plugin-info.js';
 import { SectionShell } from '../components/section-shell.js';
-import { useSigil } from '../lib/sigil-context.js';
+import { useSigil } from '../lib/use-sigil.js';
 
 function PluginCard({ info }: { readonly info: PluginInfo }): ReactElement {
     return (

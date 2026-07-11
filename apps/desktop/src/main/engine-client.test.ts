@@ -41,7 +41,7 @@ describe('rpc', () => {
         const { props, sent } = buildProps();
         const client = createRpcClient(props);
 
-        client.rpc<void>(EngineChannel.ToggleWorkflow, { id: 'wf-1' }, 5000);
+        client.rpc<undefined>(EngineChannel.ToggleWorkflow, { id: 'wf-1' }, 5000);
 
         expect(sent).toHaveLength(1);
         const msg = sent[0] as Record<string, unknown>;

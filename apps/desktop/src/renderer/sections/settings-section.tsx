@@ -10,7 +10,7 @@ import type { PluginInfo } from '../../shared/plugin-info.js';
 import type { WorkflowSummary } from '../../shared/workflow.js';
 import { Button } from '../components/ui/button.js';
 import { SectionShell } from '../components/section-shell.js';
-import { useSigil } from '../lib/sigil-context.js';
+import { useSigil } from '../lib/use-sigil.js';
 import { useAppStore } from '../store/app-store.js';
 
 const ALL_CAPABILITIES = CapabilitySchema.options;
