@@ -22,7 +22,7 @@ describe('ipcHandle', () => {
         ipcHandle('test:no-arg', z.undefined(), handler);
 
         const [, wrapped] = mockHandle.mock.lastCall as [string, (...args: unknown[]) => unknown];
-        const result = await (wrapped as Function)({}, ...([] as unknown[]));
+        const result = await wrapped({}, ...([] as unknown[]));
 
         expect(handler).toHaveBeenCalledWith(undefined);
         expect(result).toBe('done');
@@ -34,7 +34,7 @@ describe('ipcHandle', () => {
         ipcHandle('test:single-arg', schema, handler);
 
         const [, wrapped] = mockHandle.mock.lastCall as [string, (...args: unknown[]) => unknown];
-        const result = await (wrapped as Function)({}, 'hello');
+        const result = await wrapped({}, 'hello');
 
         expect(handler).toHaveBeenCalledWith('hello');
         expect(result).toBe(42);
@@ -46,7 +46,7 @@ describe('ipcHandle', () => {
         ipcHandle('test:tuple-arg', schema, handler);
 
         const [, wrapped] = mockHandle.mock.lastCall as [string, (...args: unknown[]) => unknown];
-        const result = await (wrapped as Function)({}, 'alpha', 7);
+        const result = await wrapped({}, 'alpha', 7);
 
         expect(handler).toHaveBeenCalledWith(['alpha', 7]);
         expect(result).toBe('ok');
@@ -61,7 +61,7 @@ describe('ipcHandle', () => {
 
         let err: unknown;
         try {
-            await (wrapped as Function)({}, 123);
+            await wrapped({}, 123);
         } catch (e) {
             err = e;
         }
@@ -79,7 +79,7 @@ describe('ipcHandle', () => {
 
         let err: unknown;
         try {
-            await (wrapped as Function)({}, 'hello', 'not-a-number');
+            await wrapped({}, 'hello', 'not-a-number');
         } catch (e) {
             err = e;
         }
@@ -94,7 +94,7 @@ describe('ipcHandle', () => {
 
         const [, wrapped] = mockHandle.mock.lastCall as [string, (...args: unknown[]) => unknown];
 
-        await expect((wrapped as Function)({})).rejects.toThrow('handler error');
+        await expect(wrapped({})).rejects.toThrow('handler error');
     });
 
     it('passes valid single-element tuple invocation through to the handler', async () => {
@@ -103,7 +103,7 @@ describe('ipcHandle', () => {
         ipcHandle('test:single-tuple', schema, handler);
 
         const [, wrapped] = mockHandle.mock.lastCall as [string, (...args: unknown[]) => unknown];
-        const result = await (wrapped as Function)({}, 'hello');
+        const result = await wrapped({}, 'hello');
 
         expect(handler).toHaveBeenCalledWith(['hello']);
         expect(result).toBe('ok');
@@ -114,7 +114,7 @@ describe('ipcHandle', () => {
         ipcHandle('test:empty', z.undefined(), handler);
 
         const [, wrapped] = mockHandle.mock.lastCall as [string, (...args: unknown[]) => unknown];
-        const result = await (wrapped as Function)({});
+        const result = await wrapped({});
 
         expect(handler).toHaveBeenCalledWith(undefined);
         expect(result).toBe('noop');

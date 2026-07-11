@@ -34,6 +34,7 @@ export default tseslint.config(
             'packages/schema/**/*.{ts,tsx}',
             'apps/desktop/electron.vite.config.ts',
             '**/*.config.{ts,js,mjs}',
+            '.dependency-cruiser.cjs',
         ],
         languageOptions: {
             globals: { ...globals.node },

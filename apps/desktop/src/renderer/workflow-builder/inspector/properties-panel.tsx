@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 
 import { cn } from '../../lib/utils.js';
 import { Button } from '../../components/ui/button.js';
-import { useSigil } from '../../lib/sigil-context.js';
+import { useSigil } from '../../lib/use-sigil.js';
 import { useBuilderStore } from '../builder-store.js';
 import type { NodeSpec } from '../node-registry.js';
 import { CATEGORY_TEXT, nodeTypeDef } from '../node-registry.js';

@@ -4,7 +4,7 @@ import type { CompiledPipeline } from '@sigil/schema';
 
 import { SectionShell } from '../components/section-shell.js';
 import { Button } from '../components/ui/button.js';
-import { useSigil } from '../lib/sigil-context.js';
+import { useSigil } from '../lib/use-sigil.js';
 import { useAppStore } from '../store/app-store.js';
 import { useBuilderStore } from '../workflow-builder/builder-store.js';
 import { WorkflowBuilder } from '../workflow-builder/workflow-builder.js';
@@ -49,7 +49,7 @@ export function WorkflowsSection(): ReactElement {
                 setLoading(false);
             }
         },
-        [setWorkflowView, setEditingWorkflowId],
+        [setWorkflowView, setEditingWorkflowId, sigil],
     );
 
     const handleSave = useCallback(
@@ -70,7 +70,7 @@ export function WorkflowsSection(): ReactElement {
                 console.error('Failed to save workflow:', err);
             }
         },
-        [editingWorkflowId, setWorkflowView, setEditingWorkflowId],
+        [editingWorkflowId, setWorkflowView, setEditingWorkflowId, sigil],
     );
 
     const handleCancel = useCallback(() => {
