@@ -11,6 +11,7 @@ import { parseManifest } from '@sigil/schema/manifest';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { Either, Option } from 'effect';
+import type { Bridge } from './bridge.js';
 import { FileEventSchema } from './file-watcher-manager.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 import type {
@@ -64,6 +65,7 @@ export interface NodePluginLoaderDeps {
     readonly manifestRegistry: ManifestRegistry;
     readonly handlerRegistry: NodeHandlerRegistry;
     readonly kernel?: KernelDeps;
+    readonly bridge?: Pick<Bridge, 'emit'>;
     readonly permissionOverrides?: PermissionOverrideStore;
     readonly diagnostic?: (message: string) => void;
 }
@@ -204,6 +206,7 @@ export async function loadNodePlugin(
         worker,
         loaded.isTrigger,
         deps.kernel,
+        deps.bridge,
         deps.diagnostic,
     );
     deps.handlerRegistry.register(manifest.nodeType, handler);
@@ -242,6 +245,7 @@ function createWorkerNodeHandlerProxy(
     worker: Worker,
     isTrigger: boolean,
     kernel?: KernelDeps,
+    bridge?: Pick<Bridge, 'emit'>,
     diagnostic?: (message: string) => void,
 ): NodeHandler {
     const pendingExecutes = new Map<
@@ -257,9 +261,17 @@ function createWorkerNodeHandlerProxy(
     worker.on('message', (raw: unknown) => {
         const parsed = NodePluginWorkerToMainSchema.safeParse(raw);
         if (!parsed.success) {
-            diagnostic?.(
-                `[proxy] invalid message from plugin "${pluginId}": ${parsed.error.message}`,
-            );
+            const operation =
+                isRecord(raw) && typeof raw.operation === 'string'
+                    ? ` operation "${raw.operation}"`
+                    : '';
+            const message =
+                `[proxy] plugin "${pluginId}" sent an invalid${operation} message: ` +
+                parsed.error.message;
+            diagnostic?.(message);
+            if (isRecord(raw) && typeof raw.requestId === 'string') {
+                postDepsRpcError(worker, raw.requestId, message);
+            }
             return;
         }
         const msg = parsed.data;
@@ -291,6 +303,13 @@ function createWorkerNodeHandlerProxy(
                         activePort: runtimeMsg.activePort,
                     });
                 } else {
+                    if (
+                        runtimeMsg.error.startsWith(
+                            `[plugin:${pluginId}] denied operation "event.emit"`,
+                        )
+                    ) {
+                        diagnostic?.(`[proxy] ${runtimeMsg.error}`);
+                    }
                     pending.reject(new Error(runtimeMsg.error));
                 }
                 break;
@@ -329,7 +348,15 @@ function createWorkerNodeHandlerProxy(
                 break;
             }
             case NodePluginWorkerKind.DepsRpc: {
-                handleDepsRpc(runtimeMsg, pendingExecutes, worker, pluginId, kernel);
+                handleDepsRpc(
+                    runtimeMsg,
+                    pendingExecutes,
+                    worker,
+                    pluginId,
+                    kernel,
+                    bridge,
+                    diagnostic,
+                );
                 break;
             }
             default:
@@ -399,14 +426,11 @@ function createWorkerNodeHandlerProxy(
 type NodePluginHandlerDepsRpc = Extract<
     NodePluginDepsRpc,
     {
-        operation:
-            | 'bus.next'
-            | 'sleep'
-            | 'resolveTemplate'
-            | 'evaluateCondition'
-            | 'matchSwitchCase';
+        operation: 'sleep' | 'resolveTemplate' | 'evaluateCondition' | 'matchSwitchCase';
     }
 >;
+
+type NodePluginEventRpc = Extract<NodePluginDepsRpc, { operation: 'event.emit' }>;
 
 type NodePluginStateRpc = Extract<
     NodePluginDepsRpc,
@@ -429,6 +453,10 @@ type NodePluginCapabilityRpc = Extract<
 
 function assertNever(value: never): never {
     throw new Error(`Unhandled node plugin message: ${JSON.stringify(value)}`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function postDepsRpcResult(worker: Worker, requestId: string, value: unknown): void {
@@ -478,8 +506,24 @@ function handleDepsRpc(
     worker: Worker,
     pluginId: string,
     kernel?: KernelDeps,
+    bridge?: Pick<Bridge, 'emit'>,
+    diagnostic?: (message: string) => void,
 ): void {
     switch (msg.operation) {
+        case 'event.emit':
+            if (!bridge) {
+                denyPluginOperation(
+                    worker,
+                    msg.requestId,
+                    pluginId,
+                    msg.operation,
+                    'Bridge dependency is unavailable',
+                    diagnostic,
+                );
+                return;
+            }
+            handleEventEmitRpc(msg, pendingExecutes, worker, pluginId, bridge, diagnostic);
+            return;
         case 'fileWatcherManager.registerSubscriber':
         case 'fileWatcherManager.unregisterSubscriber':
             if (!kernel) {
@@ -501,7 +545,7 @@ function handleDepsRpc(
                 );
                 return;
             }
-            handleCapabilityRpc(msg, worker, kernel, pluginId);
+            handleCapabilityRpc(msg, worker, kernel, pluginId, diagnostic);
             return;
         case 'state.get':
         case 'state.set':
@@ -514,9 +558,15 @@ function handleDepsRpc(
                 );
                 return;
             }
-            handleStateRpc(msg, pendingExecutes, worker, pluginId, kernel.capabilityBroker);
+            handleStateRpc(
+                msg,
+                pendingExecutes,
+                worker,
+                pluginId,
+                kernel.capabilityBroker,
+                diagnostic,
+            );
             return;
-        case 'bus.next':
         case 'sleep':
         case 'resolveTemplate':
         case 'evaluateCondition':
@@ -564,10 +614,76 @@ function handleNodeHandlerDepsRpc(
     }
 }
 
+function handleEventEmitRpc(
+    msg: NodePluginEventRpc,
+    pendingExecutes: Map<
+        string,
+        {
+            resolve: (result: NodeRunResult) => void;
+            reject: (err: Error) => void;
+            deps: NodeHandlerDeps;
+        }
+    >,
+    worker: Worker,
+    pluginId: string,
+    bridge: Pick<Bridge, 'emit'>,
+    diagnostic?: (message: string) => void,
+): void {
+    const executeRequestId = msg.executeRequestId;
+    if (!executeRequestId) {
+        denyPluginOperation(
+            worker,
+            msg.requestId,
+            pluginId,
+            msg.operation,
+            'No originating execute request',
+            diagnostic,
+        );
+        return;
+    }
+
+    if (!pendingExecutes.has(executeRequestId)) {
+        denyPluginOperation(
+            worker,
+            msg.requestId,
+            pluginId,
+            msg.operation,
+            'No pending execute request',
+            diagnostic,
+        );
+        return;
+    }
+
+    try {
+        const [eventName, payload] = msg.args;
+        const result = bridge.emit(pluginId, { eventName, payload });
+        if (Either.isLeft(result)) {
+            const reason = `${result.left.kind} for event "${eventName}"`;
+            denyPluginOperation(worker, msg.requestId, pluginId, msg.operation, reason, diagnostic);
+            return;
+        }
+        postDepsRpcResult(worker, msg.requestId, undefined);
+    } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        denyPluginOperation(worker, msg.requestId, pluginId, msg.operation, reason, diagnostic);
+    }
+}
+
+function denyPluginOperation(
+    worker: Worker,
+    requestId: string,
+    pluginId: string,
+    operation: string,
+    reason: string,
+    diagnostic?: (message: string) => void,
+): void {
+    const message = `[plugin:${pluginId}] denied operation "${operation}": ${reason}`;
+    diagnostic?.(message);
+    postDepsRpcError(worker, requestId, `Permission denied: ${message}`);
+}
+
 function callNodeHandlerDepsMethod(deps: NodeHandlerDeps, msg: NodePluginHandlerDepsRpc): unknown {
     switch (msg.operation) {
-        case 'bus.next':
-            return deps.bus.next(...msg.args);
         case 'sleep':
             return deps.sleep(...msg.args);
         case 'resolveTemplate':
@@ -594,20 +710,31 @@ function handleStateRpc(
     worker: Worker,
     pluginId: string,
     capabilityBroker: KernelDeps['capabilityBroker'],
+    diagnostic?: (message: string) => void,
 ): void {
     const executeRequestId = msg.executeRequestId;
     if (!executeRequestId) {
-        postDepsRpcError(
+        denyPluginOperation(
             worker,
             msg.requestId,
-            'No originating execute request for this Workflow State RPC',
+            pluginId,
+            msg.operation,
+            'No originating execute request',
+            diagnostic,
         );
         return;
     }
 
     const pending = pendingExecutes.get(executeRequestId);
     if (!pending) {
-        postDepsRpcError(worker, msg.requestId, 'No pending execute for this execute request');
+        denyPluginOperation(
+            worker,
+            msg.requestId,
+            pluginId,
+            msg.operation,
+            'No pending execute request',
+            diagnostic,
+        );
         return;
     }
 
@@ -615,10 +742,13 @@ function handleStateRpc(
         const capability = msg.operation === 'state.get' ? 'state.read' : 'state.write';
         const permission = capabilityBroker.request({ pluginId, capability });
         if (Either.isLeft(permission)) {
-            postDepsRpcError(
+            denyPluginOperation(
                 worker,
                 msg.requestId,
+                pluginId,
+                msg.operation,
                 `Permission denied: ${permission.left.capability}`,
+                diagnostic,
             );
             return;
         }
@@ -686,10 +816,16 @@ function handleCapabilityRpc(
     worker: Worker,
     kernel: KernelDeps,
     pluginId: string,
+    diagnostic?: (message: string) => void,
 ): void {
     try {
         const capability = msg.args[0];
         const result = kernel.capabilityBroker.request({ pluginId, capability });
+        if (Either.isLeft(result)) {
+            diagnostic?.(
+                `[plugin:${pluginId}] denied operation "${msg.operation}": ${result.left.capability}`,
+            );
+        }
         const value = Either.isRight(result)
             ? { ok: true as const }
             : { ok: false as const, error: result.left };

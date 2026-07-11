@@ -54,8 +54,8 @@ function createFakeMessagePair(): {
 
 const validCalls = [
     {
-        operation: 'bus.next',
-        args: [{ name: 'log.output', payload: { message: 'hello' } }],
+        operation: 'event.emit',
+        args: ['plugin.output', { message: 'hello' }],
     },
     { operation: 'sleep', args: [10] },
     { operation: 'resolveTemplate', args: ['{{path}}', workflowContext] },
@@ -115,6 +115,35 @@ describe('NodePluginDepsRpcSchema', () => {
         });
 
         expect(parsed.success).toBe(false);
+    });
+
+    it('rejects a direct Event Bus operation', () => {
+        const parsed = NodePluginDepsRpcSchema.safeParse({
+            kind: NodePluginWorkerKind.DepsRpc,
+            requestId: 'request:1',
+            operation: 'bus.next',
+            args: [{ name: 'notification.show', payload: { title: 'forged', body: 'forged' } }],
+        });
+
+        expect(parsed.success).toBe(false);
+    });
+
+    it('rejects an event emission without a non-empty name and object payload', () => {
+        const emptyName = NodePluginDepsRpcSchema.safeParse({
+            kind: NodePluginWorkerKind.DepsRpc,
+            requestId: 'request:1',
+            operation: 'event.emit',
+            args: ['', {}],
+        });
+        const nonObjectPayload = NodePluginDepsRpcSchema.safeParse({
+            kind: NodePluginWorkerKind.DepsRpc,
+            requestId: 'request:2',
+            operation: 'event.emit',
+            args: ['plugin.output', []],
+        });
+
+        expect(emptyName.success).toBe(false);
+        expect(nonObjectPayload.success).toBe(false);
     });
 
     it('rejects a capability request that carries Plugin-controlled identity', () => {
