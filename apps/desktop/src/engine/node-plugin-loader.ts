@@ -451,6 +451,18 @@ type NodePluginCapabilityRpc = Extract<
     { operation: 'capabilityBroker.request' }
 >;
 
+type NodePluginPrivilegedOperation =
+    | NodePluginStateRpc['operation']
+    | NodePluginFileWatcherRpc['operation'];
+
+const NODE_PLUGIN_OPERATION_CAPABILITIES = {
+    'state.get': 'state.read',
+    'state.set': 'state.write',
+    'state.flush': 'state.write',
+    'fileWatcherManager.registerSubscriber': 'filesystem.read',
+    'fileWatcherManager.unregisterSubscriber': 'filesystem.read',
+} as const satisfies Readonly<Record<NodePluginPrivilegedOperation, Capability>>;
+
 function assertNever(value: never): never {
     throw new Error(`Unhandled node plugin message: ${JSON.stringify(value)}`);
 }
@@ -534,7 +546,7 @@ function handleDepsRpc(
                 );
                 return;
             }
-            handleFileWatcherRpc(msg, worker, kernel);
+            handleFileWatcherRpc(msg, worker, pluginId, kernel, diagnostic);
             return;
         case 'capabilityBroker.request':
             if (!kernel) {
@@ -679,7 +691,7 @@ function denyPluginOperation(
 ): void {
     const message = `[plugin:${pluginId}] denied operation "${operation}": ${reason}`;
     diagnostic?.(message);
-    postDepsRpcError(worker, requestId, `Permission denied: ${message}`);
+    postDepsRpcError(worker, requestId, `Permission denied: ${reason} (operation "${operation}")`);
 }
 
 function callNodeHandlerDepsMethod(deps: NodeHandlerDeps, msg: NodePluginHandlerDepsRpc): unknown {
@@ -739,15 +751,14 @@ function handleStateRpc(
     }
 
     try {
-        const capability = msg.operation === 'state.get' ? 'state.read' : 'state.write';
-        const permission = capabilityBroker.request({ pluginId, capability });
+        const permission = authorizePluginOperation(capabilityBroker, pluginId, msg.operation);
         if (Either.isLeft(permission)) {
             denyPluginOperation(
                 worker,
                 msg.requestId,
                 pluginId,
                 msg.operation,
-                `Permission denied: ${permission.left.capability}`,
+                permission.left.capability,
                 diagnostic,
             );
             return;
@@ -779,9 +790,28 @@ function callWorkflowStateMethod(
 function handleFileWatcherRpc(
     msg: NodePluginFileWatcherRpc,
     worker: Worker,
+    pluginId: string,
     kernel: KernelDeps,
+    diagnostic?: (message: string) => void,
 ): void {
     try {
+        const permission = authorizePluginOperation(
+            kernel.capabilityBroker,
+            pluginId,
+            msg.operation,
+        );
+        if (Either.isLeft(permission)) {
+            denyPluginOperation(
+                worker,
+                msg.requestId,
+                pluginId,
+                msg.operation,
+                permission.left.capability,
+                diagnostic,
+            );
+            return;
+        }
+
         switch (msg.operation) {
             case 'fileWatcherManager.registerSubscriber': {
                 const [subscriber, callbackId] = msg.args;
@@ -809,6 +839,17 @@ function handleFileWatcherRpc(
     } catch (err) {
         postDepsRpcError(worker, msg.requestId, err instanceof Error ? err.message : String(err));
     }
+}
+
+function authorizePluginOperation(
+    capabilityBroker: KernelDeps['capabilityBroker'],
+    pluginId: string,
+    operation: NodePluginPrivilegedOperation,
+): ReturnType<KernelDeps['capabilityBroker']['request']> {
+    return capabilityBroker.request({
+        pluginId,
+        capability: NODE_PLUGIN_OPERATION_CAPABILITIES[operation],
+    });
 }
 
 function handleCapabilityRpc(

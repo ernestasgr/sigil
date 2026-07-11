@@ -117,6 +117,29 @@ describe('NodePluginDepsRpcSchema', () => {
         expect(parsed.success).toBe(false);
     });
 
+    it('rejects extra operation envelope fields instead of silently stripping them', () => {
+        const parsed = NodePluginDepsRpcSchema.safeParse({
+            kind: NodePluginWorkerKind.DepsRpc,
+            requestId: 'request:1',
+            operation: 'state.get',
+            args: ['key'],
+            pluginId: 'com.sigil.authorized',
+        });
+
+        expect(parsed.success).toBe(false);
+    });
+
+    it('rejects an empty operation request id', () => {
+        const parsed = NodePluginDepsRpcSchema.safeParse({
+            kind: NodePluginWorkerKind.DepsRpc,
+            requestId: '',
+            operation: 'state.get',
+            args: ['key'],
+        });
+
+        expect(parsed.success).toBe(false);
+    });
+
     it('rejects a direct Event Bus operation', () => {
         const parsed = NodePluginDepsRpcSchema.safeParse({
             kind: NodePluginWorkerKind.DepsRpc,

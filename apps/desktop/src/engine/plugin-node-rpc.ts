@@ -77,11 +77,13 @@ export const NodePluginWorkerActivateEventSchema = z.object({
 });
 export type NodePluginWorkerActivateEvent = z.infer<typeof NodePluginWorkerActivateEventSchema>;
 
-const NodePluginDepsRpcEnvelopeSchema = z.object({
-    kind: z.literal(NodePluginWorkerKind.DepsRpc),
-    requestId: z.string(),
-    executeRequestId: z.string().optional(),
-});
+const NodePluginDepsRpcEnvelopeSchema = z
+    .object({
+        kind: z.literal(NodePluginWorkerKind.DepsRpc),
+        requestId: z.string().min(1),
+        executeRequestId: z.string().min(1).optional(),
+    })
+    .strict();
 
 export const NodePluginDepsRpcSchema = z.discriminatedUnion('operation', [
     NodePluginDepsRpcEnvelopeSchema.extend({
