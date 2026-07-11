@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { PipelineEdge } from './edges.js';
 import type { PipelineNode } from './nodes/index.js';
 import type { CompiledPipeline } from './pipeline.js';
-import { validateWorkflowTopology } from './topology.js';
+import { TopologyDiagnosticSchema, validateWorkflowTopology } from './topology.js';
 
 const trigger = (id: string): PipelineNode => ({
     id,
@@ -45,6 +45,18 @@ function diagnosticCodes(result: ReturnType<typeof validateWorkflowTopology>): r
 }
 
 describe('validateWorkflowTopology', () => {
+    it('accepts warning diagnostics as a first-class severity', () => {
+        const result = TopologyDiagnosticSchema.safeParse({
+            severity: 'warning',
+            code: 'invalid_edge',
+            target: { kind: 'edge', edgeId: 'edge-1' },
+            edgeId: 'edge-1',
+            message: 'Reconnect the Edge to a declared output port.',
+        });
+
+        expect(result.success).toBe(true);
+    });
+
     it('rejects an empty Pipeline with a repair-oriented diagnostic', () => {
         const result = validateWorkflowTopology({
             id: 'pipeline-1',

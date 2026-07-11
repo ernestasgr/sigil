@@ -8,6 +8,7 @@ import {
     type EnginePong,
     EngineReadySchema,
     type EngineToggleWorkflow,
+    EngineWorkflowsListSchema,
     WorkerInboundSchema,
     WorkflowIdSchema,
 } from './ipc-channels.js';
@@ -80,6 +81,31 @@ describe('EngineMessageSchema', () => {
         const message = { type: 'engine:does-not-exist' };
         const result = EngineMessageSchema.safeParse(message);
         expect(result.success).toBe(false);
+    });
+});
+
+describe('EngineWorkflowsListSchema', () => {
+    it('preserves repair diagnostics for malformed stored Workflows', () => {
+        const result = EngineWorkflowsListSchema.safeParse({
+            type: EngineChannel.WorkflowsList,
+            workflows: [
+                {
+                    id: 'wf-broken',
+                    name: 'Broken',
+                    enabled: false,
+                    diagnostics: [
+                        {
+                            severity: 'error',
+                            code: 'invalid_pipeline',
+                            target: { kind: 'pipeline' },
+                            message: 'Repair or remove the stored file.',
+                        },
+                    ],
+                },
+            ],
+        });
+
+        expect(result.success).toBe(true);
     });
 });
 

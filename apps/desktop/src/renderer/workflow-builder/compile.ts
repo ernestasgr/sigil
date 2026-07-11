@@ -32,6 +32,7 @@ export type CompileResult =
           readonly ok: true;
           readonly value: CompiledPipeline;
           readonly executable: ExecutableWorkflow;
+          readonly diagnostics: readonly TopologyDiagnostic[];
       }
     | {
           readonly ok: false;
@@ -44,7 +45,17 @@ function structuralDiagnostic(error: string): TopologyDiagnostic {
         severity: 'error',
         code: 'invalid_pipeline',
         target: { kind: 'pipeline' },
-        message: error,
+        message: `Workflow data is invalid: ${error} Repair the affected Node or Edge before saving.`,
+    };
+}
+
+function droppedEdgeDiagnostic(edge: VisualEdge): TopologyDiagnostic {
+    return {
+        severity: 'warning',
+        code: 'invalid_edge',
+        target: { kind: 'edge', edgeId: edge.id },
+        edgeId: edge.id,
+        message: `Edge "${edge.id}" has no source port and was omitted from the compiled Workflow; reconnect it to a declared output port.`,
     };
 }
 
@@ -53,6 +64,9 @@ export function compileGraph(
     edges: readonly VisualEdge[],
     meta: PipelineMeta,
 ): CompileResult {
+    const droppedEdgeDiagnostics = edges
+        .filter((edge) => edge.sourceHandle == null)
+        .map(droppedEdgeDiagnostic);
     const pipeline = {
         id: meta.id,
         workflowId: meta.workflowId,
@@ -75,16 +89,17 @@ export function compileGraph(
     };
     const parsed = parsePipeline(pipeline);
     if (!parsed.ok) {
-        const diagnostics = [structuralDiagnostic(parsed.error)];
-        return { ok: false, error: parsed.error, diagnostics };
+        const diagnostics = [structuralDiagnostic(parsed.error), ...droppedEdgeDiagnostics];
+        return { ok: false, error: formatTopologyDiagnostics(diagnostics), diagnostics };
     }
 
     const topology = validateWorkflowTopology(parsed.value);
     if (!topology.ok) {
+        const diagnostics = [...topology.diagnostics, ...droppedEdgeDiagnostics];
         return {
             ok: false,
-            error: formatTopologyDiagnostics(topology.diagnostics),
-            diagnostics: topology.diagnostics,
+            error: formatTopologyDiagnostics(diagnostics),
+            diagnostics,
         };
     }
 
@@ -92,5 +107,6 @@ export function compileGraph(
         ok: true,
         value: topology.value.pipeline,
         executable: topology.value,
+        diagnostics: droppedEdgeDiagnostics,
     };
 }

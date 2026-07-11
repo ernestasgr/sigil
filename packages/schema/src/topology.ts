@@ -20,6 +20,9 @@ const TOPOLOGY_DIAGNOSTIC_CODES = [
     'unsupported_node_handler',
 ] as const;
 
+export const TopologyDiagnosticSeveritySchema = z.enum(['error', 'warning']);
+export type TopologyDiagnosticSeverity = z.infer<typeof TopologyDiagnosticSeveritySchema>;
+
 export const TopologyDiagnosticCodeSchema = z.enum(TOPOLOGY_DIAGNOSTIC_CODES);
 export type TopologyDiagnosticCode = z.infer<typeof TopologyDiagnosticCodeSchema>;
 
@@ -31,7 +34,7 @@ const TopologyDiagnosticTargetSchema = z.discriminatedUnion('kind', [
 
 export const TopologyDiagnosticSchema = z
     .object({
-        severity: z.literal('error'),
+        severity: TopologyDiagnosticSeveritySchema,
         code: TopologyDiagnosticCodeSchema,
         target: TopologyDiagnosticTargetSchema,
         nodeId: z.string().min(1).optional(),

@@ -337,15 +337,66 @@ describe('WorkflowStore', () => {
 
         store = createWorkflowStore(dir);
 
-        expect(store.list()).toEqual([]);
+        expect(store.list()).toEqual([
+            expect.objectContaining({
+                id: 'bad',
+                enabled: false,
+                diagnostics: [
+                    expect.objectContaining({
+                        severity: 'error',
+                        code: 'invalid_pipeline',
+                        target: { kind: 'pipeline' },
+                    }),
+                ],
+            }),
+        ]);
+        expect(Option.isNone(store.get('bad'))).toBe(true);
+        expect(store.remove('bad')).toBe(true);
     });
 
-    it('skips JSON files that are not valid CompiledPipelines on startup', () => {
-        writeFileSync(join(dir, 'bad.json'), JSON.stringify({ foo: 'bar' }));
+    it('keeps topology-invalid stored Workflows visible with repair diagnostics', () => {
+        writeFileSync(
+            join(dir, 'broken.json'),
+            JSON.stringify({ id: 'wf-broken', name: 'Broken', nodes: [], edges: [] }),
+        );
 
         store = createWorkflowStore(dir);
 
-        expect(store.list()).toEqual([]);
+        expect(store.list()).toEqual([
+            expect.objectContaining({
+                id: 'wf-broken',
+                name: 'Broken',
+                enabled: false,
+                diagnostics: [
+                    expect.objectContaining({
+                        severity: 'error',
+                        code: 'empty_pipeline',
+                        target: { kind: 'pipeline' },
+                    }),
+                ],
+            }),
+        ]);
+        expect(Option.isNone(store.get('wf-broken'))).toBe(true);
+    });
+
+    it('keeps stored files with an invalid shape visible for recovery', () => {
+        writeFileSync(join(dir, 'bad-shape.json'), JSON.stringify({ foo: 'bar' }));
+
+        store = createWorkflowStore(dir);
+
+        expect(store.list()).toEqual([
+            expect.objectContaining({
+                id: 'bad-shape',
+                name: 'Unreadable Workflow (bad-shape)',
+                diagnostics: [
+                    expect.objectContaining({
+                        severity: 'error',
+                        code: 'invalid_pipeline',
+                        target: { kind: 'pipeline' },
+                    }),
+                ],
+            }),
+        ]);
     });
 
     it('upserts a new workflow when save() is called with a non-existent id', () => {

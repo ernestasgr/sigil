@@ -83,7 +83,7 @@ describe('Workflow topology contract', () => {
             const activator = createWorkflowActivator(engine, loadedStore, engine.handlerRegistry);
             expect(activator.activate(summary.id)).toBe(true);
             expect(activator.activeWorkflowIds()).toEqual([summary.id]);
-            expect(activator.deactivate(summary.id)).toBe(true);
+            expect(loaded.value.executable.executionOrder).toEqual(['trigger', 'log']);
 
             const messages: string[] = [];
             engine.bus.subscribe((event) => {
@@ -92,6 +92,7 @@ describe('Workflow topology contract', () => {
             await engine.execute(loaded.value.executable);
 
             expect(messages).toEqual(['from contract']);
+            expect(activator.deactivate(summary.id)).toBe(true);
         } finally {
             engine.dispose();
             rmSync(storageDir, { recursive: true, force: true });

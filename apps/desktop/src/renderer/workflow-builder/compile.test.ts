@@ -155,6 +155,14 @@ describe('compileGraph', () => {
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.value.edges).toEqual([]);
+            expect(result.diagnostics).toEqual([
+                expect.objectContaining({
+                    severity: 'warning',
+                    code: 'invalid_edge',
+                    target: { kind: 'edge', edgeId: 'e1' },
+                }),
+            ]);
+            expect(result.diagnostics[0]?.message).toMatch(/reconnect/i);
         }
     });
 });
