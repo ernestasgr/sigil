@@ -209,4 +209,33 @@ describe('validateWorkflowTopology', () => {
 
         expect(result.ok).toBe(true);
     });
+
+    it('reports an unsupported Node handler as a structured diagnostic', () => {
+        const unsupported: PipelineNode = {
+            id: 'missing',
+            type: 'missing-node',
+            pluginId: 'com.example.missing',
+            config: {},
+        };
+        const result = validateWorkflowTopology(
+            pipeline(
+                [trigger('trigger'), unsupported],
+                [edge('trigger-missing', 'trigger', 'missing')],
+            ),
+            { isNodeSupported: (node) => node.id !== 'missing' },
+        );
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.diagnostics).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        code: 'unsupported_node_handler',
+                        nodeId: 'missing',
+                        target: { kind: 'node', nodeId: 'missing' },
+                    }),
+                ]),
+            );
+        }
+    });
 });

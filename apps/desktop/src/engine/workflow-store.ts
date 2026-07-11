@@ -16,7 +16,11 @@ import {
 } from '@sigil/schema';
 import { PipelineEdgeSchema } from '@sigil/schema/edges';
 import { PipelineNodeSchema } from '@sigil/schema/nodes';
-import { type ExecutableWorkflow, validateWorkflowTopology } from '@sigil/schema/topology';
+import {
+    type ExecutableWorkflow,
+    validateWorkflowTopology,
+    type WorkflowTopologyOptions,
+} from '@sigil/schema/topology';
 import { Option } from 'effect';
 import { z } from 'zod';
 
@@ -91,7 +95,10 @@ function readPositions(
     return positions;
 }
 
-function readWorkflowFile(filePath: string): Option.Option<StoredWorkflow> {
+function readWorkflowFile(
+    filePath: string,
+    topologyOptions: WorkflowTopologyOptions,
+): Option.Option<StoredWorkflow> {
     try {
         const parsedFile = StoredWorkflowFileSchema.safeParse(
             JSON.parse(readFileSync(filePath, 'utf-8')),
@@ -107,7 +114,7 @@ function readWorkflowFile(filePath: string): Option.Option<StoredWorkflow> {
         };
         const parseResult = parsePipeline(pipeline);
         if (!parseResult.ok) return Option.none();
-        const topology = validateWorkflowTopology(parseResult.value);
+        const topology = validateWorkflowTopology(parseResult.value, topologyOptions);
         if (!topology.ok) return Option.none();
         return Option.some({
             id: parsedFile.data.id,
@@ -148,13 +155,16 @@ function toSummary(stored: StoredWorkflow): WorkflowSummary {
     return { id: stored.id, name: stored.name, enabled: stored.enabled };
 }
 
-function loadAll(dir: string): Map<string, StoredWorkflow> {
+function loadAll(
+    dir: string,
+    topologyOptions: WorkflowTopologyOptions,
+): Map<string, StoredWorkflow> {
     const workflows = new Map<string, StoredWorkflow>();
     if (!existsSync(dir)) return workflows;
     const entries = readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
         if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
-        const stored = readWorkflowFile(join(dir, entry.name));
+        const stored = readWorkflowFile(join(dir, entry.name), topologyOptions);
         if (Option.isSome(stored)) {
             workflows.set(stored.value.id, stored.value);
         }
@@ -162,8 +172,11 @@ function loadAll(dir: string): Map<string, StoredWorkflow> {
     return workflows;
 }
 
-export function createWorkflowStore(storageDir: string): WorkflowStore {
-    const workflows = loadAll(storageDir);
+export function createWorkflowStore(
+    storageDir: string,
+    topologyOptions: WorkflowTopologyOptions = {},
+): WorkflowStore {
+    const workflows = loadAll(storageDir, topologyOptions);
 
     return {
         list: () => Array.from(workflows.values()).map(toSummary),
@@ -180,7 +193,7 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
         },
 
         create: (name, pipeline, positions) => {
-            const topology = validateWorkflowTopology(pipeline);
+            const topology = validateWorkflowTopology(pipeline, topologyOptions);
             if (!topology.ok) {
                 throw createWorkflowTopologyError(topology.diagnostics);
             }
@@ -202,7 +215,7 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
         },
 
         save: (id, name, pipeline, positions) => {
-            const topology = validateWorkflowTopology(pipeline);
+            const topology = validateWorkflowTopology(pipeline, topologyOptions);
             if (!topology.ok) {
                 throw createWorkflowTopologyError(topology.diagnostics);
             }

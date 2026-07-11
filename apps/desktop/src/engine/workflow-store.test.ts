@@ -107,6 +107,43 @@ describe('WorkflowStore', () => {
         expect(store.list()).toEqual([]);
     });
 
+    it('rejects a stored Pipeline whose Node handler is unavailable', () => {
+        const unsupportedPipeline: CompiledPipeline = {
+            ...samplePipeline,
+            nodes: [
+                ...samplePipeline.nodes,
+                {
+                    id: 'missing',
+                    type: 'missing-node',
+                    pluginId: 'com.example.missing',
+                    config: {},
+                },
+            ],
+            edges: [
+                ...samplePipeline.edges,
+                { id: 'log-missing', source: 'node-2', target: 'missing', sourcePort: 'out' },
+            ],
+        };
+        const handlerAwareStore = createWorkflowStore(dir, {
+            isNodeSupported: (node) => node.type !== 'missing-node',
+        });
+
+        expect(() =>
+            handlerAwareStore.create('Unsupported Workflow', unsupportedPipeline, {}),
+        ).toThrow(
+            expect.objectContaining({
+                kind: 'workflow_topology',
+                diagnostics: expect.arrayContaining([
+                    expect.objectContaining({
+                        code: 'unsupported_node_handler',
+                        nodeId: 'missing',
+                    }),
+                ]),
+            }),
+        );
+        expect(handlerAwareStore.list()).toEqual([]);
+    });
+
     it('persists a created workflow as a JSON file', () => {
         const summary = store.create('My Workflow', samplePipeline, samplePositions);
 

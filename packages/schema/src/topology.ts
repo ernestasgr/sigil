@@ -17,6 +17,7 @@ const TOPOLOGY_DIAGNOSTIC_CODES = [
     'invalid_edge',
     'duplicate_node_id',
     'duplicate_edge_id',
+    'unsupported_node_handler',
 ] as const;
 
 export const TopologyDiagnosticCodeSchema = z.enum(TOPOLOGY_DIAGNOSTIC_CODES);
@@ -54,6 +55,11 @@ export interface WorkflowTopologyOptions {
      * explicit contract for a plugin whose active ports are data-dependent.
      */
     readonly outputPortsForNode?: (node: PipelineNode) => TopologyOutputPorts;
+    /**
+     * Supplies runtime support knowledge for Nodes. The topology module does
+     * not know which handlers are available in a particular Engine process.
+     */
+    readonly isNodeSupported?: (node: PipelineNode) => boolean;
 }
 
 export interface ExecutableWorkflow {
@@ -259,6 +265,21 @@ export function validateWorkflowTopology(
     }
 
     const nodes = [...nodeById.values()];
+    if (options.isNodeSupported) {
+        for (const node of nodes) {
+            if (!options.isNodeSupported(node)) {
+                appendUnique(
+                    diagnostics,
+                    nodeDiagnostic(
+                        'unsupported_node_handler',
+                        node.id,
+                        `Node "${node.id}" (${node.type}) has no registered handler; install or enable its Node Plugin before saving or running the Workflow.`,
+                    ),
+                );
+            }
+        }
+    }
+
     const isTrigger = options.isTrigger ?? isBuiltinTrigger;
     const triggers = nodes.filter(isTrigger);
     const roots = nodes.filter((node) => (incoming.get(node.id)?.length ?? 0) === 0);
