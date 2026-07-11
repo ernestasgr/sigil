@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-
+import { isWorkflowActive } from '../../shared/workflow.js';
 import { SectionShell } from '../components/section-shell.js';
 import { eventColor, eventNameLabel, formatTime, payloadPreview } from '../lib/event-display.js';
 import { useAppStore } from '../store/app-store.js';
@@ -9,7 +9,7 @@ export function HomeSection(): ReactElement {
     const busEvents = useAppStore((state) => state.busEvents);
     const logs = useAppStore((state) => state.logs);
 
-    const activeWorkflows = workflows.filter((w) => w.enabled);
+    const activeWorkflows = workflows.filter(isWorkflowActive);
     const recentEvents = [...busEvents.slice(-10)].reverse();
 
     return (
@@ -21,7 +21,7 @@ export function HomeSection(): ReactElement {
                     </h2>
                     {activeWorkflows.length === 0 ? (
                         <p className="font-manuscript text-veil px-4 py-3 text-sm italic">
-                            No workflows active — enable one from the Workflows section.
+                            No live workflows active — enable one from the Workflows section.
                         </p>
                     ) : (
                         <ul className="divide-gilt/30 divide-y font-ui">

@@ -1,6 +1,7 @@
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
 
+import type { WorkflowActivationState } from '../shared/workflow.js';
 import type { Engine } from './engine.js';
 import { isTriggerHandler } from './node-handlers/types.js';
 import type { NodeHandlerRegistry } from './node-registry.js';
@@ -15,12 +16,28 @@ export interface WorkflowActivator {
     readonly dispose: () => void;
 }
 
-const deactivationHooks = new WeakMap<(ctx: WorkflowContext) => void, () => void>();
+type WorkflowEventCallback = (ctx: WorkflowContext) => void;
+
+interface ActiveActivation {
+    readonly token: number;
+    readonly onEvent: WorkflowEventCallback;
+    readonly teardown: () => void;
+}
+
+const deactivationHooks = new WeakMap<WorkflowEventCallback, (reason?: string) => void>();
 
 export function getDeactivationHook(
-    onEvent: (ctx: WorkflowContext) => void,
-): Option.Option<() => void> {
+    onEvent: WorkflowEventCallback,
+): Option.Option<(reason?: string) => void> {
     return Option.fromNullable(deactivationHooks.get(onEvent));
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+function disabledState(): WorkflowActivationState {
+    return { kind: 'disabled' };
 }
 
 export function createWorkflowActivator(
@@ -29,7 +46,30 @@ export function createWorkflowActivator(
     handlerRegistry: NodeHandlerRegistry,
     onStateChange?: () => void,
 ): WorkflowActivator {
-    const active = new Map<string, () => void>();
+    const active = new Map<string, ActiveActivation>();
+    let nextToken = 0;
+
+    function setActivation(workflowId: string, activation: WorkflowActivationState): void {
+        store.setActivation(workflowId, activation);
+    }
+
+    function emitDiagnostic(message: string, kind?: string): void {
+        engine.bus.next({
+            name: 'engine.diagnostic',
+            payload: kind ? { kind, message } : { message },
+        });
+    }
+
+    function recordFailure(
+        workflowId: string,
+        message: string,
+        diagnostic: string,
+        publishStateChange: boolean,
+    ): void {
+        setActivation(workflowId, { kind: 'failed', message });
+        emitDiagnostic(diagnostic, 'workflow_activation');
+        if (publishStateChange) onStateChange?.();
+    }
 
     return {
         activate(workflowId: string): boolean {
@@ -37,6 +77,8 @@ export function createWorkflowActivator(
 
             const data = store.get(workflowId);
             if (Option.isNone(data)) return false;
+
+            setActivation(workflowId, { kind: 'activating' });
 
             const accepted = acceptWorkflow(data.value.executable, handlerRegistry);
             if (!accepted.ok) {
@@ -49,6 +91,13 @@ export function createWorkflowActivator(
                         },
                     });
                 }
+                const firstDiagnostic = accepted.diagnostics[0];
+                recordFailure(
+                    workflowId,
+                    firstDiagnostic?.message ?? 'Workflow topology validation failed.',
+                    `[activator] failed to activate workflow "${data.value.name}" (${workflowId}): workflow topology is invalid`,
+                    false,
+                );
                 return false;
             }
 
@@ -56,81 +105,100 @@ export function createWorkflowActivator(
             const trigger = executable.pipeline.nodes.find(
                 (node) => node.id === executable.triggerId,
             );
-            if (!trigger) return false;
+            if (!trigger) {
+                recordFailure(
+                    workflowId,
+                    'The executable Workflow has no Trigger node.',
+                    `[activator] failed to activate workflow "${data.value.name}" (${workflowId}): trigger node is missing`,
+                    false,
+                );
+                return false;
+            }
 
             const handler = handlerRegistry.get(trigger.type);
             if (Option.isNone(handler)) {
-                engine.bus.next({
-                    name: 'engine.diagnostic',
-                    payload: {
-                        message: `[activator] no handler registered for trigger type "${trigger.type}" on "${data.value.name}" (${workflowId}) — cannot activate`,
-                    },
-                });
+                const message = `No handler registered for trigger type "${trigger.type}".`;
+                recordFailure(
+                    workflowId,
+                    message,
+                    `[activator] no handler registered for trigger type "${trigger.type}" on "${data.value.name}" (${workflowId}) — cannot activate`,
+                    false,
+                );
                 return false;
             }
 
             if (!isTriggerHandler(handler.value)) {
-                engine.bus.next({
-                    name: 'engine.diagnostic',
-                    payload: {
-                        message: `[activator] node type "${trigger.type}" on "${data.value.name}" (${workflowId}) is not a trigger — cannot activate`,
-                    },
-                });
+                const message = `Node type "${trigger.type}" is not a Trigger.`;
+                recordFailure(
+                    workflowId,
+                    message,
+                    `[activator] node type "${trigger.type}" on "${data.value.name}" (${workflowId}) is not a trigger — cannot activate`,
+                    false,
+                );
                 return false;
             }
 
-            const onEvent = (ctx: WorkflowContext): void => {
+            const token = nextToken++;
+            const onEvent: WorkflowEventCallback = (ctx): void => {
                 void engine.execute(executable, ctx).catch((err: unknown) => {
-                    engine.bus.next({
-                        name: 'engine.diagnostic',
-                        payload: {
-                            message: `[activator] workflow ${data.value.name} (${workflowId}) execution failed: ${err instanceof Error ? err.message : String(err)}`,
-                        },
-                    });
+                    emitDiagnostic(
+                        `[activator] workflow ${data.value.name} (${workflowId}) execution failed: ${errorMessage(err)}`,
+                    );
                 });
             };
-            deactivationHooks.set(onEvent, (): void => {
-                const teardown = active.get(workflowId);
-                if (!teardown) return;
+
+            const handleActivationFailure = (reason?: string): void => {
+                const current = active.get(workflowId);
+                if (!current || current.token !== token) return;
+
                 active.delete(workflowId);
-                teardown();
-                store.setEnabled(workflowId, false);
-                engine.bus.next({
-                    name: 'engine.diagnostic',
-                    payload: {
-                        message: `[activator] trigger "${trigger.type}" disabled for "${data.value.name}" (${workflowId}) — activation failed in worker`,
-                    },
-                });
-                onStateChange?.();
-            });
+                deactivationHooks.delete(onEvent);
+                current.teardown();
+                recordFailure(
+                    workflowId,
+                    reason ?? 'The Trigger worker failed during activation.',
+                    `[activator] trigger "${trigger.type}" disabled for "${data.value.name}" (${workflowId}) — activation failed in worker${reason ? `: ${reason}` : ''}`,
+                    true,
+                );
+            };
+            deactivationHooks.set(onEvent, handleActivationFailure);
 
             try {
                 const teardown = handler.value.activate(trigger.config, onEvent);
-                active.set(workflowId, teardown);
-                engine.bus.next({
-                    name: 'engine.diagnostic',
-                    payload: {
-                        message: `[activator] trigger "${trigger.type}" active for "${data.value.name}" (${workflowId})`,
-                    },
-                });
+                active.set(workflowId, { token, onEvent, teardown });
+                setActivation(workflowId, { kind: 'active' });
+                emitDiagnostic(
+                    `[activator] trigger "${trigger.type}" active for "${data.value.name}" (${workflowId})`,
+                    'workflow_activation',
+                );
                 return true;
             } catch (err) {
-                engine.bus.next({
-                    name: 'engine.diagnostic',
-                    payload: {
-                        message: `[activator] failed to activate trigger "${trigger.type}" for "${data.value.name}" (${workflowId}): ${err instanceof Error ? err.message : String(err)}`,
-                    },
-                });
+                deactivationHooks.delete(onEvent);
+                recordFailure(
+                    workflowId,
+                    errorMessage(err),
+                    `[activator] failed to activate trigger "${trigger.type}" for "${data.value.name}" (${workflowId}): ${errorMessage(err)}`,
+                    false,
+                );
                 return false;
             }
         },
 
         deactivate(workflowId: string): boolean {
-            const teardown = active.get(workflowId);
-            if (!teardown) return false;
-            teardown();
-            active.delete(workflowId);
-            return true;
+            const activation = active.get(workflowId);
+            if (activation) {
+                active.delete(workflowId);
+                deactivationHooks.delete(activation.onEvent);
+                activation.teardown();
+                setActivation(workflowId, disabledState());
+                return true;
+            }
+
+            const summary = store.getSummary(workflowId);
+            if (Option.isSome(summary) && summary.value.activation.kind !== 'disabled') {
+                setActivation(workflowId, disabledState());
+            }
+            return false;
         },
 
         isActive(workflowId: string): boolean {
@@ -142,9 +210,14 @@ export function createWorkflowActivator(
         },
 
         dispose(): void {
-            for (const [id, teardown] of active) {
-                teardown();
-                active.delete(id);
+            for (const workflowId of [...active.keys()]) {
+                const activation = active.get(workflowId);
+                if (activation) {
+                    deactivationHooks.delete(activation.onEvent);
+                    activation.teardown();
+                }
+                active.delete(workflowId);
+                setActivation(workflowId, disabledState());
             }
         },
     };

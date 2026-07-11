@@ -25,13 +25,19 @@ import {
 import { Option } from 'effect';
 import { z } from 'zod';
 
-import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
+import {
+    type NodePosition,
+    type WorkflowActivationState,
+    WorkflowActivationStateSchema,
+    type WorkflowSummary,
+} from '../shared/workflow.js';
 import { createWorkflowTopologyError } from './workflow-topology-error.js';
 
 export interface StoredWorkflow {
     readonly id: string;
     readonly name: string;
     readonly enabled: boolean;
+    readonly activation: WorkflowActivationState;
     readonly positions: Readonly<Record<string, NodePosition>>;
     readonly pipelineId: string;
     readonly workflowId: string;
@@ -50,6 +56,7 @@ interface InvalidWorkflowRecord {
     readonly id: string;
     readonly name: string;
     readonly enabled: false;
+    readonly activation: WorkflowActivationState;
     readonly diagnostics: readonly TopologyDiagnostic[];
     readonly storagePath: string;
 }
@@ -64,6 +71,7 @@ export interface WorkflowStore {
         readonly name: string;
         readonly positions: Readonly<Record<string, NodePosition>>;
     }>;
+    readonly getSummary: (id: string) => Option.Option<WorkflowSummary>;
     readonly save: (
         id: string,
         name: string,
@@ -77,6 +85,10 @@ export interface WorkflowStore {
     ) => WorkflowSummary;
     readonly remove: (id: string) => boolean;
     readonly setEnabled: (id: string, enabled: boolean) => Option.Option<WorkflowSummary>;
+    readonly setActivation: (
+        id: string,
+        activation: WorkflowActivationState,
+    ) => Option.Option<WorkflowSummary>;
     readonly toggle: (id: string) => Option.Option<WorkflowSummary>;
 }
 
@@ -95,6 +107,7 @@ const StoredWorkflowFileSchema = z.object({
     workflowId: z.string().min(1).optional(),
     nodes: z.array(PipelineNodeSchema).optional(),
     edges: z.array(PipelineEdgeSchema).optional(),
+    activation: WorkflowActivationStateSchema.optional(),
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -137,9 +150,19 @@ function invalidWorkflowRecord(
     return {
         ...identity,
         enabled: false,
+        activation: { kind: 'disabled' },
         diagnostics,
         storagePath,
     };
+}
+
+function initialActivationState(
+    enabled: boolean,
+    persisted: WorkflowActivationState | undefined,
+): WorkflowActivationState {
+    if (!enabled) return { kind: 'disabled' };
+    if (persisted?.kind === 'failed') return persisted;
+    return { kind: 'activating' };
 }
 
 function readPositions(
@@ -205,6 +228,10 @@ function readWorkflowFile(
         schemaVersion: pipeline.schemaVersion,
         nodes: pipeline.nodes,
         edges: pipeline.edges,
+        activation: initialActivationState(
+            parsedFile.data.enabled ?? false,
+            parsedFile.data.activation,
+        ),
         executable: topology.value,
         diagnostics: [],
         storagePath,
@@ -225,6 +252,7 @@ function writeWorkflowFile(dir: string, stored: StoredWorkflow): void {
         schemaVersion: stored.schemaVersion,
         nodes: stored.nodes,
         edges: stored.edges,
+        activation: stored.activation,
     };
     writeFileSync(filePath(dir, stored.id), JSON.stringify(data, null, 2), 'utf-8');
 }
@@ -234,7 +262,12 @@ function isValidWorkflowRecord(record: WorkflowRecord): record is ValidWorkflowR
 }
 
 function toSummary(stored: WorkflowRecord): WorkflowSummary {
-    const summary = { id: stored.id, name: stored.name, enabled: stored.enabled };
+    const summary = {
+        id: stored.id,
+        name: stored.name,
+        enabled: stored.enabled,
+        activation: stored.activation,
+    };
     return stored.diagnostics.length > 0
         ? { ...summary, diagnostics: stored.diagnostics }
         : summary;
@@ -264,6 +297,11 @@ export function createWorkflowStore(
     return {
         list: () => Array.from(workflows.values()).map(toSummary),
 
+        getSummary: (id) => {
+            const stored = workflows.get(id);
+            return stored ? Option.some(toSummary(stored)) : Option.none();
+        },
+
         get: (id) => {
             const stored = workflows.get(id);
             if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
@@ -291,6 +329,7 @@ export function createWorkflowStore(
                 schemaVersion: pipeline.schemaVersion,
                 nodes: pipeline.nodes,
                 edges: pipeline.edges,
+                activation: { kind: 'disabled' },
                 executable: topology.value,
                 diagnostics: [],
                 storagePath: filePath(storageDir, id),
@@ -318,6 +357,7 @@ export function createWorkflowStore(
                       schemaVersion: pipeline.schemaVersion,
                       nodes: pipeline.nodes,
                       edges: pipeline.edges,
+                      activation: existingValid.activation,
                       executable: topology.value,
                       diagnostics: [],
                   }
@@ -331,6 +371,7 @@ export function createWorkflowStore(
                       schemaVersion: pipeline.schemaVersion,
                       nodes: pipeline.nodes,
                       edges: pipeline.edges,
+                      activation: { kind: 'disabled' },
                       executable: topology.value,
                       diagnostics: [],
                       storagePath: filePath(storageDir, id),
@@ -353,7 +394,19 @@ export function createWorkflowStore(
         setEnabled: (id, enabled) => {
             const stored = workflows.get(id);
             if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
-            const updated: ValidWorkflowRecord = { ...stored, enabled };
+            const updated: ValidWorkflowRecord = {
+                ...stored,
+                enabled,
+                activation: enabled ? stored.activation : { kind: 'disabled' },
+            };
+            workflows.set(id, updated);
+            writeWorkflowFile(storageDir, updated);
+            return Option.some(toSummary(updated));
+        },
+        setActivation: (id, activation) => {
+            const stored = workflows.get(id);
+            if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
+            const updated: ValidWorkflowRecord = { ...stored, activation };
             workflows.set(id, updated);
             writeWorkflowFile(storageDir, updated);
             return Option.some(toSummary(updated));
@@ -361,7 +414,12 @@ export function createWorkflowStore(
         toggle: (id) => {
             const stored = workflows.get(id);
             if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
-            const updated: ValidWorkflowRecord = { ...stored, enabled: !stored.enabled };
+            const enabled = !stored.enabled;
+            const updated: ValidWorkflowRecord = {
+                ...stored,
+                enabled,
+                activation: enabled ? stored.activation : { kind: 'disabled' },
+            };
             workflows.set(id, updated);
             writeWorkflowFile(storageDir, updated);
             return Option.some(toSummary(updated));

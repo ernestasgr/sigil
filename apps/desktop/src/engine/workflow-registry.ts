@@ -1,6 +1,6 @@
 import type { WorkflowSummary } from '../shared/workflow.js';
 
-export type WorkflowRegistryState = readonly WorkflowSummary[];
+export type WorkflowRegistryState = readonly Pick<WorkflowSummary, 'id' | 'name' | 'enabled'>[];
 
 export function toggleWorkflow(state: WorkflowRegistryState, id: string): WorkflowRegistryState {
     const workflow = state.find((w) => w.id === id);

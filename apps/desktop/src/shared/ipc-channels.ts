@@ -2,15 +2,7 @@ import { CompiledPipelineSchema } from '@sigil/schema';
 import { CapabilitySchema, ManifestSchema } from '@sigil/schema/manifest';
 import { TopologyDiagnosticSchema } from '@sigil/schema/topology';
 import { z } from 'zod';
-
-const WorkflowSummarySchema = z
-    .object({
-        id: z.string(),
-        name: z.string(),
-        enabled: z.boolean(),
-        diagnostics: z.array(TopologyDiagnosticSchema).readonly().optional(),
-    })
-    .readonly();
+import { WorkflowSummarySchema } from './workflow.js';
 
 const NodePositionSchema = z.object({ x: z.number(), y: z.number() }).readonly();
 export const NodePositionRecordSchema = z.record(z.string(), NodePositionSchema).readonly();
@@ -48,6 +40,8 @@ export const EngineChannel = {
     WorkflowsList: 'engine:workflows-list',
     ToggleWorkflow: 'engine:toggle-workflow',
     ToggleWorkflowResult: 'engine:toggle-workflow-result',
+    RetryWorkflow: 'engine:retry-workflow',
+    RetryWorkflowResult: 'engine:retry-workflow-result',
     CreateWorkflow: 'engine:create-workflow',
     CreateWorkflowResult: 'engine:create-workflow-result',
     UpdateWorkflow: 'engine:update-workflow',
@@ -116,6 +110,20 @@ export const EngineToggleWorkflowResultSchema = z.object({
     summary: WorkflowSummarySchema.nullable(),
 });
 export type EngineToggleWorkflowResult = z.infer<typeof EngineToggleWorkflowResultSchema>;
+
+export const EngineRetryWorkflowSchema = z.object({
+    type: z.literal(EngineChannel.RetryWorkflow),
+    correlationId: z.string(),
+    id: z.string(),
+});
+export type EngineRetryWorkflow = z.infer<typeof EngineRetryWorkflowSchema>;
+
+export const EngineRetryWorkflowResultSchema = z.object({
+    type: z.literal(EngineChannel.RetryWorkflowResult),
+    correlationId: z.string(),
+    summary: WorkflowSummarySchema.nullable(),
+});
+export type EngineRetryWorkflowResult = z.infer<typeof EngineRetryWorkflowResultSchema>;
 
 export const EngineCreateWorkflowSchema = z.object({
     type: z.literal(EngineChannel.CreateWorkflow),
@@ -339,6 +347,8 @@ export const EngineMessageSchema = z.union([
     EngineWorkflowsListSchema,
     EngineToggleWorkflowSchema,
     EngineToggleWorkflowResultSchema,
+    EngineRetryWorkflowSchema,
+    EngineRetryWorkflowResultSchema,
     EngineCreateWorkflowSchema,
     EngineCreateWorkflowResultSchema,
     EngineUpdateWorkflowSchema,
@@ -376,6 +386,7 @@ export const WorkerInboundSchema = z.union([
     EngineFireTestEventSchema,
     EngineFireManualTriggerSchema,
     EngineToggleWorkflowSchema,
+    EngineRetryWorkflowSchema,
     EngineCreateWorkflowSchema,
     EngineUpdateWorkflowSchema,
     EngineDeleteWorkflowSchema,
@@ -396,6 +407,7 @@ export const RendererChannel = {
     EngineLog: 'renderer:engine-log',
     WorkflowsList: 'renderer:workflows-list',
     ToggleWorkflow: 'renderer:toggle-workflow',
+    RetryWorkflow: 'renderer:retry-workflow',
     CreateWorkflow: 'renderer:create-workflow',
     UpdateWorkflow: 'renderer:update-workflow',
     DeleteWorkflow: 'renderer:delete-workflow',

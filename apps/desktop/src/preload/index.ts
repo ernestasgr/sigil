@@ -17,6 +17,8 @@ const api = {
     fireTestEvent: (): Promise<void> => ipcRenderer.invoke(RendererChannel.FireTestEvent),
     toggleWorkflow: (id: string): Promise<WorkflowSummary | null> =>
         ipcRenderer.invoke(RendererChannel.ToggleWorkflow, id),
+    retryWorkflow: (id: string): Promise<WorkflowSummary | null> =>
+        ipcRenderer.invoke(RendererChannel.RetryWorkflow, id),
     createWorkflow: (
         name: string,
         pipeline: CompiledPipeline,

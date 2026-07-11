@@ -27,6 +27,7 @@ export type EngineHandle = {
     readonly fireTestEvent: () => void;
     readonly fireManualTrigger: (pipeline: CompiledPipeline) => void;
     readonly toggleWorkflow: (id: string) => Promise<Option.Option<WorkflowSummary>>;
+    readonly retryWorkflow: (id: string) => Promise<Option.Option<WorkflowSummary>>;
     readonly createWorkflow: (
         name: string,
         pipeline: CompiledPipeline,
@@ -164,6 +165,7 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
             case EngineChannel.UpdateWorkflowResult:
             case EngineChannel.DeleteWorkflowResult:
             case EngineChannel.ToggleWorkflowResult:
+            case EngineChannel.RetryWorkflowResult:
             case EngineChannel.ListPluginsResult:
             case EngineChannel.SetPermissionOverrideResult:
             case EngineChannel.ReadPropertiesResult:
@@ -177,6 +179,7 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
             case EngineChannel.FireTestEvent:
             case EngineChannel.FireManualTrigger:
             case EngineChannel.ToggleWorkflow:
+            case EngineChannel.RetryWorkflow:
             case EngineChannel.CreateWorkflow:
             case EngineChannel.UpdateWorkflow:
             case EngineChannel.DeleteWorkflow:
@@ -263,6 +266,13 @@ export function spawnEngine(): EngineHandle {
                 .rpc<{
                     summary: WorkflowSummary | null;
                 }>(EngineChannel.ToggleWorkflow, { id }, 5000)
+                .then((r) => Option.fromNullable(r.summary));
+        },
+        retryWorkflow(id: string): Promise<Option.Option<WorkflowSummary>> {
+            return client
+                .rpc<{
+                    summary: WorkflowSummary | null;
+                }>(EngineChannel.RetryWorkflow, { id }, 5000)
                 .then((r) => Option.fromNullable(r.summary));
         },
         createWorkflow(

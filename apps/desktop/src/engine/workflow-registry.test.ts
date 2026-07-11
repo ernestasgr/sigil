@@ -1,15 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import type { WorkflowSummary } from '../shared/workflow.js';
+import { anyEnabled, toggleWorkflow, type WorkflowRegistryState } from './workflow-registry.js';
 
-import { anyEnabled, toggleWorkflow } from './workflow-registry.js';
-
-const sortWorkflows = (workflows: readonly WorkflowSummary[]): readonly WorkflowSummary[] =>
+const sortWorkflows = (workflows: WorkflowRegistryState): WorkflowRegistryState =>
     [...workflows].sort((a, b) => a.id.localeCompare(b.id));
 
 describe('toggleWorkflow', () => {
     it('enables a disabled workflow', () => {
-        const state: readonly WorkflowSummary[] = [
+        const state: WorkflowRegistryState = [
             { id: 'sort-downloads', name: 'Sort Downloads', enabled: false },
         ];
 
@@ -19,7 +17,7 @@ describe('toggleWorkflow', () => {
     });
 
     it('disables an enabled workflow', () => {
-        const state: readonly WorkflowSummary[] = [
+        const state: WorkflowRegistryState = [
             { id: 'sort-downloads', name: 'Sort Downloads', enabled: true },
         ];
 
@@ -29,7 +27,7 @@ describe('toggleWorkflow', () => {
     });
 
     it('leaves other workflows unchanged', () => {
-        const state: readonly WorkflowSummary[] = [
+        const state: WorkflowRegistryState = [
             { id: 'sort-downloads', name: 'Sort Downloads', enabled: true },
             { id: 'notify-build', name: 'Notify Build', enabled: false },
         ];
@@ -43,7 +41,7 @@ describe('toggleWorkflow', () => {
     });
 
     it('returns the same state when the workflow id is unknown', () => {
-        const state: readonly WorkflowSummary[] = [
+        const state: WorkflowRegistryState = [
             { id: 'sort-downloads', name: 'Sort Downloads', enabled: false },
         ];
 
@@ -59,7 +57,7 @@ describe('anyEnabled', () => {
     });
 
     it('returns false when no workflow is enabled', () => {
-        const state: readonly WorkflowSummary[] = [
+        const state: WorkflowRegistryState = [
             { id: 'a', name: 'A', enabled: false },
             { id: 'b', name: 'B', enabled: false },
         ];
@@ -68,7 +66,7 @@ describe('anyEnabled', () => {
     });
 
     it('returns true when at least one workflow is enabled', () => {
-        const state: readonly WorkflowSummary[] = [
+        const state: WorkflowRegistryState = [
             { id: 'a', name: 'A', enabled: false },
             { id: 'b', name: 'B', enabled: true },
         ];

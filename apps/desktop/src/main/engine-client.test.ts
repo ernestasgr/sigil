@@ -68,7 +68,12 @@ describe('rpc', () => {
         const response: EngineToggleWorkflowResult = {
             type: EngineChannel.ToggleWorkflowResult,
             correlationId,
-            summary: { id: 'wf-1', name: 'My Workflow', enabled: true },
+            summary: {
+                id: 'wf-1',
+                name: 'My Workflow',
+                enabled: true,
+                activation: { kind: 'active' },
+            },
         };
         client.dispatch(response);
 
@@ -77,6 +82,7 @@ describe('rpc', () => {
             id: 'wf-1',
             name: 'My Workflow',
             enabled: true,
+            activation: { kind: 'active' },
         });
     });
 
@@ -228,7 +234,12 @@ describe('dispatch', () => {
         const handler = vi.fn();
         props.workflowsListHandlers.add(handler);
 
-        const wf = { id: 'wf-1', name: 'Test', enabled: true };
+        const wf = {
+            id: 'wf-1',
+            name: 'Test',
+            enabled: true,
+            activation: { kind: 'active' } as const,
+        };
         const list: EngineWorkflowsList = {
             type: EngineChannel.WorkflowsList,
             workflows: [wf],

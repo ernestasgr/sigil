@@ -175,11 +175,13 @@ describe('WorkflowStore', () => {
             id: a.id,
             name: 'Workflow A',
             enabled: false,
+            activation: { kind: 'disabled' },
         });
         expect(list.find((w) => w.id === b.id)).toEqual({
             id: b.id,
             name: 'Workflow B',
             enabled: false,
+            activation: { kind: 'disabled' },
         });
     });
 
@@ -295,7 +297,12 @@ describe('WorkflowStore', () => {
 
         const list = store.list();
         expect(list).toHaveLength(1);
-        expect(list[0]).toEqual({ id: 'wf-pre', name: 'Pre-existing', enabled: true });
+        expect(list[0]).toEqual({
+            id: 'wf-pre',
+            name: 'Pre-existing',
+            enabled: true,
+            activation: { kind: 'activating' },
+        });
 
         const loaded = store.get('wf-pre');
         expect(Option.isSome(loaded)).toBe(true);

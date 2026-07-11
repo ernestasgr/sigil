@@ -2,6 +2,7 @@ import { Match } from 'effect';
 import { Menu, nativeImage, Tray } from 'electron';
 
 import type { WorkflowSummary } from '../shared/workflow.js';
+import { isWorkflowActive, workflowActivationLabel } from '../shared/workflow.js';
 import { solidColorPngDataUrl } from './tray-icon.js';
 import { buildTrayMenu, type TrayMenuItem } from './tray-menu.js';
 
@@ -30,8 +31,8 @@ function iconForState(workflowsActive: boolean): Electron.NativeImage {
 function labelForItem(item: TrayMenuItem): string {
     return Match.value(item).pipe(
         Match.when({ kind: 'workflow-toggle' }, (i) => {
-            const check = i.workflow.enabled ? '✓ ' : '  ';
-            return `${check}${i.workflow.name}`;
+            const marker = isWorkflowActive(i.workflow) ? '✓ ' : i.workflow.enabled ? '• ' : '  ';
+            return `${marker}${i.workflow.name} — ${workflowActivationLabel(i.workflow.activation)}`;
         }),
         Match.when({ kind: 'no-workflows' }, () => 'No workflows'),
         Match.when({ kind: 'open-app' }, () => 'Open Sigil'),
@@ -79,7 +80,7 @@ export function createTray(handlers: TrayHandlers): TrayController {
     return {
         updateWorkflows(nextWorkflows: readonly WorkflowSummary[]): void {
             workflows = nextWorkflows;
-            const active = workflows.some((w) => w.enabled);
+            const active = workflows.some(isWorkflowActive);
             tray.setImage(iconForState(active));
             tray.setToolTip(active ? 'Sigil — Workflows active' : 'Sigil — Inactive');
             rebuild();
