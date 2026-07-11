@@ -748,6 +748,8 @@ import type { NodeHandler } from '../../node-handlers/types.js';
 
 const ConfigSchema = z.object({});
 
+const cachedReadFileSync = readFileSync;
+
 export const descriptor = {
     type: 'fs-plugin' as const,
     configSchema: ConfigSchema,
@@ -760,7 +762,7 @@ export const handler: NodeHandler = {
         // Calls the sandbox-gated require('node:fs').readFileSync
         // If filesystem.read is denied, this throws a permission stub error.
         // If filesystem.read is granted, it throws a real fs error (ENOENT).
-        readFileSync('/nonexistent-file-for-testing');
+        cachedReadFileSync('/nonexistent-file-for-testing');
         return { outputCtx: { event: '', payload: {}, vars: {} }, activePort: 'out' };
     },
 };

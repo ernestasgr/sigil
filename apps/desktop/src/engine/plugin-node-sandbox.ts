@@ -9,35 +9,143 @@ type ChildProcessApiName = StringKey<typeof import('node:child_process')>;
 
 type PermissionDenied = (apiName: string) => string;
 
-type SandboxCapabilityEntryFor<TCapability extends Capability> = TCapability extends
-    | 'filesystem.read'
-    | 'filesystem.write'
-    ? {
-          readonly capability: TCapability;
-          readonly module: 'node:fs';
-          readonly apiNames: readonly FsApiName[];
-          readonly permissionDenied: PermissionDenied;
-      }
-    : TCapability extends 'network'
-      ? {
-            readonly capability: TCapability;
-            readonly module: 'node:net';
-            readonly apiNames: readonly NetApiName[];
-            readonly permissionDenied: PermissionDenied;
-        }
-      : TCapability extends 'processes'
+type SandboxCapabilityEntryFor<TCapability extends Capability> =
+    TCapability extends 'filesystem.read'
         ? {
               readonly capability: TCapability;
-              readonly module: 'node:child_process';
-              readonly apiNames: readonly ChildProcessApiName[];
+              readonly module: 'node:fs';
+              readonly apiNames: readonly FsApiName[];
+              readonly flagGuardedApiNames: readonly FsApiName[];
               readonly permissionDenied: PermissionDenied;
           }
-        : {
-              readonly capability: TCapability;
-              readonly module: null;
-              readonly apiNames: readonly [];
-              readonly permissionDenied: 'module-not-exposed';
-          };
+        : TCapability extends 'filesystem.write'
+          ? {
+                readonly capability: TCapability;
+                readonly module: 'node:fs';
+                readonly apiNames: readonly FsApiName[];
+                readonly flagGuardedApiNames: readonly [];
+                readonly permissionDenied: PermissionDenied;
+            }
+          : TCapability extends 'network'
+            ? {
+                  readonly capability: TCapability;
+                  readonly module: 'node:net';
+                  readonly apiNames: readonly NetApiName[];
+                  readonly flagGuardedApiNames: readonly [];
+                  readonly permissionDenied: PermissionDenied;
+              }
+            : TCapability extends 'processes'
+              ? {
+                    readonly capability: TCapability;
+                    readonly module: 'node:child_process';
+                    readonly apiNames: readonly ChildProcessApiName[];
+                    readonly flagGuardedApiNames: readonly [];
+                    readonly permissionDenied: PermissionDenied;
+                }
+              : {
+                    readonly capability: TCapability;
+                    readonly module: null;
+                    readonly apiNames: readonly [];
+                    readonly permissionDenied: 'module-not-exposed';
+                };
+
+/*
+ * These APIs accept an fs flag that can turn a nominally read-only import into
+ * a write-capable operation. Keep the guard at the export boundary so every
+ * call is checked before reaching Node's fs implementation.
+ */
+const FS_READ_FLAG_GUARDED_API_NAMES = [
+    'readFileSync',
+    'readFile',
+    'openSync',
+    'open',
+    'createReadStream',
+    'ReadStream',
+] satisfies readonly FsApiName[];
+
+const FS_WRITE_FLAG_CONSTANT_NAMES = [
+    'O_WRONLY',
+    'O_RDWR',
+    'O_CREAT',
+    'O_TRUNC',
+    'O_APPEND',
+] as const;
+
+type FsReadFlagGuardedApiName = (typeof FS_READ_FLAG_GUARDED_API_NAMES)[number];
+
+type FsModule = Readonly<Record<string, unknown>>;
+
+type FsCallable = (this: unknown, ...args: unknown[]) => unknown;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+function isCallable(value: unknown): value is FsCallable {
+    return typeof value === 'function';
+}
+
+function getWriteFlagMask(realModule: FsModule): number {
+    const constants = realModule.constants;
+    if (!isRecord(constants)) return 0;
+
+    return FS_WRITE_FLAG_CONSTANT_NAMES.reduce((mask, name) => {
+        const value = constants[name];
+        return typeof value === 'number' ? mask | value : mask;
+    }, 0);
+}
+
+function assertReadOnlyFlag(
+    apiName: FsReadFlagGuardedApiName,
+    flag: unknown,
+    writeFlagMask: number,
+): void {
+    const isWriteCapable =
+        (typeof flag === 'string' && flag !== 'r' && flag !== 'rs') ||
+        (typeof flag === 'number' && Number.isInteger(flag) && (flag & writeFlagMask) !== 0);
+
+    if (isWriteCapable) {
+        throw new Error(
+            `Permission denied: fs.${apiName} does not allow write-capable flags without 'filesystem.write'.`,
+        );
+    }
+}
+
+function assertReadOnlyOptions(
+    apiName: FsReadFlagGuardedApiName,
+    options: unknown,
+    writeFlagMask: number,
+): void {
+    if (!isRecord(options)) return;
+    if ('flag' in options) {
+        assertReadOnlyFlag(apiName, options.flag, writeFlagMask);
+    }
+    if ('flags' in options) {
+        assertReadOnlyFlag(apiName, options.flags, writeFlagMask);
+    }
+}
+
+function wrapReadOnlyFsExport(
+    apiName: FsReadFlagGuardedApiName,
+    value: unknown,
+    realModule: FsModule,
+    permissions: ReadonlySet<Capability>,
+): unknown {
+    if (!isCallable(value)) return value;
+    const writeFlagMask = getWriteFlagMask(realModule);
+    const wrapped = function (this: unknown, ...args: unknown[]): unknown {
+        if (!permissions.has('filesystem.write')) {
+            if (apiName === 'openSync' || apiName === 'open') {
+                assertReadOnlyFlag(apiName, args[1], writeFlagMask);
+            } else {
+                assertReadOnlyOptions(apiName, args[1], writeFlagMask);
+            }
+        }
+
+        return new.target ? Reflect.construct(value, args) : Reflect.apply(value, this, args);
+    };
+    return wrapped;
+}
 
 type SandboxCapabilityTable = {
     readonly [TCapability in Capability]: SandboxCapabilityEntryFor<TCapability>;
@@ -45,6 +153,11 @@ type SandboxCapabilityTable = {
 
 export type SandboxCapabilityEntry = SandboxCapabilityTable[Capability];
 type ModuleCapabilityEntry = Exclude<SandboxCapabilityEntry, { readonly module: null }>;
+
+/*
+ * The remaining table entries are deliberately defined after the fs helpers
+ * so the flag-guarded API list stays next to the implementation that uses it.
+ */
 
 const FS_READ_API_NAMES = [
     'readFileSync',
@@ -165,6 +278,7 @@ export const SANDBOX_CAPABILITY_TABLE = {
         capability: 'filesystem.read',
         module: 'node:fs',
         apiNames: FS_READ_API_NAMES,
+        flagGuardedApiNames: FS_READ_FLAG_GUARDED_API_NAMES,
         permissionDenied: (apiName) =>
             `Permission denied: fs.${apiName} is not available. Grant 'filesystem.read' and/or 'filesystem.write' in the plugin manifest.`,
     },
@@ -172,6 +286,7 @@ export const SANDBOX_CAPABILITY_TABLE = {
         capability: 'filesystem.write',
         module: 'node:fs',
         apiNames: FS_WRITE_API_NAMES,
+        flagGuardedApiNames: [],
         permissionDenied: (apiName) =>
             `Permission denied: fs.${apiName} is not available. Grant 'filesystem.read' and/or 'filesystem.write' in the plugin manifest.`,
     },
@@ -179,6 +294,7 @@ export const SANDBOX_CAPABILITY_TABLE = {
         capability: 'network',
         module: 'node:net',
         apiNames: NETWORK_API_NAMES,
+        flagGuardedApiNames: [],
         permissionDenied: (apiName) =>
             `Permission denied: net.${apiName} is not available. Grant 'network' in the plugin manifest.`,
     },
@@ -192,6 +308,7 @@ export const SANDBOX_CAPABILITY_TABLE = {
         capability: 'processes',
         module: 'node:child_process',
         apiNames: PROCESS_API_NAMES,
+        flagGuardedApiNames: [],
         permissionDenied: (apiName) =>
             `Permission denied: child_process.${apiName} is not available. Grant 'processes' in the plugin manifest.`,
     },
@@ -241,7 +358,11 @@ export function buildPermissionGatedModule(
     const realModule = loadModule(moduleName);
     const apiDefinitions = new Map<
         string,
-        { readonly granted: boolean; readonly permissionDenied: PermissionDenied }
+        {
+            readonly granted: boolean;
+            readonly flagGuarded: boolean;
+            readonly permissionDenied: PermissionDenied;
+        }
     >();
 
     for (const entry of Object.values(SANDBOX_CAPABILITY_TABLE)) {
@@ -252,6 +373,9 @@ export function buildPermissionGatedModule(
             const existing = apiDefinitions.get(key);
             apiDefinitions.set(key, {
                 granted: (existing?.granted ?? false) || permissions.has(entry.capability),
+                flagGuarded:
+                    (existing?.flagGuarded ?? false) ||
+                    entry.flagGuardedApiNames.some((guardedApiName) => guardedApiName === apiName),
                 permissionDenied: existing?.permissionDenied ?? entry.permissionDenied,
             });
         }
@@ -260,7 +384,15 @@ export function buildPermissionGatedModule(
     const sandboxModule: Record<string, unknown> = {};
     for (const [apiName, definition] of apiDefinitions) {
         if (definition.granted && apiName in realModule) {
-            sandboxModule[apiName] = realModule[apiName];
+            const value = realModule[apiName];
+            sandboxModule[apiName] = definition.flagGuarded
+                ? wrapReadOnlyFsExport(
+                      apiName as FsReadFlagGuardedApiName,
+                      value,
+                      realModule,
+                      permissions,
+                  )
+                : value;
         } else {
             sandboxModule[apiName] = (): never => {
                 throw new Error(definition.permissionDenied(apiName));

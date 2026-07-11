@@ -122,70 +122,54 @@ const NodePluginBusEventSchema = z.union([
     }),
 ]);
 
+const NodePluginDepsRpcEnvelopeSchema = z.object({
+    kind: z.literal(NodePluginWorkerKind.DepsRpc),
+    requestId: z.string(),
+    executeRequestId: z.string().optional(),
+});
+
 export const NodePluginDepsRpcSchema = z.discriminatedUnion('operation', [
-    z.object({
-        kind: z.literal(NodePluginWorkerKind.DepsRpc),
-        requestId: z.string(),
+    NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('bus.next'),
         args: z.tuple([NodePluginBusEventSchema]),
     }),
-    z.object({
-        kind: z.literal(NodePluginWorkerKind.DepsRpc),
-        requestId: z.string(),
+    NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('sleep'),
         args: z.tuple([z.number()]),
     }),
-    z.object({
-        kind: z.literal(NodePluginWorkerKind.DepsRpc),
-        requestId: z.string(),
+    NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('resolveTemplate'),
         args: z.tuple([z.string(), WorkflowContextSchema]),
     }),
-    z.object({
-        kind: z.literal(NodePluginWorkerKind.DepsRpc),
-        requestId: z.string(),
+    NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('evaluateCondition'),
         args: z.tuple([PipelineConditionSchema, WorkflowContextSchema]),
     }),
-    z.object({
-        kind: z.literal(NodePluginWorkerKind.DepsRpc),
-        requestId: z.string(),
+    NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('matchSwitchCase'),
         args: z.tuple([SwitchConfigSchema, WorkflowContextSchema]),
     }),
-    z.object({
-        kind: z.literal(NodePluginWorkerKind.DepsRpc),
-        requestId: z.string(),
+    NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('state.get'),
         args: z.tuple([z.string()]),
     }),
-    z.object({
-        kind: z.literal(NodePluginWorkerKind.DepsRpc),
-        requestId: z.string(),
+    NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('state.set'),
         args: z.tuple([z.string(), z.string()]),
     }),
-    z.object({
-        kind: z.literal(NodePluginWorkerKind.DepsRpc),
-        requestId: z.string(),
+    NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('state.flush'),
         args: z.tuple([]),
     }),
-    z.object({
-        kind: z.literal(NodePluginWorkerKind.DepsRpc),
-        requestId: z.string(),
+    NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('capabilityBroker.request'),
         args: z.tuple([CapabilityRequestSchema]),
     }),
-    z.object({
-        kind: z.literal(NodePluginWorkerKind.DepsRpc),
-        requestId: z.string(),
+    NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('fileWatcherManager.registerSubscriber'),
         args: z.tuple([SubscriberRegistrationSchema, z.string().min(1)]),
     }),
-    z.object({
-        kind: z.literal(NodePluginWorkerKind.DepsRpc),
-        requestId: z.string(),
+    NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('fileWatcherManager.unregisterSubscriber'),
         args: z.tuple([z.string().min(1)]),
     }),
@@ -195,7 +179,10 @@ export type NodePluginDepsRpcOperation = NodePluginDepsRpc['operation'];
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
-export type NodePluginDepsRpcRequest = DistributiveOmit<NodePluginDepsRpc, 'kind' | 'requestId'>;
+export type NodePluginDepsRpcRequest = DistributiveOmit<
+    NodePluginDepsRpc,
+    'kind' | 'requestId' | 'executeRequestId'
+>;
 
 export type NodePluginDepsRpcArgs<TOperation extends NodePluginDepsRpcOperation> = Extract<
     NodePluginDepsRpcRequest,
