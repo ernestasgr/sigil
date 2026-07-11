@@ -1,6 +1,7 @@
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
+import { type ExecutableWorkflow, validateWorkflowTopology } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Either, Option } from 'effect';
 
@@ -11,6 +12,7 @@ import type { NodeHandlerDeps, NodeRunResult, Sleep } from './node-handlers/type
 import type { NodeHandlerRegistry } from './node-registry.js';
 import { resolveTemplate } from './template.js';
 import { createInMemoryWorkflowStateStore, type WorkflowStateStore } from './workflow-state.js';
+import { createWorkflowTopologyError } from './workflow-topology-error.js';
 
 export interface ExecutorSettings {
     readonly notifyOnWorkflowError: boolean;
@@ -26,43 +28,6 @@ const DEFAULT_SLEEP: Sleep = (ms: number): Promise<void> =>
     new Promise((resolve) => setTimeout(resolve, ms));
 
 const SEED_CONTEXT: WorkflowContext = { event: '', payload: {}, vars: {} };
-
-function topologicalOrder(pipeline: CompiledPipeline): readonly string[] {
-    const adjacency = new Map<string, string[]>();
-    for (const edge of pipeline.edges) {
-        const targets = adjacency.get(edge.source) ?? [];
-        targets.push(edge.target);
-        adjacency.set(edge.source, targets);
-    }
-
-    const incomingCount = new Map<string, number>();
-    for (const node of pipeline.nodes) {
-        incomingCount.set(node.id, 0);
-    }
-    for (const edge of pipeline.edges) {
-        incomingCount.set(edge.target, (incomingCount.get(edge.target) ?? 0) + 1);
-    }
-
-    const queue: string[] = [];
-    for (const [id, count] of incomingCount) {
-        if (count === 0) queue.push(id);
-    }
-
-    const order: string[] = [];
-    while (queue.length > 0) {
-        const id = queue.shift();
-        if (id === undefined) continue;
-        order.push(id);
-        for (const target of adjacency.get(id) ?? []) {
-            const remaining = (incomingCount.get(target) ?? 1) - 1;
-            incomingCount.set(target, remaining);
-            if (remaining === 0) {
-                queue.push(target);
-            }
-        }
-    }
-    return order;
-}
 
 function reportNodeError(
     bus: EventBus,
@@ -95,6 +60,34 @@ export async function executePipeline(
     capabilityBroker?: CapabilityBroker,
     seedContext?: WorkflowContext,
 ): Promise<void> {
+    const topology = validateWorkflowTopology(pipeline);
+    if (!topology.ok) {
+        throw createWorkflowTopologyError(topology.diagnostics);
+    }
+
+    return executeValidatedWorkflow(
+        topology.value,
+        bus,
+        handlerRegistry,
+        settings,
+        sleep,
+        stateStore,
+        capabilityBroker,
+        seedContext,
+    );
+}
+
+export async function executeValidatedWorkflow(
+    workflow: ExecutableWorkflow,
+    bus: EventBus,
+    handlerRegistry: NodeHandlerRegistry,
+    settings: ExecutorSettings = DEFAULT_EXECUTOR_SETTINGS,
+    sleep: Sleep = DEFAULT_SLEEP,
+    stateStore: WorkflowStateStore = createInMemoryWorkflowStateStore(),
+    capabilityBroker?: CapabilityBroker,
+    seedContext?: WorkflowContext,
+): Promise<void> {
+    const pipeline = workflow.pipeline;
     const runPayload: WorkflowRunPayload = { pipelineId: pipeline.id };
     bus.next({ name: 'workflow.started', payload: runPayload });
     const state = stateStore.forWorkflow(pipeline.workflowId);
@@ -103,11 +96,10 @@ export async function executePipeline(
         const nodeById = new Map<string, PipelineNode>(
             pipeline.nodes.map((node) => [node.id, node]),
         );
-        const order = topologicalOrder(pipeline);
+        const order = workflow.executionOrder;
         const topoIndex = new Map<string, number>(order.map((id, index) => [id, index]));
 
-        const triggerId = order[0];
-        const triggerNode = triggerId !== undefined ? nodeById.get(triggerId) : undefined;
+        const triggerNode = nodeById.get(workflow.triggerId);
         if (!triggerNode) {
             bus.next({ name: 'workflow.completed', payload: runPayload });
             return;

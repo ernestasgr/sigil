@@ -7,6 +7,7 @@ import { Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createWorkflowStore, type WorkflowStore } from './workflow-store.js';
+import { isWorkflowTopologyError } from './workflow-topology-error.js';
 
 function randomDir(): string {
     return join(tmpdir(), `sigil-test-workflow-store-${crypto.randomUUID()}`);
@@ -81,6 +82,29 @@ describe('WorkflowStore', () => {
         expect(typeof summary.id).toBe('string');
         expect(summary.name).toBe('My Workflow');
         expect(summary.enabled).toBe(false);
+    });
+
+    it('rejects an invalid topology before saving it', () => {
+        const invalidPipeline: CompiledPipeline = {
+            ...samplePipeline,
+            nodes: [],
+            edges: [],
+        };
+
+        let error: unknown;
+        try {
+            store.create('Invalid Workflow', invalidPipeline, {});
+        } catch (caught) {
+            error = caught;
+        }
+
+        expect(isWorkflowTopologyError(error)).toBe(true);
+        if (isWorkflowTopologyError(error)) {
+            expect(error.diagnostics).toEqual(
+                expect.arrayContaining([expect.objectContaining({ code: 'empty_pipeline' })]),
+            );
+        }
+        expect(store.list()).toEqual([]);
     });
 
     it('persists a created workflow as a JSON file', () => {
@@ -207,7 +231,7 @@ describe('WorkflowStore', () => {
         expect(Option.getOrThrow(loaded).positions).toEqual(updatedPositions);
     });
 
-    it('reads pre-existing JSON files on startup', () => {
+    it('reads pre-existing topology-valid JSON files on startup', () => {
         const fileData = {
             id: 'wf-pre',
             name: 'Pre-existing',
@@ -216,7 +240,16 @@ describe('WorkflowStore', () => {
             pipelineId: 'pipeline-pre',
             workflowId: 'wf-pre',
             schemaVersion: 1,
-            nodes: [] as readonly unknown[],
+            nodes: [
+                {
+                    id: 'trigger',
+                    type: 'manual-trigger',
+                    config: {
+                        eventName: 'file.created',
+                        payload: { path: '/x', name: 'x', ext: 'x', size: 1, dir: '/x' },
+                    },
+                },
+            ],
             edges: [] as readonly unknown[],
         };
         writeFileSync(join(dir, 'wf-pre.json'), JSON.stringify(fileData, null, 2));
@@ -241,7 +274,16 @@ describe('WorkflowStore', () => {
                 valid: { x: 10, y: 20 },
                 malformed: { x: '10', y: 20 },
             },
-            nodes: [],
+            nodes: [
+                {
+                    id: 'trigger',
+                    type: 'manual-trigger',
+                    config: {
+                        eventName: 'file.created',
+                        payload: { path: '/x', name: 'x', ext: 'x', size: 1, dir: '/x' },
+                    },
+                },
+            ],
             edges: [],
         };
         writeFileSync(join(dir, 'wf-positions.json'), JSON.stringify(fileData));

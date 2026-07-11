@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { CompiledPipeline } from '@sigil/schema';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import { Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -30,6 +31,59 @@ describe('createEngine', () => {
         expect(logEvent?.name === 'log.output' && logEvent.payload.message).toBe(
             'Manual trigger fired for report.pdf (2048576 bytes)',
         );
+    });
+
+    it('rejects an invalid topology at the Engine acceptance seam', async () => {
+        const engine = createEngine();
+        const events: BusEvent[] = [];
+        engine.bus.subscribe((event) => {
+            events.push(event);
+        });
+        const invalidPipeline: CompiledPipeline = {
+            ...sampleManualTriggerToLog,
+            nodes: [],
+            edges: [],
+        };
+
+        await expect(engine.execute(invalidPipeline)).rejects.toMatchObject({
+            kind: 'workflow_topology',
+            diagnostics: expect.arrayContaining([
+                expect.objectContaining({ code: 'empty_pipeline' }),
+            ]),
+        });
+        expect(events.some((event) => event.name === 'engine.diagnostic')).toBe(true);
+        engine.dispose();
+    });
+
+    it('executes a validated Trigger-rooted fan-out', async () => {
+        const engine = createEngine();
+        const events: BusEvent[] = [];
+        engine.bus.subscribe((event) => {
+            events.push(event);
+        });
+        const trigger = sampleManualTriggerToLog.nodes[0];
+        if (!trigger) throw new Error('sample trigger missing');
+        const fanOut: CompiledPipeline = {
+            ...sampleManualTriggerToLog,
+            nodes: [
+                trigger,
+                { id: 'log-a', type: 'log', config: { message: 'a' } },
+                { id: 'log-b', type: 'log', config: { message: 'b' } },
+            ],
+            edges: [
+                { id: 'trigger-a', source: trigger.id, target: 'log-a', sourcePort: 'out' },
+                { id: 'trigger-b', source: trigger.id, target: 'log-b', sourcePort: 'out' },
+            ],
+        };
+
+        await engine.execute(fanOut);
+
+        expect(
+            events
+                .filter((event) => event.name === 'log.output')
+                .map((event) => (event.name === 'log.output' ? event.payload.message : '')),
+        ).toEqual(['a', 'b']);
+        engine.dispose();
     });
 
     it('defaults notifyOnWorkflowError to true when no properties are provided', () => {

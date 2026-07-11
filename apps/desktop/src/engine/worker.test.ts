@@ -22,6 +22,7 @@ import {
 } from '../shared/ipc-channels.js';
 
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
+import { createWorkflowTopologyError } from './workflow-topology-error.js';
 
 vi.mock('./properties-loader.js', () => ({
     readPropertiesFile: () => Effect.succeed({ loadedKey: 'loadedValue' }),
@@ -248,6 +249,38 @@ describe('dispatch', () => {
             type: EngineChannel.CreateWorkflowResult,
             correlationId: 'corr-2',
             summary,
+        });
+    });
+
+    it('returns structured topology diagnostics when CreateWorkflow is rejected', () => {
+        const { subsystems, postMessage, store, broadcastWorkflowsList } = createFakeSubsystems();
+        const diagnostic = {
+            severity: 'error',
+            code: 'empty_pipeline',
+            target: { kind: 'pipeline' },
+            message: 'Add a Trigger before saving.',
+        } as const;
+        store.create.mockImplementation(() => {
+            throw createWorkflowTopologyError([diagnostic]);
+        });
+
+        dispatch(
+            {
+                type: EngineChannel.CreateWorkflow,
+                correlationId: 'corr-invalid',
+                name: 'Invalid WF',
+                pipeline: { id: 'p-1' } as CompiledPipeline,
+                positions: {},
+            },
+            subsystems,
+        );
+
+        expect(broadcastWorkflowsList).not.toHaveBeenCalled();
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.CreateWorkflowResult,
+            correlationId: 'corr-invalid',
+            error: '[empty_pipeline] Add a Trigger before saving.',
+            diagnostics: [diagnostic],
         });
     });
 

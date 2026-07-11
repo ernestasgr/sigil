@@ -1,4 +1,10 @@
 import { type CompiledPipeline, parsePipeline } from '@sigil/schema';
+import {
+    type ExecutableWorkflow,
+    formatTopologyDiagnostics,
+    type TopologyDiagnostic,
+    validateWorkflowTopology,
+} from '@sigil/schema/topology';
 
 export interface PipelineMeta {
     readonly id: string;
@@ -22,8 +28,25 @@ export interface VisualEdge {
 }
 
 export type CompileResult =
-    | { readonly ok: true; readonly value: CompiledPipeline }
-    | { readonly ok: false; readonly error: string };
+    | {
+          readonly ok: true;
+          readonly value: CompiledPipeline;
+          readonly executable: ExecutableWorkflow;
+      }
+    | {
+          readonly ok: false;
+          readonly error: string;
+          readonly diagnostics: readonly TopologyDiagnostic[];
+      };
+
+function structuralDiagnostic(error: string): TopologyDiagnostic {
+    return {
+        severity: 'error',
+        code: 'invalid_pipeline',
+        target: { kind: 'pipeline' },
+        message: error,
+    };
+}
 
 export function compileGraph(
     nodes: readonly VisualNode[],
@@ -50,5 +73,24 @@ export function compileGraph(
                 sourcePort: edge.sourceHandle,
             })),
     };
-    return parsePipeline(pipeline);
+    const parsed = parsePipeline(pipeline);
+    if (!parsed.ok) {
+        const diagnostics = [structuralDiagnostic(parsed.error)];
+        return { ok: false, error: parsed.error, diagnostics };
+    }
+
+    const topology = validateWorkflowTopology(parsed.value);
+    if (!topology.ok) {
+        return {
+            ok: false,
+            error: formatTopologyDiagnostics(topology.diagnostics),
+            diagnostics: topology.diagnostics,
+        };
+    }
+
+    return {
+        ok: true,
+        value: topology.value.pipeline,
+        executable: topology.value,
+    };
 }

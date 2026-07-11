@@ -3,16 +3,19 @@ import { describe, expect, it } from 'vitest';
 import { compileGraph } from './compile.js';
 
 describe('compileGraph', () => {
-    it('compiles an empty graph into a valid empty pipeline', () => {
+    it('rejects an empty graph with a structured topology diagnostic', () => {
         const result = compileGraph([], [], { id: 'pipeline-1', workflowId: 'workflow-1' });
 
-        expect(result.ok).toBe(true);
-        if (result.ok) {
-            expect(result.value.nodes).toEqual([]);
-            expect(result.value.edges).toEqual([]);
-            expect(result.value.schemaVersion).toBe(1);
-            expect(result.value.id).toBe('pipeline-1');
-            expect(result.value.workflowId).toBe('workflow-1');
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.diagnostics).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        code: 'empty_pipeline',
+                        target: { kind: 'pipeline' },
+                    }),
+                ]),
+            );
         }
     });
 
@@ -46,11 +49,28 @@ describe('compileGraph', () => {
             expect(result.value.edges).toEqual([
                 { id: 'e1', source: 'trigger', target: 'log', sourcePort: 'out' },
             ]);
+            expect(result.executable.triggerId).toBe('trigger');
         }
     });
 
     it('maps the sourceHandle to sourcePort for an if-else true branch', () => {
         const nodes = [
+            {
+                id: 'trigger',
+                data: {
+                    type: 'manual-trigger',
+                    config: {
+                        eventName: 'file.created',
+                        payload: {
+                            path: '/dl/a.txt',
+                            name: 'a.txt',
+                            ext: 'txt',
+                            size: 1,
+                            dir: '/dl',
+                        },
+                    },
+                },
+            },
             {
                 id: 'branch',
                 data: {
@@ -67,13 +87,16 @@ describe('compileGraph', () => {
             },
             { id: 'log', data: { type: 'log', config: { message: 'x' } } },
         ];
-        const edges = [{ id: 'e1', source: 'branch', target: 'log', sourceHandle: 'true' }];
+        const edges = [
+            { id: 'e0', source: 'trigger', target: 'branch', sourceHandle: 'out' },
+            { id: 'e1', source: 'branch', target: 'log', sourceHandle: 'true' },
+        ];
 
         const result = compileGraph(nodes, edges, { id: 'p', workflowId: 'w' });
 
         expect(result.ok).toBe(true);
         if (result.ok) {
-            expect(result.value.edges[0].sourcePort).toBe('true');
+            expect(result.value.edges[1].sourcePort).toBe('true');
         }
     });
 
@@ -104,11 +127,28 @@ describe('compileGraph', () => {
     });
 
     it('drops edges with a null sourceHandle rather than failing to compile', () => {
-        const nodes = [{ id: 'log', data: { type: 'log', config: { message: 'x' } } }];
+        const nodes = [
+            {
+                id: 'trigger',
+                data: {
+                    type: 'manual-trigger',
+                    config: {
+                        eventName: 'file.created',
+                        payload: {
+                            path: '/dl/a.txt',
+                            name: 'a.txt',
+                            ext: 'txt',
+                            size: 1,
+                            dir: '/dl',
+                        },
+                    },
+                },
+            },
+        ];
 
         const result = compileGraph(
             nodes,
-            [{ id: 'e1', source: 'log', target: 'log', sourceHandle: null }],
+            [{ id: 'e1', source: 'trigger', target: 'trigger', sourceHandle: null }],
             { id: 'p', workflowId: 'w' },
         );
 
