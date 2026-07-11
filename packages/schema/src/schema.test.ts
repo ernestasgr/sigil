@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { PipelineConditionSchema } from './conditions.js';
 import { FileEventPayloadSchema } from './file-event-payload.js';
-import { CompiledPipelineSchema, parsePipeline } from './pipeline.js';
 import { PipelineNodeSchema } from './nodes/index.js';
+import { CompiledPipelineSchema, parsePipeline } from './pipeline.js';
 import { sampleManualTriggerToLog } from './samples.js';
 import { WorkflowContextSchema } from './workflow-context.js';
 

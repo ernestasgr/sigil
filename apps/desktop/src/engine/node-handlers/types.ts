@@ -1,6 +1,6 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
+import type { NodeType, PipelineNode, UnknownNodeDescriptor } from '@sigil/schema/nodes';
 import type { SwitchConfig } from '@sigil/schema/nodes/switch';
-import type { PipelineNode, NodeType, UnknownNodeDescriptor } from '@sigil/schema/nodes';
 import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 

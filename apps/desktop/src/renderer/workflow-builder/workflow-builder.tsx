@@ -3,13 +3,13 @@ import { type ReactElement, useMemo, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
 import { cn } from '../lib/utils.js';
-import { compileGraph } from './compile.js';
 import { useBuilderStore } from './builder-store.js';
 import { WorkflowCanvas } from './canvas/workflow-canvas.js';
+import { compileGraph } from './compile.js';
 import { CornerFlourish } from './corner-flourish.js';
-import { NodePalette } from './palette/node-palette.js';
 import { PropertiesPanel } from './inspector/properties-panel.js';
 import { VariableInspector } from './inspector/variable-inspector.js';
+import { NodePalette } from './palette/node-palette.js';
 
 export interface WorkflowBuilderProps {
     readonly onSave: (name: string) => void;

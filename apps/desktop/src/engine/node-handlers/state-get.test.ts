@@ -1,8 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
-import { Option } from 'effect';
-
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import { Option } from 'effect';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createEventBus } from '../event-bus.js';
 import type { NodeHandlerDeps } from './types.js';
@@ -48,7 +47,7 @@ describe('state-get handler', () => {
 
         expect(state.get).toHaveBeenCalledWith('counter');
         expect(result.activePort).toBe('out');
-        expect(result.outputCtx.vars['counter']).toBe('42');
+        expect(result.outputCtx.vars.counter).toBe('42');
     });
 
     it('preserves the original payload metadata and existing vars', async () => {
@@ -60,7 +59,7 @@ describe('state-get handler', () => {
 
         expect(result.outputCtx.event).toBe('file.created');
         expect(result.outputCtx.payload).toEqual(ctx.payload);
-        expect(result.outputCtx.vars['existing']).toBe('keep-me');
+        expect(result.outputCtx.vars.existing).toBe('keep-me');
     });
 
     it('produces a new context rather than mutating the input', async () => {
@@ -72,7 +71,7 @@ describe('state-get handler', () => {
 
         expect(result.outputCtx).not.toBe(ctx);
         expect(result.outputCtx.vars).not.toBe(ctx.vars);
-        expect(ctx.vars['counter']).toBeUndefined();
+        expect(ctx.vars.counter).toBeUndefined();
     });
 
     it('assigns undefined when the key is missing without dropping other vars', async () => {
@@ -82,7 +81,7 @@ describe('state-get handler', () => {
         const { stateGetHandler } = await import('./state-get.js');
         const result = await stateGetHandler.execute({ node: stateGetNode, ctx }, deps);
 
-        expect(result.outputCtx.vars['counter']).toBeUndefined();
-        expect(result.outputCtx.vars['existing']).toBe('keep-me');
+        expect(result.outputCtx.vars.counter).toBeUndefined();
+        expect(result.outputCtx.vars.existing).toBe('keep-me');
     });
 });

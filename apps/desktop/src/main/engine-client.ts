@@ -1,25 +1,23 @@
-import { Worker } from 'node:worker_threads';
 import { randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
 import { dirname, resolve as resolvePath } from 'node:path';
-import { app } from 'electron';
-import type { Capability } from '@sigil/schema/manifest';
+import { fileURLToPath } from 'node:url';
+import { Worker } from 'node:worker_threads';
 import type { CompiledPipeline } from '@sigil/schema';
-
-import { z } from 'zod';
+import type { Capability } from '@sigil/schema/manifest';
 import { Option } from 'effect';
-
+import { app } from 'electron';
+import { z } from 'zod';
+import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
 import {
-    EngineChannel,
-    EngineMessageSchema,
-    EngineReadySchema,
     type EngineBusEventPayload,
-    type EngineMessage,
-    type EnginePong,
+    EngineChannel,
     type EngineGetWorkflowResult,
+    type EngineMessage,
+    EngineMessageSchema,
+    type EnginePong,
+    EngineReadySchema,
 } from '../shared/ipc-channels.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
-import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

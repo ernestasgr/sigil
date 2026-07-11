@@ -1,7 +1,6 @@
-import { z } from 'zod';
-
-import { FileEventPayloadSchema, type FileEventPayload } from '@sigil/schema/file-event-payload';
+import { type FileEventPayload, FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
 import { Either } from 'effect';
+import { z } from 'zod';
 
 export const WorkflowRunPayloadSchema = z
     .object({

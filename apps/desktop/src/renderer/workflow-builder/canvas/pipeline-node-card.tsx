@@ -5,7 +5,7 @@ import type { ReactElement } from 'react';
 import { cn } from '../../lib/utils.js';
 import type { BuilderRFNode } from '../builder-store.js';
 import { CornerFlourish } from '../corner-flourish.js';
-import { CATEGORY_TOP_ACCENT, CATEGORY_TEXT, nodeTypeDef } from '../node-registry.js';
+import { CATEGORY_TEXT, CATEGORY_TOP_ACCENT, nodeTypeDef } from '../node-registry.js';
 
 const NODE_BASE_CLASS = 'relative min-w-52 border border-veil/40 bg-obsidian-ink/95 font-ui';
 

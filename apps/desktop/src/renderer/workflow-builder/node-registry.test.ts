@@ -2,7 +2,7 @@ import { NodeTypeSchema } from '@sigil/schema/nodes';
 import { describe, expect, it } from 'vitest';
 
 import { compileGraph } from './compile.js';
-import { nodeTypeDef, type NodeSpec } from './node-registry.js';
+import { type NodeSpec, nodeTypeDef } from './node-registry.js';
 
 const ALL_TYPES = NodeTypeSchema.options;
 

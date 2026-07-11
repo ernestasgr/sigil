@@ -1,6 +1,5 @@
-import { type ReactElement, useCallback, useEffect, useState } from 'react';
-
 import type { CompiledPipeline } from '@sigil/schema';
+import { type ReactElement, useCallback, useEffect, useState } from 'react';
 
 import { SectionShell } from '../components/section-shell.js';
 import { Button } from '../components/ui/button.js';

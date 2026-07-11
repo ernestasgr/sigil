@@ -1,16 +1,14 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-
-import type { Capability } from '@sigil/schema/manifest';
 import type { CompiledPipeline } from '@sigil/schema';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
-
+import type { Capability } from '@sigil/schema/manifest';
+import { contextBridge, type IpcRendererEvent, ipcRenderer } from 'electron';
+import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
 import {
-    RendererChannel,
     type EngineBusEventPayload,
     type EnginePong,
+    RendererChannel,
 } from '../shared/ipc-channels.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
-import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
 import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
 
 const api = {

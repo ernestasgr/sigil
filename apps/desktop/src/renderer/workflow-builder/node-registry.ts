@@ -1,5 +1,5 @@
+import { type BuiltinPipelineNode, getNodeDescriptor, type NodeType } from '@sigil/schema/nodes';
 import type { ComponentType } from 'react';
-import { getNodeDescriptor, type NodeType, type BuiltinPipelineNode } from '@sigil/schema/nodes';
 
 import type { ConfigFormProps } from './inspector/config-forms.js';
 import {

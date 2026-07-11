@@ -1,6 +1,5 @@
-import { describe, expect, it } from 'vitest';
-
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import { describe, expect, it } from 'vitest';
 
 import { resolveTemplate } from './template.js';
 

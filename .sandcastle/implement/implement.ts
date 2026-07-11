@@ -1,8 +1,8 @@
-import * as sandcastle from '@ai-hero/sandcastle';
-import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox';
 import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as sandcastle from '@ai-hero/sandcastle';
+import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox';
 
 const ISSUE_NUMBER = required('ISSUE_NUMBER');
 const ISSUE_TITLE = required('ISSUE_TITLE');

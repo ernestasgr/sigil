@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
     existsSync,
     mkdirSync,
@@ -7,18 +8,16 @@ import {
     writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { Option } from 'effect';
-import { z } from 'zod';
-
 import {
-    parsePipeline,
-    PipelineSchemaVersionSchema,
     type CompiledPipeline,
     type PipelineSchemaVersion,
+    PipelineSchemaVersionSchema,
+    parsePipeline,
 } from '@sigil/schema';
 import { PipelineEdgeSchema } from '@sigil/schema/edges';
 import { PipelineNodeSchema } from '@sigil/schema/nodes';
+import { Option } from 'effect';
+import { z } from 'zod';
 
 import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
 

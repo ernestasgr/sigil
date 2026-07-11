@@ -1,5 +1,5 @@
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
-
+import { Effect, Either, Match, Option } from 'effect';
 import {
     EngineChannel,
     type EngineCreateWorkflow,
@@ -21,9 +21,8 @@ import {
 } from '../shared/ipc-channels.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import type { Engine } from './engine.js';
-import { Effect, Either, Match, Option } from 'effect';
-import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
 import { updatePluginPermissions } from './node-plugin-loader.js';
+import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
 import type { WorkflowActivator } from './workflow-activator.js';
 import type { WorkflowStore } from './workflow-store.js';
 

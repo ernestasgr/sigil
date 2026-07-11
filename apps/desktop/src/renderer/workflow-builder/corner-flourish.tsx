@@ -55,6 +55,7 @@ export function CornerFlourish({
         >
             {flourishLines(corner, size).map((line, index) => (
                 <line
+                    // biome-ignore lint/suspicious/noArrayIndexKey: SVG lines are static decorative elements
                     key={index}
                     x1={line.x1}
                     y1={line.y1}

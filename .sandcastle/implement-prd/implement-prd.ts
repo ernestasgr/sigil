@@ -1,6 +1,6 @@
+import * as path from 'node:path';
 import * as sandcastle from '@ai-hero/sandcastle';
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox';
-import * as path from 'node:path';
 
 const PRD_NUMBER = required('PRD_NUMBER');
 const PRD_TITLE = required('PRD_TITLE');

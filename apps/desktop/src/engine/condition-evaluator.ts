@@ -1,6 +1,6 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
-import type { BooleanOperator, NumberOperator, StringOperator } from '@sigil/schema/operators';
 import type { SwitchConfig } from '@sigil/schema/nodes/switch';
+import type { BooleanOperator, NumberOperator, StringOperator } from '@sigil/schema/operators';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Either, Match } from 'effect';
 

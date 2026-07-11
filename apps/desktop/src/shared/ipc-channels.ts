@@ -1,8 +1,7 @@
-import { z } from 'zod';
+import { CompiledPipelineSchema } from '@sigil/schema';
 
 import { CapabilitySchema, ManifestSchema } from '@sigil/schema/manifest';
-
-import { CompiledPipelineSchema } from '@sigil/schema';
+import { z } from 'zod';
 
 const WorkflowSummarySchema = z
     .object({

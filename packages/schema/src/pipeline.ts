@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PipelineEdgeSchema } from './edges.js';
-import { PipelineNodeSchema, outputPortsForNode, isPluginNode } from './nodes/index.js';
+import { isPluginNode, outputPortsForNode, PipelineNodeSchema } from './nodes/index.js';
 
 export const PipelineSchemaVersionSchema = z.literal(1);
 export type PipelineSchemaVersion = z.infer<typeof PipelineSchemaVersionSchema>;

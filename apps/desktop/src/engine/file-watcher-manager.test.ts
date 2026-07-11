@@ -1,14 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { Either } from 'effect';
-
-import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
-
-import { createBridge } from './bridge.js';
-import { createEventBus } from './event-bus.js';
-import type { BusEvent } from './event-bus.js';
-import { FILE_WATCHER_PLUGIN_ID } from './plugin-ids.js';
-
 import type { Manifest } from '@sigil/schema/manifest';
+import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
+import { Either } from 'effect';
+import { describe, expect, it } from 'vitest';
+import { createBridge } from './bridge.js';
+import type { BusEvent } from './event-bus.js';
+import { createEventBus } from './event-bus.js';
+import { FILE_WATCHER_PLUGIN_ID } from './plugin-ids.js';
 
 const fileWatcherManifest: Manifest = {
     id: 'com.sigil.file-watcher',
@@ -16,9 +13,10 @@ const fileWatcherManifest: Manifest = {
     permissions: ['state.write', 'filesystem.read'],
     emits: ['file.created', 'file.modified', 'file.deleted'],
 };
+
 import {
-    createFileWatcherManager,
     type CreateWatcherFn,
+    createFileWatcherManager,
     type FileEvent,
     type GetFileStatsFn,
 } from './file-watcher-manager.js';

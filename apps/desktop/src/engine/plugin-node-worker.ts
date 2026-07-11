@@ -4,13 +4,13 @@ import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import vm from 'node:vm';
 import { parentPort, workerData } from 'node:worker_threads';
+import type { PluginPipelineNode } from '@sigil/schema/nodes';
+import { type WorkflowContext, WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
-
-import type { SubscriberRegistration, FileEventCallback } from './file-watcher-manager.js';
-import type { PluginPipelineNode } from '@sigil/schema/nodes';
-import { WorkflowContextSchema, type WorkflowContext } from '@sigil/schema/workflow-context';
 import type { CapabilityResult } from './capability-broker.js';
+import type { FileEventCallback, SubscriberRegistration } from './file-watcher-manager.js';
+import { FileEventSchema } from './file-watcher-manager.js';
 import type {
     KernelDeps,
     NodeHandler,
@@ -20,12 +20,11 @@ import type {
 import { isTriggerHandler } from './node-handlers/types.js';
 import {
     NodePluginMainToWorkerSchema,
-    NodePluginWorkerKind,
     type NodePluginWorkerCallbackInvoke,
     type NodePluginWorkerExecuteRequest,
+    NodePluginWorkerKind,
     type NodePluginWorkerToMain,
 } from './plugin-node-rpc.js';
-import { FileEventSchema } from './file-watcher-manager.js';
 
 if (!parentPort) {
     throw new Error('plugin-node-worker must be spawned as a worker_thread');
@@ -350,10 +349,10 @@ function buildFsModule(): Record<string, unknown> {
     const realFs = getModuleRecord('node:fs');
     const allowed = new Set<string>();
     if (permissions.has('filesystem.read')) {
-        FS_READ_FUNCTIONS.forEach((f) => allowed.add(f));
+        for (const f of FS_READ_FUNCTIONS) allowed.add(f);
     }
     if (permissions.has('filesystem.write')) {
-        FS_WRITE_FUNCTIONS.forEach((f) => allowed.add(f));
+        for (const f of FS_WRITE_FUNCTIONS) allowed.add(f);
     }
     const allFs = new Set([...FS_READ_FUNCTIONS, ...FS_WRITE_FUNCTIONS]);
     const module: Record<string, unknown> = {};

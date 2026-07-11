@@ -1,11 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { Either } from 'effect';
-
 import type { Manifest } from '@sigil/schema/manifest';
-
+import { Either } from 'effect';
+import { describe, expect, it } from 'vitest';
+import { createBridge } from './bridge.js';
 import type { BusEvent } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
-import { createBridge } from './bridge.js';
 import { createManifestRegistry } from './manifest-registry.js';
 
 const stubPingManifest: Manifest = {

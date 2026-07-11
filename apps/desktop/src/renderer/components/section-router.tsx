@@ -1,12 +1,11 @@
 import type { ReactElement } from 'react';
-
-import type { Section } from '../store/app-store.js';
-import { useAppStore } from '../store/app-store.js';
 import { EventsSection } from '../sections/events-section.js';
 import { HomeSection } from '../sections/home-section.js';
 import { PluginsSection } from '../sections/plugins-section.js';
 import { SettingsSection } from '../sections/settings-section.js';
 import { WorkflowsSection } from '../sections/workflows-section.js';
+import type { Section } from '../store/app-store.js';
+import { useAppStore } from '../store/app-store.js';
 
 const SECTION_VIEWS: Readonly<Record<Section, () => ReactElement>> = {
     home: HomeSection,

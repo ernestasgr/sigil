@@ -1,8 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
 import { Effect, Option } from 'effect';
 import { z } from 'zod';
-
-import { CapabilitySchema, type Capability } from '@sigil/schema/manifest';
 
 export interface PermissionOverrideStore {
     readonly get: (pluginId: string) => readonly Capability[];

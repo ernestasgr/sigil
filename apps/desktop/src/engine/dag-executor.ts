@@ -1,16 +1,15 @@
-import { Either, Option } from 'effect';
-
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import { Either, Option } from 'effect';
 
 import type { CapabilityBroker } from './capability-broker.js';
 import { evaluateCondition, matchSwitchCase } from './condition-evaluator.js';
 import type { EventBus, WorkflowRunPayload } from './event-bus.js';
-import { resolveTemplate } from './template.js';
-import type { NodeHandlerRegistry } from './node-registry.js';
 import type { NodeHandlerDeps, NodeRunResult, Sleep } from './node-handlers/types.js';
+import type { NodeHandlerRegistry } from './node-registry.js';
+import { resolveTemplate } from './template.js';
 import { createInMemoryWorkflowStateStore, type WorkflowStateStore } from './workflow-state.js';
 
 export interface ExecutorSettings {

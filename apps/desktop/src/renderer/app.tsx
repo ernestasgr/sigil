@@ -1,10 +1,10 @@
-import { useEffect, type ReactElement } from 'react';
+import { type ReactElement, useEffect } from 'react';
 
 import { Nav } from './components/nav.js';
 import { SectionRouter } from './components/section-router.js';
-import { useAppStore } from './store/app-store.js';
 import { SigilProvider } from './lib/sigil-provider.js';
 import { useSigil } from './lib/use-sigil.js';
+import { useAppStore } from './store/app-store.js';
 
 function AppInner(): ReactElement {
     const setWorkflows = useAppStore((state) => state.setWorkflows);

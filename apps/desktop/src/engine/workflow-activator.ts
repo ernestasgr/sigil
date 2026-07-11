@@ -2,8 +2,8 @@ import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
 
 import type { Engine } from './engine.js';
-import type { NodeHandlerRegistry } from './node-registry.js';
 import { isTriggerHandler } from './node-handlers/types.js';
+import type { NodeHandlerRegistry } from './node-registry.js';
 import type { WorkflowStore } from './workflow-store.js';
 
 export interface WorkflowActivator {

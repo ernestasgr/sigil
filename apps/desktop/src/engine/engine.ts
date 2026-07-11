@@ -1,30 +1,27 @@
-import Database from 'better-sqlite3';
-
+import { dirname, resolve as resolvePath } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { CompiledPipeline } from '@sigil/schema';
 import {
     DEFAULT_PROPERTIES,
     loadPropertiesFile,
     type ResolvedProperties,
 } from '@sigil/schema/properties-file';
-
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import { resolve as resolvePath, dirname } from 'node:path';
-
-import { fileURLToPath } from 'node:url';
+import Database from 'better-sqlite3';
 
 import type { Bridge } from './bridge.js';
 import { createBridge } from './bridge.js';
 import type { CapabilityBroker } from './capability-broker.js';
 import { createCapabilityBroker } from './capability-broker.js';
-import { executePipeline, type ExecutorSettings } from './dag-executor.js';
+import { type ExecutorSettings, executePipeline } from './dag-executor.js';
 import type { EventBus } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
 import { createFileWatcherManager, type FileWatcherManager } from './file-watcher-manager.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 import { createManifestRegistry } from './manifest-registry.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
-import { createNodeHandlerRegistry, type NodeHandlerRegistry } from './node-registry.js';
 import { loadNodePlugins, type NodePluginLoadResult } from './node-plugin-loader.js';
+import { createNodeHandlerRegistry, type NodeHandlerRegistry } from './node-registry.js';
 import type { PermissionOverrideStore } from './permission-override-store.js';
 import { createPermissionOverrideStore } from './permission-override-store.js';
 import { createWorkflowStateStore, type WorkflowStateStore } from './workflow-state.js';

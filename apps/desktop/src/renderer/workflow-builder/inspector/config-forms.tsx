@@ -1,3 +1,5 @@
+import type { PipelineCondition } from '@sigil/schema/conditions';
+import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import type {
     DelayConfig,
     FileManagerConfig,
@@ -10,11 +12,9 @@ import type {
     StateSetConfig,
     SwitchConfig,
 } from '@sigil/schema/nodes';
-import type { FileEventPayload } from '@sigil/schema/file-event-payload';
-import type { PipelineCondition } from '@sigil/schema/conditions';
 import {
-    BooleanOperatorSchema,
     type BooleanOperator,
+    BooleanOperatorSchema,
     type NumberOperator,
     NumberOperatorSchema,
     type StringOperator,

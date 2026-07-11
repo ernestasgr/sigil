@@ -1,4 +1,4 @@
-import { parsePipeline, type CompiledPipeline } from '@sigil/schema';
+import { type CompiledPipeline, parsePipeline } from '@sigil/schema';
 
 export interface PipelineMeta {
     readonly id: string;

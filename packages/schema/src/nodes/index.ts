@@ -1,17 +1,15 @@
 import { z } from 'zod';
-
-import type { NodeDescriptor } from './types.js';
-
-import { FileWatcherDescriptor } from './file-watcher.js';
-import { ManualTriggerDescriptor } from './manual-trigger.js';
-import { IfElseDescriptor } from './if-else.js';
-import { SwitchDescriptor } from './switch.js';
-import { FileManagerDescriptor } from './file-manager.js';
-import { NotificationDescriptor } from './notification.js';
-import { LogDescriptor } from './log.js';
 import { DelayDescriptor } from './delay.js';
+import { FileManagerDescriptor } from './file-manager.js';
+import { FileWatcherDescriptor } from './file-watcher.js';
+import { IfElseDescriptor } from './if-else.js';
+import { LogDescriptor } from './log.js';
+import { ManualTriggerDescriptor } from './manual-trigger.js';
+import { NotificationDescriptor } from './notification.js';
 import { StateGetDescriptor } from './state-get.js';
 import { StateSetDescriptor } from './state-set.js';
+import { SwitchDescriptor } from './switch.js';
+import type { NodeDescriptor } from './types.js';
 
 export type { DelayConfig } from './delay.js';
 export type { FileManagerConfig } from './file-manager.js';

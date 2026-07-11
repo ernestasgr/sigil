@@ -1,8 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
 import { Option } from 'effect';
-
-import type { NodeHandler } from './node-handlers/types.js';
+import { describe, expect, it, vi } from 'vitest';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
+import type { NodeHandler } from './node-handlers/types.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
 
 function testHandlers() {

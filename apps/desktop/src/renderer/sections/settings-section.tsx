@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { Capability } from '@sigil/schema/manifest';
+import { CapabilitySchema } from '@sigil/schema/manifest';
 
 import { DEFAULT_PROPERTIES as ENGINE_DEFAULTS } from '@sigil/schema/properties-file';
-import { CapabilitySchema } from '@sigil/schema/manifest';
-import type { Capability } from '@sigil/schema/manifest';
+import type { ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { WorkflowStateEntry } from '../../shared/ipc-channels.js';
 import type { PluginInfo } from '../../shared/plugin-info.js';
 import type { WorkflowSummary } from '../../shared/workflow.js';
-import { Button } from '../components/ui/button.js';
 import { SectionShell } from '../components/section-shell.js';
+import { Button } from '../components/ui/button.js';
 import { useSigil } from '../lib/use-sigil.js';
 import { useAppStore } from '../store/app-store.js';
 

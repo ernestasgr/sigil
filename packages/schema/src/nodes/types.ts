@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import type { z } from 'zod';
 
 export interface NodeDescriptor<TType extends string, TSchema extends z.ZodType> {
     readonly type: TType;

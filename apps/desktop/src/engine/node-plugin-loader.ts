@@ -1,35 +1,34 @@
 import 'tsx';
 
+import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, resolve as resolvePath, dirname } from 'node:path';
+import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { randomUUID } from 'node:crypto';
-import { Either, Option } from 'effect';
+import type { Manifest } from '@sigil/schema/manifest';
 
 import { parseManifest } from '@sigil/schema/manifest';
-import type { Manifest } from '@sigil/schema/manifest';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
-
+import { Either, Option } from 'effect';
+import { CapabilityRequestSchema } from './capability-broker.js';
+import { FileEventSchema, SubscriberRegistrationSchema } from './file-watcher-manager.js';
 import type { ManifestRegistry } from './manifest-registry.js';
-import type { NodeHandlerRegistry } from './node-registry.js';
 import type {
     KernelDeps,
     NodeHandler,
     NodeHandlerDeps,
     NodeRunResult,
 } from './node-handlers/types.js';
+import type { NodeHandlerRegistry } from './node-registry.js';
 import type { PermissionOverrideStore } from './permission-override-store.js';
-import { CapabilityRequestSchema } from './capability-broker.js';
-import { FileEventSchema, SubscriberRegistrationSchema } from './file-watcher-manager.js';
-import { getDeactivationHook } from './workflow-activator.js';
 import type {
-    NodePluginWorkerLoaded,
-    NodePluginWorkerLoadError,
     NodePluginDepsRpc,
+    NodePluginWorkerLoadError,
+    NodePluginWorkerLoaded,
 } from './plugin-node-rpc.js';
 import { NodePluginWorkerKind, NodePluginWorkerToMainSchema } from './plugin-node-rpc.js';
+import { getDeactivationHook } from './workflow-activator.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

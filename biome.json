@@ -1,0 +1,74 @@
+{
+    "$schema": "https://biomejs.dev/schemas/2.5.3/schema.json",
+    "vcs": {
+        "enabled": true,
+        "clientKind": "git",
+        "useIgnoreFile": true
+    },
+    "files": {
+        "ignoreUnknown": true
+    },
+    "formatter": {
+        "enabled": true,
+        "indentStyle": "space",
+        "indentWidth": 4,
+        "lineWidth": 100,
+        "lineEnding": "lf"
+    },
+    "linter": {
+        "enabled": true,
+        "rules": {
+            "preset": "recommended"
+        },
+        "includes": [
+            "**",
+            "!**/dist/**",
+            "!**/out/**",
+            "!**/node_modules/**",
+            "!**/release/**",
+            "!**/coverage/**",
+            "!**/.turbo/**",
+            "!**/*.d.ts",
+            "!.sandcastle/**"
+        ]
+    },
+    "javascript": {
+        "formatter": {
+            "quoteStyle": "single",
+            "trailingCommas": "all",
+            "semicolons": "always",
+            "arrowParentheses": "always"
+        }
+    },
+    "overrides": [
+        {
+            "includes": ["apps/desktop/src/renderer/**/*.{ts,tsx}"],
+            "linter": {
+                "rules": {
+                    "correctness": {
+                        "useExhaustiveDependencies": "warn",
+                        "useHookAtTopLevel": "error",
+                        "useJsxKeyInIterable": "warn"
+                    },
+                    "style": {
+                        "useComponentExportOnlyModules": "warn"
+                    }
+                }
+            }
+        }
+    ],
+    "css": {
+        "parser": {
+            "cssModules": true,
+            "tailwindDirectives": true
+        }
+    },
+    "assist": {
+        "enabled": true,
+        "actions": {
+            "source": {
+                "organizeImports": "on"
+            }
+        }
+    }
+}

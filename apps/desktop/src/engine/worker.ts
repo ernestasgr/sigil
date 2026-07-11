@@ -1,21 +1,20 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parentPort, workerData } from 'node:worker_threads';
-
+import { Effect, Match } from 'effect';
+import { z } from 'zod';
 import {
-    EngineChannel,
-    WorkerInboundSchema,
     type EngineBusEvent,
+    EngineChannel,
     type EngineLog,
     type EngineWorkflowsList,
+    WorkerInboundSchema,
 } from '../shared/ipc-channels.js';
+import { type DispatchSubsystems, dispatch } from './dispatch.js';
 import { createEngine } from './engine.js';
 import { readPropertiesFile } from './properties-loader.js';
 import { createWorkflowActivator } from './workflow-activator.js';
 import { createWorkflowStore } from './workflow-store.js';
-import { dispatch, type DispatchSubsystems } from './dispatch.js';
-import { Effect, Match } from 'effect';
-import { z } from 'zod';
 
 if (!parentPort) {
     throw new Error('engine worker must be spawned as a worker_thread');
