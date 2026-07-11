@@ -1,15 +1,15 @@
-import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import {
     EngineChannel,
     EngineMessageSchema,
-    EngineReadySchema,
-    WorkerInboundSchema,
-    WorkflowIdSchema,
     type EnginePing,
     type EnginePong,
+    EngineReadySchema,
     type EngineToggleWorkflow,
+    WorkerInboundSchema,
+    WorkflowIdSchema,
 } from './ipc-channels.js';
 
 describe('WorkerInboundSchema', () => {

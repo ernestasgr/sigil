@@ -1,7 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { Either, Option } from 'effect';
-
 import type { Manifest } from '@sigil/schema/manifest';
+import { Either, Option } from 'effect';
+import { describe, expect, it } from 'vitest';
 
 import { createManifestRegistry } from './manifest-registry.js';
 

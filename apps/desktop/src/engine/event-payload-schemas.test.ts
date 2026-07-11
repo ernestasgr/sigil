@@ -7,10 +7,10 @@ import {
     LogOutputPayloadSchema,
     NotificationShowPayloadSchema,
     PluginBusEventPayloadSchema,
-    WorkflowErrorPayloadSchema,
-    WorkflowRunPayloadSchema,
     safeParsePayload,
     validateBusEventPayload,
+    WorkflowErrorPayloadSchema,
+    WorkflowRunPayloadSchema,
 } from './event-payload-schemas.js';
 
 describe('EventPayloadSchemaRegistry', () => {

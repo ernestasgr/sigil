@@ -1,5 +1,5 @@
-@import 'tailwindcss';
-@import 'tw-animate-css';
+@import "tailwindcss";
+@import "tw-animate-css";
 
 @theme {
     --color-obsidian-ink: #0e0c10;
@@ -15,10 +15,10 @@
     --color-state: #a85c32;
     --color-utility: #6a6473;
 
-    --font-display: 'Cinzel', serif;
-    --font-ui: 'Inter', 'IBM Plex Sans', sans-serif;
-    --font-manuscript: 'Spectral', 'Cormorant', serif;
-    --font-data: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    --font-display: "Cinzel", serif;
+    --font-ui: "Inter", "IBM Plex Sans", sans-serif;
+    --font-manuscript: "Spectral", "Cormorant", serif;
+    --font-data: "JetBrains Mono", "IBM Plex Mono", monospace;
 }
 
 html,

@@ -1,14 +1,14 @@
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Option } from 'effect';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createManifestRegistry } from './manifest-registry.js';
-import { createNodeHandlerRegistry } from './node-registry.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
 import { loadNodePlugin, loadNodePlugins, updatePluginPermissions } from './node-plugin-loader.js';
+import { createNodeHandlerRegistry } from './node-registry.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

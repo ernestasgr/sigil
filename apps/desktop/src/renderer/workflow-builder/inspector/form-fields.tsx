@@ -9,6 +9,7 @@ interface FieldProps {
 
 export function Field({ label, children }: FieldProps): ReactElement {
     return (
+        // biome-ignore lint/a11y/noLabelWithoutControl: Wrapper component that passes children as controls
         <label className="flex flex-col gap-1">
             <span className="font-ui text-[11px] tracking-widest text-veil uppercase">{label}</span>
             {children}
@@ -141,6 +142,7 @@ export function StringList({
         <Field label={label}>
             <div className="flex flex-col gap-1.5">
                 {values.map((value, index) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: Ordered list items that don't reorder
                     <div key={index} className="flex items-center gap-1.5">
                         <input
                             type="text"

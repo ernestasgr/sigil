@@ -1,21 +1,20 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import Database from 'better-sqlite3';
-import { Either, Option } from 'effect';
-import { beforeEach, describe, expect, it } from 'vitest';
-
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineEdge } from '@sigil/schema/edges';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
+import Database from 'better-sqlite3';
+import { Either, Option } from 'effect';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { CapabilityBroker } from './capability-broker.js';
+import { type ExecutorSettings, executePipeline } from './dag-executor.js';
 import type { BusEvent } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
-import { executePipeline, type ExecutorSettings } from './dag-executor.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
 import { createWorkflowStateStore } from './workflow-state.js';

@@ -1,12 +1,11 @@
-import { statSync, watch as fsWatch } from 'node:fs';
+import { watch as fsWatch, statSync } from 'node:fs';
 import { join, parse } from 'node:path';
-import { z } from 'zod';
-
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import { FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
 import { FileEventNameSchema } from '@sigil/schema/nodes/common';
 import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
 import { Option } from 'effect';
+import { z } from 'zod';
 
 export interface WatcherHandle {
     readonly close: () => void;
@@ -68,7 +67,7 @@ function watcherKey(path: string, recursive: boolean): string {
 
 function matchesGlob(filename: string, pattern: string): boolean {
     const regex = new RegExp(
-        '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$',
+        `^${pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`,
         'i',
     );
     return regex.test(filename);

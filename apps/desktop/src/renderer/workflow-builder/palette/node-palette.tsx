@@ -2,9 +2,8 @@ import type { NodeType } from '@sigil/schema/nodes';
 import type { DragEvent, ReactElement } from 'react';
 
 import { cn } from '../../lib/utils.js';
+import { NODE_DRAG_MIME } from '../constants.js';
 import { CATEGORIES, CATEGORY_TEXT, NODE_TYPES, type NodeCategory } from '../node-registry.js';
-
-export const NODE_DRAG_MIME = 'application/sigil-node-type';
 
 export function NodePalette(): ReactElement {
     return (
@@ -66,6 +65,9 @@ function PaletteItem({
             draggable
             onDragStart={onDragStart}
             title={description}
+            tabIndex={0}
+            role="option"
+            aria-roledescription="Draggable node"
             className={cn(
                 'group flex cursor-grab flex-col gap-0.5 border border-veil/40 bg-obsidian-ink/60 px-3 py-2 transition-colors hover:border-gilt/60',
                 'active:cursor-grabbing',

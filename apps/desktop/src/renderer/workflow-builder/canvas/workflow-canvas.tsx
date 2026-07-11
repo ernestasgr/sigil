@@ -2,16 +2,16 @@ import {
     Controls,
     MarkerType,
     MiniMap,
-    ReactFlow,
     type NodeTypes,
+    ReactFlow,
     useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { type DragEvent, type ReactElement, useCallback } from 'react';
 
 import { BUILDER_NODE_TYPE, useBuilderStore } from '../builder-store.js';
+import { NODE_DRAG_MIME } from '../constants.js';
 import { isNodeType } from '../node-registry.js';
-import { NODE_DRAG_MIME } from '../palette/node-palette.js';
 import { PipelineNodeCard } from './pipeline-node-card.js';
 
 const NODE_TYPES: NodeTypes = { [BUILDER_NODE_TYPE]: PipelineNodeCard };
@@ -48,7 +48,12 @@ export function WorkflowCanvas(): ReactElement {
     }, []);
 
     return (
-        <div className="sigil-ley-line-field h-full w-full" onDrop={onDrop} onDragOver={onDragOver}>
+        <section
+            className="sigil-ley-line-field h-full w-full"
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            aria-label="Workflow canvas"
+        >
             <ReactFlow
                 nodes={[...nodes]}
                 edges={[...edges]}
@@ -71,6 +76,6 @@ export function WorkflowCanvas(): ReactElement {
                     nodeColor={(node) => (node.selected ? '#C9A227' : '#4B4554')}
                 />
             </ReactFlow>
-        </div>
+        </section>
     );
 }

@@ -1,4 +1,4 @@
-import type { TriggerHandler, NodeRunResult } from './types.js';
+import type { NodeRunResult, TriggerHandler } from './types.js';
 import { narrowNode } from './types.js';
 
 export const manualTriggerHandler: TriggerHandler = {

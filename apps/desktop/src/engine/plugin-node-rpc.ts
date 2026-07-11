@@ -1,6 +1,5 @@
-import { z } from 'zod';
-
 import { CollisionSuffixStyleSchema } from '@sigil/schema/properties-file';
+import { z } from 'zod';
 
 export const NodePluginWorkerKind = {
     Loaded: 'npw:loaded',

@@ -1,9 +1,7 @@
 import { randomUUID } from 'node:crypto';
-
-import { Either } from 'effect';
-
 import { FileWatcherConfigSchema } from '@sigil/schema/nodes/file-watcher';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import { Either } from 'effect';
 
 import type {
     KernelDeps,

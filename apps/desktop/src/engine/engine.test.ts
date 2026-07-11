@@ -1,13 +1,11 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import { Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-
-import { sampleManualTriggerToLog } from '@sigil/schema/samples';
-
-import type { BusEvent } from './event-bus.js';
 import { createEngine } from './engine.js';
+import type { BusEvent } from './event-bus.js';
 
 describe('createEngine', () => {
     it('exposes the event bus, stub bridge, and stub capability broker', () => {

@@ -1,10 +1,8 @@
 import { copyFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import { basename, dirname, join, parse } from 'node:path';
-
-import { Either } from 'effect';
-
 import { FileManagerConfigSchema } from '@sigil/schema/nodes/file-manager';
 import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
+import { Either } from 'effect';
 
 import type { CapabilityBroker } from '../../engine/capability-broker.js';
 import type { NodeHandler, NodeRunResult } from '../../engine/node-handlers/types.js';

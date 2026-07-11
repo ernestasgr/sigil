@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { PluginInfo } from '../../shared/plugin-info.js';
 import { SectionShell } from '../components/section-shell.js';

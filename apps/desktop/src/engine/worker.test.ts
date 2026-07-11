@@ -1,8 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
-import { Effect, Either, Option } from 'effect';
-
 import type { CompiledPipeline } from '@sigil/schema';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
+import { Effect, Either, Option } from 'effect';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
     EngineChannel,
@@ -22,7 +21,7 @@ import {
     type EngineUpdateWorkflow,
 } from '../shared/ipc-channels.js';
 
-import { dispatch, type DispatchSubsystems } from './dispatch.js';
+import { type DispatchSubsystems, dispatch } from './dispatch.js';
 
 vi.mock('./properties-loader.js', () => ({
     readPropertiesFile: () => Effect.succeed({ loadedKey: 'loadedValue' }),

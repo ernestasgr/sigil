@@ -1,21 +1,19 @@
-import { z } from 'zod';
-import { dialog } from 'electron';
-import type { BrowserWindow } from 'electron';
-import { Option } from 'effect';
 import { stat } from 'node:fs/promises';
 import { basename, dirname, extname } from 'node:path';
-
 import { CompiledPipelineSchema } from '@sigil/schema';
-import { CapabilitySchema } from '@sigil/schema/manifest';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
-
+import { CapabilitySchema } from '@sigil/schema/manifest';
+import { Option } from 'effect';
+import type { BrowserWindow } from 'electron';
+import { dialog } from 'electron';
+import { z } from 'zod';
+import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
 import {
+    type EnginePong,
+    NodePositionRecordSchema,
     RendererChannel,
     WorkflowIdSchema,
-    NodePositionRecordSchema,
-    type EnginePong,
 } from '../shared/ipc-channels.js';
-import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 import type { EngineHandle } from './engine-client.js';

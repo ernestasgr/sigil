@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { Effect, Either } from 'effect';
+import { Effect, type Either } from 'effect';
 
 export type WriteResult = Either.Either<void, string>;
 

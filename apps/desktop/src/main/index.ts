@@ -1,19 +1,19 @@
-import { app, BrowserWindow, Notification } from 'electron';
-import { Either } from 'effect';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Either } from 'effect';
+import { app, BrowserWindow, Notification } from 'electron';
 
 import { safeParsePayload } from '../engine/event-payload-schemas.js';
-import { RendererChannel, type EngineBusEventPayload } from '../shared/ipc-channels.js';
+import { type EngineBusEventPayload, RendererChannel } from '../shared/ipc-channels.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
-import { spawnEngine, type EngineHandle } from './engine-client.js';
+import { type EngineHandle, spawnEngine } from './engine-client.js';
 import { registerIpcHandlers } from './ipc-handlers.js';
 import { createTray, type TrayController } from './tray.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const RENDERER_DIST = resolvePath(__dirname, '../renderer');
-const RENDERER_DEV_URL = process.env['ELECTRON_RENDERER_URL'];
+const RENDERER_DEV_URL = process.env.ELECTRON_RENDERER_URL;
 
 let engine: EngineHandle | null = null;
 let mainWindow: BrowserWindow | null = null;

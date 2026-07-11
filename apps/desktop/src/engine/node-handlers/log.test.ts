@@ -1,7 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createEventBus } from '../event-bus.js';
 import type { NodeHandlerDeps } from './types.js';

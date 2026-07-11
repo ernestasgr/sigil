@@ -1,5 +1,5 @@
-import { Menu, Tray, nativeImage } from 'electron';
 import { Match } from 'effect';
+import { Menu, nativeImage, Tray } from 'electron';
 
 import type { WorkflowSummary } from '../shared/workflow.js';
 import { solidColorPngDataUrl } from './tray-icon.js';

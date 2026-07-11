@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
 import { useWorkflowState } from '../../lib/use-workflow-state.js';
-import { useAppStore, type LogEntry } from '../../store/app-store.js';
+import { type LogEntry, useAppStore } from '../../store/app-store.js';
 
 interface VariableInspectorProps {
     readonly workflowId: string;
@@ -20,7 +20,7 @@ export function VariableInspector({ workflowId }: VariableInspectorProps): React
 
     useEffect(() => {
         logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [allLogs]);
+    }, []);
 
     const recentLogs: readonly LogEntry[] = allLogs.slice(-50);
 
