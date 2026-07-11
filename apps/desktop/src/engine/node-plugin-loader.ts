@@ -9,8 +9,8 @@ import { Either, Option } from 'effect';
 
 import { parseManifest } from '@sigil/schema/manifest';
 import type { Manifest } from '@sigil/schema/manifest';
-import type { NodeDescriptor } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
 
 import type { ManifestRegistry } from './manifest-registry.js';
 import type { NodeHandlerRegistry } from './node-registry.js';
@@ -21,14 +21,15 @@ import type {
     NodeRunResult,
 } from './node-handlers/types.js';
 import type { PermissionOverrideStore } from './permission-override-store.js';
+import { CapabilityRequestSchema } from './capability-broker.js';
+import { FileEventSchema, SubscriberRegistrationSchema } from './file-watcher-manager.js';
 import { getDeactivationHook } from './workflow-activator.js';
 import type {
     NodePluginWorkerLoaded,
     NodePluginWorkerLoadError,
-    NodePluginWorkerToMain,
     NodePluginDepsRpc,
 } from './plugin-node-rpc.js';
-import { NodePluginWorkerKind } from './plugin-node-rpc.js';
+import { NodePluginWorkerKind, NodePluginWorkerToMainSchema } from './plugin-node-rpc.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -55,7 +56,7 @@ export type NodePluginLoadResult =
     | {
           readonly ok: true;
           readonly manifest: Manifest;
-          readonly descriptor: NodeDescriptor<string, unknown>;
+          readonly descriptor: { readonly type: string };
           readonly handler: NodeHandler;
       }
     | { readonly ok: false; readonly error: NodePluginLoadError };
@@ -155,7 +156,16 @@ export async function loadNodePlugin(
 
     const loaded = await new Promise<NodePluginWorkerLoaded | NodePluginWorkerLoadError>(
         (resolve, reject) => {
-            const onMessage = (msg: NodePluginWorkerToMain): void => {
+            const onMessage = (raw: unknown): void => {
+                const parsed = NodePluginWorkerToMainSchema.safeParse(raw);
+                if (!parsed.success) {
+                    worker.off('message', onMessage);
+                    reject(
+                        new Error(`Invalid plugin worker load message: ${parsed.error.message}`),
+                    );
+                    return;
+                }
+                const msg = parsed.data;
                 if (
                     msg.kind === NodePluginWorkerKind.Loaded ||
                     msg.kind === NodePluginWorkerKind.LoadError
@@ -202,7 +212,7 @@ export async function loadNodePlugin(
     return {
         ok: true,
         manifest,
-        descriptor: { type: loaded.descriptorType } as NodeDescriptor<string, unknown>,
+        descriptor: { type: loaded.descriptorType },
         handler,
     };
 }
@@ -246,7 +256,14 @@ function createWorkerNodeHandlerProxy(
     const pendingActivates = new Map<string, { onEvent: (ctx: WorkflowContext) => void }>();
 
     worker.on('message', (raw: unknown) => {
-        const msg = raw as NodePluginWorkerToMain;
+        const parsed = NodePluginWorkerToMainSchema.safeParse(raw);
+        if (!parsed.success) {
+            diagnostic?.(
+                `[proxy] invalid message from plugin "${pluginId}": ${parsed.error.message}`,
+            );
+            return;
+        }
+        const msg = parsed.data;
         switch (msg.kind) {
             case NodePluginWorkerKind.ExecuteResult:
             case NodePluginWorkerKind.ExecuteError: {
@@ -254,10 +271,16 @@ function createWorkerNodeHandlerProxy(
                 if (!pending) break;
                 pendingExecutes.delete(msg.requestId);
                 if (msg.kind === NodePluginWorkerKind.ExecuteResult) {
-                    pending.resolve({
-                        outputCtx: msg.outputCtx as WorkflowContext,
-                        activePort: msg.activePort,
-                    });
+                    const outputCtx = WorkflowContextSchema.safeParse(msg.outputCtx);
+                    if (!outputCtx.success) {
+                        pending.reject(
+                            new Error(
+                                `Plugin returned an invalid workflow context: ${outputCtx.error.message}`,
+                            ),
+                        );
+                        break;
+                    }
+                    pending.resolve({ outputCtx: outputCtx.data, activePort: msg.activePort });
                 } else {
                     pending.reject(new Error(msg.error));
                 }
@@ -278,12 +301,18 @@ function createWorkerNodeHandlerProxy(
             case NodePluginWorkerKind.ActivateEvent: {
                 const pending = pendingActivates.get(msg.requestId);
                 if (!pending) break;
-                const ctx: WorkflowContext = {
+                const parsedContext = WorkflowContextSchema.safeParse({
                     event: msg.event,
-                    payload: msg.payload as Record<string, unknown>,
-                    vars: (msg.vars ?? {}) as Record<string, unknown>,
-                };
-                pending.onEvent(ctx);
+                    payload: msg.payload,
+                    vars: msg.vars ?? {},
+                });
+                if (!parsedContext.success) {
+                    diagnostic?.(
+                        `[proxy] plugin "${pluginId}" emitted an invalid workflow context: ${parsedContext.error.message}`,
+                    );
+                    break;
+                }
+                pending.onEvent(parsedContext.data);
                 break;
             }
             case NodePluginWorkerKind.DepsRpc: {
@@ -428,25 +457,34 @@ function handleFileWatcherRpc(
 ): void {
     try {
         if (msg.method === 'fileWatcherManager.registerSubscriber') {
-            const [subscriber, callbackId] = msg.args as [unknown, string];
-            kernel.fileWatcherManager.registerSubscriber(
-                subscriber as never,
-                (fileEvent: unknown) => {
-                    worker.postMessage({
-                        kind: NodePluginWorkerKind.CallbackInvoke,
-                        callbackId,
-                        args: [fileEvent],
-                    });
-                },
-            );
+            const [subscriberValue, callbackIdValue] = msg.args;
+            if (typeof callbackIdValue !== 'string') {
+                throw new Error('fileWatcherManager.registerSubscriber requires a callback id');
+            }
+            const subscriber = SubscriberRegistrationSchema.safeParse(subscriberValue);
+            if (!subscriber.success) {
+                throw new Error(`Invalid file watcher subscriber: ${subscriber.error.message}`);
+            }
+            kernel.fileWatcherManager.registerSubscriber(subscriber.data, (fileEvent: unknown) => {
+                const parsedEvent = FileEventSchema.safeParse(fileEvent);
+                if (!parsedEvent.success) return;
+                worker.postMessage({
+                    kind: NodePluginWorkerKind.CallbackInvoke,
+                    callbackId: callbackIdValue,
+                    args: [parsedEvent.data],
+                });
+            });
             worker.postMessage({
                 kind: NodePluginWorkerKind.DepsRpcResult,
                 requestId: msg.requestId,
                 value: undefined,
             });
         } else if (msg.method === 'fileWatcherManager.unregisterSubscriber') {
-            const [id] = msg.args as [string];
-            kernel.fileWatcherManager.unregisterSubscriber(id);
+            const [idValue] = msg.args;
+            if (typeof idValue !== 'string') {
+                throw new Error('fileWatcherManager.unregisterSubscriber requires an id');
+            }
+            kernel.fileWatcherManager.unregisterSubscriber(idValue);
             worker.postMessage({
                 kind: NodePluginWorkerKind.DepsRpcResult,
                 requestId: msg.requestId,
@@ -475,8 +513,12 @@ async function handleCapabilityRpc(
 ): Promise<void> {
     try {
         if (msg.method === 'capabilityBroker.request') {
-            const [req] = msg.args as [Parameters<KernelDeps['capabilityBroker']['request']>[0]];
-            const result = kernel.capabilityBroker.request(req);
+            const [requestValue] = msg.args;
+            const request = CapabilityRequestSchema.safeParse(requestValue);
+            if (!request.success) {
+                throw new Error(`Invalid capability request: ${request.error.message}`);
+            }
+            const result = kernel.capabilityBroker.request(request.data);
             const value = Either.isRight(result)
                 ? { ok: true as const }
                 : { ok: false as const, error: result.left };
@@ -514,17 +556,27 @@ export function updatePluginPermissions(pluginId: string, permissions: readonly 
     }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+type Callable = (...args: unknown[]) => unknown;
+
+function isCallable(value: unknown): value is Callable {
+    return typeof value === 'function';
+}
+
 function callDepsMethod(deps: NodeHandlerDeps, method: string, args: readonly unknown[]): unknown {
     const parts = method.split('.');
-    let current: unknown = deps as unknown as Record<string, unknown>;
+    let current: unknown = deps;
     for (const part of parts) {
-        if (typeof current !== 'object' || current === null) {
+        if (!isRecord(current)) {
             throw new Error(`Cannot resolve method "${method}": "${part}" is not an object`);
         }
-        current = (current as Record<string, unknown>)[part];
+        current = current[part];
     }
-    if (typeof current !== 'function') {
+    if (!isCallable(current)) {
         throw new Error(`Deps method "${method}" is not a function`);
     }
-    return (current as (...args: unknown[]) => unknown)(...args);
+    return current(...args);
 }

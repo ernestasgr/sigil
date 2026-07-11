@@ -15,6 +15,7 @@ import { createWorkflowActivator } from './workflow-activator.js';
 import { createWorkflowStore } from './workflow-store.js';
 import { dispatch, type DispatchSubsystems } from './dispatch.js';
 import { Effect, Match } from 'effect';
+import { z } from 'zod';
 
 if (!parentPort) {
     throw new Error('engine worker must be spawned as a worker_thread');
@@ -22,10 +23,9 @@ if (!parentPort) {
 
 const port = parentPort;
 
-const userDataPath =
-    typeof workerData === 'object' && workerData !== null
-        ? (workerData as { userDataPath?: string }).userDataPath
-        : undefined;
+const WorkerDataSchema = z.object({ userDataPath: z.string().optional() });
+const parsedWorkerData = WorkerDataSchema.safeParse(workerData);
+const userDataPath = parsedWorkerData.success ? parsedWorkerData.data.userDataPath : undefined;
 
 const cwdPropertiesPath = join(process.cwd(), 'sigil.properties.json');
 const userDataPropertiesPath = join(userDataPath ?? '', 'sigil.properties.json');

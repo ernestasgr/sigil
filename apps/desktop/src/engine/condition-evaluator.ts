@@ -2,10 +2,12 @@ import type { PipelineCondition } from '@sigil/schema/conditions';
 import type { BooleanOperator, NumberOperator, StringOperator } from '@sigil/schema/operators';
 import type { SwitchConfig } from '@sigil/schema/nodes/switch';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import { Either, Match, pipe } from 'effect';
+import { Either, Match } from 'effect';
 
 export type ComparisonContext = 'string' | 'number' | 'boolean';
 export type CoercionError = 'coercion_failed';
+
+const COERCION_FAILED: CoercionError = 'coercion_failed';
 
 export function coerceForComparison(
     raw: unknown,
@@ -27,7 +29,7 @@ export function coerceForComparison(
         Match.when('string', () => Either.right(String(raw))),
         Match.when('number', () => {
             const n = Number(raw);
-            if (Number.isNaN(n)) return Either.left('coercion_failed' as CoercionError);
+            if (Number.isNaN(n)) return Either.left(COERCION_FAILED);
             return Either.right(n);
         }),
         Match.when('boolean', () => {
@@ -37,7 +39,7 @@ export function coerceForComparison(
                 if (lower === 'true') return Either.right(true);
                 if (lower === 'false') return Either.right(false);
             }
-            return Either.left('coercion_failed' as CoercionError);
+            return Either.left(COERCION_FAILED);
         }),
         Match.exhaustive,
     );
@@ -91,31 +93,50 @@ function compareBoolean(operator: BooleanOperator, left: boolean, right: boolean
     );
 }
 
+type StringCondition = Extract<PipelineCondition, { value: string }>;
+type NumberCondition = Extract<PipelineCondition, { value: number }>;
+type BooleanCondition = Extract<PipelineCondition, { value: boolean }>;
+
+function compareStringCondition(raw: unknown, condition: StringCondition): boolean {
+    const left = coerceForComparison(raw, 'string');
+    if (Either.isLeft(left)) return false;
+
+    const right = coerceForComparison(condition.value, 'string');
+    if (Either.isLeft(right)) return false;
+
+    return compareString(condition.operator, left.right, right.right);
+}
+
+function compareNumberCondition(raw: unknown, condition: NumberCondition): boolean {
+    const left = coerceForComparison(raw, 'number');
+    if (Either.isLeft(left)) return false;
+
+    const right = coerceForComparison(condition.value, 'number');
+    if (Either.isLeft(right)) return false;
+
+    return compareNumber(condition.operator, left.right, right.right);
+}
+
+function compareBooleanCondition(raw: unknown, condition: BooleanCondition): boolean {
+    const left = coerceForComparison(raw, 'boolean');
+    if (Either.isLeft(left)) return false;
+
+    const right = coerceForComparison(condition.value, 'boolean');
+    if (Either.isLeft(right)) return false;
+
+    return compareBoolean(condition.operator, left.right, right.right);
+}
+
 function compareWithCondition(raw: unknown, condition: PipelineCondition): boolean {
     if (raw === undefined || raw === null) return false;
 
-    const runComparison = <T extends 'string' | 'number' | 'boolean'>(
-        type: T,
-        compareFn: (op: never, left: never, right: never) => boolean,
-    ): boolean =>
-        pipe(
-            coerceForComparison(raw, type as never),
-            Either.flatMap((leftVal) =>
-                pipe(
-                    coerceForComparison(condition.value, type as never),
-                    Either.map((rightVal) =>
-                        compareFn(condition.operator as never, leftVal as never, rightVal as never),
-                    ),
-                ),
-            ),
-            Either.getOrElse(() => false),
-        );
-
-    return Match.value(typeof condition.value).pipe(
-        Match.when('string', () => runComparison('string', compareString)),
-        Match.when('number', () => runComparison('number', compareNumber)),
-        Match.orElse(() => runComparison('boolean', compareBoolean)),
-    );
+    if (typeof condition.value === 'string') {
+        return compareStringCondition(raw, condition);
+    }
+    if (typeof condition.value === 'number') {
+        return compareNumberCondition(raw, condition);
+    }
+    return compareBooleanCondition(raw, condition);
 }
 
 export function evaluateCondition(condition: PipelineCondition, ctx: WorkflowContext): boolean {

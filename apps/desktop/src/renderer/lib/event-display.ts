@@ -19,9 +19,13 @@ const PAYLOAD_FIELDS = [
     ['kind', 'kind'],
 ] as const satisfies readonly (readonly [string, string])[];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
 export function payloadPreview(payload: unknown): string {
-    if (!payload || typeof payload !== 'object') return String(payload);
-    const obj = payload as Record<string, unknown>;
+    if (!isRecord(payload)) return String(payload);
+    const obj = payload;
 
     if (typeof obj.message === 'string') {
         return typeof obj.kind === 'string' ? `${obj.message} (${obj.kind})` : obj.message;
@@ -42,8 +46,8 @@ export function payloadPreview(payload: unknown): string {
 }
 
 export function extractPluginId(payload: unknown): string | undefined {
-    if (payload && typeof payload === 'object') {
-        const obj = payload as Record<string, unknown>;
+    if (isRecord(payload)) {
+        const obj = payload;
         if (typeof obj.pluginId === 'string') return obj.pluginId;
     }
     return undefined;

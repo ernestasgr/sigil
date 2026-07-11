@@ -70,6 +70,19 @@ export const CompiledPipelineSchema = z
 
 export type CompiledPipeline = z.infer<typeof CompiledPipelineSchema>;
 
+function formatPipelineIssue(
+    issue: z.core.$ZodIssue,
+    parentPath: readonly PropertyKey[] = [],
+): readonly string[] {
+    const path = [...parentPath, ...issue.path];
+    if (issue.code === 'invalid_union' && issue.errors.length > 0) {
+        return issue.errors.flatMap((branch) =>
+            branch.flatMap((nestedIssue) => formatPipelineIssue(nestedIssue, path)),
+        );
+    }
+    return [`${path.join('.')}: ${issue.message}`];
+}
+
 export function parsePipeline(
     unknown: unknown,
 ): { ok: true; value: CompiledPipeline } | { ok: false; error: string } {
@@ -79,6 +92,6 @@ export function parsePipeline(
     }
     return {
         ok: false,
-        error: result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('\n'),
+        error: result.error.issues.flatMap((issue) => formatPipelineIssue(issue)).join('\n'),
     };
 }

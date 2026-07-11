@@ -1,15 +1,20 @@
 import type { Capability, Manifest } from '@sigil/schema/manifest';
+import { CapabilitySchema } from '@sigil/schema/manifest';
 import { Either, Option } from 'effect';
+import { z } from 'zod';
 
 import type { ManifestRegistry } from './manifest-registry.js';
 import type { PermissionOverrideStore } from './permission-override-store.js';
 
 export type { Capability, Manifest };
 
-export type CapabilityRequest = {
-    readonly pluginId: string;
-    readonly capability: Capability;
-};
+export const CapabilityRequestSchema = z
+    .object({
+        pluginId: z.string().min(1),
+        capability: CapabilitySchema,
+    })
+    .readonly();
+export type CapabilityRequest = z.infer<typeof CapabilityRequestSchema>;
 
 export type CapabilityResult = Either.Either<
     void,

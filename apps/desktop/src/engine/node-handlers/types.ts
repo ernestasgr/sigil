@@ -1,6 +1,6 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
 import type { SwitchConfig } from '@sigil/schema/nodes/switch';
-import type { NodeDescriptor, PipelineNode, NodeType } from '@sigil/schema/nodes';
+import type { PipelineNode, NodeType, UnknownNodeDescriptor } from '@sigil/schema/nodes';
 import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
@@ -14,13 +14,15 @@ export interface NodeRunResult {
     readonly activePort: string;
 }
 
+export type EventSink = Pick<EventBus, 'next'>;
+
 export type Sleep = (ms: number) => Promise<void>;
 export type ResolveTemplate = (template: string, ctx: WorkflowContext) => string;
 export type EvaluateCondition = (condition: PipelineCondition, ctx: WorkflowContext) => boolean;
 export type MatchSwitchCase = (config: SwitchConfig, ctx: WorkflowContext) => string;
 
 export interface NodeHandlerDeps {
-    readonly bus: EventBus;
+    readonly bus: EventSink;
     readonly sleep: Sleep;
     readonly resolveTemplate: ResolveTemplate;
     readonly evaluateCondition: EvaluateCondition;
@@ -48,12 +50,15 @@ export function isTriggerHandler(handler: NodeHandler): handler is TriggerHandle
 }
 
 export interface KernelDeps {
-    readonly fileWatcherManager: FileWatcherManager;
+    readonly fileWatcherManager: Pick<
+        FileWatcherManager,
+        'registerSubscriber' | 'unregisterSubscriber'
+    >;
     readonly capabilityBroker: CapabilityBroker;
 }
 
 export interface NodePluginModule {
-    readonly descriptor: NodeDescriptor<string, unknown>;
+    readonly descriptor: UnknownNodeDescriptor;
     readonly handler: NodeHandler | ((kernel: KernelDeps) => NodeHandler);
 }
 

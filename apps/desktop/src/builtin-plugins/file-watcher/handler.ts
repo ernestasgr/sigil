@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 
 import { Either } from 'effect';
 
-import type { FileWatcherConfig } from '@sigil/schema/nodes/file-watcher';
 import { FileWatcherConfigSchema } from '@sigil/schema/nodes/file-watcher';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 
@@ -32,7 +31,13 @@ export function handler(kernel: KernelDeps): TriggerHandler {
                 throw new Error(`Permission denied: ${result.left.capability}`);
             }
 
-            const c = config as FileWatcherConfig;
+            const parsedConfig = FileWatcherConfigSchema.safeParse(config);
+            if (!parsedConfig.success) {
+                throw new Error(
+                    `Invalid file-watcher configuration: ${parsedConfig.error.message}`,
+                );
+            }
+            const c = parsedConfig.data;
             const subscriberId = `trigger:${randomUUID()}`;
 
             kernel.fileWatcherManager.registerSubscriber(
@@ -46,7 +51,7 @@ export function handler(kernel: KernelDeps): TriggerHandler {
                 (fileEvent) => {
                     const seedCtx: WorkflowContext = {
                         event: fileEvent.eventName,
-                        payload: fileEvent.payload as Record<string, unknown>,
+                        payload: { ...fileEvent.payload },
                         vars: {},
                     };
                     onEvent(seedCtx);

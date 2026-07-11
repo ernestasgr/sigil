@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { Effect, Option } from 'effect';
+import { z } from 'zod';
 
-import type { Capability } from '@sigil/schema/manifest';
+import { CapabilitySchema, type Capability } from '@sigil/schema/manifest';
 
 export interface PermissionOverrideStore {
     readonly get: (pluginId: string) => readonly Capability[];
@@ -19,7 +20,10 @@ function loadOverrides(path: Option.Option<string>): Map<string, readonly Capabi
         if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
             for (const [id, caps] of Object.entries(raw)) {
                 if (Array.isArray(caps)) {
-                    map.set(id, caps as readonly Capability[]);
+                    const parsed = z.array(CapabilitySchema).safeParse(caps);
+                    if (parsed.success) {
+                        map.set(id, parsed.data);
+                    }
                 }
             }
         }

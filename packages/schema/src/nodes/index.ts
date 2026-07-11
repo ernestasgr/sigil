@@ -23,9 +23,24 @@ export type { NotificationConfig } from './notification.js';
 export type { StateGetConfig } from './state-get.js';
 export type { StateSetConfig } from './state-set.js';
 export type { SwitchConfig } from './switch.js';
-export type { NodeDescriptor } from './types.js';
+export type { NodeDescriptor, UnknownNodeDescriptor } from './types.js';
 
 // ─── Registry ───────────────────────────────────────────────────
+
+const NODE_TYPE_VALUES = [
+    'file-watcher',
+    'manual-trigger',
+    'if-else',
+    'switch',
+    'file-manager',
+    'notification',
+    'log',
+    'delay',
+    'state-get',
+    'state-set',
+] as const;
+
+export type NodeType = (typeof NODE_TYPE_VALUES)[number];
 
 const NODE_DESCRIPTORS = {
     'file-watcher': FileWatcherDescriptor,
@@ -38,33 +53,27 @@ const NODE_DESCRIPTORS = {
     delay: DelayDescriptor,
     'state-get': StateGetDescriptor,
     'state-set': StateSetDescriptor,
-} as const;
+} as const satisfies { readonly [K in NodeType]: { readonly type: K } };
 
-export type NodeType = keyof typeof NODE_DESCRIPTORS;
+type NodeConfigMap = {
+    [K in NodeType]: z.infer<(typeof NODE_DESCRIPTORS)[K]['configSchema']>;
+};
 
 type DescriptorRegistry = {
-    readonly [K in NodeType]: NodeDescriptor<K, unknown>;
+    readonly [K in NodeType]: NodeDescriptor<K, (typeof NODE_DESCRIPTORS)[K]['configSchema']>;
 };
 
 const nodeDescriptors: DescriptorRegistry = NODE_DESCRIPTORS;
 
-export function getNodeDescriptor(type: NodeType): NodeDescriptor<NodeType, unknown> {
+export function getNodeDescriptor<K extends NodeType>(type: K): DescriptorRegistry[K] {
     return nodeDescriptors[type];
 }
 
 // ─── NodeTypeSchema ─────────────────────────────────────────────
 
-const NODE_TYPE_VALUES = Object.keys(NODE_DESCRIPTORS) as unknown as readonly [
-    NodeType,
-    ...NodeType[],
-];
 export const NodeTypeSchema = z.enum(NODE_TYPE_VALUES);
 
 // ─── BuiltinPipelineNode (derived from NODE_DESCRIPTORS) ────────
-
-type NodeConfigMap = {
-    [K in keyof typeof NODE_DESCRIPTORS]: z.infer<(typeof NODE_DESCRIPTORS)[K]['configSchema']>;
-};
 
 export type BuiltinPipelineNode = {
     [K in NodeType]: {
@@ -97,20 +106,30 @@ export function isBuiltinNode(node: PipelineNode): node is BuiltinPipelineNode {
 
 // ─── PipelineNodeSchema (derived from NODE_DESCRIPTORS) ─────────
 
-const builtinNodeSchemas = Object.values(NODE_DESCRIPTORS).map((descriptor) =>
-    z.object({
+function createBuiltinNodeSchema<TType extends NodeType, TSchema extends z.ZodType>(
+    descriptor: NodeDescriptor<TType, TSchema>,
+) {
+    return z.object({
         id: z.string().min(1),
         type: z.literal(descriptor.type),
         config: descriptor.configSchema,
-    }),
-);
+    });
+}
 
-/* eslint-disable @typescript-eslint/no-explicit-any -- Zod discriminatedUnion requires a concrete tuple type; dynamic arrays need this cast */
-const BuiltinPipelineNodeSchema = z.discriminatedUnion(
-    'type',
-    builtinNodeSchemas as unknown as readonly [z.ZodObject<any, any>, ...z.ZodObject<any, any>[]],
-);
-/* eslint-enable @typescript-eslint/no-explicit-any */
+const builtinNodeSchemas = [
+    createBuiltinNodeSchema(FileWatcherDescriptor),
+    createBuiltinNodeSchema(ManualTriggerDescriptor),
+    createBuiltinNodeSchema(IfElseDescriptor),
+    createBuiltinNodeSchema(SwitchDescriptor),
+    createBuiltinNodeSchema(FileManagerDescriptor),
+    createBuiltinNodeSchema(NotificationDescriptor),
+    createBuiltinNodeSchema(LogDescriptor),
+    createBuiltinNodeSchema(DelayDescriptor),
+    createBuiltinNodeSchema(StateGetDescriptor),
+    createBuiltinNodeSchema(StateSetDescriptor),
+] as const;
+
+const BuiltinPipelineNodeSchema = z.discriminatedUnion('type', builtinNodeSchemas);
 
 const PluginPipelineNodeSchema = z.object({
     id: z.string().min(1),
@@ -119,29 +138,9 @@ const PluginPipelineNodeSchema = z.object({
     config: z.unknown(),
 });
 
-export const PipelineNodeSchema = z.unknown().superRefine((data, ctx) => {
-    if (typeof data !== 'object' || data === null) {
-        ctx.addIssue({
-            code: 'custom',
-            message: 'Pipeline node must be an object',
-            path: [],
-        });
-        return;
-    }
-    const obj = data as Record<string, unknown>;
-    const isPlugin = 'pluginId' in obj && typeof obj.pluginId === 'string';
-    const schema = isPlugin ? PluginPipelineNodeSchema : BuiltinPipelineNodeSchema;
-    const result = schema.safeParse(data);
-    if (!result.success) {
-        for (const issue of result.error.issues) {
-            ctx.addIssue({
-                code: 'custom',
-                message: issue.message,
-                path: issue.path,
-            });
-        }
-    }
-}) as unknown as z.ZodType<PipelineNode>;
+// Try plugin nodes first so an object carrying a pluginId remains a plugin
+// node even when its type happens to match a builtin node name.
+export const PipelineNodeSchema = z.union([PluginPipelineNodeSchema, BuiltinPipelineNodeSchema]);
 
 // ─── Output ports ───────────────────────────────────────────────
 
@@ -149,5 +148,33 @@ export function outputPortsForNode(node: PipelineNode): readonly string[] {
     if (isPluginNode(node)) {
         return [];
     }
-    return nodeDescriptors[node.type].getOutputPorts(node.config);
+
+    switch (node.type) {
+        case 'file-watcher':
+            return nodeDescriptors['file-watcher'].getOutputPorts(node.config);
+        case 'manual-trigger':
+            return nodeDescriptors['manual-trigger'].getOutputPorts(node.config);
+        case 'if-else':
+            return nodeDescriptors['if-else'].getOutputPorts(node.config);
+        case 'switch':
+            return nodeDescriptors.switch.getOutputPorts(node.config);
+        case 'file-manager':
+            return nodeDescriptors['file-manager'].getOutputPorts(node.config);
+        case 'notification':
+            return nodeDescriptors.notification.getOutputPorts(node.config);
+        case 'log':
+            return nodeDescriptors.log.getOutputPorts(node.config);
+        case 'delay':
+            return nodeDescriptors.delay.getOutputPorts(node.config);
+        case 'state-get':
+            return nodeDescriptors['state-get'].getOutputPorts(node.config);
+        case 'state-set':
+            return nodeDescriptors['state-set'].getOutputPorts(node.config);
+        default:
+            return assertNever(node);
+    }
+}
+
+function assertNever(value: never): never {
+    throw new Error(`Unhandled node type: ${JSON.stringify(value)}`);
 }

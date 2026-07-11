@@ -7,29 +7,25 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
 
-import type { Capability } from '@sigil/schema/manifest';
-import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
-import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import type { EventBus } from './event-bus.js';
+import type { SubscriberRegistration, FileEventCallback } from './file-watcher-manager.js';
+import type { PluginPipelineNode } from '@sigil/schema/nodes';
+import { WorkflowContextSchema, type WorkflowContext } from '@sigil/schema/workflow-context';
+import type { CapabilityResult } from './capability-broker.js';
 import type {
-    EvaluateCondition,
     KernelDeps,
-    MatchSwitchCase,
     NodeHandler,
     NodeHandlerDeps,
     NodeRunResult,
-    ResolveTemplate,
-    Sleep,
-    TriggerHandler,
 } from './node-handlers/types.js';
+import { isTriggerHandler } from './node-handlers/types.js';
 import {
     NodePluginMainToWorkerSchema,
     NodePluginWorkerKind,
     type NodePluginWorkerCallbackInvoke,
     type NodePluginWorkerExecuteRequest,
     type NodePluginWorkerToMain,
-    type NodePluginWorkerUpdatePermissions,
 } from './plugin-node-rpc.js';
+import { FileEventSchema } from './file-watcher-manager.js';
 
 if (!parentPort) {
     throw new Error('plugin-node-worker must be spawned as a worker_thread');
@@ -61,6 +57,51 @@ let currentCpModule: Record<string, unknown> = {};
 // Create a require function for ESM context (needed for sandbox module building)
 const workerRequire = createRequire(import.meta.url);
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+type Callable = (...args: unknown[]) => unknown;
+
+function isCallable(value: unknown): value is Callable {
+    return typeof value === 'function';
+}
+
+interface RawPluginDescriptor {
+    readonly type: string;
+    readonly configSchema: { readonly safeParse: (value: unknown) => unknown };
+}
+
+interface RawPluginModule {
+    readonly descriptor: RawPluginDescriptor;
+    readonly handler: unknown;
+}
+
+function isRawPluginDescriptor(value: unknown): value is RawPluginDescriptor {
+    return (
+        isRecord(value) &&
+        typeof value.type === 'string' &&
+        isRecord(value.configSchema) &&
+        isCallable(value.configSchema.safeParse)
+    );
+}
+
+function isNodeHandler(value: unknown): value is NodeHandler {
+    return isRecord(value) && isCallable(value.execute);
+}
+
+function assertNever(value: never): never {
+    throw new Error(`Unhandled plugin worker message: ${JSON.stringify(value)}`);
+}
+
+function getModuleRecord(moduleName: string): Record<string, unknown> {
+    const moduleValue: unknown = workerRequire(moduleName);
+    if (!isRecord(moduleValue)) {
+        throw new Error(`Module "${moduleName}" did not export an object`);
+    }
+    return moduleValue;
+}
+
 function send(msg: NodePluginWorkerToMain): void {
     port.postMessage(msg);
 }
@@ -80,9 +121,20 @@ function depRpcCall(method: string, args: readonly unknown[]): Promise<unknown> 
             kind: NodePluginWorkerKind.DepsRpc,
             requestId,
             method,
-            args: args as unknown[],
+            args: [...args],
         });
     });
+}
+
+/**
+ * The worker-side dependency functions are adapters over an asynchronous
+ * message transport. The type is reconstructed once at this seam so plugin
+ * handlers keep the same dependency interface as in-process handlers.
+ */
+function remoteCall<Args extends readonly unknown[], Result>(
+    method: string,
+): (...args: Args) => Result {
+    return (...args) => depRpcCall(method, args) as Result;
 }
 
 let depsTeardown: Option.Option<() => void> = Option.none();
@@ -105,25 +157,48 @@ function rpcWithCallback(
 
 // ─── Build proxied deps (NodeHandlerDeps) ───────────────────
 
-function createProxiedDeps(collisionSuffixStyle?: CollisionSuffixStyle): NodeHandlerDeps {
-    const rpc =
-        (method: string) =>
-        (...args: unknown[]): Promise<unknown> =>
-            depRpcCall(method, args);
-
+function createProxiedDeps(
+    collisionSuffixStyle: NodeHandlerDeps['collisionSuffixStyle'] = undefined,
+): NodeHandlerDeps {
     return {
-        bus: { next: rpc('bus.next') as EventBus['next'] } as EventBus,
-        sleep: rpc('sleep') as unknown as Sleep,
-        resolveTemplate: rpc('resolveTemplate') as unknown as ResolveTemplate,
-        evaluateCondition: rpc('evaluateCondition') as unknown as EvaluateCondition,
-        matchSwitchCase: rpc('matchSwitchCase') as unknown as MatchSwitchCase,
+        bus: {
+            next: remoteCall<
+                Parameters<NodeHandlerDeps['bus']['next']>,
+                ReturnType<NodeHandlerDeps['bus']['next']>
+            >('bus.next'),
+        },
+        sleep: remoteCall<
+            Parameters<NodeHandlerDeps['sleep']>,
+            ReturnType<NodeHandlerDeps['sleep']>
+        >('sleep'),
+        resolveTemplate: remoteCall<
+            Parameters<NodeHandlerDeps['resolveTemplate']>,
+            ReturnType<NodeHandlerDeps['resolveTemplate']>
+        >('resolveTemplate'),
+        evaluateCondition: remoteCall<
+            Parameters<NodeHandlerDeps['evaluateCondition']>,
+            ReturnType<NodeHandlerDeps['evaluateCondition']>
+        >('evaluateCondition'),
+        matchSwitchCase: remoteCall<
+            Parameters<NodeHandlerDeps['matchSwitchCase']>,
+            ReturnType<NodeHandlerDeps['matchSwitchCase']>
+        >('matchSwitchCase'),
         state: {
-            get: rpc('state.get') as unknown as (key: string) => Option.Option<string>,
-            set: rpc('state.set') as unknown as (key: string, value: string) => void,
-            flush: rpc('state.flush') as unknown as () => void,
+            get: remoteCall<
+                Parameters<NodeHandlerDeps['state']['get']>,
+                ReturnType<NodeHandlerDeps['state']['get']>
+            >('state.get'),
+            set: remoteCall<
+                Parameters<NodeHandlerDeps['state']['set']>,
+                ReturnType<NodeHandlerDeps['state']['set']>
+            >('state.set'),
+            flush: remoteCall<
+                Parameters<NodeHandlerDeps['state']['flush']>,
+                ReturnType<NodeHandlerDeps['state']['flush']>
+            >('state.flush'),
         },
         capabilityBroker: {
-            request: ({ capability }: { pluginId: string; capability: Capability }) =>
+            request: ({ capability }) =>
                 permissions.has(capability)
                     ? Either.right(undefined)
                     : Either.left({ kind: 'denied' as const, capability }),
@@ -135,30 +210,36 @@ function createProxiedDeps(collisionSuffixStyle?: CollisionSuffixStyle): NodeHan
 // ─── Build proxied kernel (KernelDeps, for factory handlers) ─
 
 function createProxiedKernel(): KernelDeps {
-    return {
-        fileWatcherManager: {
-            registerSubscriber: (subscriber: unknown, callback: (...args: unknown[]) => void) => {
-                if (!permissions.has('filesystem.read')) {
-                    throw new Error('Permission denied: filesystem.read');
+    const fileWatcherManager: KernelDeps['fileWatcherManager'] = {
+        registerSubscriber: (subscriber: SubscriberRegistration, callback: FileEventCallback) => {
+            if (!permissions.has('filesystem.read')) {
+                throw new Error('Permission denied: filesystem.read');
+            }
+            const onCallback = (...args: unknown[]): void => {
+                const parsedEvent = FileEventSchema.safeParse(args[0]);
+                if (parsedEvent.success) {
+                    callback(parsedEvent.data);
                 }
-                const promise = rpcWithCallback(
-                    'fileWatcherManager.registerSubscriber',
-                    [subscriber],
-                    callback,
-                );
-                void promise;
-            },
-            unregisterSubscriber: (id: string) => {
-                void depRpcCall('fileWatcherManager.unregisterSubscriber', [id]);
-            },
+            };
+            const promise = rpcWithCallback(
+                'fileWatcherManager.registerSubscriber',
+                [subscriber],
+                onCallback,
+            );
+            void promise;
         },
-        capabilityBroker: {
-            request: ({ capability }: { pluginId: string; capability: string }) =>
-                permissions.has(capability)
-                    ? { ok: true as const }
-                    : { ok: false as const, error: { kind: 'denied' as const, capability } },
+        unregisterSubscriber: (id: string) => {
+            void depRpcCall('fileWatcherManager.unregisterSubscriber', [id]);
         },
-    } as unknown as KernelDeps;
+    };
+    const capabilityBroker: KernelDeps['capabilityBroker'] = {
+        request: ({ capability }): CapabilityResult =>
+            permissions.has(capability)
+                ? Either.right(undefined)
+                : Either.left({ kind: 'denied', capability }),
+    };
+
+    return { fileWatcherManager, capabilityBroker };
 }
 
 // ─── Permission-based sandbox module builder ────────────────
@@ -266,7 +347,7 @@ const PROCESSES_FUNCTIONS = [
 ];
 
 function buildFsModule(): Record<string, unknown> {
-    const realFs = workerRequire('node:fs') as Record<string, unknown>;
+    const realFs = getModuleRecord('node:fs');
     const allowed = new Set<string>();
     if (permissions.has('filesystem.read')) {
         FS_READ_FUNCTIONS.forEach((f) => allowed.add(f));
@@ -291,7 +372,7 @@ function buildFsModule(): Record<string, unknown> {
 }
 
 function buildNetModule(): Record<string, unknown> {
-    const realNet = workerRequire('node:net') as Record<string, unknown>;
+    const realNet = getModuleRecord('node:net');
     const allowed = permissions.has('network');
     const module: Record<string, unknown> = {};
     for (const key of NETWORK_FUNCTIONS) {
@@ -309,7 +390,7 @@ function buildNetModule(): Record<string, unknown> {
 }
 
 function buildChildProcessModule(): Record<string, unknown> {
-    const realCp = workerRequire('node:child_process') as Record<string, unknown>;
+    const realCp = getModuleRecord('node:child_process');
     const allowed = permissions.has('processes');
     const module: Record<string, unknown> = {};
     for (const key of PROCESSES_FUNCTIONS) {
@@ -332,32 +413,32 @@ function buildChildProcessModule(): Record<string, unknown> {
  * directly (not a spread copy), meaning every property access goes through the
  * get trap → always reads from the latest module.
  */
-type AnyFn = (...args: unknown[]) => unknown;
-
 function createLiveModuleProxy(getCurrent: () => Record<string, unknown>): Record<string, unknown> {
-    return new Proxy({} as Record<string, unknown>, {
-        get(_, prop) {
-            if (prop === '__esModule') return true;
-            if (prop === 'default') return getCurrent();
-            const mod = getCurrent();
-            if (prop in mod) {
-                const val = (mod as Record<string, unknown>)[prop as string];
-                return typeof val === 'function'
-                    ? (...args: unknown[]) => (val as AnyFn)(...args)
-                    : val;
-            }
-            return undefined;
+    return new Proxy<Record<string, unknown>>(
+        {},
+        {
+            get(_, prop) {
+                if (typeof prop !== 'string') return undefined;
+                if (prop === '__esModule') return true;
+                if (prop === 'default') return getCurrent();
+                const mod = getCurrent();
+                if (prop in mod) {
+                    const val = mod[prop];
+                    return isCallable(val) ? (...args: unknown[]) => val(...args) : val;
+                }
+                return undefined;
+            },
+            has(_, prop) {
+                return prop in getCurrent();
+            },
+            ownKeys() {
+                return Reflect.ownKeys(getCurrent());
+            },
+            getOwnPropertyDescriptor(_, prop) {
+                return Object.getOwnPropertyDescriptor(getCurrent(), prop);
+            },
         },
-        has(_, prop) {
-            return prop in getCurrent();
-        },
-        ownKeys() {
-            return Reflect.ownKeys(getCurrent());
-        },
-        getOwnPropertyDescriptor(_, prop) {
-            return Object.getOwnPropertyDescriptor(getCurrent(), prop);
-        },
-    });
+    );
 }
 
 function buildSandboxModules(): void {
@@ -384,10 +465,7 @@ function rebuildPermissionGatedModules(): void {
 
 // ─── Load handler (always sandboxed) ─────────────────────────
 
-async function loadHandler(): Promise<{
-    descriptor: { type: string; configSchema?: { safeParse: (v: unknown) => unknown } };
-    handler: NodeHandler | ((kernel: KernelDeps) => NodeHandler);
-}> {
+async function loadHandler(): Promise<RawPluginModule> {
     const source = readFileSync(data.handlerPath, 'utf-8');
 
     let esbuild: typeof import('esbuild');
@@ -479,37 +557,32 @@ async function loadHandler(): Promise<{
         const msg =
             err instanceof Error ? `${err.message}\n${err.stack?.substring(0, 2000)}` : String(err);
         throw new Error(`Plugin sandbox evaluation failed: ${msg}`, {
-            cause: err instanceof Error ? err : undefined,
+            cause: err,
         });
     }
 
-    const exports = (ctx as unknown as Record<string, unknown>).__plugin__ as
-        | Record<string, unknown>
-        | undefined;
-
-    if (!exports || typeof exports.descriptor !== 'object' || exports.descriptor === null) {
+    const pluginExports = isRecord(ctx) ? ctx.__plugin__ : undefined;
+    if (!isRecord(pluginExports)) {
         throw new Error('Plugin module must export a descriptor object');
     }
-    if (
-        typeof exports.handler !== 'function' &&
-        (typeof exports.handler !== 'object' || exports.handler === null)
-    ) {
+
+    const descriptor = pluginExports.descriptor;
+    if (!isRawPluginDescriptor(descriptor)) {
+        throw new Error('Plugin module must export a descriptor object');
+    }
+
+    const handler = pluginExports.handler;
+    if (!isNodeHandler(handler) && typeof handler !== 'function') {
         throw new Error('Plugin module must export a handler object or factory function');
     }
 
-    return exports as {
-        descriptor: { type: string; configSchema?: { safeParse: (v: unknown) => unknown } };
-        handler: NodeHandler | ((kernel: KernelDeps) => NodeHandler);
-    };
+    return { descriptor, handler };
 }
 
 // ─── Load handler ─────────────────────────────────────────────
 
 async function main(): Promise<void> {
-    let mod: {
-        descriptor: { type: string; configSchema?: { safeParse: (v: unknown) => unknown } };
-        handler: NodeHandler | ((kernel: KernelDeps) => NodeHandler);
-    };
+    let mod: RawPluginModule;
 
     try {
         mod = await loadHandler();
@@ -531,12 +604,7 @@ async function main(): Promise<void> {
         return;
     }
 
-    if (
-        typeof mod.handler !== 'function' &&
-        (typeof mod.handler !== 'object' ||
-            mod.handler === null ||
-            typeof (mod.handler as unknown as Record<string, unknown>).execute !== 'function')
-    ) {
+    if (!isNodeHandler(mod.handler) && typeof mod.handler !== 'function') {
         send({
             kind: NodePluginWorkerKind.LoadError,
             error: 'Module must export { descriptor, handler } where descriptor has type/configSchema and handler has execute',
@@ -544,23 +612,23 @@ async function main(): Promise<void> {
         return;
     }
 
-    if (!mod.descriptor || typeof mod.descriptor.configSchema?.safeParse !== 'function') {
-        send({
-            kind: NodePluginWorkerKind.LoadError,
-            error: 'Descriptor must have a configSchema with a safeParse method',
-        });
-        return;
-    }
-
     let rawHandler: NodeHandler;
     if (typeof mod.handler === 'function') {
         const kernel = createProxiedKernel();
-        rawHandler = mod.handler(kernel);
+        const handler = mod.handler(kernel);
+        if (!isNodeHandler(handler)) {
+            send({
+                kind: NodePluginWorkerKind.LoadError,
+                error: 'Handler factory did not return an object with an execute method',
+            });
+            return;
+        }
+        rawHandler = handler;
     } else {
         rawHandler = mod.handler;
     }
 
-    const isTrigger = typeof (rawHandler as TriggerHandler).activate === 'function';
+    const isTrigger = isTriggerHandler(rawHandler);
 
     send({
         kind: NodePluginWorkerKind.Loaded,
@@ -584,7 +652,7 @@ async function main(): Promise<void> {
 
         switch (msg.kind) {
             case NodePluginWorkerKind.ExecuteRequest: {
-                await handleExecute(msg as NodePluginWorkerExecuteRequest, rawHandler);
+                await handleExecute(msg, rawHandler);
                 break;
             }
             case NodePluginWorkerKind.ActivateRequest: {
@@ -604,7 +672,7 @@ async function main(): Promise<void> {
                 break;
             }
             case NodePluginWorkerKind.CallbackInvoke: {
-                handleCallbackInvoke(msg as NodePluginWorkerCallbackInvoke);
+                handleCallbackInvoke(msg);
                 break;
             }
             case NodePluginWorkerKind.Teardown: {
@@ -612,16 +680,15 @@ async function main(): Promise<void> {
                 break;
             }
             case NodePluginWorkerKind.UpdatePermissions: {
-                const update = msg as NodePluginWorkerUpdatePermissions;
                 permissions.clear();
-                for (const p of update.permissions) {
+                for (const p of msg.permissions) {
                     permissions.add(p);
                 }
                 rebuildPermissionGatedModules();
                 break;
             }
             default:
-                throw new Error(`Unhandled message kind: ${(msg as { kind: string }).kind}`);
+                assertNever(msg);
         }
     });
 }
@@ -663,12 +730,20 @@ async function handleExecute(
             }
         }
 
-        const node = { id: '', type: msg.nodeType, config: msg.nodeConfig } as const;
-        const ctx = msg.ctx as WorkflowContext;
-        const deps = createProxiedDeps(
-            msg.deps?.collisionSuffixStyle as CollisionSuffixStyle | undefined,
-        );
-        const result = await handler.execute({ node, ctx } as never, deps);
+        const parsedContext = WorkflowContextSchema.safeParse(msg.ctx);
+        if (!parsedContext.success) {
+            sendError(`Invalid workflow context: ${parsedContext.error.message}`);
+            return;
+        }
+
+        const node: PluginPipelineNode = {
+            id: '',
+            type: msg.nodeType,
+            pluginId: data.pluginId,
+            config: msg.nodeConfig,
+        };
+        const deps = createProxiedDeps(msg.deps?.collisionSuffixStyle);
+        const result = await handler.execute({ node, ctx: parsedContext.data }, deps);
         sendResult(result);
     } catch (err) {
         sendError(err instanceof Error ? err.message : String(err));
@@ -679,7 +754,7 @@ async function handleActivate(
     msg: { requestId: string; config: unknown },
     handler: NodeHandler,
 ): Promise<void> {
-    if (!('activate' in handler)) {
+    if (!isTriggerHandler(handler)) {
         send({
             kind: NodePluginWorkerKind.ActivateError,
             requestId: msg.requestId,
@@ -689,7 +764,6 @@ async function handleActivate(
     }
 
     try {
-        const trigger = handler as TriggerHandler;
         const onEvent = (eventCtx: WorkflowContext): void => {
             send({
                 kind: NodePluginWorkerKind.ActivateEvent,
@@ -700,7 +774,7 @@ async function handleActivate(
             });
         };
 
-        depsTeardown = Option.some(trigger.activate(msg.config, onEvent));
+        depsTeardown = Option.some(handler.activate(msg.config, onEvent));
         send({
             kind: NodePluginWorkerKind.ActivateResult,
             requestId: msg.requestId,

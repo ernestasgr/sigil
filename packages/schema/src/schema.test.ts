@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { PipelineConditionSchema } from './conditions.js';
 import { FileEventPayloadSchema } from './file-event-payload.js';
 import { CompiledPipelineSchema, parsePipeline } from './pipeline.js';
+import { PipelineNodeSchema } from './nodes/index.js';
 import { sampleManualTriggerToLog } from './samples.js';
+import { WorkflowContextSchema } from './workflow-context.js';
 
 describe('FileEventPayloadSchema', () => {
     it('accepts a well-formed file event payload', () => {
@@ -99,6 +101,17 @@ describe('PipelineConditionSchema', () => {
     });
 });
 
+describe('WorkflowContextSchema', () => {
+    it('accepts an empty event for a non-trigger seed context', () => {
+        const result = WorkflowContextSchema.safeParse({
+            event: '',
+            payload: {},
+            vars: {},
+        });
+        expect(result.success).toBe(true);
+    });
+});
+
 describe('CompiledPipelineSchema', () => {
     it('validates the manual-trigger -> log sample', () => {
         const result = CompiledPipelineSchema.safeParse(sampleManualTriggerToLog);
@@ -139,6 +152,20 @@ describe('CompiledPipelineSchema', () => {
         };
         const result = parsePipeline(valid);
         expect(result.ok).toBe(true);
+    });
+
+    it('keeps a plugin node when its type matches a builtin node name', () => {
+        const result = PipelineNodeSchema.safeParse({
+            id: 'n',
+            type: 'delay',
+            pluginId: 'com.sigil.delay-plugin',
+            config: { custom: true },
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect('pluginId' in result.data).toBe(true);
+        }
     });
 
     it('rejects a plugin node without a pluginId', () => {

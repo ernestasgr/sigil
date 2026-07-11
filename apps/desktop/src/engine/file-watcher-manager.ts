@@ -1,7 +1,10 @@
 import { statSync, watch as fsWatch } from 'node:fs';
 import { join, parse } from 'node:path';
+import { z } from 'zod';
 
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
+import { FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
+import { FileEventNameSchema } from '@sigil/schema/nodes/common';
 import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
 import { Option } from 'effect';
 
@@ -17,18 +20,24 @@ export type CreateWatcherFn = (
 
 export type GetFileStatsFn = (filePath: string) => { readonly size: number };
 
-export interface SubscriberRegistration {
-    readonly id: string;
-    readonly path: string;
-    readonly recursive: boolean;
-    readonly events: readonly string[];
-    readonly ignorePatterns?: readonly string[] | undefined;
-}
+export const SubscriberRegistrationSchema = z
+    .object({
+        id: z.string().min(1),
+        path: z.string().min(1),
+        recursive: z.boolean(),
+        events: z.array(FileEventNameSchema).readonly(),
+        ignorePatterns: z.array(z.string()).readonly().optional(),
+    })
+    .readonly();
+export type SubscriberRegistration = z.infer<typeof SubscriberRegistrationSchema>;
 
-export interface FileEvent {
-    readonly eventName: 'file.created' | 'file.modified' | 'file.deleted';
-    readonly payload: FileEventPayload;
-}
+export const FileEventSchema = z
+    .object({
+        eventName: FileEventNameSchema,
+        payload: FileEventPayloadSchema,
+    })
+    .readonly();
+export type FileEvent = z.infer<typeof FileEventSchema>;
 
 export type FileEventCallback = (event: FileEvent) => void;
 

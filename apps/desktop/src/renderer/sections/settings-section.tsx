@@ -13,8 +13,11 @@ import { SectionShell } from '../components/section-shell.js';
 import { useSigil } from '../lib/sigil-context.js';
 import { useAppStore } from '../store/app-store.js';
 
-const ALL_CAPABILITIES: readonly Capability[] =
-    CapabilitySchema.options as unknown as readonly Capability[];
+const ALL_CAPABILITIES = CapabilitySchema.options;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 function capabilityLabel(cap: Capability): string {
     return cap
@@ -220,13 +223,13 @@ function PropertiesEditor({
 
     const handleSave = (): void => {
         try {
-            const parsed = JSON.parse(jsonText);
-            if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            const parsed: unknown = JSON.parse(jsonText);
+            if (!isRecord(parsed)) {
                 setError('Root value must be a JSON object');
                 return;
             }
             setError(null);
-            onSave(parsed as Record<string, unknown>);
+            onSave(parsed);
         } catch {
             setError('Invalid JSON');
         }

@@ -31,7 +31,6 @@ export const SwitchDescriptor = defineNode({
     configSchema: SwitchConfigSchema,
     defaultConfig: { target: 'event', cases: ['file.created'] },
     getOutputPorts: (config) => {
-        const { cases } = config as SwitchConfig;
-        return ['default', ...cases];
+        return ['default', ...config.cases];
     },
 });

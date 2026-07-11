@@ -6,6 +6,105 @@ import { useSigil } from '../../lib/sigil-context.js';
 import { useBuilderStore } from '../builder-store.js';
 import type { NodeSpec } from '../node-registry.js';
 import { CATEGORY_TEXT, nodeTypeDef } from '../node-registry.js';
+import {
+    DelayConfigForm,
+    FileManagerConfigForm,
+    FileWatcherConfigForm,
+    IfElseConfigForm,
+    LogConfigForm,
+    ManualTriggerConfigForm,
+    NotificationConfigForm,
+    StateGetConfigForm,
+    StateSetConfigForm,
+    SwitchConfigForm,
+} from './config-forms.js';
+
+function NodeConfigForm({
+    spec,
+    onChange,
+}: {
+    readonly spec: NodeSpec;
+    readonly onChange: (next: NodeSpec) => void;
+}): ReactElement {
+    switch (spec.type) {
+        case 'file-watcher':
+            return (
+                <FileWatcherConfigForm
+                    config={spec.config}
+                    onChange={(config) => onChange({ type: spec.type, config })}
+                />
+            );
+        case 'manual-trigger':
+            return (
+                <ManualTriggerConfigForm
+                    config={spec.config}
+                    onChange={(config) => onChange({ type: spec.type, config })}
+                />
+            );
+        case 'if-else':
+            return (
+                <IfElseConfigForm
+                    config={spec.config}
+                    onChange={(config) => onChange({ type: spec.type, config })}
+                />
+            );
+        case 'switch':
+            return (
+                <SwitchConfigForm
+                    config={spec.config}
+                    onChange={(config) => onChange({ type: spec.type, config })}
+                />
+            );
+        case 'file-manager':
+            return (
+                <FileManagerConfigForm
+                    config={spec.config}
+                    onChange={(config) => onChange({ type: spec.type, config })}
+                />
+            );
+        case 'notification':
+            return (
+                <NotificationConfigForm
+                    config={spec.config}
+                    onChange={(config) => onChange({ type: spec.type, config })}
+                />
+            );
+        case 'state-get':
+            return (
+                <StateGetConfigForm
+                    config={spec.config}
+                    onChange={(config) => onChange({ type: spec.type, config })}
+                />
+            );
+        case 'state-set':
+            return (
+                <StateSetConfigForm
+                    config={spec.config}
+                    onChange={(config) => onChange({ type: spec.type, config })}
+                />
+            );
+        case 'log':
+            return (
+                <LogConfigForm
+                    config={spec.config}
+                    onChange={(config) => onChange({ type: spec.type, config })}
+                />
+            );
+        case 'delay':
+            return (
+                <DelayConfigForm
+                    config={spec.config}
+                    onChange={(config) => onChange({ type: spec.type, config })}
+                />
+            );
+        default:
+            return assertNever(spec);
+    }
+}
+
+function assertNever(value: never): never {
+    throw new Error(`Unhandled node type: ${JSON.stringify(value)}`);
+}
 
 export function PropertiesPanel(): ReactElement {
     const selectedNodeId = useBuilderStore((state) => state.selectedNodeId);
@@ -49,12 +148,7 @@ export function PropertiesPanel(): ReactElement {
                 <p className="font-manuscript text-veil mt-1 text-xs italic">{def.description}</p>
             </header>
             <div className="flex flex-col gap-4 overflow-auto p-5">
-                <def.Form
-                    config={spec.config}
-                    onChange={(config) =>
-                        updateSpec(node.id, { type: spec.type, config } as NodeSpec)
-                    }
-                />
+                <NodeConfigForm spec={spec} onChange={(next) => updateSpec(node.id, next)} />
             </div>
             <footer className="border-gilt/40 flex items-center gap-2 border-t p-5">
                 {spec.type === 'manual-trigger' ? (

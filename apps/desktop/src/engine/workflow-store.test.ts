@@ -234,6 +234,26 @@ describe('WorkflowStore', () => {
         expect(parsePipeline(Option.getOrThrow(loaded).pipeline).ok).toBe(true);
     });
 
+    it('keeps valid positions while ignoring malformed position entries', () => {
+        const fileData = {
+            id: 'wf-positions',
+            name: 'Positions',
+            positions: {
+                valid: { x: 10, y: 20 },
+                malformed: { x: '10', y: 20 },
+            },
+            nodes: [],
+            edges: [],
+        };
+        writeFileSync(join(dir, 'wf-positions.json'), JSON.stringify(fileData));
+
+        store = createWorkflowStore(dir);
+
+        const loaded = store.get('wf-positions');
+        expect(Option.isSome(loaded)).toBe(true);
+        expect(Option.getOrThrow(loaded).positions).toEqual({ valid: { x: 10, y: 20 } });
+    });
+
     it('skips invalid JSON files on startup', () => {
         writeFileSync(join(dir, 'bad.json'), '{invalid}');
 

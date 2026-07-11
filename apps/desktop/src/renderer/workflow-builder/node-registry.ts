@@ -28,7 +28,7 @@ interface NodeRegistryEntry<K extends NodeType> {
     readonly label: string;
     readonly category: NodeCategory;
     readonly description: string;
-    readonly defaultConfig: unknown;
+    readonly defaultConfig: NodeConfigOf<K>;
     readonly Form: ComponentType<ConfigFormProps<NodeConfigOf<K>>>;
 }
 
@@ -120,21 +120,63 @@ const NODE_TYPE_REGISTRY = {
     },
 } as const satisfies NodeRegistry;
 
-export interface NodeTypeDef {
-    readonly type: NodeType;
-    readonly label: string;
-    readonly category: NodeCategory;
-    readonly description: string;
-    readonly defaultConfig: unknown;
-    readonly Form: ComponentType<ConfigFormProps<unknown>>;
+type NodeSpecRegistry = {
+    readonly [K in NodeType]: Extract<NodeSpec, { type: K }>;
+};
+
+const DEFAULT_NODE_SPECS = {
+    'file-watcher': {
+        type: 'file-watcher',
+        config: NODE_TYPE_REGISTRY['file-watcher'].defaultConfig,
+    },
+    'manual-trigger': {
+        type: 'manual-trigger',
+        config: NODE_TYPE_REGISTRY['manual-trigger'].defaultConfig,
+    },
+    'if-else': {
+        type: 'if-else',
+        config: NODE_TYPE_REGISTRY['if-else'].defaultConfig,
+    },
+    switch: {
+        type: 'switch',
+        config: NODE_TYPE_REGISTRY.switch.defaultConfig,
+    },
+    'file-manager': {
+        type: 'file-manager',
+        config: NODE_TYPE_REGISTRY['file-manager'].defaultConfig,
+    },
+    notification: {
+        type: 'notification',
+        config: NODE_TYPE_REGISTRY.notification.defaultConfig,
+    },
+    log: {
+        type: 'log',
+        config: NODE_TYPE_REGISTRY.log.defaultConfig,
+    },
+    delay: {
+        type: 'delay',
+        config: NODE_TYPE_REGISTRY.delay.defaultConfig,
+    },
+    'state-get': {
+        type: 'state-get',
+        config: NODE_TYPE_REGISTRY['state-get'].defaultConfig,
+    },
+    'state-set': {
+        type: 'state-set',
+        config: NODE_TYPE_REGISTRY['state-set'].defaultConfig,
+    },
+} satisfies NodeSpecRegistry;
+
+export function defaultNodeSpec(type: NodeType): NodeSpec {
+    return structuredClone(DEFAULT_NODE_SPECS[type]);
 }
 
-export const NODE_TYPES: readonly NodeTypeDef[] = Object.values(
-    NODE_TYPE_REGISTRY,
-) as unknown as readonly NodeTypeDef[];
+export type NodeTypeDef = NodeRegistry[NodeType];
 
-export function nodeTypeDef(type: NodeType): NodeTypeDef {
-    return NODE_TYPE_REGISTRY[type] as unknown as NodeTypeDef;
+export const NODE_TYPES: readonly NodeTypeDef[] = Object.values(NODE_TYPE_REGISTRY);
+
+export function nodeTypeDef<K extends NodeType>(type: K): NodeRegistry[K] {
+    return NODE_TYPE_REGISTRY[type];
 }
 
 export interface CategoryMeta {

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import { FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
-import { Either, Option, pipe } from 'effect';
+import { FileEventPayloadSchema, type FileEventPayload } from '@sigil/schema/file-event-payload';
+import { Either } from 'effect';
 
 export const WorkflowRunPayloadSchema = z
     .object({
@@ -51,98 +51,110 @@ export const EngineDiagnosticPayloadSchema = z
     .readonly();
 export type EngineDiagnosticPayload = z.infer<typeof EngineDiagnosticPayloadSchema>;
 
-export interface EventPayloadSchemaEntry {
-    readonly schema: z.ZodType;
-    readonly label: string;
-    readonly color: string;
-}
-
-export const EventPayloadSchemaRegistry: Record<string, EventPayloadSchemaEntry> = {
-    'workflow.started': {
-        schema: WorkflowRunPayloadSchema,
-        label: 'Workflow Started',
-        color: 'text-gilt',
-    } satisfies EventPayloadSchemaEntry,
-    'workflow.completed': {
-        schema: WorkflowRunPayloadSchema,
-        label: 'Workflow Completed',
-        color: 'text-verdigris',
-    } satisfies EventPayloadSchemaEntry,
-    'workflow.error': {
-        schema: WorkflowErrorPayloadSchema,
-        label: 'Workflow Error',
-        color: 'text-old-blood',
-    } satisfies EventPayloadSchemaEntry,
-    'manual.trigger.fired': {
-        schema: FileEventPayloadSchema,
-        label: 'Manual Trigger',
-        color: 'text-gilt',
-    } satisfies EventPayloadSchemaEntry,
-    'log.output': {
-        schema: LogOutputPayloadSchema,
-        label: 'Log',
-        color: 'text-veil',
-    } satisfies EventPayloadSchemaEntry,
-    'notification.show': {
-        schema: NotificationShowPayloadSchema,
-        label: 'Notification',
-        color: 'text-gilt',
-    } satisfies EventPayloadSchemaEntry,
-    'plugin.event': {
-        schema: PluginBusEventPayloadSchema,
-        label: 'Plugin Event',
-        color: 'text-veil',
-    } satisfies EventPayloadSchemaEntry,
-    'engine.diagnostic': {
-        schema: EngineDiagnosticPayloadSchema,
-        label: 'Engine Diagnostic',
-        color: 'text-veil',
-    } satisfies EventPayloadSchemaEntry,
-};
-
 type EventPayloadMap = {
     'workflow.started': WorkflowRunPayload;
     'workflow.completed': WorkflowRunPayload;
     'workflow.error': WorkflowErrorPayload;
-    'manual.trigger.fired': z.infer<typeof FileEventPayloadSchema>;
+    'manual.trigger.fired': FileEventPayload;
     'log.output': LogOutputPayload;
     'notification.show': NotificationShowPayload;
     'plugin.event': PluginBusEventPayload;
     'engine.diagnostic': EngineDiagnosticPayload;
 };
 
-export function safeParsePayload<Name extends string>(
-    name: Name,
-    payload: unknown,
-): Either.Either<Name extends keyof EventPayloadMap ? EventPayloadMap[Name] : unknown, string> {
-    return pipe(
-        Option.fromNullable(EventPayloadSchemaRegistry[name]),
-        Either.fromOption(() => `Unknown event name: ${name}`),
-        Either.flatMap((entry) => {
-            const result = entry.schema.safeParse(payload);
-            return result.success
-                ? Either.right(
-                      result.data as Name extends keyof EventPayloadMap
-                          ? EventPayloadMap[Name]
-                          : unknown,
-                  )
-                : Either.left(`Invalid payload for ${name}: ${result.error.message}`);
-        }),
-    );
+type EventName = keyof EventPayloadMap;
+
+export interface EventPayloadMetadata {
+    readonly label: string;
+    readonly color: string;
 }
 
-export function validateBusEventPayload<Name extends string>(
+export interface EventPayloadSchemaEntry<TPayload> extends EventPayloadMetadata {
+    readonly schema: z.ZodType<TPayload>;
+}
+
+type EventPayloadSchemaRegistryShape = {
+    readonly [Name in EventName]: EventPayloadSchemaEntry<EventPayloadMap[Name]>;
+} & Readonly<Record<string, EventPayloadMetadata>>;
+
+const EVENT_PAYLOAD_SCHEMA_REGISTRY = {
+    'workflow.started': {
+        schema: WorkflowRunPayloadSchema,
+        label: 'Workflow Started',
+        color: 'text-gilt',
+    },
+    'workflow.completed': {
+        schema: WorkflowRunPayloadSchema,
+        label: 'Workflow Completed',
+        color: 'text-verdigris',
+    },
+    'workflow.error': {
+        schema: WorkflowErrorPayloadSchema,
+        label: 'Workflow Error',
+        color: 'text-old-blood',
+    },
+    'manual.trigger.fired': {
+        schema: FileEventPayloadSchema,
+        label: 'Manual Trigger',
+        color: 'text-gilt',
+    },
+    'log.output': {
+        schema: LogOutputPayloadSchema,
+        label: 'Log',
+        color: 'text-veil',
+    },
+    'notification.show': {
+        schema: NotificationShowPayloadSchema,
+        label: 'Notification',
+        color: 'text-gilt',
+    },
+    'plugin.event': {
+        schema: PluginBusEventPayloadSchema,
+        label: 'Plugin Event',
+        color: 'text-veil',
+    },
+    'engine.diagnostic': {
+        schema: EngineDiagnosticPayloadSchema,
+        label: 'Engine Diagnostic',
+        color: 'text-veil',
+    },
+} satisfies {
+    readonly [Name in EventName]: EventPayloadSchemaEntry<EventPayloadMap[Name]>;
+};
+
+export const EventPayloadSchemaRegistry: EventPayloadSchemaRegistryShape =
+    EVENT_PAYLOAD_SCHEMA_REGISTRY;
+
+function isEventName(name: string): name is EventName {
+    return Object.keys(EventPayloadSchemaRegistry).includes(name);
+}
+
+export function safeParsePayload<Name extends EventName>(
     name: Name,
     payload: unknown,
+): Either.Either<EventPayloadMap[Name], string>;
+export function safeParsePayload(name: string, payload: unknown): Either.Either<unknown, string>;
+export function safeParsePayload(name: string, payload: unknown): Either.Either<unknown, string> {
+    if (!isEventName(name)) {
+        return Either.left(`Unknown event name: ${name}`);
+    }
+
+    const result = EventPayloadSchemaRegistry[name].schema.safeParse(payload);
+    return result.success
+        ? Either.right(result.data)
+        : Either.left(`Invalid payload for ${name}: ${result.error.message}`);
+}
+
+export function validateBusEventPayload(
+    name: string,
+    payload: unknown,
 ): Either.Either<void, string> {
-    return pipe(
-        Option.fromNullable(EventPayloadSchemaRegistry[name]),
-        Either.fromOption(() => `Unknown event name: ${name}`),
-        Either.flatMap((entry) => {
-            const result = entry.schema.safeParse(payload);
-            return result.success
-                ? Either.right(undefined)
-                : Either.left(`Invalid payload for ${name}: ${result.error.message}`);
-        }),
-    );
+    if (!isEventName(name)) {
+        return Either.left(`Unknown event name: ${name}`);
+    }
+
+    const result = EventPayloadSchemaRegistry[name].schema.safeParse(payload);
+    return result.success
+        ? Either.right(undefined)
+        : Either.left(`Invalid payload for ${name}: ${result.error.message}`);
 }

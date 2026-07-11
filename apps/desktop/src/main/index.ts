@@ -3,7 +3,6 @@ import { Either } from 'effect';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { NotificationShowPayload } from '../engine/event-payload-schemas.js';
 import { safeParsePayload } from '../engine/event-payload-schemas.js';
 import { RendererChannel, type EngineBusEventPayload } from '../shared/ipc-channels.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
@@ -130,7 +129,7 @@ function handleOsNotifications(): void {
         if (event.name === 'notification.show') {
             const result = safeParsePayload(event.name, event.payload);
             if (Either.isRight(result)) {
-                const { title, body } = result.right as NotificationShowPayload;
+                const { title, body } = result.right;
                 new Notification({ title, body }).show();
             }
         }
