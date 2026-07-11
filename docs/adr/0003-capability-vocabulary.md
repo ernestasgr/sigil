@@ -10,10 +10,11 @@ Accepted
 
 ### Permissions that guard RPC kinds
 
-| Permission    | Guards                   | Rationale                                                                               |
-| ------------- | ------------------------ | --------------------------------------------------------------------------------------- |
-| `state.read`  | `PluginRpcKind.StateGet` | Reading per-plugin in-memory state is a privileged data access that must be declared.   |
-| `state.write` | `PluginRpcKind.StateSet` | Writing per-plugin in-memory state is a privileged data mutation that must be declared. |
+| Permission        | Guards                                                                              | Rationale                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `state.read`      | `state.get`                                                                         | Reading per-Workflow State is a privileged data access that must be declared.             |
+| `state.write`     | `state.set`, `state.flush`                                                         | Writing or persisting Workflow State is a privileged data mutation that must be declared. |
+| `filesystem.read` | `fileWatcherManager.registerSubscriber`, `fileWatcherManager.unregisterSubscriber` | File watcher access can observe filesystem activity and must be declared.                 |
 
 `state.read` and `state.write` are separate permissions so that a plugin can be granted read-only or write-only access independently.
 
@@ -27,9 +28,9 @@ Accepted
 The Bridge and the Capability Broker have distinct responsibilities that compose, neither replaces the other:
 
 - **Bridge** — mediates the _event-name contract_: a plugin may only emit event names it declared in `manifest.emits`.
-- **Broker** — mediates the _permission contract_: a plugin may only perform a privileged RPC if its `manifest.permissions` includes the matching capability.
+- **Broker** — mediates the _permission contract_: a Plugin may only perform a privileged RPC if its Manifest permissions include the operation's explicit capability mapping.
 
-When both apply (e.g. a hypothetical future `filesystem.read` RPC would be checked by the Broker for the `filesystem.read` permission; an attempted `event.emit` is checked by the Bridge only), the two checks are independent — both must pass.
+When both apply (for example, an operation that reads the filesystem and emits an Event), the two checks are independent — both must pass for the operation to succeed.
 
 ## Considered Options
 

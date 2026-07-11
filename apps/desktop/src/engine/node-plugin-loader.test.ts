@@ -1003,6 +1003,33 @@ export function handler(kernel: KernelDeps): NodeHandler {
 }
 `;
 
+const MALICIOUS_KERNEL_ADAPTER_HANDLER = `
+import { z } from 'zod';
+import type { KernelDeps, NodeHandler, NodeRunResult } from '../../node-handlers/types.js';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'evil-kernel-adapter' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export function handler(kernel: KernelDeps): NodeHandler {
+    return {
+        async execute({ ctx }): Promise<NodeRunResult> {
+            kernel.fileWatcherManager.registerSubscriber(
+                { id: 'forged-subscription', path: '/', recursive: true, events: ['file.created'] },
+                () => {},
+            );
+            kernel.fileWatcherManager.unregisterSubscriber('forged-subscription');
+            return { outputCtx: ctx, activePort: 'out' };
+        },
+    };
+}
+`;
+
 describe('unbypassable enforcement', () => {
     let tempDir: string;
 
@@ -1094,6 +1121,133 @@ describe('unbypassable enforcement', () => {
             }
         ).activate({}, () => {});
         expect(typeof teardown).toBe('function');
+    });
+
+    it('authorizes every kernel adapter operation through the Engine Capability Broker', async () => {
+        const pluginId = 'com.sigil.evil-kernel-adapter';
+        const pluginDir = join(tempDir, 'evil-kernel-adapter');
+        writePlugin(
+            pluginDir,
+            {
+                id: pluginId,
+                version: '0.0.1',
+                permissions: ['filesystem.read'],
+                emits: ['x'],
+                nodeType: 'evil-kernel-adapter',
+            },
+            MALICIOUS_KERNEL_ADAPTER_HANDLER,
+        );
+
+        const manifestRegistry = createManifestRegistry();
+        const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+        const capabilityBroker: CapabilityBroker = {
+            request: vi
+                .fn()
+                .mockReturnValue(
+                    Either.left({ kind: 'denied' as const, capability: 'filesystem.read' }),
+                ),
+        };
+        const registerSubscriber = vi.fn();
+        const unregisterSubscriber = vi.fn();
+        const diagnostics: string[] = [];
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            kernel: {
+                capabilityBroker,
+                fileWatcherManager: { registerSubscriber, unregisterSubscriber },
+            },
+            diagnostic: (message) => diagnostics.push(message),
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('evil-kernel-adapter'));
+        await handler.execute(
+            {
+                node: {
+                    id: 'n1',
+                    type: 'evil-kernel-adapter',
+                    pluginId: 'com.sigil.authorized',
+                    config: {},
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            },
+            {} as never,
+        );
+
+        await vi.waitFor(() => {
+            expect(capabilityBroker.request).toHaveBeenCalledTimes(2);
+        });
+        expect(capabilityBroker.request).toHaveBeenNthCalledWith(1, {
+            pluginId,
+            capability: 'filesystem.read',
+        });
+        expect(capabilityBroker.request).toHaveBeenNthCalledWith(2, {
+            pluginId,
+            capability: 'filesystem.read',
+        });
+        expect(registerSubscriber).not.toHaveBeenCalled();
+        expect(unregisterSubscriber).not.toHaveBeenCalled();
+        expect(
+            diagnostics.filter((message) => message.includes('evil-kernel-adapter')),
+        ).toHaveLength(2);
+    });
+
+    it('allows kernel adapter operations after the mapped capability is granted', async () => {
+        const pluginId = 'com.sigil.allowed-kernel-adapter';
+        const pluginDir = join(tempDir, 'allowed-kernel-adapter');
+        writePlugin(
+            pluginDir,
+            {
+                id: pluginId,
+                version: '0.0.1',
+                permissions: ['filesystem.read'],
+                emits: ['x'],
+                nodeType: 'evil-kernel-adapter',
+            },
+            MALICIOUS_KERNEL_ADAPTER_HANDLER,
+        );
+
+        const manifestRegistry = createManifestRegistry();
+        const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+        const capabilityBroker: CapabilityBroker = {
+            request: vi.fn().mockReturnValue(Either.right(undefined)),
+        };
+        const registerSubscriber = vi.fn();
+        const unregisterSubscriber = vi.fn();
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            kernel: {
+                capabilityBroker,
+                fileWatcherManager: { registerSubscriber, unregisterSubscriber },
+            },
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('evil-kernel-adapter'));
+        await handler.execute(
+            {
+                node: {
+                    id: 'n1',
+                    type: 'evil-kernel-adapter',
+                    pluginId,
+                    config: {},
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            },
+            {} as never,
+        );
+
+        await vi.waitFor(() => {
+            expect(capabilityBroker.request).toHaveBeenCalledTimes(2);
+        });
+        expect(registerSubscriber).toHaveBeenCalledTimes(1);
+        expect(unregisterSubscriber).toHaveBeenCalledWith('forged-subscription');
     });
 });
 
