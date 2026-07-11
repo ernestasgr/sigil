@@ -8,6 +8,7 @@ const workflow = (id: string, name: string, enabled: boolean): WorkflowSummary =
     id,
     name,
     enabled,
+    activation: enabled ? { kind: 'active' } : { kind: 'disabled' },
 });
 
 describe('buildTrayMenu', () => {
@@ -76,5 +77,22 @@ describe('buildTrayMenu', () => {
         const menu = buildTrayMenu([]);
 
         expect(menu.workflowsActive).toBe(false);
+    });
+
+    it('reports workflows inactive when enabled intent has failed activation', () => {
+        const menu = buildTrayMenu([
+            {
+                id: 'broken',
+                name: 'Broken Workflow',
+                enabled: true,
+                activation: { kind: 'failed', message: 'worker unavailable' },
+            },
+        ]);
+
+        expect(menu.workflowsActive).toBe(false);
+        expect(menu.items[0]).toMatchObject({
+            kind: 'workflow-toggle',
+            workflow: { enabled: true, activation: { kind: 'failed' } },
+        });
     });
 });

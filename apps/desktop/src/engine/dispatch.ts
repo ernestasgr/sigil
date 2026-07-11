@@ -12,6 +12,7 @@ import {
     type EnginePong,
     type EngineReadProperties,
     type EngineReadWorkflowState,
+    type EngineRetryWorkflow,
     type EngineSaveProperties,
     type EngineSetPermissionOverride,
     type EngineSetWorkflowStateKey,
@@ -24,6 +25,7 @@ import type { Engine } from './engine.js';
 import { updatePluginPermissions } from './node-plugin-loader.js';
 import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
 import type { WorkflowActivator } from './workflow-activator.js';
+import type { WorkflowLifecycle } from './workflow-lifecycle.js';
 import type { WorkflowStore } from './workflow-store.js';
 import { isWorkflowTopologyError } from './workflow-topology-error.js';
 
@@ -32,6 +34,7 @@ export interface DispatchSubsystems {
     readonly engine: Engine;
     readonly store: WorkflowStore;
     readonly activator: WorkflowActivator;
+    readonly lifecycle?: WorkflowLifecycle;
     readonly broadcastWorkflowsList: () => void;
     readonly log: (message: string) => void;
     readonly propertiesPath: string;
@@ -74,6 +77,23 @@ function handleFireManualTrigger(
 }
 
 function handleToggleWorkflow(message: EngineToggleWorkflow, subsystems: DispatchSubsystems): void {
+    if (subsystems.lifecycle) {
+        const before = subsystems.store.getSummary(message.id);
+        const toggled = subsystems.lifecycle.toggle(message.id);
+        if (Option.isSome(before) && Option.isSome(toggled)) {
+            subsystems.log(
+                `"${before.value.name}" ${toggled.value.enabled ? 'enabled' : 'disabled'}`,
+            );
+        }
+        subsystems.broadcastWorkflowsList();
+        subsystems.postMessage({
+            type: EngineChannel.ToggleWorkflowResult,
+            correlationId: message.correlationId,
+            summary: Option.getOrUndefined(toggled),
+        });
+        return;
+    }
+
     const before = subsystems.store.get(message.id);
     const toggled = subsystems.store.toggle(message.id);
     if (Option.isSome(before) && Option.isSome(toggled)) {
@@ -89,6 +109,21 @@ function handleToggleWorkflow(message: EngineToggleWorkflow, subsystems: Dispatc
         type: EngineChannel.ToggleWorkflowResult,
         correlationId: message.correlationId,
         summary: Option.getOrUndefined(toggled),
+    });
+}
+
+function handleRetryWorkflow(message: EngineRetryWorkflow, subsystems: DispatchSubsystems): void {
+    const summary = subsystems.lifecycle
+        ? subsystems.lifecycle.retry(message.id)
+        : Option.none<ReturnType<WorkflowStore['save']>>();
+    if (Option.isSome(summary)) {
+        subsystems.log(`Retrying workflow "${summary.value.name}" (${summary.value.id})`);
+    }
+    subsystems.broadcastWorkflowsList();
+    subsystems.postMessage({
+        type: EngineChannel.RetryWorkflowResult,
+        correlationId: message.correlationId,
+        summary: Option.getOrUndefined(summary),
     });
 }
 
@@ -120,12 +155,16 @@ function handleUpdateWorkflow(message: EngineUpdateWorkflow, subsystems: Dispatc
     const existed = Option.isSome(subsystems.store.get(message.id));
     let summary: ReturnType<WorkflowStore['save']>;
     try {
-        summary = subsystems.store.save(
-            message.id,
-            message.name,
-            message.pipeline,
-            message.positions,
-        );
+        summary = subsystems.lifecycle
+            ? subsystems.lifecycle.update(message.id, () =>
+                  subsystems.store.save(
+                      message.id,
+                      message.name,
+                      message.pipeline,
+                      message.positions,
+                  ),
+              )
+            : subsystems.store.save(message.id, message.name, message.pipeline, message.positions);
     } catch (err) {
         if (!isWorkflowTopologyError(err)) throw err;
         subsystems.log(`Could not update workflow "${message.name}": ${err.message}`);
@@ -138,9 +177,9 @@ function handleUpdateWorkflow(message: EngineUpdateWorkflow, subsystems: Dispatc
         return;
     }
     if (existed) {
-        subsystems.activator.deactivate(message.id);
+        if (!subsystems.lifecycle) subsystems.activator.deactivate(message.id);
         subsystems.log(`Updated workflow "${message.name}" (${summary.id})`);
-        if (summary.enabled) {
+        if (!subsystems.lifecycle && summary.enabled) {
             subsystems.activator.activate(message.id);
         }
     } else {
@@ -157,7 +196,11 @@ function handleUpdateWorkflow(message: EngineUpdateWorkflow, subsystems: Dispatc
 }
 
 function handleDeleteWorkflow(message: EngineDeleteWorkflow, subsystems: DispatchSubsystems): void {
-    subsystems.activator.deactivate(message.id);
+    if (subsystems.lifecycle) {
+        subsystems.lifecycle.disable(message.id);
+    } else {
+        subsystems.activator.deactivate(message.id);
+    }
     const removed = subsystems.store.remove(message.id);
     if (removed) {
         subsystems.log(`Deleted workflow (${message.id})`);
@@ -289,6 +332,9 @@ export function dispatch(message: WorkerInbound, subsystems: DispatchSubsystems)
         ),
         Match.when({ type: EngineChannel.ToggleWorkflow }, (msg) =>
             handleToggleWorkflow(msg, subsystems),
+        ),
+        Match.when({ type: EngineChannel.RetryWorkflow }, (msg) =>
+            handleRetryWorkflow(msg, subsystems),
         ),
         Match.when({ type: EngineChannel.CreateWorkflow }, (msg) =>
             handleCreateWorkflow(msg, subsystems),

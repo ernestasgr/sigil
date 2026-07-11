@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { WorkflowStateEntry } from '../../shared/ipc-channels.js';
 import type { PluginInfo } from '../../shared/plugin-info.js';
-import type { WorkflowSummary } from '../../shared/workflow.js';
+import { type WorkflowSummary, workflowActivationLabel } from '../../shared/workflow.js';
 import { SectionShell } from '../components/section-shell.js';
 import { Button } from '../components/ui/button.js';
 import { useSigil } from '../lib/use-sigil.js';
@@ -348,10 +348,17 @@ function WorkflowStateCard({
                 </h3>
                 <span
                     className={`font-data text-xs tracking-wider uppercase ${
-                        workflow.enabled ? 'text-verdigris' : 'text-veil'
+                        workflow.activation.kind === 'active'
+                            ? 'text-verdigris'
+                            : workflow.activation.kind === 'failed'
+                              ? 'text-old-blood'
+                              : workflow.activation.kind === 'activating'
+                                ? 'text-gilt'
+                                : 'text-veil'
                     }`}
                 >
-                    {workflow.enabled ? 'Active' : 'Disabled'}
+                    {workflow.enabled ? 'Enabled intent' : 'Disabled'} ·{' '}
+                    {workflowActivationLabel(workflow.activation)}
                 </span>
             </div>
 

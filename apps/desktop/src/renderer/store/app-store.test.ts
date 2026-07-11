@@ -8,6 +8,7 @@ const workflow = (id: string, name: string, enabled: boolean): WorkflowSummary =
     id,
     name,
     enabled,
+    activation: enabled ? { kind: 'active' } : { kind: 'disabled' },
 });
 
 describe('useAppStore', () => {

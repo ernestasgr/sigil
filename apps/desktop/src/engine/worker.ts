@@ -15,6 +15,7 @@ import { createEngine } from './engine.js';
 import { readPropertiesFile } from './properties-loader.js';
 import { workflowTopologyOptions } from './workflow-acceptance.js';
 import { createWorkflowActivator } from './workflow-activator.js';
+import { createWorkflowLifecycle } from './workflow-lifecycle.js';
 import { createWorkflowStore } from './workflow-store.js';
 
 if (!parentPort) {
@@ -120,6 +121,7 @@ const activator = createWorkflowActivator(
     engine.handlerRegistry,
     broadcastWorkflowsList,
 );
+const lifecycle = createWorkflowLifecycle(store, activator);
 
 process.on('exit', () => {
     activator.dispose();
@@ -131,6 +133,7 @@ const subsystems: DispatchSubsystems = {
     engine,
     store,
     activator,
+    lifecycle,
     broadcastWorkflowsList,
     log,
     propertiesPath,
@@ -164,7 +167,7 @@ port.on('message', (raw: unknown) => {
 for (const wf of store.list()) {
     if (wf.enabled) {
         try {
-            activator.activate(wf.id);
+            lifecycle.activateEnabled(wf.id);
         } catch (err) {
             const log: EngineLog = {
                 type: EngineChannel.Log,

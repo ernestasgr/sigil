@@ -58,6 +58,16 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
     );
 
     ipcHandle(
+        RendererChannel.RetryWorkflow,
+        WorkflowIdSchema,
+        async (id): Promise<WorkflowSummary | null> => {
+            const engine = h.getEngine();
+            if (!engine) throw new Error('Engine not ready');
+            return Option.getOrNull(await engine.retryWorkflow(id));
+        },
+    );
+
+    ipcHandle(
         RendererChannel.CreateWorkflow,
         z.tuple([z.string(), CompiledPipelineSchema, NodePositionRecordSchema]),
         async ([name, pipeline, positions]): Promise<WorkflowSummary> => {
@@ -274,6 +284,7 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         [RendererChannel.EnginePong]: true,
         [RendererChannel.FireTestEvent]: true,
         [RendererChannel.ToggleWorkflow]: true,
+        [RendererChannel.RetryWorkflow]: true,
         [RendererChannel.CreateWorkflow]: true,
         [RendererChannel.UpdateWorkflow]: true,
         [RendererChannel.DeleteWorkflow]: true,

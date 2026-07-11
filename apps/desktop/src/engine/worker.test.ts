@@ -14,6 +14,7 @@ import {
     type EnginePing,
     type EngineReadProperties,
     type EngineReadWorkflowState,
+    type EngineRetryWorkflow,
     type EngineSaveProperties,
     type EngineSetPermissionOverride,
     type EngineSetWorkflowStateKey,
@@ -50,6 +51,7 @@ function createFakeSubsystems(): {
     };
     store: {
         get: ReturnType<typeof vi.fn>;
+        getSummary: ReturnType<typeof vi.fn>;
         toggle: ReturnType<typeof vi.fn>;
         create: ReturnType<typeof vi.fn>;
         save: ReturnType<typeof vi.fn>;
@@ -72,6 +74,7 @@ function createFakeSubsystems(): {
     const setKey = vi.fn();
     const deleteKey = vi.fn();
     const storeGet = vi.fn();
+    const storeGetSummary = vi.fn();
     const storeToggle = vi.fn();
     const storeCreate = vi.fn();
     const storeSave = vi.fn();
@@ -98,6 +101,7 @@ function createFakeSubsystems(): {
             } as unknown as DispatchSubsystems['engine'],
             store: {
                 get: storeGet,
+                getSummary: storeGetSummary,
                 toggle: storeToggle,
                 create: storeCreate,
                 save: storeSave,
@@ -122,6 +126,7 @@ function createFakeSubsystems(): {
         },
         store: {
             get: storeGet,
+            getSummary: storeGetSummary,
             toggle: storeToggle,
             create: storeCreate,
             save: storeSave,
@@ -225,6 +230,66 @@ describe('dispatch', () => {
         expect(log).not.toHaveBeenCalled();
         expect(activator.activate).not.toHaveBeenCalled();
         expect(activator.deactivate).not.toHaveBeenCalled();
+    });
+
+    it('routes ToggleWorkflow through the lifecycle transition seam when available', () => {
+        const { subsystems, postMessage, store, log } = createFakeSubsystems();
+        const before = {
+            id: 'wf-1',
+            name: 'Test WF',
+            enabled: false,
+            activation: { kind: 'disabled' } as const,
+        };
+        const after = {
+            id: 'wf-1',
+            name: 'Test WF',
+            enabled: true,
+            activation: { kind: 'active' } as const,
+        };
+        const toggle = vi.fn().mockReturnValue(Option.some(after));
+        (subsystems as unknown as { lifecycle: { toggle: typeof toggle } }).lifecycle = { toggle };
+        store.getSummary.mockReturnValue(Option.some(before));
+
+        dispatch(
+            { type: EngineChannel.ToggleWorkflow, correlationId: 'lifecycle-toggle', id: 'wf-1' },
+            subsystems,
+        );
+
+        expect(toggle).toHaveBeenCalledWith('wf-1');
+        expect(store.toggle).not.toHaveBeenCalled();
+        expect(log).toHaveBeenCalledWith('"Test WF" enabled');
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.ToggleWorkflowResult,
+            correlationId: 'lifecycle-toggle',
+            summary: after,
+        });
+    });
+
+    it('routes RetryWorkflow through the lifecycle transition seam', () => {
+        const { subsystems, postMessage, log } = createFakeSubsystems();
+        const summary = {
+            id: 'wf-1',
+            name: 'Test WF',
+            enabled: true,
+            activation: { kind: 'active' } as const,
+        };
+        const retry = vi.fn().mockReturnValue(Option.some(summary));
+        (subsystems as unknown as { lifecycle: { retry: typeof retry } }).lifecycle = { retry };
+
+        const message: EngineRetryWorkflow = {
+            type: EngineChannel.RetryWorkflow,
+            correlationId: 'lifecycle-retry',
+            id: 'wf-1',
+        };
+        dispatch(message, subsystems);
+
+        expect(retry).toHaveBeenCalledWith('wf-1');
+        expect(log).toHaveBeenCalledWith('Retrying workflow "Test WF" (wf-1)');
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.RetryWorkflowResult,
+            correlationId: 'lifecycle-retry',
+            summary,
+        });
     });
 
     it('routes CreateWorkflow and calls store.create, broadcast, and posts result', () => {

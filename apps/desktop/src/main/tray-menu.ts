@@ -1,4 +1,4 @@
-import type { WorkflowSummary } from '../shared/workflow.js';
+import { isWorkflowActive, type WorkflowSummary } from '../shared/workflow.js';
 
 export type TrayMenuItem =
     | { readonly kind: 'workflow-toggle'; readonly workflow: WorkflowSummary }
@@ -20,7 +20,7 @@ export function buildTrayMenu(workflows: readonly WorkflowSummary[]): TrayMenu {
     const emptyItem: TrayMenuItem[] = workflows.length === 0 ? [{ kind: 'no-workflows' }] : [];
 
     return {
-        workflowsActive: workflows.some((w) => w.enabled),
+        workflowsActive: workflows.some(isWorkflowActive),
         items: [
             ...workflowItems,
             ...emptyItem,

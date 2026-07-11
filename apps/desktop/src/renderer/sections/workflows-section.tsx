@@ -2,6 +2,7 @@ import type { CompiledPipeline } from '@sigil/schema';
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import { type ReactElement, useCallback, useEffect, useState } from 'react';
 
+import { type WorkflowSummary, workflowActivationLabel } from '../../shared/workflow.js';
 import { SectionShell } from '../components/section-shell.js';
 import { Button } from '../components/ui/button.js';
 import { useSigil } from '../lib/use-sigil.js';
@@ -17,6 +18,25 @@ function diagnosticTargetLabel(diagnostic: TopologyDiagnostic): string {
             return `Node ${diagnostic.target.nodeId}`;
         case 'edge':
             return `Edge ${diagnostic.target.edgeId}`;
+    }
+}
+
+function assertNever(value: never): never {
+    throw new Error(`Unhandled Workflow activation state: ${JSON.stringify(value)}`);
+}
+
+function activationIndicatorClass(workflow: WorkflowSummary): string {
+    switch (workflow.activation.kind) {
+        case 'disabled':
+            return 'bg-veil';
+        case 'activating':
+            return 'bg-gilt';
+        case 'active':
+            return 'bg-verdigris';
+        case 'failed':
+            return 'bg-old-blood';
+        default:
+            return assertNever(workflow.activation);
     }
 }
 
@@ -100,6 +120,17 @@ export function WorkflowsSection(): ReactElement {
         [sigil],
     );
 
+    const handleRetry = useCallback(
+        async (id: string) => {
+            try {
+                await sigil.retryWorkflow(id);
+            } catch (err) {
+                console.error('Failed to retry workflow:', err);
+            }
+        },
+        [sigil],
+    );
+
     const handleDelete = useCallback(
         async (id: string) => {
             try {
@@ -157,18 +188,14 @@ export function WorkflowsSection(): ReactElement {
                                                     (diagnostic) => diagnostic.severity === 'error',
                                                 )
                                                     ? 'bg-old-blood'
-                                                    : workflow.enabled
-                                                      ? 'bg-verdigris'
-                                                      : 'bg-veil'
+                                                    : activationIndicatorClass(workflow)
                                             }`}
                                             title={
                                                 workflow.diagnostics?.some(
                                                     (diagnostic) => diagnostic.severity === 'error',
                                                 )
                                                     ? 'Needs repair'
-                                                    : workflow.enabled
-                                                      ? 'Enabled'
-                                                      : 'Disabled'
+                                                    : `${workflow.enabled ? 'Enabled intent' : 'Disabled'} · ${workflowActivationLabel(workflow.activation)}`
                                             }
                                         />
                                     </div>
@@ -191,6 +218,11 @@ export function WorkflowsSection(): ReactElement {
                                             ))}
                                         </div>
                                     ) : null}
+                                    {workflow.activation.kind === 'failed' ? (
+                                        <p className="text-old-blood mt-1 pr-4 font-data text-[10px]">
+                                            {workflow.activation.message}
+                                        </p>
+                                    ) : null}
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
                                     <Button
@@ -203,6 +235,17 @@ export function WorkflowsSection(): ReactElement {
                                     >
                                         {workflow.enabled ? 'Disable' : 'Enable'}
                                     </Button>
+                                    {workflow.activation.kind === 'failed' ? (
+                                        <Button
+                                            size="sm"
+                                            disabled={workflow.diagnostics?.some(
+                                                (diagnostic) => diagnostic.severity === 'error',
+                                            )}
+                                            onClick={() => handleRetry(workflow.id)}
+                                        >
+                                            Retry
+                                        </Button>
+                                    ) : null}
                                     <Button
                                         size="sm"
                                         variant="ghost"

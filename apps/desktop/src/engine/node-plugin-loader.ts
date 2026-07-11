@@ -324,7 +324,7 @@ function createWorkerNodeHandlerProxy(
                 diagnostic?.(
                     `[proxy] activation error for plugin "${pluginId}": ${runtimeMsg.error}`,
                 );
-                Option.getOrUndefined(getDeactivationHook(pending.onEvent))?.();
+                Option.getOrUndefined(getDeactivationHook(pending.onEvent))?.(runtimeMsg.error);
                 break;
             }
             case NodePluginWorkerKind.ActivateResult: {
