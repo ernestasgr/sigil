@@ -1,5 +1,21 @@
+import { PipelineConditionSchema } from '@sigil/schema/conditions';
+import { FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
+import { CapabilitySchema } from '@sigil/schema/manifest';
+import { SwitchConfigSchema } from '@sigil/schema/nodes/switch';
 import { CollisionSuffixStyleSchema } from '@sigil/schema/properties-file';
+import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { z } from 'zod';
+
+import { CapabilityRequestSchema } from './capability-broker.js';
+import {
+    EngineDiagnosticPayloadSchema,
+    LogOutputPayloadSchema,
+    NotificationShowPayloadSchema,
+    PluginBusEventPayloadSchema,
+    WorkflowErrorPayloadSchema,
+    WorkflowRunPayloadSchema,
+} from './event-payload-schemas.js';
+import { SubscriberRegistrationSchema } from './file-watcher-manager.js';
 
 export const NodePluginWorkerKind = {
     Loaded: 'npw:loaded',
@@ -71,13 +87,120 @@ export const NodePluginWorkerActivateEventSchema = z.object({
 });
 export type NodePluginWorkerActivateEvent = z.infer<typeof NodePluginWorkerActivateEventSchema>;
 
-export const NodePluginDepsRpcSchema = z.object({
-    kind: z.literal(NodePluginWorkerKind.DepsRpc),
-    requestId: z.string(),
-    method: z.string(),
-    args: z.array(z.unknown()),
-});
+const NodePluginBusEventSchema = z.union([
+    z.object({
+        name: z.literal('workflow.started'),
+        payload: WorkflowRunPayloadSchema,
+    }),
+    z.object({
+        name: z.literal('workflow.completed'),
+        payload: WorkflowRunPayloadSchema,
+    }),
+    z.object({
+        name: z.literal('workflow.error'),
+        payload: WorkflowErrorPayloadSchema,
+    }),
+    z.object({
+        name: z.literal('manual.trigger.fired'),
+        payload: FileEventPayloadSchema,
+    }),
+    z.object({
+        name: z.literal('log.output'),
+        payload: LogOutputPayloadSchema,
+    }),
+    z.object({
+        name: z.literal('notification.show'),
+        payload: NotificationShowPayloadSchema,
+    }),
+    z.object({
+        name: z.literal('plugin.event'),
+        payload: PluginBusEventPayloadSchema,
+    }),
+    z.object({
+        name: z.literal('engine.diagnostic'),
+        payload: EngineDiagnosticPayloadSchema,
+    }),
+]);
+
+export const NodePluginDepsRpcSchema = z.discriminatedUnion('operation', [
+    z.object({
+        kind: z.literal(NodePluginWorkerKind.DepsRpc),
+        requestId: z.string(),
+        operation: z.literal('bus.next'),
+        args: z.tuple([NodePluginBusEventSchema]),
+    }),
+    z.object({
+        kind: z.literal(NodePluginWorkerKind.DepsRpc),
+        requestId: z.string(),
+        operation: z.literal('sleep'),
+        args: z.tuple([z.number()]),
+    }),
+    z.object({
+        kind: z.literal(NodePluginWorkerKind.DepsRpc),
+        requestId: z.string(),
+        operation: z.literal('resolveTemplate'),
+        args: z.tuple([z.string(), WorkflowContextSchema]),
+    }),
+    z.object({
+        kind: z.literal(NodePluginWorkerKind.DepsRpc),
+        requestId: z.string(),
+        operation: z.literal('evaluateCondition'),
+        args: z.tuple([PipelineConditionSchema, WorkflowContextSchema]),
+    }),
+    z.object({
+        kind: z.literal(NodePluginWorkerKind.DepsRpc),
+        requestId: z.string(),
+        operation: z.literal('matchSwitchCase'),
+        args: z.tuple([SwitchConfigSchema, WorkflowContextSchema]),
+    }),
+    z.object({
+        kind: z.literal(NodePluginWorkerKind.DepsRpc),
+        requestId: z.string(),
+        operation: z.literal('state.get'),
+        args: z.tuple([z.string()]),
+    }),
+    z.object({
+        kind: z.literal(NodePluginWorkerKind.DepsRpc),
+        requestId: z.string(),
+        operation: z.literal('state.set'),
+        args: z.tuple([z.string(), z.string()]),
+    }),
+    z.object({
+        kind: z.literal(NodePluginWorkerKind.DepsRpc),
+        requestId: z.string(),
+        operation: z.literal('state.flush'),
+        args: z.tuple([]),
+    }),
+    z.object({
+        kind: z.literal(NodePluginWorkerKind.DepsRpc),
+        requestId: z.string(),
+        operation: z.literal('capabilityBroker.request'),
+        args: z.tuple([CapabilityRequestSchema]),
+    }),
+    z.object({
+        kind: z.literal(NodePluginWorkerKind.DepsRpc),
+        requestId: z.string(),
+        operation: z.literal('fileWatcherManager.registerSubscriber'),
+        args: z.tuple([SubscriberRegistrationSchema, z.string().min(1)]),
+    }),
+    z.object({
+        kind: z.literal(NodePluginWorkerKind.DepsRpc),
+        requestId: z.string(),
+        operation: z.literal('fileWatcherManager.unregisterSubscriber'),
+        args: z.tuple([z.string().min(1)]),
+    }),
+]);
 export type NodePluginDepsRpc = z.infer<typeof NodePluginDepsRpcSchema>;
+export type NodePluginDepsRpcOperation = NodePluginDepsRpc['operation'];
+
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+export type NodePluginDepsRpcRequest = DistributiveOmit<NodePluginDepsRpc, 'kind' | 'requestId'>;
+
+export type NodePluginDepsRpcArgs<TOperation extends NodePluginDepsRpcOperation> = Extract<
+    NodePluginDepsRpcRequest,
+    { operation: TOperation }
+>['args'];
 
 export const NodePluginDepsRpcResultSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.DepsRpcResult),
@@ -143,7 +266,7 @@ export type NodePluginWorkerCallbackInvoke = z.infer<typeof NodePluginWorkerCall
 
 export const NodePluginWorkerUpdatePermissionsSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.UpdatePermissions),
-    permissions: z.array(z.string()),
+    permissions: z.array(CapabilitySchema),
 });
 export type NodePluginWorkerUpdatePermissions = z.infer<
     typeof NodePluginWorkerUpdatePermissionsSchema
@@ -159,3 +282,8 @@ export const NodePluginMainToWorkerSchema = z.discriminatedUnion('kind', [
     NodePluginWorkerUpdatePermissionsSchema,
 ]);
 export type NodePluginMainToWorker = z.infer<typeof NodePluginMainToWorkerSchema>;
+
+export type NodePluginWorkerRuntimeToMain = Exclude<
+    NodePluginWorkerToMain,
+    NodePluginWorkerLoaded | NodePluginWorkerLoadError
+>;

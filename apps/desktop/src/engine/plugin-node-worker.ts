@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import vm from 'node:vm';
 import { parentPort, workerData } from 'node:worker_threads';
+import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
 import type { PluginPipelineNode } from '@sigil/schema/nodes';
 import { type WorkflowContext, WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { Either, Option } from 'effect';
@@ -19,12 +20,20 @@ import type {
 } from './node-handlers/types.js';
 import { isTriggerHandler } from './node-handlers/types.js';
 import {
+    type NodePluginDepsRpcArgs,
+    type NodePluginDepsRpcOperation,
+    type NodePluginDepsRpcRequest,
     NodePluginMainToWorkerSchema,
     type NodePluginWorkerCallbackInvoke,
     type NodePluginWorkerExecuteRequest,
     NodePluginWorkerKind,
     type NodePluginWorkerToMain,
 } from './plugin-node-rpc.js';
+import {
+    buildPermissionGatedModule,
+    getSandboxModuleNames,
+    type SandboxModuleName,
+} from './plugin-node-sandbox.js';
 
 if (!parentPort) {
     throw new Error('plugin-node-worker must be spawned as a worker_thread');
@@ -36,12 +45,12 @@ const WorkerDataSchema = z.object({
     pluginId: z.string().min(1),
     manifestNodeType: z.string().min(1),
     handlerPath: z.string().min(1),
-    manifestPermissions: z.array(z.string()).default([]),
-    permissions: z.array(z.string()).default([]),
+    manifestPermissions: z.array(CapabilitySchema).default([]),
+    permissions: z.array(CapabilitySchema).default([]),
 });
 
 const data = WorkerDataSchema.parse(workerData);
-const permissions = new Set(data.permissions);
+const permissions = new Set<Capability>(data.permissions);
 
 let sandboxModules: Record<string, unknown> = {};
 
@@ -49,9 +58,7 @@ let sandboxModules: Record<string, unknown> = {};
 // sandboxModules stores Proxy objects that delegate to these, so esbuild's __toESM
 // captures the Proxy (__esModule: true → returns Proxy directly) and property access
 // goes through the Proxy's get trap=live reads.
-let currentFsModule: Record<string, unknown> = {};
-let currentNetModule: Record<string, unknown> = {};
-let currentCpModule: Record<string, unknown> = {};
+let currentPermissionGatedModules: Partial<Record<SandboxModuleName, Record<string, unknown>>> = {};
 
 // Create a require function for ESM context (needed for sandbox module building)
 const workerRequire = createRequire(import.meta.url);
@@ -112,15 +119,14 @@ const depRpcPending = new Map<
     { resolve: (value: unknown) => void; reject: (err: Error) => void }
 >();
 
-function depRpcCall(method: string, args: readonly unknown[]): Promise<unknown> {
+function depRpcCall(request: NodePluginDepsRpcRequest): Promise<unknown> {
     return new Promise((resolve, reject) => {
         const requestId = randomUUID();
         depRpcPending.set(requestId, { resolve, reject });
         send({
             kind: NodePluginWorkerKind.DepsRpc,
             requestId,
-            method,
-            args: [...args],
+            ...request,
         });
     });
 }
@@ -130,10 +136,16 @@ function depRpcCall(method: string, args: readonly unknown[]): Promise<unknown> 
  * message transport. The type is reconstructed once at this seam so plugin
  * handlers keep the same dependency interface as in-process handlers.
  */
-function remoteCall<Args extends readonly unknown[], Result>(
-    method: string,
-): (...args: Args) => Result {
-    return (...args) => depRpcCall(method, args) as Result;
+function remoteCall<TOperation extends NodePluginDepsRpcOperation, TResult>(
+    operation: TOperation,
+): (...args: NodePluginDepsRpcArgs<TOperation>) => TResult {
+    return (...args) => {
+        // The generic operation/args correlation is represented by the exported
+        // Zod-derived types; this assertion only bridges TypeScript's inability
+        // to preserve that correlation through a generic union construction.
+        const request = { operation, args } as NodePluginDepsRpcRequest;
+        return depRpcCall(request) as unknown as TResult;
+    };
 }
 
 let depsTeardown: Option.Option<() => void> = Option.none();
@@ -143,15 +155,16 @@ let depsTeardown: Option.Option<() => void> = Option.none();
 const callbacks = new Map<string, (...args: unknown[]) => void>();
 let nextCallbackId = 1;
 
-function rpcWithCallback(
-    method: string,
-    args: readonly unknown[],
-    callback?: (...args: unknown[]) => void,
+function registerFileWatcherSubscriber(
+    subscriber: SubscriberRegistration,
+    callback: (...args: unknown[]) => void,
 ): Promise<unknown> {
-    if (!callback) return depRpcCall(method, args);
     const callbackId = `cb:${data.pluginId}:${nextCallbackId++}`;
     callbacks.set(callbackId, callback);
-    return depRpcCall(method, [...args, callbackId]);
+    return depRpcCall({
+        operation: 'fileWatcherManager.registerSubscriber',
+        args: [subscriber, callbackId],
+    });
 }
 
 // ─── Build proxied deps (NodeHandlerDeps) ───────────────────
@@ -161,40 +174,27 @@ function createProxiedDeps(
 ): NodeHandlerDeps {
     return {
         bus: {
-            next: remoteCall<
-                Parameters<NodeHandlerDeps['bus']['next']>,
-                ReturnType<NodeHandlerDeps['bus']['next']>
-            >('bus.next'),
+            next: remoteCall<'bus.next', ReturnType<NodeHandlerDeps['bus']['next']>>('bus.next'),
         },
-        sleep: remoteCall<
-            Parameters<NodeHandlerDeps['sleep']>,
-            ReturnType<NodeHandlerDeps['sleep']>
-        >('sleep'),
+        sleep: remoteCall<'sleep', ReturnType<NodeHandlerDeps['sleep']>>('sleep'),
         resolveTemplate: remoteCall<
-            Parameters<NodeHandlerDeps['resolveTemplate']>,
+            'resolveTemplate',
             ReturnType<NodeHandlerDeps['resolveTemplate']>
         >('resolveTemplate'),
         evaluateCondition: remoteCall<
-            Parameters<NodeHandlerDeps['evaluateCondition']>,
+            'evaluateCondition',
             ReturnType<NodeHandlerDeps['evaluateCondition']>
         >('evaluateCondition'),
         matchSwitchCase: remoteCall<
-            Parameters<NodeHandlerDeps['matchSwitchCase']>,
+            'matchSwitchCase',
             ReturnType<NodeHandlerDeps['matchSwitchCase']>
         >('matchSwitchCase'),
         state: {
-            get: remoteCall<
-                Parameters<NodeHandlerDeps['state']['get']>,
-                ReturnType<NodeHandlerDeps['state']['get']>
-            >('state.get'),
-            set: remoteCall<
-                Parameters<NodeHandlerDeps['state']['set']>,
-                ReturnType<NodeHandlerDeps['state']['set']>
-            >('state.set'),
-            flush: remoteCall<
-                Parameters<NodeHandlerDeps['state']['flush']>,
-                ReturnType<NodeHandlerDeps['state']['flush']>
-            >('state.flush'),
+            get: remoteCall<'state.get', ReturnType<NodeHandlerDeps['state']['get']>>('state.get'),
+            set: remoteCall<'state.set', ReturnType<NodeHandlerDeps['state']['set']>>('state.set'),
+            flush: remoteCall<'state.flush', ReturnType<NodeHandlerDeps['state']['flush']>>(
+                'state.flush',
+            ),
         },
         capabilityBroker: {
             request: ({ capability }) =>
@@ -220,15 +220,14 @@ function createProxiedKernel(): KernelDeps {
                     callback(parsedEvent.data);
                 }
             };
-            const promise = rpcWithCallback(
-                'fileWatcherManager.registerSubscriber',
-                [subscriber],
-                onCallback,
-            );
+            const promise = registerFileWatcherSubscriber(subscriber, onCallback);
             void promise;
         },
         unregisterSubscriber: (id: string) => {
-            void depRpcCall('fileWatcherManager.unregisterSubscriber', [id]);
+            void depRpcCall({
+                operation: 'fileWatcherManager.unregisterSubscriber',
+                args: [id],
+            });
         },
     };
     const capabilityBroker: KernelDeps['capabilityBroker'] = {
@@ -242,169 +241,6 @@ function createProxiedKernel(): KernelDeps {
 }
 
 // ─── Permission-based sandbox module builder ────────────────
-
-const FS_READ_FUNCTIONS = [
-    'readFileSync',
-    'readFile',
-    'readdirSync',
-    'readdir',
-    'existsSync',
-    'statSync',
-    'stat',
-    'lstatSync',
-    'lstat',
-    'accessSync',
-    'access',
-    'realpathSync',
-    'realpath',
-    'openSync',
-    'open',
-    'closeSync',
-    'close',
-    'readSync',
-    'read',
-    'createReadStream',
-    'ReadStream',
-    'constants',
-    'Dirent',
-    'Stats',
-];
-
-const FS_WRITE_FUNCTIONS = [
-    'writeFileSync',
-    'writeFile',
-    'mkdirSync',
-    'mkdir',
-    'renameSync',
-    'rename',
-    'copyFileSync',
-    'copyFile',
-    'unlinkSync',
-    'unlink',
-    'rmSync',
-    'rm',
-    'rmdirSync',
-    'rmdir',
-    'chmodSync',
-    'chmod',
-    'appendFileSync',
-    'appendFile',
-    'writeSync',
-    'write',
-    'createWriteStream',
-    'WriteStream',
-    'symlinkSync',
-    'symlink',
-    'linkSync',
-    'link',
-    'chownSync',
-    'chown',
-    'truncateSync',
-    'truncate',
-    'ftruncateSync',
-    'ftruncate',
-    'fchmodSync',
-    'fchmod',
-    'fchownSync',
-    'fchown',
-    'futimesSync',
-    'futimes',
-    'utimesSync',
-    'utimes',
-    'lutimesSync',
-    'lutimes',
-    'opendirSync',
-    'opendir',
-    'cpSync',
-    'cp',
-    'watch',
-    'watchFile',
-    'unwatchFile',
-    'fsyncSync',
-    'fsync',
-    'fdatasyncSync',
-    'fdatasync',
-];
-
-const NETWORK_FUNCTIONS = [
-    'connect',
-    'createConnection',
-    'createServer',
-    'isIP',
-    'isIPv4',
-    'isIPv6',
-];
-
-const PROCESSES_FUNCTIONS = [
-    'exec',
-    'execSync',
-    'execFile',
-    'execFileSync',
-    'fork',
-    'spawn',
-    'spawnSync',
-];
-
-function buildFsModule(): Record<string, unknown> {
-    const realFs = getModuleRecord('node:fs');
-    const allowed = new Set<string>();
-    if (permissions.has('filesystem.read')) {
-        for (const f of FS_READ_FUNCTIONS) allowed.add(f);
-    }
-    if (permissions.has('filesystem.write')) {
-        for (const f of FS_WRITE_FUNCTIONS) allowed.add(f);
-    }
-    const allFs = new Set([...FS_READ_FUNCTIONS, ...FS_WRITE_FUNCTIONS]);
-    const module: Record<string, unknown> = {};
-    for (const key of allFs) {
-        if (allowed.has(key) && key in realFs) {
-            module[key] = realFs[key];
-        } else {
-            module[key] = (): never => {
-                throw new Error(
-                    `Permission denied: fs.${key} is not available. Grant 'filesystem.read' and/or 'filesystem.write' in the plugin manifest.`,
-                );
-            };
-        }
-    }
-    return module;
-}
-
-function buildNetModule(): Record<string, unknown> {
-    const realNet = getModuleRecord('node:net');
-    const allowed = permissions.has('network');
-    const module: Record<string, unknown> = {};
-    for (const key of NETWORK_FUNCTIONS) {
-        if (allowed && key in realNet) {
-            module[key] = realNet[key];
-        } else {
-            module[key] = (): never => {
-                throw new Error(
-                    `Permission denied: net.${key} is not available. Grant 'network' in the plugin manifest.`,
-                );
-            };
-        }
-    }
-    return module;
-}
-
-function buildChildProcessModule(): Record<string, unknown> {
-    const realCp = getModuleRecord('node:child_process');
-    const allowed = permissions.has('processes');
-    const module: Record<string, unknown> = {};
-    for (const key of PROCESSES_FUNCTIONS) {
-        if (allowed && key in realCp) {
-            module[key] = realCp[key];
-        } else {
-            module[key] = (): never => {
-                throw new Error(
-                    `Permission denied: child_process.${key} is not available. Grant 'processes' in the plugin manifest.`,
-                );
-            };
-        }
-    }
-    return module;
-}
 
 /**
  * Create a Proxy that delegates to a "current" module.
@@ -447,19 +283,24 @@ function buildSandboxModules(): void {
     sandboxModules['node:url'] = workerRequire('node:url');
     sandboxModules['node:crypto'] = { randomUUID: () => randomUUID() };
 
-    currentFsModule = buildFsModule();
-    currentNetModule = buildNetModule();
-    currentCpModule = buildChildProcessModule();
-
-    sandboxModules['node:fs'] = createLiveModuleProxy(() => currentFsModule);
-    sandboxModules['node:net'] = createLiveModuleProxy(() => currentNetModule);
-    sandboxModules['node:child_process'] = createLiveModuleProxy(() => currentCpModule);
+    rebuildPermissionGatedModules();
+    for (const moduleName of getSandboxModuleNames()) {
+        sandboxModules[moduleName] = createLiveModuleProxy(
+            () => currentPermissionGatedModules[moduleName] ?? {},
+        );
+    }
 }
 
 function rebuildPermissionGatedModules(): void {
-    currentFsModule = buildFsModule();
-    currentNetModule = buildNetModule();
-    currentCpModule = buildChildProcessModule();
+    const rebuiltModules: Partial<Record<SandboxModuleName, Record<string, unknown>>> = {};
+    for (const moduleName of getSandboxModuleNames()) {
+        rebuiltModules[moduleName] = buildPermissionGatedModule(
+            moduleName,
+            permissions,
+            getModuleRecord,
+        );
+    }
+    currentPermissionGatedModules = rebuiltModules;
 }
 
 // ─── Load handler (always sandboxed) ─────────────────────────

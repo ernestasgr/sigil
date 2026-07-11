@@ -5,14 +5,13 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import type { Manifest } from '@sigil/schema/manifest';
+import type { Capability, Manifest } from '@sigil/schema/manifest';
 
 import { parseManifest } from '@sigil/schema/manifest';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { Either, Option } from 'effect';
-import { CapabilityRequestSchema } from './capability-broker.js';
-import { FileEventSchema, SubscriberRegistrationSchema } from './file-watcher-manager.js';
+import { FileEventSchema } from './file-watcher-manager.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 import type {
     KernelDeps,
@@ -26,6 +25,7 @@ import type {
     NodePluginDepsRpc,
     NodePluginWorkerLoadError,
     NodePluginWorkerLoaded,
+    NodePluginWorkerRuntimeToMain,
 } from './plugin-node-rpc.js';
 import { NodePluginWorkerKind, NodePluginWorkerToMainSchema } from './plugin-node-rpc.js';
 import { getDeactivationHook } from './workflow-activator.js';
@@ -263,14 +263,21 @@ function createWorkerNodeHandlerProxy(
             return;
         }
         const msg = parsed.data;
-        switch (msg.kind) {
+        if (
+            msg.kind === NodePluginWorkerKind.Loaded ||
+            msg.kind === NodePluginWorkerKind.LoadError
+        ) {
+            return;
+        }
+        const runtimeMsg: NodePluginWorkerRuntimeToMain = msg;
+        switch (runtimeMsg.kind) {
             case NodePluginWorkerKind.ExecuteResult:
             case NodePluginWorkerKind.ExecuteError: {
-                const pending = pendingExecutes.get(msg.requestId);
+                const pending = pendingExecutes.get(runtimeMsg.requestId);
                 if (!pending) break;
-                pendingExecutes.delete(msg.requestId);
-                if (msg.kind === NodePluginWorkerKind.ExecuteResult) {
-                    const outputCtx = WorkflowContextSchema.safeParse(msg.outputCtx);
+                pendingExecutes.delete(runtimeMsg.requestId);
+                if (runtimeMsg.kind === NodePluginWorkerKind.ExecuteResult) {
+                    const outputCtx = WorkflowContextSchema.safeParse(runtimeMsg.outputCtx);
                     if (!outputCtx.success) {
                         pending.reject(
                             new Error(
@@ -279,18 +286,25 @@ function createWorkerNodeHandlerProxy(
                         );
                         break;
                     }
-                    pending.resolve({ outputCtx: outputCtx.data, activePort: msg.activePort });
+                    pending.resolve({
+                        outputCtx: outputCtx.data,
+                        activePort: runtimeMsg.activePort,
+                    });
                 } else {
-                    pending.reject(new Error(msg.error));
+                    pending.reject(new Error(runtimeMsg.error));
                 }
                 break;
             }
             case NodePluginWorkerKind.ActivateError: {
-                const pending = pendingActivates.get(msg.requestId);
+                const pending = pendingActivates.get(runtimeMsg.requestId);
                 if (!pending) break;
-                pendingActivates.delete(msg.requestId);
-                console.warn(`[proxy] activation error for plugin "${pluginId}": ${msg.error}`);
-                diagnostic?.(`[proxy] activation error for plugin "${pluginId}": ${msg.error}`);
+                pendingActivates.delete(runtimeMsg.requestId);
+                console.warn(
+                    `[proxy] activation error for plugin "${pluginId}": ${runtimeMsg.error}`,
+                );
+                diagnostic?.(
+                    `[proxy] activation error for plugin "${pluginId}": ${runtimeMsg.error}`,
+                );
                 Option.getOrUndefined(getDeactivationHook(pending.onEvent))?.();
                 break;
             }
@@ -298,12 +312,12 @@ function createWorkerNodeHandlerProxy(
                 break;
             }
             case NodePluginWorkerKind.ActivateEvent: {
-                const pending = pendingActivates.get(msg.requestId);
+                const pending = pendingActivates.get(runtimeMsg.requestId);
                 if (!pending) break;
                 const parsedContext = WorkflowContextSchema.safeParse({
-                    event: msg.event,
-                    payload: msg.payload,
-                    vars: msg.vars ?? {},
+                    event: runtimeMsg.event,
+                    payload: runtimeMsg.payload,
+                    vars: runtimeMsg.vars ?? {},
                 });
                 if (!parsedContext.success) {
                     diagnostic?.(
@@ -315,9 +329,11 @@ function createWorkerNodeHandlerProxy(
                 break;
             }
             case NodePluginWorkerKind.DepsRpc: {
-                handleDepsRpc(pluginId, msg, pendingExecutes, worker, kernel);
+                handleDepsRpc(runtimeMsg, pendingExecutes, worker, kernel);
                 break;
             }
+            default:
+                assertNever(runtimeMsg);
         }
     });
 
@@ -380,8 +396,74 @@ function createWorkerNodeHandlerProxy(
     return handler;
 }
 
+type NodePluginHandlerDepsRpc = Extract<
+    NodePluginDepsRpc,
+    {
+        operation:
+            | 'bus.next'
+            | 'sleep'
+            | 'resolveTemplate'
+            | 'evaluateCondition'
+            | 'matchSwitchCase'
+            | 'state.get'
+            | 'state.set'
+            | 'state.flush';
+    }
+>;
+
+type NodePluginFileWatcherRpc = Extract<
+    NodePluginDepsRpc,
+    {
+        operation:
+            | 'fileWatcherManager.registerSubscriber'
+            | 'fileWatcherManager.unregisterSubscriber';
+    }
+>;
+
+type NodePluginCapabilityRpc = Extract<
+    NodePluginDepsRpc,
+    { operation: 'capabilityBroker.request' }
+>;
+
+function assertNever(value: never): never {
+    throw new Error(`Unhandled node plugin message: ${JSON.stringify(value)}`);
+}
+
+function postDepsRpcResult(worker: Worker, requestId: string, value: unknown): void {
+    worker.postMessage({
+        kind: NodePluginWorkerKind.DepsRpcResult,
+        requestId,
+        value,
+    });
+}
+
+function postDepsRpcError(worker: Worker, requestId: string, error: string): void {
+    worker.postMessage({
+        kind: NodePluginWorkerKind.DepsRpcError,
+        requestId,
+        error,
+    });
+}
+
+function postDepsRpcValue(worker: Worker, requestId: string, value: unknown): void {
+    if (value instanceof Promise) {
+        void value
+            .then((resolved) => {
+                postDepsRpcResult(worker, requestId, resolved);
+            })
+            .catch((err: unknown) => {
+                postDepsRpcError(
+                    worker,
+                    requestId,
+                    err instanceof Error ? err.message : String(err),
+                );
+            });
+        return;
+    }
+    postDepsRpcResult(worker, requestId, value);
+}
+
 function handleDepsRpc(
-    pluginId: string,
     msg: NodePluginDepsRpc,
     pendingExecutes: Map<
         string,
@@ -394,188 +476,157 @@ function handleDepsRpc(
     worker: Worker,
     kernel?: KernelDeps,
 ): void {
-    if (kernel && msg.method.startsWith('fileWatcherManager.')) {
-        handleFileWatcherRpc(pluginId, msg, worker, kernel);
-        return;
+    switch (msg.operation) {
+        case 'fileWatcherManager.registerSubscriber':
+        case 'fileWatcherManager.unregisterSubscriber':
+            if (!kernel) {
+                postDepsRpcError(
+                    worker,
+                    msg.requestId,
+                    `Kernel dependency is unavailable for "${msg.operation}"`,
+                );
+                return;
+            }
+            handleFileWatcherRpc(msg, worker, kernel);
+            return;
+        case 'capabilityBroker.request':
+            if (!kernel) {
+                postDepsRpcError(
+                    worker,
+                    msg.requestId,
+                    'Capability Broker dependency is unavailable',
+                );
+                return;
+            }
+            handleCapabilityRpc(msg, worker, kernel);
+            return;
+        case 'bus.next':
+        case 'sleep':
+        case 'resolveTemplate':
+        case 'evaluateCondition':
+        case 'matchSwitchCase':
+        case 'state.get':
+        case 'state.set':
+        case 'state.flush':
+            handleNodeHandlerDepsRpc(msg, pendingExecutes, worker);
+            return;
+        default:
+            assertNever(msg);
     }
+}
 
-    if (kernel && msg.method.startsWith('capabilityBroker.')) {
-        void handleCapabilityRpc(msg, worker, kernel);
-        return;
-    }
-
+function handleNodeHandlerDepsRpc(
+    msg: NodePluginHandlerDepsRpc,
+    pendingExecutes: Map<
+        string,
+        {
+            resolve: (result: NodeRunResult) => void;
+            reject: (err: Error) => void;
+            deps: NodeHandlerDeps;
+        }
+    >,
+    worker: Worker,
+): void {
     const pending = pendingExecutes.get(msg.requestId);
     if (!pending) {
-        worker.postMessage({
-            kind: NodePluginWorkerKind.DepsRpcError,
-            requestId: msg.requestId,
-            error: 'No pending execute for this request',
-        });
+        postDepsRpcError(worker, msg.requestId, 'No pending execute for this request');
         return;
     }
 
     try {
-        const value = callDepsMethod(pending.deps, msg.method, msg.args);
-        if (value instanceof Promise) {
-            value
-                .then((resolved) => {
-                    worker.postMessage({
-                        kind: NodePluginWorkerKind.DepsRpcResult,
-                        requestId: msg.requestId,
-                        value: resolved,
-                    });
-                })
-                .catch((err) => {
-                    worker.postMessage({
-                        kind: NodePluginWorkerKind.DepsRpcError,
-                        requestId: msg.requestId,
-                        error: err instanceof Error ? err.message : String(err),
-                    });
-                });
-        } else {
-            worker.postMessage({
-                kind: NodePluginWorkerKind.DepsRpcResult,
-                requestId: msg.requestId,
-                value,
-            });
-        }
+        const value = callNodeHandlerDepsMethod(pending.deps, msg);
+        postDepsRpcValue(worker, msg.requestId, value);
     } catch (err) {
-        worker.postMessage({
-            kind: NodePluginWorkerKind.DepsRpcError,
-            requestId: msg.requestId,
-            error: err instanceof Error ? err.message : String(err),
-        });
+        postDepsRpcError(worker, msg.requestId, err instanceof Error ? err.message : String(err));
+    }
+}
+
+function callNodeHandlerDepsMethod(deps: NodeHandlerDeps, msg: NodePluginHandlerDepsRpc): unknown {
+    switch (msg.operation) {
+        case 'bus.next':
+            return deps.bus.next(...msg.args);
+        case 'sleep':
+            return deps.sleep(...msg.args);
+        case 'resolveTemplate':
+            return deps.resolveTemplate(...msg.args);
+        case 'evaluateCondition':
+            return deps.evaluateCondition(...msg.args);
+        case 'matchSwitchCase':
+            return deps.matchSwitchCase(...msg.args);
+        case 'state.get':
+            return deps.state.get(...msg.args);
+        case 'state.set':
+            return deps.state.set(...msg.args);
+        case 'state.flush':
+            return deps.state.flush(...msg.args);
+        default:
+            return assertNever(msg);
     }
 }
 
 function handleFileWatcherRpc(
-    _pluginId: string,
-    msg: NodePluginDepsRpc,
+    msg: NodePluginFileWatcherRpc,
     worker: Worker,
     kernel: KernelDeps,
 ): void {
     try {
-        if (msg.method === 'fileWatcherManager.registerSubscriber') {
-            const [subscriberValue, callbackIdValue] = msg.args;
-            if (typeof callbackIdValue !== 'string') {
-                throw new Error('fileWatcherManager.registerSubscriber requires a callback id');
-            }
-            const subscriber = SubscriberRegistrationSchema.safeParse(subscriberValue);
-            if (!subscriber.success) {
-                throw new Error(`Invalid file watcher subscriber: ${subscriber.error.message}`);
-            }
-            kernel.fileWatcherManager.registerSubscriber(subscriber.data, (fileEvent: unknown) => {
-                const parsedEvent = FileEventSchema.safeParse(fileEvent);
-                if (!parsedEvent.success) return;
-                worker.postMessage({
-                    kind: NodePluginWorkerKind.CallbackInvoke,
-                    callbackId: callbackIdValue,
-                    args: [parsedEvent.data],
+        switch (msg.operation) {
+            case 'fileWatcherManager.registerSubscriber': {
+                const [subscriber, callbackId] = msg.args;
+                kernel.fileWatcherManager.registerSubscriber(subscriber, (fileEvent: unknown) => {
+                    const parsedEvent = FileEventSchema.safeParse(fileEvent);
+                    if (!parsedEvent.success) return;
+                    worker.postMessage({
+                        kind: NodePluginWorkerKind.CallbackInvoke,
+                        callbackId,
+                        args: [parsedEvent.data],
+                    });
                 });
-            });
-            worker.postMessage({
-                kind: NodePluginWorkerKind.DepsRpcResult,
-                requestId: msg.requestId,
-                value: undefined,
-            });
-        } else if (msg.method === 'fileWatcherManager.unregisterSubscriber') {
-            const [idValue] = msg.args;
-            if (typeof idValue !== 'string') {
-                throw new Error('fileWatcherManager.unregisterSubscriber requires an id');
+                postDepsRpcResult(worker, msg.requestId, undefined);
+                return;
             }
-            kernel.fileWatcherManager.unregisterSubscriber(idValue);
-            worker.postMessage({
-                kind: NodePluginWorkerKind.DepsRpcResult,
-                requestId: msg.requestId,
-                value: undefined,
-            });
-        } else {
-            worker.postMessage({
-                kind: NodePluginWorkerKind.DepsRpcError,
-                requestId: msg.requestId,
-                error: `Unknown fileWatcherManager method: ${msg.method}`,
-            });
+            case 'fileWatcherManager.unregisterSubscriber': {
+                const [id] = msg.args;
+                kernel.fileWatcherManager.unregisterSubscriber(id);
+                postDepsRpcResult(worker, msg.requestId, undefined);
+                return;
+            }
+            default:
+                assertNever(msg);
         }
     } catch (err) {
-        worker.postMessage({
-            kind: NodePluginWorkerKind.DepsRpcError,
-            requestId: msg.requestId,
-            error: err instanceof Error ? err.message : String(err),
-        });
+        postDepsRpcError(worker, msg.requestId, err instanceof Error ? err.message : String(err));
     }
 }
 
-async function handleCapabilityRpc(
-    msg: NodePluginDepsRpc,
+function handleCapabilityRpc(
+    msg: NodePluginCapabilityRpc,
     worker: Worker,
     kernel: KernelDeps,
-): Promise<void> {
+): void {
     try {
-        if (msg.method === 'capabilityBroker.request') {
-            const [requestValue] = msg.args;
-            const request = CapabilityRequestSchema.safeParse(requestValue);
-            if (!request.success) {
-                throw new Error(`Invalid capability request: ${request.error.message}`);
-            }
-            const result = kernel.capabilityBroker.request(request.data);
-            const value = Either.isRight(result)
-                ? { ok: true as const }
-                : { ok: false as const, error: result.left };
-            worker.postMessage({
-                kind: NodePluginWorkerKind.DepsRpcResult,
-                requestId: msg.requestId,
-                value,
-            });
-        } else {
-            worker.postMessage({
-                kind: NodePluginWorkerKind.DepsRpcError,
-                requestId: msg.requestId,
-                error: `Unknown capabilityBroker method: ${msg.method}`,
-            });
-        }
+        const result = kernel.capabilityBroker.request(msg.args[0]);
+        const value = Either.isRight(result)
+            ? { ok: true as const }
+            : { ok: false as const, error: result.left };
+        postDepsRpcResult(worker, msg.requestId, value);
     } catch (err) {
-        worker.postMessage({
-            kind: NodePluginWorkerKind.DepsRpcError,
-            requestId: msg.requestId,
-            error: err instanceof Error ? err.message : String(err),
-        });
+        postDepsRpcError(worker, msg.requestId, err instanceof Error ? err.message : String(err));
     }
 }
 
-export function updatePluginPermissions(pluginId: string, permissions: readonly string[]): void {
+export function updatePluginPermissions(
+    pluginId: string,
+    permissions: readonly Capability[],
+): void {
     const worker = pluginWorkers.get(pluginId);
     if (!worker) return;
     try {
         worker.postMessage({
             kind: NodePluginWorkerKind.UpdatePermissions,
-            permissions,
+            permissions: [...permissions],
         });
     } catch {
         pluginWorkers.delete(pluginId);
     }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null;
-}
-
-type Callable = (...args: unknown[]) => unknown;
-
-function isCallable(value: unknown): value is Callable {
-    return typeof value === 'function';
-}
-
-function callDepsMethod(deps: NodeHandlerDeps, method: string, args: readonly unknown[]): unknown {
-    const parts = method.split('.');
-    let current: unknown = deps;
-    for (const part of parts) {
-        if (!isRecord(current)) {
-            throw new Error(`Cannot resolve method "${method}": "${part}" is not an object`);
-        }
-        current = current[part];
-    }
-    if (!isCallable(current)) {
-        throw new Error(`Deps method "${method}" is not a function`);
-    }
-    return current(...args);
 }
