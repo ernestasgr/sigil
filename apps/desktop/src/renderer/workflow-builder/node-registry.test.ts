@@ -1,7 +1,7 @@
+import { CompiledPipelineSchema } from '@sigil/schema';
 import { NodeTypeSchema } from '@sigil/schema/nodes';
 import { describe, expect, it } from 'vitest';
 
-import { compileGraph } from './compile.js';
 import { type NodeSpec, nodeTypeDef } from './node-registry.js';
 
 const ALL_TYPES = NodeTypeSchema.options;
@@ -20,11 +20,14 @@ describe('nodeTypeDef', () => {
     for (const type of ALL_TYPES) {
         it(`produces a schema-valid default config for "${type}"`, () => {
             const spec = { type, config: nodeTypeDef(type).defaultConfig } as NodeSpec;
-            const result = compileGraph([{ id: 'n', data: spec }], [], {
+            const result = CompiledPipelineSchema.safeParse({
                 id: 'p',
                 workflowId: 'w',
+                schemaVersion: 1,
+                nodes: [{ id: 'n', ...spec }],
+                edges: [],
             });
-            expect(result.ok).toBe(true);
+            expect(result.success).toBe(true);
         });
     }
 

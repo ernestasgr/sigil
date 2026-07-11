@@ -95,3 +95,12 @@ export function parsePipeline(
         error: result.error.issues.flatMap((issue) => formatPipelineIssue(issue)).join('\n'),
     };
 }
+
+export type {
+    ExecutableWorkflow,
+    TopologyDiagnostic,
+    TopologyDiagnosticCode,
+    WorkflowTopologyOptions,
+    WorkflowTopologyResult,
+} from './topology.js';
+export { formatTopologyDiagnostics, validateWorkflowTopology } from './topology.js';

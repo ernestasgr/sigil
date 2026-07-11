@@ -25,6 +25,7 @@ import { updatePluginPermissions } from './node-plugin-loader.js';
 import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
 import type { WorkflowActivator } from './workflow-activator.js';
 import type { WorkflowStore } from './workflow-store.js';
+import { isWorkflowTopologyError } from './workflow-topology-error.js';
 
 export interface DispatchSubsystems {
     readonly postMessage: (msg: unknown) => void;
@@ -92,7 +93,20 @@ function handleToggleWorkflow(message: EngineToggleWorkflow, subsystems: Dispatc
 }
 
 function handleCreateWorkflow(message: EngineCreateWorkflow, subsystems: DispatchSubsystems): void {
-    const summary = subsystems.store.create(message.name, message.pipeline, message.positions);
+    let summary: ReturnType<WorkflowStore['create']>;
+    try {
+        summary = subsystems.store.create(message.name, message.pipeline, message.positions);
+    } catch (err) {
+        if (!isWorkflowTopologyError(err)) throw err;
+        subsystems.log(`Could not create workflow "${message.name}": ${err.message}`);
+        subsystems.postMessage({
+            type: EngineChannel.CreateWorkflowResult,
+            correlationId: message.correlationId,
+            error: err.message,
+            diagnostics: err.diagnostics,
+        });
+        return;
+    }
     subsystems.log(`Created workflow "${message.name}" (${summary.id})`);
     subsystems.broadcastWorkflowsList();
     subsystems.postMessage({
@@ -103,15 +117,28 @@ function handleCreateWorkflow(message: EngineCreateWorkflow, subsystems: Dispatc
 }
 
 function handleUpdateWorkflow(message: EngineUpdateWorkflow, subsystems: DispatchSubsystems): void {
-    subsystems.activator.deactivate(message.id);
     const existed = Option.isSome(subsystems.store.get(message.id));
-    const summary = subsystems.store.save(
-        message.id,
-        message.name,
-        message.pipeline,
-        message.positions,
-    );
+    let summary: ReturnType<WorkflowStore['save']>;
+    try {
+        summary = subsystems.store.save(
+            message.id,
+            message.name,
+            message.pipeline,
+            message.positions,
+        );
+    } catch (err) {
+        if (!isWorkflowTopologyError(err)) throw err;
+        subsystems.log(`Could not update workflow "${message.name}": ${err.message}`);
+        subsystems.postMessage({
+            type: EngineChannel.UpdateWorkflowResult,
+            correlationId: message.correlationId,
+            error: err.message,
+            diagnostics: err.diagnostics,
+        });
+        return;
+    }
     if (existed) {
+        subsystems.activator.deactivate(message.id);
         subsystems.log(`Updated workflow "${message.name}" (${summary.id})`);
         if (summary.enabled) {
             subsystems.activator.activate(message.id);

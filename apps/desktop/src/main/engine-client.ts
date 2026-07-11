@@ -90,6 +90,17 @@ export type RpcClient = {
     readonly dispatch: (message: EngineMessage) => void;
 };
 
+type WorkflowMutationResponse = {
+    readonly summary?: WorkflowSummary;
+    readonly error?: string;
+};
+
+function requireWorkflowSummary(response: WorkflowMutationResponse): WorkflowSummary {
+    if (response.error) throw new Error(response.error);
+    if (!response.summary) throw new Error('Engine returned no workflow summary');
+    return response.summary;
+}
+
 export function createRpcClient(props: RpcClientProps): RpcClient {
     const { postMessage, logHandlers, workflowsListHandlers, busEventHandlers } = props;
     const pending = new Map<string, PendingEntry>();
@@ -260,10 +271,12 @@ export function spawnEngine(): EngineHandle {
             positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
         ): Promise<WorkflowSummary> {
             return client
-                .rpc<{
-                    summary: WorkflowSummary;
-                }>(EngineChannel.CreateWorkflow, { name, pipeline, positions }, 5000)
-                .then((r) => r.summary);
+                .rpc<WorkflowMutationResponse>(
+                    EngineChannel.CreateWorkflow,
+                    { name, pipeline, positions },
+                    5000,
+                )
+                .then(requireWorkflowSummary);
         },
         updateWorkflow(
             id: string,
@@ -272,10 +285,12 @@ export function spawnEngine(): EngineHandle {
             positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
         ): Promise<WorkflowSummary> {
             return client
-                .rpc<{
-                    summary: WorkflowSummary;
-                }>(EngineChannel.UpdateWorkflow, { id, name, pipeline, positions }, 5000)
-                .then((r) => r.summary);
+                .rpc<WorkflowMutationResponse>(
+                    EngineChannel.UpdateWorkflow,
+                    { id, name, pipeline, positions },
+                    5000,
+                )
+                .then(requireWorkflowSummary);
         },
         deleteWorkflow(id: string): Promise<boolean> {
             return client

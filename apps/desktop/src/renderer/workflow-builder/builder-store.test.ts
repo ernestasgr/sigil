@@ -125,8 +125,8 @@ describe('useBuilderStore', () => {
         expect(ports).toEqual(['default']);
     });
 
-    it('compile returns a valid pipeline for a single default node', () => {
-        useBuilderStore.getState().addNode('log', { x: 0, y: 0 });
+    it('compile returns a valid pipeline for a single default Trigger Node', () => {
+        useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
 
         const result = useBuilderStore.getState().compile();
 

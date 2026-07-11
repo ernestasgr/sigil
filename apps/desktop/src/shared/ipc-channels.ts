@@ -1,6 +1,6 @@
 import { CompiledPipelineSchema } from '@sigil/schema';
-
 import { CapabilitySchema, ManifestSchema } from '@sigil/schema/manifest';
+import { TopologyDiagnosticSchema } from '@sigil/schema/topology';
 import { z } from 'zod';
 
 const WorkflowSummarySchema = z
@@ -125,11 +125,21 @@ export const EngineCreateWorkflowSchema = z.object({
 });
 export type EngineCreateWorkflow = z.infer<typeof EngineCreateWorkflowSchema>;
 
-export const EngineCreateWorkflowResultSchema = z.object({
+const EngineCreateWorkflowSuccessSchema = z.object({
     type: z.literal(EngineChannel.CreateWorkflowResult),
     correlationId: z.string(),
     summary: WorkflowSummarySchema,
 });
+const EngineCreateWorkflowFailureSchema = z.object({
+    type: z.literal(EngineChannel.CreateWorkflowResult),
+    correlationId: z.string(),
+    error: z.string(),
+    diagnostics: z.array(TopologyDiagnosticSchema).readonly(),
+});
+export const EngineCreateWorkflowResultSchema = z.union([
+    EngineCreateWorkflowSuccessSchema,
+    EngineCreateWorkflowFailureSchema,
+]);
 export type EngineCreateWorkflowResult = z.infer<typeof EngineCreateWorkflowResultSchema>;
 
 export const EngineUpdateWorkflowSchema = z.object({
@@ -142,11 +152,21 @@ export const EngineUpdateWorkflowSchema = z.object({
 });
 export type EngineUpdateWorkflow = z.infer<typeof EngineUpdateWorkflowSchema>;
 
-export const EngineUpdateWorkflowResultSchema = z.object({
+const EngineUpdateWorkflowSuccessSchema = z.object({
     type: z.literal(EngineChannel.UpdateWorkflowResult),
     correlationId: z.string(),
     summary: WorkflowSummarySchema,
 });
+const EngineUpdateWorkflowFailureSchema = z.object({
+    type: z.literal(EngineChannel.UpdateWorkflowResult),
+    correlationId: z.string(),
+    error: z.string(),
+    diagnostics: z.array(TopologyDiagnosticSchema).readonly(),
+});
+export const EngineUpdateWorkflowResultSchema = z.union([
+    EngineUpdateWorkflowSuccessSchema,
+    EngineUpdateWorkflowFailureSchema,
+]);
 export type EngineUpdateWorkflowResult = z.infer<typeof EngineUpdateWorkflowResultSchema>;
 
 export const EngineDeleteWorkflowSchema = z.object({

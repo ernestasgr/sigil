@@ -178,8 +178,14 @@ describe('dag-executor', () => {
                 ],
                 [
                     edge('t-to-sw', 'trigger', 'sw', 'out'),
-                    edge('sw-to-pdf', 'sw', 'pdf-log', 'pdf'),
-                    edge('sw-to-png', 'sw', 'png-log', 'png'),
+                    ...cases.map((caseLabel, index) =>
+                        edge(
+                            `sw-to-${caseLabel}`,
+                            'sw',
+                            index === 0 ? 'pdf-log' : 'png-log',
+                            caseLabel,
+                        ),
+                    ),
                     edge('sw-to-default', 'sw', 'default-log', 'default'),
                 ],
             );

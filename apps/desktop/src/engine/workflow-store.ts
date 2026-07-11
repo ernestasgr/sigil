@@ -16,10 +16,12 @@ import {
 } from '@sigil/schema';
 import { PipelineEdgeSchema } from '@sigil/schema/edges';
 import { PipelineNodeSchema } from '@sigil/schema/nodes';
+import { type ExecutableWorkflow, validateWorkflowTopology } from '@sigil/schema/topology';
 import { Option } from 'effect';
 import { z } from 'zod';
 
 import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
+import { createWorkflowTopologyError } from './workflow-topology-error.js';
 
 export interface StoredWorkflow {
     readonly id: string;
@@ -31,12 +33,14 @@ export interface StoredWorkflow {
     readonly schemaVersion: PipelineSchemaVersion;
     readonly nodes: CompiledPipeline['nodes'];
     readonly edges: CompiledPipeline['edges'];
+    readonly executable: ExecutableWorkflow;
 }
 
 export interface WorkflowStore {
     readonly list: () => readonly WorkflowSummary[];
     readonly get: (id: string) => Option.Option<{
         readonly pipeline: CompiledPipeline;
+        readonly executable: ExecutableWorkflow;
         readonly name: string;
         readonly positions: Readonly<Record<string, NodePosition>>;
     }>;
@@ -103,6 +107,8 @@ function readWorkflowFile(filePath: string): Option.Option<StoredWorkflow> {
         };
         const parseResult = parsePipeline(pipeline);
         if (!parseResult.ok) return Option.none();
+        const topology = validateWorkflowTopology(parseResult.value);
+        if (!topology.ok) return Option.none();
         return Option.some({
             id: parsedFile.data.id,
             name: parsedFile.data.name,
@@ -113,6 +119,7 @@ function readWorkflowFile(filePath: string): Option.Option<StoredWorkflow> {
             schemaVersion: pipeline.schemaVersion,
             nodes: pipeline.nodes,
             edges: pipeline.edges,
+            executable: topology.value,
         });
     } catch {
         return Option.none();
@@ -164,17 +171,19 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
         get: (id) => {
             const stored = workflows.get(id);
             if (!stored) return Option.none();
-            const pipeline = {
-                id: stored.pipelineId,
-                workflowId: stored.workflowId,
-                schemaVersion: stored.schemaVersion,
-                nodes: stored.nodes,
-                edges: stored.edges,
-            };
-            return Option.some({ pipeline, name: stored.name, positions: stored.positions });
+            return Option.some({
+                pipeline: stored.executable.pipeline,
+                executable: stored.executable,
+                name: stored.name,
+                positions: stored.positions,
+            });
         },
 
         create: (name, pipeline, positions) => {
+            const topology = validateWorkflowTopology(pipeline);
+            if (!topology.ok) {
+                throw createWorkflowTopologyError(topology.diagnostics);
+            }
             const stored: StoredWorkflow = {
                 id: randomUUID(),
                 name,
@@ -185,6 +194,7 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
                 schemaVersion: pipeline.schemaVersion,
                 nodes: pipeline.nodes,
                 edges: pipeline.edges,
+                executable: topology.value,
             };
             workflows.set(stored.id, stored);
             writeWorkflowFile(storageDir, stored);
@@ -192,6 +202,10 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
         },
 
         save: (id, name, pipeline, positions) => {
+            const topology = validateWorkflowTopology(pipeline);
+            if (!topology.ok) {
+                throw createWorkflowTopologyError(topology.diagnostics);
+            }
             const existing = workflows.get(id);
             const stored: StoredWorkflow = existing
                 ? {
@@ -203,6 +217,7 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
                       schemaVersion: pipeline.schemaVersion,
                       nodes: pipeline.nodes,
                       edges: pipeline.edges,
+                      executable: topology.value,
                   }
                 : {
                       id,
@@ -214,6 +229,7 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
                       schemaVersion: pipeline.schemaVersion,
                       nodes: pipeline.nodes,
                       edges: pipeline.edges,
+                      executable: topology.value,
                   };
             workflows.set(id, stored);
             writeWorkflowFile(storageDir, stored);

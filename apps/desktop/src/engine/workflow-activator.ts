@@ -37,7 +37,9 @@ export function createWorkflowActivator(
             const data = store.get(workflowId);
             if (Option.isNone(data)) return false;
 
-            const trigger = data.value.pipeline.nodes[0];
+            const trigger = data.value.executable.pipeline.nodes.find(
+                (node) => node.id === data.value.executable.triggerId,
+            );
             if (!trigger) return false;
 
             const handler = handlerRegistry.get(trigger.type);
@@ -62,7 +64,7 @@ export function createWorkflowActivator(
             }
 
             const onEvent = (ctx: WorkflowContext): void => {
-                void engine.execute(data.value.pipeline, ctx).catch((err: unknown) => {
+                void engine.execute(data.value.executable, ctx).catch((err: unknown) => {
                     engine.bus.next({
                         name: 'engine.diagnostic',
                         payload: {
