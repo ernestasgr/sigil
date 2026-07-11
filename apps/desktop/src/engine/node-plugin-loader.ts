@@ -329,7 +329,7 @@ function createWorkerNodeHandlerProxy(
                 break;
             }
             case NodePluginWorkerKind.DepsRpc: {
-                handleDepsRpc(runtimeMsg, pendingExecutes, worker, kernel);
+                handleDepsRpc(runtimeMsg, pendingExecutes, worker, pluginId, kernel);
                 break;
             }
             default:
@@ -404,11 +404,13 @@ type NodePluginHandlerDepsRpc = Extract<
             | 'sleep'
             | 'resolveTemplate'
             | 'evaluateCondition'
-            | 'matchSwitchCase'
-            | 'state.get'
-            | 'state.set'
-            | 'state.flush';
+            | 'matchSwitchCase';
     }
+>;
+
+type NodePluginStateRpc = Extract<
+    NodePluginDepsRpc,
+    { operation: 'state.get' | 'state.set' | 'state.flush' }
 >;
 
 type NodePluginFileWatcherRpc = Extract<
@@ -474,6 +476,7 @@ function handleDepsRpc(
         }
     >,
     worker: Worker,
+    pluginId: string,
     kernel?: KernelDeps,
 ): void {
     switch (msg.operation) {
@@ -498,16 +501,26 @@ function handleDepsRpc(
                 );
                 return;
             }
-            handleCapabilityRpc(msg, worker, kernel);
+            handleCapabilityRpc(msg, worker, kernel, pluginId);
+            return;
+        case 'state.get':
+        case 'state.set':
+        case 'state.flush':
+            if (!kernel) {
+                postDepsRpcError(
+                    worker,
+                    msg.requestId,
+                    'Capability Broker dependency is unavailable for Workflow State',
+                );
+                return;
+            }
+            handleStateRpc(msg, pendingExecutes, worker, pluginId, kernel.capabilityBroker);
             return;
         case 'bus.next':
         case 'sleep':
         case 'resolveTemplate':
         case 'evaluateCondition':
         case 'matchSwitchCase':
-        case 'state.get':
-        case 'state.set':
-        case 'state.flush':
             handleNodeHandlerDepsRpc(msg, pendingExecutes, worker);
             return;
         default:
@@ -563,12 +576,71 @@ function callNodeHandlerDepsMethod(deps: NodeHandlerDeps, msg: NodePluginHandler
             return deps.evaluateCondition(...msg.args);
         case 'matchSwitchCase':
             return deps.matchSwitchCase(...msg.args);
+        default:
+            return assertNever(msg);
+    }
+}
+
+function handleStateRpc(
+    msg: NodePluginStateRpc,
+    pendingExecutes: Map<
+        string,
+        {
+            resolve: (result: NodeRunResult) => void;
+            reject: (err: Error) => void;
+            deps: NodeHandlerDeps;
+        }
+    >,
+    worker: Worker,
+    pluginId: string,
+    capabilityBroker: KernelDeps['capabilityBroker'],
+): void {
+    const executeRequestId = msg.executeRequestId;
+    if (!executeRequestId) {
+        postDepsRpcError(
+            worker,
+            msg.requestId,
+            'No originating execute request for this Workflow State RPC',
+        );
+        return;
+    }
+
+    const pending = pendingExecutes.get(executeRequestId);
+    if (!pending) {
+        postDepsRpcError(worker, msg.requestId, 'No pending execute for this execute request');
+        return;
+    }
+
+    try {
+        const capability = msg.operation === 'state.get' ? 'state.read' : 'state.write';
+        const permission = capabilityBroker.request({ pluginId, capability });
+        if (Either.isLeft(permission)) {
+            postDepsRpcError(
+                worker,
+                msg.requestId,
+                `Permission denied: ${permission.left.capability}`,
+            );
+            return;
+        }
+
+        const value = callWorkflowStateMethod(pending.deps.state, msg);
+        postDepsRpcValue(worker, msg.requestId, value);
+    } catch (err) {
+        postDepsRpcError(worker, msg.requestId, err instanceof Error ? err.message : String(err));
+    }
+}
+
+function callWorkflowStateMethod(
+    state: NodeHandlerDeps['state'],
+    msg: NodePluginStateRpc,
+): unknown {
+    switch (msg.operation) {
         case 'state.get':
-            return deps.state.get(...msg.args);
+            return state.get(...msg.args);
         case 'state.set':
-            return deps.state.set(...msg.args);
+            return state.set(...msg.args);
         case 'state.flush':
-            return deps.state.flush(...msg.args);
+            return state.flush(...msg.args);
         default:
             return assertNever(msg);
     }
@@ -613,9 +685,11 @@ function handleCapabilityRpc(
     msg: NodePluginCapabilityRpc,
     worker: Worker,
     kernel: KernelDeps,
+    pluginId: string,
 ): void {
     try {
-        const result = kernel.capabilityBroker.request(msg.args[0]);
+        const capability = msg.args[0];
+        const result = kernel.capabilityBroker.request({ pluginId, capability });
         const value = Either.isRight(result)
             ? { ok: true as const }
             : { ok: false as const, error: result.left };

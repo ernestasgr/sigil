@@ -72,7 +72,7 @@ const validCalls = [
     { operation: 'state.flush', args: [] },
     {
         operation: 'capabilityBroker.request',
-        args: [{ pluginId: 'com.sigil.test', capability: 'state.read' }],
+        args: ['state.read'],
     },
     {
         operation: 'fileWatcherManager.registerSubscriber',
@@ -112,6 +112,17 @@ describe('NodePluginDepsRpcSchema', () => {
             requestId: 'request:1',
             operation: 'state.set',
             args: ['key'],
+        });
+
+        expect(parsed.success).toBe(false);
+    });
+
+    it('rejects a capability request that carries Plugin-controlled identity', () => {
+        const parsed = NodePluginDepsRpcSchema.safeParse({
+            kind: NodePluginWorkerKind.DepsRpc,
+            requestId: 'request:1',
+            operation: 'capabilityBroker.request',
+            args: [{ pluginId: 'com.sigil.authorized', capability: 'state.read' }],
         });
 
         expect(parsed.success).toBe(false);
