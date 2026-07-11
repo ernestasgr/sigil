@@ -1,5 +1,13 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Option } from 'effect';
 import { describe, expect, it } from 'vitest';
 
+import { createManifestRegistry } from './manifest-registry.js';
+import { createBuiltinHandlers } from './node-handlers/registry.js';
+import { loadNodePlugin } from './node-plugin-loader.js';
+import { createNodeHandlerRegistry } from './node-registry.js';
 import {
     NodePluginDepsRpcSchema,
     NodePluginMainToWorkerSchema,
@@ -8,6 +16,26 @@ import {
 } from './plugin-node-rpc.js';
 
 const workflowContext = { event: 'file.created', payload: {}, vars: {} };
+
+const PROXIED_DEPENDENCY_HANDLER = `
+import { z } from 'zod';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'rpc-execution' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler = {
+    async execute({ ctx }, deps) {
+        await deps.sleep(0);
+        return { outputCtx: ctx, activePort: 'out' };
+    },
+};
+`;
 
 function createFakeMessagePair(): {
     readonly postMessage: (message: unknown) => void;
@@ -141,5 +169,51 @@ describe('NodePluginDepsRpcSchema', () => {
 
         expect(settled).toEqual(['resolved', 'rejected: failed']);
         expect(pending).toHaveLength(0);
+    });
+
+    it('correlates an independent worker dependency RPC with its execute request', async () => {
+        const pluginDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-rpc-correlation-'));
+        try {
+            writeFileSync(
+                join(pluginDir, 'plugin.manifest.json'),
+                JSON.stringify({
+                    id: 'com.sigil.rpc-execution',
+                    version: '0.0.1',
+                    permissions: [],
+                    emits: ['rpc.output'],
+                    nodeType: 'rpc-execution',
+                }),
+            );
+            writeFileSync(join(pluginDir, 'handler.ts'), PROXIED_DEPENDENCY_HANDLER);
+
+            const manifestRegistry = createManifestRegistry();
+            const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+            const result = await loadNodePlugin(pluginDir, {
+                manifestRegistry,
+                handlerRegistry,
+            });
+
+            expect(result.ok, result.ok ? undefined : JSON.stringify(result.error)).toBe(true);
+            if (!result.ok) return;
+
+            const handler = Option.getOrThrow(handlerRegistry.get('rpc-execution'));
+            const output = await handler.execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'rpc-execution',
+                        pluginId: 'com.sigil.rpc-execution',
+                        config: {},
+                    },
+                    ctx: workflowContext,
+                },
+                { sleep: async () => undefined } as never,
+            );
+
+            expect(output.activePort).toBe('out');
+            expect(output.outputCtx).toEqual(workflowContext);
+        } finally {
+            rmSync(pluginDir, { recursive: true, force: true });
+        }
     });
 });

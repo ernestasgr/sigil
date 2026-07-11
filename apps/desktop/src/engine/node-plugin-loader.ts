@@ -527,9 +527,19 @@ function handleNodeHandlerDepsRpc(
     >,
     worker: Worker,
 ): void {
-    const pending = pendingExecutes.get(msg.requestId);
+    const executeRequestId = msg.executeRequestId;
+    if (!executeRequestId) {
+        postDepsRpcError(
+            worker,
+            msg.requestId,
+            'No originating execute request for this dependency RPC',
+        );
+        return;
+    }
+
+    const pending = pendingExecutes.get(executeRequestId);
     if (!pending) {
-        postDepsRpcError(worker, msg.requestId, 'No pending execute for this request');
+        postDepsRpcError(worker, msg.requestId, 'No pending execute for this execute request');
         return;
     }
 

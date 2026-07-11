@@ -73,6 +73,40 @@ function isCallable(value: unknown): value is Callable {
     return typeof value === 'function';
 }
 
+function createLiveFunctionProxy(getCurrent: () => unknown, name: string): Callable {
+    const target = function (this: unknown, ...args: unknown[]): unknown {
+        const current = getCurrent();
+        if (!isCallable(current)) {
+            throw new Error(`Permission denied: ${name}`);
+        }
+        return Reflect.apply(current, this, args);
+    };
+
+    return new Proxy(target, {
+        apply(_, thisArg, args) {
+            const current = getCurrent();
+            if (!isCallable(current)) {
+                throw new Error(`Permission denied: ${name}`);
+            }
+            return Reflect.apply(current, thisArg, args);
+        },
+        construct(_, args) {
+            const current = getCurrent();
+            if (!isCallable(current)) {
+                throw new Error(`Permission denied: ${name}`);
+            }
+            return Reflect.construct(current, args);
+        },
+        get(_, prop, receiver) {
+            if (prop === 'prototype') {
+                const current = getCurrent();
+                if (isCallable(current)) return current.prototype;
+            }
+            return Reflect.get(target, prop, receiver);
+        },
+    });
+}
+
 interface RawPluginDescriptor {
     readonly type: string;
     readonly configSchema: { readonly safeParse: (value: unknown) => unknown };
@@ -119,7 +153,10 @@ const depRpcPending = new Map<
     { resolve: (value: unknown) => void; reject: (err: Error) => void }
 >();
 
-function depRpcCall(request: NodePluginDepsRpcRequest): Promise<unknown> {
+function depRpcCall(
+    request: NodePluginDepsRpcRequest,
+    executeRequestId?: string,
+): Promise<unknown> {
     return new Promise((resolve, reject) => {
         const requestId = randomUUID();
         depRpcPending.set(requestId, { resolve, reject });
@@ -127,6 +164,7 @@ function depRpcCall(request: NodePluginDepsRpcRequest): Promise<unknown> {
             kind: NodePluginWorkerKind.DepsRpc,
             requestId,
             ...request,
+            executeRequestId,
         });
     });
 }
@@ -138,13 +176,14 @@ function depRpcCall(request: NodePluginDepsRpcRequest): Promise<unknown> {
  */
 function remoteCall<TOperation extends NodePluginDepsRpcOperation, TResult>(
     operation: TOperation,
+    executeRequestId: string,
 ): (...args: NodePluginDepsRpcArgs<TOperation>) => TResult {
     return (...args) => {
         // The generic operation/args correlation is represented by the exported
         // Zod-derived types; this assertion only bridges TypeScript's inability
         // to preserve that correlation through a generic union construction.
         const request = { operation, args } as NodePluginDepsRpcRequest;
-        return depRpcCall(request) as unknown as TResult;
+        return depRpcCall(request, executeRequestId) as unknown as TResult;
     };
 }
 
@@ -153,47 +192,85 @@ let depsTeardown: Option.Option<() => void> = Option.none();
 // ─── Callback registry (for registerSubscriber etc.) ─────────
 
 const callbacks = new Map<string, (...args: unknown[]) => void>();
+const fileWatcherCallbackIds = new Map<string, string>();
 let nextCallbackId = 1;
+
+function removeFileWatcherCallback(subscriberId: string, expectedCallbackId?: string): void {
+    const callbackId = fileWatcherCallbackIds.get(subscriberId);
+    if (!callbackId || (expectedCallbackId && callbackId !== expectedCallbackId)) return;
+    callbacks.delete(callbackId);
+    fileWatcherCallbackIds.delete(subscriberId);
+}
 
 function registerFileWatcherSubscriber(
     subscriber: SubscriberRegistration,
     callback: (...args: unknown[]) => void,
 ): Promise<unknown> {
+    removeFileWatcherCallback(subscriber.id);
     const callbackId = `cb:${data.pluginId}:${nextCallbackId++}`;
     callbacks.set(callbackId, callback);
-    return depRpcCall({
+    fileWatcherCallbackIds.set(subscriber.id, callbackId);
+    const request = depRpcCall({
         operation: 'fileWatcherManager.registerSubscriber',
         args: [subscriber, callbackId],
     });
+    void request.catch(() => {
+        removeFileWatcherCallback(subscriber.id, callbackId);
+    });
+    return request;
+}
+
+function unregisterFileWatcherSubscriber(subscriberId: string): Promise<unknown> {
+    const callbackId = fileWatcherCallbackIds.get(subscriberId);
+    const request = depRpcCall({
+        operation: 'fileWatcherManager.unregisterSubscriber',
+        args: [subscriberId],
+    });
+    const removeCallback = (): void => {
+        if (callbackId) removeFileWatcherCallback(subscriberId, callbackId);
+    };
+    void request.then(removeCallback, removeCallback);
+    return request;
 }
 
 // ─── Build proxied deps (NodeHandlerDeps) ───────────────────
 
 function createProxiedDeps(
+    executeRequestId: string,
     collisionSuffixStyle: NodeHandlerDeps['collisionSuffixStyle'] = undefined,
 ): NodeHandlerDeps {
     return {
         bus: {
-            next: remoteCall<'bus.next', ReturnType<NodeHandlerDeps['bus']['next']>>('bus.next'),
+            next: remoteCall<'bus.next', ReturnType<NodeHandlerDeps['bus']['next']>>(
+                'bus.next',
+                executeRequestId,
+            ),
         },
-        sleep: remoteCall<'sleep', ReturnType<NodeHandlerDeps['sleep']>>('sleep'),
+        sleep: remoteCall<'sleep', ReturnType<NodeHandlerDeps['sleep']>>('sleep', executeRequestId),
         resolveTemplate: remoteCall<
             'resolveTemplate',
             ReturnType<NodeHandlerDeps['resolveTemplate']>
-        >('resolveTemplate'),
+        >('resolveTemplate', executeRequestId),
         evaluateCondition: remoteCall<
             'evaluateCondition',
             ReturnType<NodeHandlerDeps['evaluateCondition']>
-        >('evaluateCondition'),
+        >('evaluateCondition', executeRequestId),
         matchSwitchCase: remoteCall<
             'matchSwitchCase',
             ReturnType<NodeHandlerDeps['matchSwitchCase']>
-        >('matchSwitchCase'),
+        >('matchSwitchCase', executeRequestId),
         state: {
-            get: remoteCall<'state.get', ReturnType<NodeHandlerDeps['state']['get']>>('state.get'),
-            set: remoteCall<'state.set', ReturnType<NodeHandlerDeps['state']['set']>>('state.set'),
+            get: remoteCall<'state.get', ReturnType<NodeHandlerDeps['state']['get']>>(
+                'state.get',
+                executeRequestId,
+            ),
+            set: remoteCall<'state.set', ReturnType<NodeHandlerDeps['state']['set']>>(
+                'state.set',
+                executeRequestId,
+            ),
             flush: remoteCall<'state.flush', ReturnType<NodeHandlerDeps['state']['flush']>>(
                 'state.flush',
+                executeRequestId,
             ),
         },
         capabilityBroker: {
@@ -220,14 +297,10 @@ function createProxiedKernel(): KernelDeps {
                     callback(parsedEvent.data);
                 }
             };
-            const promise = registerFileWatcherSubscriber(subscriber, onCallback);
-            void promise;
+            void registerFileWatcherSubscriber(subscriber, onCallback).catch(() => undefined);
         },
         unregisterSubscriber: (id: string) => {
-            void depRpcCall({
-                operation: 'fileWatcherManager.unregisterSubscriber',
-                args: [id],
-            });
+            void unregisterFileWatcherSubscriber(id).catch(() => undefined);
         },
     };
     const capabilityBroker: KernelDeps['capabilityBroker'] = {
@@ -252,14 +325,24 @@ function createLiveModuleProxy(getCurrent: () => Record<string, unknown>): Recor
     return new Proxy<Record<string, unknown>>(
         {},
         {
-            get(_, prop) {
+            get(_, prop, receiver) {
                 if (typeof prop !== 'string') return undefined;
                 if (prop === '__esModule') return true;
-                if (prop === 'default') return getCurrent();
+                if (prop === 'default') return receiver;
                 const mod = getCurrent();
                 if (prop in mod) {
-                    const val = mod[prop];
-                    return isCallable(val) ? (...args: unknown[]) => val(...args) : val;
+                    const getCurrentValue = (): unknown => getCurrent()[prop];
+                    const value = getCurrentValue();
+                    if (isCallable(value)) {
+                        return createLiveFunctionProxy(getCurrentValue, prop);
+                    }
+                    if (isRecord(value)) {
+                        return createLiveModuleProxy(() => {
+                            const currentValue = getCurrentValue();
+                            return isRecord(currentValue) ? currentValue : {};
+                        });
+                    }
+                    return value;
                 }
                 return undefined;
             },
@@ -582,7 +665,7 @@ async function handleExecute(
             pluginId: data.pluginId,
             config: msg.nodeConfig,
         };
-        const deps = createProxiedDeps(msg.deps?.collisionSuffixStyle);
+        const deps = createProxiedDeps(msg.requestId, msg.deps?.collisionSuffixStyle);
         const result = await handler.execute({ node, ctx: parsedContext.data }, deps);
         sendResult(result);
     } catch (err) {
