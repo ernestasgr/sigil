@@ -198,6 +198,7 @@ export type NodePluginWorkerActivateRequest = z.infer<typeof NodePluginWorkerAct
 
 export const NodePluginWorkerTeardownSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.Teardown),
+    requestId: z.string().min(1),
 });
 export type NodePluginWorkerTeardown = z.infer<typeof NodePluginWorkerTeardownSchema>;
 

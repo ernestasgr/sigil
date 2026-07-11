@@ -90,8 +90,10 @@ export function createWorkflowActivator(
                 });
             };
             deactivationHooks.set(onEvent, (): void => {
-                if (!active.has(workflowId)) return;
+                const teardown = active.get(workflowId);
+                if (!teardown) return;
                 active.delete(workflowId);
+                teardown();
                 store.setEnabled(workflowId, false);
                 engine.bus.next({
                     name: 'engine.diagnostic',
