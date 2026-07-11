@@ -19,7 +19,9 @@ export type NodeCategory = 'trigger' | 'logic' | 'system' | 'state' | 'utility';
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
-export type NodeSpec = DistributiveOmit<BuiltinPipelineNode, 'id'>;
+export type NodeSpec = DistributiveOmit<BuiltinPipelineNode, 'id'> & {
+    readonly pluginId?: string;
+};
 
 type NodeConfigOf<K extends NodeType> = Extract<BuiltinPipelineNode, { type: K }>['config'];
 
