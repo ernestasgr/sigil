@@ -9,8 +9,16 @@ import {
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Option } from 'effect';
+import { z } from 'zod';
 
-import { parsePipeline, type CompiledPipeline, type PipelineSchemaVersion } from '@sigil/schema';
+import {
+    parsePipeline,
+    PipelineSchemaVersionSchema,
+    type CompiledPipeline,
+    type PipelineSchemaVersion,
+} from '@sigil/schema';
+import { PipelineEdgeSchema } from '@sigil/schema/edges';
+import { PipelineNodeSchema } from '@sigil/schema/nodes';
 
 import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
 
@@ -22,8 +30,8 @@ export interface StoredWorkflow {
     readonly pipelineId: string;
     readonly workflowId: string;
     readonly schemaVersion: PipelineSchemaVersion;
-    readonly nodes: readonly unknown[];
-    readonly edges: readonly unknown[];
+    readonly nodes: CompiledPipeline['nodes'];
+    readonly edges: CompiledPipeline['edges'];
 }
 
 export interface WorkflowStore {
@@ -53,20 +61,28 @@ function filePath(dir: string, id: string): string {
     return join(dir, `${id}.json`);
 }
 
-function readPositions(raw: Record<string, unknown>): Record<string, NodePosition> {
-    const rawPositions = raw['positions'];
-    if (!rawPositions || typeof rawPositions !== 'object') return {};
+const NodePositionSchema = z.object({ x: z.number(), y: z.number() }).readonly();
+
+const StoredWorkflowFileSchema = z.object({
+    id: z.string().min(1),
+    name: z.string(),
+    enabled: z.boolean().optional(),
+    positions: z.record(z.string(), z.unknown()).optional(),
+    pipelineId: z.string().min(1).optional(),
+    workflowId: z.string().min(1).optional(),
+    nodes: z.array(PipelineNodeSchema).optional(),
+    edges: z.array(PipelineEdgeSchema).optional(),
+});
+
+function readPositions(
+    rawPositions: Readonly<Record<string, unknown>> | undefined,
+): Readonly<Record<string, NodePosition>> {
+    if (!rawPositions) return {};
     const positions: Record<string, NodePosition> = {};
     for (const [key, value] of Object.entries(rawPositions)) {
-        if (
-            value &&
-            typeof value === 'object' &&
-            'x' in value &&
-            'y' in value &&
-            typeof (value as Record<string, unknown>).x === 'number' &&
-            typeof (value as Record<string, unknown>).y === 'number'
-        ) {
-            positions[key] = value as NodePosition;
+        const parsed = NodePositionSchema.safeParse(value);
+        if (parsed.success) {
+            positions[key] = parsed.data;
         }
     }
     return positions;
@@ -74,22 +90,25 @@ function readPositions(raw: Record<string, unknown>): Record<string, NodePositio
 
 function readWorkflowFile(filePath: string): Option.Option<StoredWorkflow> {
     try {
-        const raw = JSON.parse(readFileSync(filePath, 'utf-8')) as Record<string, unknown>;
-        if (typeof raw.id !== 'string' || typeof raw.name !== 'string') return Option.none();
+        const parsedFile = StoredWorkflowFileSchema.safeParse(
+            JSON.parse(readFileSync(filePath, 'utf-8')),
+        );
+        if (!parsedFile.success) return Option.none();
+
         const pipeline = {
-            id: typeof raw.pipelineId === 'string' ? raw.pipelineId : raw.id,
-            workflowId: typeof raw.workflowId === 'string' ? raw.workflowId : raw.id,
-            schemaVersion: 1 as PipelineSchemaVersion,
-            nodes: Array.isArray(raw.nodes) ? raw.nodes : [],
-            edges: Array.isArray(raw.edges) ? raw.edges : [],
+            id: parsedFile.data.pipelineId ?? parsedFile.data.id,
+            workflowId: parsedFile.data.workflowId ?? parsedFile.data.id,
+            schemaVersion: PipelineSchemaVersionSchema.value,
+            nodes: parsedFile.data.nodes ?? [],
+            edges: parsedFile.data.edges ?? [],
         };
         const parseResult = parsePipeline(pipeline);
         if (!parseResult.ok) return Option.none();
         return Option.some({
-            id: raw.id as string,
-            name: raw.name as string,
-            enabled: typeof raw.enabled === 'boolean' ? (raw.enabled as boolean) : false,
-            positions: readPositions(raw),
+            id: parsedFile.data.id,
+            name: parsedFile.data.name,
+            enabled: parsedFile.data.enabled ?? false,
+            positions: readPositions(parsedFile.data.positions),
             pipelineId: pipeline.id,
             workflowId: pipeline.workflowId,
             schemaVersion: pipeline.schemaVersion,
@@ -146,12 +165,12 @@ export function createWorkflowStore(storageDir: string): WorkflowStore {
         get: (id) => {
             const stored = workflows.get(id);
             if (!stored) return Option.none();
-            const pipeline: CompiledPipeline = {
+            const pipeline = {
                 id: stored.pipelineId,
                 workflowId: stored.workflowId,
                 schemaVersion: stored.schemaVersion,
-                nodes: stored.nodes as CompiledPipeline['nodes'],
-                edges: stored.edges as CompiledPipeline['edges'],
+                nodes: stored.nodes,
+                edges: stored.edges,
             };
             return Option.some({ pipeline, name: stored.name, positions: stored.positions });
         },

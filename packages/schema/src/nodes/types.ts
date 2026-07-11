@@ -1,18 +1,16 @@
 import { z } from 'zod';
 
-export interface NodeDescriptor<
-    TType extends string,
-    TConfig,
-    TSchema extends z.ZodType<TConfig> = z.ZodType<TConfig>,
-> {
+export interface NodeDescriptor<TType extends string, TSchema extends z.ZodType> {
     readonly type: TType;
     readonly configSchema: TSchema;
-    readonly defaultConfig: TConfig;
-    readonly getOutputPorts: (config: unknown) => readonly string[];
+    readonly defaultConfig: z.output<TSchema>;
+    readonly getOutputPorts: (config: z.output<TSchema>) => readonly string[];
 }
 
-export function defineNode<TType extends string, TConfig, TSchema extends z.ZodType<TConfig>>(
-    descriptor: NodeDescriptor<TType, NoInfer<TConfig>, TSchema>,
-): NodeDescriptor<TType, TConfig, TSchema> {
-    return descriptor as unknown as NodeDescriptor<TType, TConfig, TSchema>;
+export function defineNode<TType extends string, TSchema extends z.ZodType>(
+    descriptor: NodeDescriptor<TType, TSchema>,
+): NodeDescriptor<TType, TSchema> {
+    return descriptor;
 }
+
+export type UnknownNodeDescriptor = NodeDescriptor<string, z.ZodType>;

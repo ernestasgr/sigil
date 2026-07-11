@@ -42,8 +42,9 @@ function emittedEvents(bus: ReturnType<typeof createEventBus>): BusEvent[] {
 describe('manual-trigger handler', () => {
     it('produces the initial workflow context from the node config', async () => {
         const { manualTriggerHandler } = await import('./manual-trigger.js');
-        const deps = buildDeps();
-        const events = emittedEvents(deps.bus);
+        const bus = createEventBus();
+        const deps = buildDeps({ bus });
+        const events = emittedEvents(bus);
 
         const result = await manualTriggerHandler.execute(
             { node: triggerNode, ctx: { event: '', payload: {}, vars: {} } },

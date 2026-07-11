@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { CollisionSuffixStyleSchema } from '@sigil/schema/properties-file';
+
 export const NodePluginWorkerKind = {
     Loaded: 'npw:loaded',
     LoadError: 'npw:load_error',
@@ -114,7 +116,7 @@ export const NodePluginWorkerExecuteRequestSchema = z.object({
     ctx: z.unknown(),
     deps: z
         .object({
-            collisionSuffixStyle: z.string().optional(),
+            collisionSuffixStyle: CollisionSuffixStyleSchema.optional(),
         })
         .passthrough()
         .optional(),

@@ -16,7 +16,7 @@ import { create } from 'zustand';
 
 import type { CompileResult, PipelineMeta } from './compile.js';
 import { compileGraph } from './compile.js';
-import { nodeTypeDef, type NodeSpec } from './node-registry.js';
+import { defaultNodeSpec, type NodeSpec } from './node-registry.js';
 
 export type BuilderRFNode = Node<NodeSpec, 'sigil'>;
 export const BUILDER_NODE_TYPE = 'sigil' as const;
@@ -65,10 +65,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
             id,
             type: BUILDER_NODE_TYPE,
             position,
-            data: {
-                type,
-                config: structuredClone(nodeTypeDef(type).defaultConfig),
-            } as NodeSpec,
+            data: defaultNodeSpec(type),
         };
         set((state) => ({
             nodes: [...state.nodes, node],

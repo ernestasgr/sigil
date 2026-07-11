@@ -37,6 +37,10 @@ export interface DispatchSubsystems {
     readonly propertiesPath: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function handlePing(message: EnginePing, subsystems: DispatchSubsystems): void {
     const pong: EnginePong = {
         id: message.id,
@@ -194,10 +198,7 @@ function handleReadProperties(message: EngineReadProperties, subsystems: Dispatc
         Effect.catchAll(() => Effect.succeed({})),
         Effect.runSync,
     );
-    const properties =
-        current && typeof current === 'object' && !Array.isArray(current)
-            ? (current as Record<string, unknown>)
-            : {};
+    const properties = isRecord(current) ? current : {};
     subsystems.postMessage({
         type: EngineChannel.ReadPropertiesResult,
         correlationId: message.correlationId,
