@@ -218,7 +218,7 @@ describe('dispatch', () => {
     });
 
     it('routes ToggleWorkflow and does nothing extra when toggle returns null', () => {
-        const { subsystems, store, activator, log } = createFakeSubsystems();
+        const { subsystems, postMessage, store, activator, log } = createFakeSubsystems();
         store.get.mockReturnValue(Option.none());
         store.toggle.mockReturnValue(Option.none());
 
@@ -230,6 +230,34 @@ describe('dispatch', () => {
         expect(log).not.toHaveBeenCalled();
         expect(activator.activate).not.toHaveBeenCalled();
         expect(activator.deactivate).not.toHaveBeenCalled();
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.ToggleWorkflowResult,
+            correlationId: 'c-1',
+            summary: null,
+        });
+    });
+
+    it('routes ToggleWorkflow through the lifecycle transition seam and posts null summary when workflow is not found', () => {
+        const { subsystems, postMessage, store } = createFakeSubsystems();
+        const toggle = vi.fn().mockReturnValue(Option.none());
+        (subsystems as unknown as { lifecycle: { toggle: typeof toggle } }).lifecycle = { toggle };
+        store.getSummary.mockReturnValue(Option.none());
+
+        dispatch(
+            {
+                type: EngineChannel.ToggleWorkflow,
+                correlationId: 'lifecycle-missing',
+                id: 'missing',
+            },
+            subsystems,
+        );
+
+        expect(toggle).toHaveBeenCalledWith('missing');
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.ToggleWorkflowResult,
+            correlationId: 'lifecycle-missing',
+            summary: null,
+        });
     });
 
     it('routes ToggleWorkflow through the lifecycle transition seam when available', () => {
@@ -262,6 +290,28 @@ describe('dispatch', () => {
             type: EngineChannel.ToggleWorkflowResult,
             correlationId: 'lifecycle-toggle',
             summary: after,
+        });
+    });
+
+    it('routes RetryWorkflow through the lifecycle transition seam and posts null summary when workflow is not found', () => {
+        const { subsystems, postMessage } = createFakeSubsystems();
+        const retry = vi.fn().mockReturnValue(Option.none());
+        (subsystems as unknown as { lifecycle: { retry: typeof retry } }).lifecycle = { retry };
+
+        dispatch(
+            {
+                type: EngineChannel.RetryWorkflow,
+                correlationId: 'lifecycle-retry-missing',
+                id: 'missing',
+            },
+            subsystems,
+        );
+
+        expect(retry).toHaveBeenCalledWith('missing');
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.RetryWorkflowResult,
+            correlationId: 'lifecycle-retry-missing',
+            summary: null,
         });
     });
 
