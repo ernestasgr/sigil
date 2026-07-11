@@ -7,7 +7,7 @@ import {
     unlinkSync,
     writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import {
     type CompiledPipeline,
     type PipelineSchemaVersion,
@@ -18,6 +18,7 @@ import { PipelineEdgeSchema } from '@sigil/schema/edges';
 import { PipelineNodeSchema } from '@sigil/schema/nodes';
 import {
     type ExecutableWorkflow,
+    type TopologyDiagnostic,
     validateWorkflowTopology,
     type WorkflowTopologyOptions,
 } from '@sigil/schema/topology';
@@ -38,7 +39,22 @@ export interface StoredWorkflow {
     readonly nodes: CompiledPipeline['nodes'];
     readonly edges: CompiledPipeline['edges'];
     readonly executable: ExecutableWorkflow;
+    readonly diagnostics: readonly TopologyDiagnostic[];
 }
+
+interface ValidWorkflowRecord extends StoredWorkflow {
+    readonly storagePath: string;
+}
+
+interface InvalidWorkflowRecord {
+    readonly id: string;
+    readonly name: string;
+    readonly enabled: false;
+    readonly diagnostics: readonly TopologyDiagnostic[];
+    readonly storagePath: string;
+}
+
+type WorkflowRecord = ValidWorkflowRecord | InvalidWorkflowRecord;
 
 export interface WorkflowStore {
     readonly list: () => readonly WorkflowSummary[];
@@ -81,6 +97,51 @@ const StoredWorkflowFileSchema = z.object({
     edges: z.array(PipelineEdgeSchema).optional(),
 });
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function stringField(value: unknown, field: string): string | undefined {
+    if (!isRecord(value)) return undefined;
+    const candidate = value[field];
+    return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : undefined;
+}
+
+function workflowIdentity(
+    storagePath: string,
+    raw: unknown,
+): { readonly id: string; readonly name: string; readonly enabled: boolean } {
+    const id = stringField(raw, 'id') ?? basename(storagePath, '.json');
+    return {
+        id,
+        name: stringField(raw, 'name') ?? `Unreadable Workflow (${id})`,
+        enabled: isRecord(raw) && raw.enabled === true,
+    };
+}
+
+function storedWorkflowDiagnostic(fileName: string, detail: string): TopologyDiagnostic {
+    return {
+        severity: 'error',
+        code: 'invalid_pipeline',
+        target: { kind: 'pipeline' },
+        message: `Stored Workflow file "${fileName}" is malformed: ${detail} Repair or remove the file before enabling it.`,
+    };
+}
+
+function invalidWorkflowRecord(
+    storagePath: string,
+    raw: unknown,
+    diagnostics: readonly TopologyDiagnostic[],
+): InvalidWorkflowRecord {
+    const identity = workflowIdentity(storagePath, raw);
+    return {
+        ...identity,
+        enabled: false,
+        diagnostics,
+        storagePath,
+    };
+}
+
 function readPositions(
     rawPositions: Readonly<Record<string, unknown>> | undefined,
 ): Readonly<Record<string, NodePosition>> {
@@ -96,41 +157,58 @@ function readPositions(
 }
 
 function readWorkflowFile(
-    filePath: string,
+    storagePath: string,
     topologyOptions: WorkflowTopologyOptions,
-): Option.Option<StoredWorkflow> {
+): WorkflowRecord {
+    const fileName = basename(storagePath);
+    let raw: unknown;
     try {
-        const parsedFile = StoredWorkflowFileSchema.safeParse(
-            JSON.parse(readFileSync(filePath, 'utf-8')),
-        );
-        if (!parsedFile.success) return Option.none();
-
-        const pipeline = {
-            id: parsedFile.data.pipelineId ?? parsedFile.data.id,
-            workflowId: parsedFile.data.workflowId ?? parsedFile.data.id,
-            schemaVersion: PipelineSchemaVersionSchema.value,
-            nodes: parsedFile.data.nodes ?? [],
-            edges: parsedFile.data.edges ?? [],
-        };
-        const parseResult = parsePipeline(pipeline);
-        if (!parseResult.ok) return Option.none();
-        const topology = validateWorkflowTopology(parseResult.value, topologyOptions);
-        if (!topology.ok) return Option.none();
-        return Option.some({
-            id: parsedFile.data.id,
-            name: parsedFile.data.name,
-            enabled: parsedFile.data.enabled ?? false,
-            positions: readPositions(parsedFile.data.positions),
-            pipelineId: pipeline.id,
-            workflowId: pipeline.workflowId,
-            schemaVersion: pipeline.schemaVersion,
-            nodes: pipeline.nodes,
-            edges: pipeline.edges,
-            executable: topology.value,
-        });
+        raw = JSON.parse(readFileSync(storagePath, 'utf-8'));
     } catch {
-        return Option.none();
+        return invalidWorkflowRecord(storagePath, raw, [
+            storedWorkflowDiagnostic(fileName, 'it is not valid JSON.'),
+        ]);
     }
+
+    const parsedFile = StoredWorkflowFileSchema.safeParse(raw);
+    if (!parsedFile.success) {
+        const detail = parsedFile.error.issues[0]?.message ?? 'its shape is not a Workflow.';
+        return invalidWorkflowRecord(storagePath, raw, [
+            storedWorkflowDiagnostic(fileName, detail),
+        ]);
+    }
+
+    const pipeline = {
+        id: parsedFile.data.pipelineId ?? parsedFile.data.id,
+        workflowId: parsedFile.data.workflowId ?? parsedFile.data.id,
+        schemaVersion: PipelineSchemaVersionSchema.value,
+        nodes: parsedFile.data.nodes ?? [],
+        edges: parsedFile.data.edges ?? [],
+    };
+    const parseResult = parsePipeline(pipeline);
+    if (!parseResult.ok) {
+        return invalidWorkflowRecord(storagePath, raw, [
+            storedWorkflowDiagnostic(fileName, parseResult.error),
+        ]);
+    }
+
+    const topology = validateWorkflowTopology(parseResult.value, topologyOptions);
+    if (!topology.ok) return invalidWorkflowRecord(storagePath, raw, topology.diagnostics);
+
+    return {
+        id: parsedFile.data.id,
+        name: parsedFile.data.name,
+        enabled: parsedFile.data.enabled ?? false,
+        positions: readPositions(parsedFile.data.positions),
+        pipelineId: pipeline.id,
+        workflowId: pipeline.workflowId,
+        schemaVersion: pipeline.schemaVersion,
+        nodes: pipeline.nodes,
+        edges: pipeline.edges,
+        executable: topology.value,
+        diagnostics: [],
+        storagePath,
+    };
 }
 
 function writeWorkflowFile(dir: string, stored: StoredWorkflow): void {
@@ -151,23 +229,28 @@ function writeWorkflowFile(dir: string, stored: StoredWorkflow): void {
     writeFileSync(filePath(dir, stored.id), JSON.stringify(data, null, 2), 'utf-8');
 }
 
-function toSummary(stored: StoredWorkflow): WorkflowSummary {
-    return { id: stored.id, name: stored.name, enabled: stored.enabled };
+function isValidWorkflowRecord(record: WorkflowRecord): record is ValidWorkflowRecord {
+    return 'executable' in record;
+}
+
+function toSummary(stored: WorkflowRecord): WorkflowSummary {
+    const summary = { id: stored.id, name: stored.name, enabled: stored.enabled };
+    return stored.diagnostics.length > 0
+        ? { ...summary, diagnostics: stored.diagnostics }
+        : summary;
 }
 
 function loadAll(
     dir: string,
     topologyOptions: WorkflowTopologyOptions,
-): Map<string, StoredWorkflow> {
-    const workflows = new Map<string, StoredWorkflow>();
+): Map<string, WorkflowRecord> {
+    const workflows = new Map<string, WorkflowRecord>();
     if (!existsSync(dir)) return workflows;
     const entries = readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
         if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
         const stored = readWorkflowFile(join(dir, entry.name), topologyOptions);
-        if (Option.isSome(stored)) {
-            workflows.set(stored.value.id, stored.value);
-        }
+        workflows.set(stored.id, stored);
     }
     return workflows;
 }
@@ -183,7 +266,7 @@ export function createWorkflowStore(
 
         get: (id) => {
             const stored = workflows.get(id);
-            if (!stored) return Option.none();
+            if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
             return Option.some({
                 pipeline: stored.executable.pipeline,
                 executable: stored.executable,
@@ -197,8 +280,9 @@ export function createWorkflowStore(
             if (!topology.ok) {
                 throw createWorkflowTopologyError(topology.diagnostics);
             }
-            const stored: StoredWorkflow = {
-                id: randomUUID(),
+            const id = randomUUID();
+            const stored: ValidWorkflowRecord = {
+                id,
                 name,
                 enabled: false,
                 positions,
@@ -208,6 +292,8 @@ export function createWorkflowStore(
                 nodes: pipeline.nodes,
                 edges: pipeline.edges,
                 executable: topology.value,
+                diagnostics: [],
+                storagePath: filePath(storageDir, id),
             };
             workflows.set(stored.id, stored);
             writeWorkflowFile(storageDir, stored);
@@ -220,9 +306,11 @@ export function createWorkflowStore(
                 throw createWorkflowTopologyError(topology.diagnostics);
             }
             const existing = workflows.get(id);
-            const stored: StoredWorkflow = existing
+            const existingValid =
+                existing && isValidWorkflowRecord(existing) ? existing : undefined;
+            const stored: ValidWorkflowRecord = existingValid
                 ? {
-                      ...existing,
+                      ...existingValid,
                       name,
                       positions,
                       pipelineId: pipeline.id,
@@ -231,6 +319,7 @@ export function createWorkflowStore(
                       nodes: pipeline.nodes,
                       edges: pipeline.edges,
                       executable: topology.value,
+                      diagnostics: [],
                   }
                 : {
                       id,
@@ -243,6 +332,8 @@ export function createWorkflowStore(
                       nodes: pipeline.nodes,
                       edges: pipeline.edges,
                       executable: topology.value,
+                      diagnostics: [],
+                      storagePath: filePath(storageDir, id),
                   };
             workflows.set(id, stored);
             writeWorkflowFile(storageDir, stored);
@@ -250,27 +341,27 @@ export function createWorkflowStore(
         },
 
         remove: (id) => {
-            if (!workflows.has(id)) return false;
+            const stored = workflows.get(id);
+            if (!stored) return false;
             workflows.delete(id);
-            const path = filePath(storageDir, id);
-            if (existsSync(path)) {
-                unlinkSync(path);
+            if (existsSync(stored.storagePath)) {
+                unlinkSync(stored.storagePath);
             }
             return true;
         },
 
         setEnabled: (id, enabled) => {
             const stored = workflows.get(id);
-            if (!stored) return Option.none();
-            const updated: StoredWorkflow = { ...stored, enabled };
+            if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
+            const updated: ValidWorkflowRecord = { ...stored, enabled };
             workflows.set(id, updated);
             writeWorkflowFile(storageDir, updated);
             return Option.some(toSummary(updated));
         },
         toggle: (id) => {
             const stored = workflows.get(id);
-            if (!stored) return Option.none();
-            const updated: StoredWorkflow = { ...stored, enabled: !stored.enabled };
+            if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
+            const updated: ValidWorkflowRecord = { ...stored, enabled: !stored.enabled };
             workflows.set(id, updated);
             writeWorkflowFile(storageDir, updated);
             return Option.some(toSummary(updated));

@@ -1,3 +1,4 @@
+import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import { ReactFlowProvider } from '@xyflow/react';
 import { type ReactElement, useMemo, useState } from 'react';
 
@@ -81,12 +82,30 @@ interface ValidationBarProps {
     readonly onSave: (name: string) => void;
 }
 
+function diagnosticTargetLabel(diagnostic: TopologyDiagnostic): string {
+    switch (diagnostic.target.kind) {
+        case 'pipeline':
+            return 'Workflow';
+        case 'node':
+            return `Node ${diagnostic.target.nodeId}`;
+        case 'edge':
+            return diagnostic.nodeId
+                ? `Edge ${diagnostic.target.edgeId} · Node ${diagnostic.nodeId}`
+                : `Edge ${diagnostic.target.edgeId}`;
+    }
+}
+
 function ValidationBar({ onSave }: ValidationBarProps): ReactElement {
     const nodes = useBuilderStore((state) => state.nodes);
     const edges = useBuilderStore((state) => state.edges);
     const meta = useBuilderStore((state) => state.meta);
     const pipelineName = useBuilderStore((state) => state.pipelineName);
     const result = useMemo(() => compileGraph(nodes, edges, meta), [nodes, edges, meta]);
+    const diagnostics = result.diagnostics;
+    const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === 'error').length;
+    const warningCount = diagnostics.filter(
+        (diagnostic) => diagnostic.severity === 'warning',
+    ).length;
     const [copied, setCopied] = useState(false);
 
     const onExport = async () => {
@@ -106,23 +125,59 @@ function ValidationBar({ onSave }: ValidationBarProps): ReactElement {
 
     return (
         <div className="border-gilt/40 flex items-center justify-between gap-4 border-t px-5 py-3">
-            <div className="flex min-w-0 items-center gap-2">
-                <span
-                    className={cn(
-                        'inline-block h-2 w-2 shrink-0',
-                        result.ok ? 'bg-verdigris' : 'bg-old-blood',
-                    )}
-                />
-                {result.ok ? (
-                    <span className="font-ui text-xs text-veil">
-                        Valid — {nodes.length} {nodes.length === 1 ? 'node' : 'nodes'},{' '}
-                        {edges.length} {edges.length === 1 ? 'edge' : 'edges'}
+            <div className="min-w-0 flex-1" role="status" aria-live="polite">
+                <div className="flex items-center gap-2">
+                    <span
+                        className={cn(
+                            'inline-block h-2 w-2 shrink-0',
+                            result.ok
+                                ? warningCount > 0
+                                    ? 'bg-gilt'
+                                    : 'bg-verdigris'
+                                : 'bg-old-blood',
+                        )}
+                    />
+                    <span
+                        className={cn(
+                            'font-ui text-xs',
+                            result.ok
+                                ? warningCount > 0
+                                    ? 'text-gilt'
+                                    : 'text-verdigris'
+                                : 'text-old-blood',
+                        )}
+                    >
+                        {result.ok
+                            ? warningCount > 0
+                                ? `Ready with ${warningCount} ${warningCount === 1 ? 'warning' : 'warnings'}`
+                                : `Valid — ${nodes.length} ${nodes.length === 1 ? 'node' : 'nodes'}, ${edges.length} ${edges.length === 1 ? 'edge' : 'edges'}`
+                            : `${errorCount} ${errorCount === 1 ? 'error' : 'errors'}${warningCount > 0 ? ` · ${warningCount} ${warningCount === 1 ? 'warning' : 'warnings'}` : ''}`}
                     </span>
-                ) : (
-                    <pre className="text-old-blood max-h-16 overflow-auto whitespace-pre-wrap font-data text-xs">
-                        {result.error}
-                    </pre>
-                )}
+                </div>
+                {diagnostics.length > 0 ? (
+                    <ul className="mt-1 max-h-20 space-y-1 overflow-auto pl-4 font-data text-[10px]">
+                        {diagnostics.map((diagnostic) => (
+                            <li
+                                key={`${diagnostic.severity}-${diagnostic.code}-${diagnostic.target.kind}-${diagnostic.message}`}
+                                className="break-words"
+                            >
+                                <span
+                                    className={
+                                        diagnostic.severity === 'error'
+                                            ? 'text-old-blood'
+                                            : 'text-gilt'
+                                    }
+                                >
+                                    {diagnostic.severity === 'error' ? 'Error' : 'Warning'}
+                                </span>{' '}
+                                <span className="text-parchment">
+                                    {diagnosticTargetLabel(diagnostic)}
+                                </span>{' '}
+                                <span className="text-veil">{diagnostic.message}</span>
+                            </li>
+                        ))}
+                    </ul>
+                ) : null}
             </div>
             <div className="flex items-center gap-2">
                 <Button

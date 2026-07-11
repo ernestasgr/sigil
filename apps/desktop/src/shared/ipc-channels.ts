@@ -8,6 +8,7 @@ const WorkflowSummarySchema = z
         id: z.string(),
         name: z.string(),
         enabled: z.boolean(),
+        diagnostics: z.array(TopologyDiagnosticSchema).readonly().optional(),
     })
     .readonly();
 

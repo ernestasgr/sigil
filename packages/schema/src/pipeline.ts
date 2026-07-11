@@ -100,6 +100,7 @@ export type {
     ExecutableWorkflow,
     TopologyDiagnostic,
     TopologyDiagnosticCode,
+    TopologyDiagnosticSeverity,
     WorkflowTopologyOptions,
     WorkflowTopologyResult,
 } from './topology.js';

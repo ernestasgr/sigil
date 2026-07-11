@@ -1,4 +1,5 @@
 import type { CompiledPipeline } from '@sigil/schema';
+import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import { type ReactElement, useCallback, useEffect, useState } from 'react';
 
 import { SectionShell } from '../components/section-shell.js';
@@ -7,6 +8,17 @@ import { useSigil } from '../lib/use-sigil.js';
 import { useAppStore } from '../store/app-store.js';
 import { useBuilderStore } from '../workflow-builder/builder-store.js';
 import { WorkflowBuilder } from '../workflow-builder/workflow-builder.js';
+
+function diagnosticTargetLabel(diagnostic: TopologyDiagnostic): string {
+    switch (diagnostic.target.kind) {
+        case 'pipeline':
+            return 'Workflow';
+        case 'node':
+            return `Node ${diagnostic.target.nodeId}`;
+        case 'edge':
+            return `Edge ${diagnostic.target.edgeId}`;
+    }
+}
 
 export function WorkflowsSection(): ReactElement {
     const workflowView = useAppStore((state) => state.workflowView);
@@ -134,21 +146,59 @@ export function WorkflowsSection(): ReactElement {
                                 key={workflow.id}
                                 className="flex items-center justify-between px-4 py-3"
                             >
-                                <div className="flex min-w-0 flex-1 items-center gap-3">
-                                    <span className="font-ui text-parchment truncate text-sm">
-                                        {workflow.name}
-                                    </span>
-                                    <span
-                                        className={`inline-block h-2 w-2 shrink-0 ${
-                                            workflow.enabled ? 'bg-verdigris' : 'bg-veil'
-                                        }`}
-                                        title={workflow.enabled ? 'Enabled' : 'Disabled'}
-                                    />
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                        <span className="font-ui text-parchment truncate text-sm">
+                                            {workflow.name}
+                                        </span>
+                                        <span
+                                            className={`inline-block h-2 w-2 shrink-0 ${
+                                                workflow.diagnostics?.some(
+                                                    (diagnostic) => diagnostic.severity === 'error',
+                                                )
+                                                    ? 'bg-old-blood'
+                                                    : workflow.enabled
+                                                      ? 'bg-verdigris'
+                                                      : 'bg-veil'
+                                            }`}
+                                            title={
+                                                workflow.diagnostics?.some(
+                                                    (diagnostic) => diagnostic.severity === 'error',
+                                                )
+                                                    ? 'Needs repair'
+                                                    : workflow.enabled
+                                                      ? 'Enabled'
+                                                      : 'Disabled'
+                                            }
+                                        />
+                                    </div>
+                                    {workflow.diagnostics?.length ? (
+                                        <div className="mt-1 space-y-1 pr-4 font-data text-[10px]">
+                                            {workflow.diagnostics.map((diagnostic) => (
+                                                <p
+                                                    key={`${diagnostic.severity}-${diagnostic.code}-${diagnostic.target.kind}-${diagnostic.message}`}
+                                                    className={
+                                                        diagnostic.severity === 'error'
+                                                            ? 'text-old-blood'
+                                                            : 'text-gilt'
+                                                    }
+                                                >
+                                                    <span className="text-parchment">
+                                                        {diagnosticTargetLabel(diagnostic)}
+                                                    </span>{' '}
+                                                    {diagnostic.message}
+                                                </p>
+                                            ))}
+                                        </div>
+                                    ) : null}
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
                                     <Button
                                         size="sm"
                                         variant={workflow.enabled ? 'default' : 'ghost'}
+                                        disabled={workflow.diagnostics?.some(
+                                            (diagnostic) => diagnostic.severity === 'error',
+                                        )}
                                         onClick={() => handleToggle(workflow.id)}
                                     >
                                         {workflow.enabled ? 'Disable' : 'Enable'}
@@ -156,6 +206,9 @@ export function WorkflowsSection(): ReactElement {
                                     <Button
                                         size="sm"
                                         variant="ghost"
+                                        disabled={workflow.diagnostics?.some(
+                                            (diagnostic) => diagnostic.severity === 'error',
+                                        )}
                                         onClick={() => handleEdit(workflow.id)}
                                     >
                                         Edit
