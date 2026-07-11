@@ -89,7 +89,7 @@ function handleToggleWorkflow(message: EngineToggleWorkflow, subsystems: Dispatc
         subsystems.postMessage({
             type: EngineChannel.ToggleWorkflowResult,
             correlationId: message.correlationId,
-            summary: Option.getOrUndefined(toggled),
+            summary: Option.getOrElse(() => null)(toggled),
         });
         return;
     }
@@ -108,7 +108,7 @@ function handleToggleWorkflow(message: EngineToggleWorkflow, subsystems: Dispatc
     subsystems.postMessage({
         type: EngineChannel.ToggleWorkflowResult,
         correlationId: message.correlationId,
-        summary: Option.getOrUndefined(toggled),
+        summary: Option.getOrElse(() => null)(toggled),
     });
 }
 
@@ -123,7 +123,7 @@ function handleRetryWorkflow(message: EngineRetryWorkflow, subsystems: DispatchS
     subsystems.postMessage({
         type: EngineChannel.RetryWorkflowResult,
         correlationId: message.correlationId,
-        summary: Option.getOrUndefined(summary),
+        summary: Option.getOrElse(() => null)(summary),
     });
 }
 
