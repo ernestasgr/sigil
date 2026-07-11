@@ -2,13 +2,17 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Option } from 'effect';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Either, Option } from 'effect';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { CapabilityBroker } from './capability-broker.js';
+import { createCapabilityBroker } from './capability-broker.js';
 import { createManifestRegistry } from './manifest-registry.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
+import type { KernelDeps } from './node-handlers/types.js';
 import { loadNodePlugin, loadNodePlugins, updatePluginPermissions } from './node-plugin-loader.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
+import { createPermissionOverrideStore } from './permission-override-store.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -472,6 +476,49 @@ export function handler(kernel: KernelDeps): TriggerHandler {
 }
 `;
 
+const STATE_ACCESS_HANDLER = `
+import { Option } from 'effect';
+import { z } from 'zod';
+
+const ConfigSchema = z.object({ operation: z.enum(['get', 'set', 'flush']) });
+
+export const descriptor = {
+    type: 'state-access' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: { operation: 'get' },
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler = {
+    async execute({ node, ctx }, deps) {
+        const operation = node.config.operation;
+        if (operation === 'get') {
+            const value = await deps.state.get('secret');
+            return {
+                outputCtx: { ...ctx, vars: { ...ctx.vars, secret: Option.getOrUndefined(value) } },
+                activePort: 'out',
+            };
+        }
+        if (operation === 'set') {
+            await deps.state.set('secret', 'mutated');
+        } else {
+            await deps.state.flush();
+        }
+        return { outputCtx: ctx, activePort: 'out' };
+    },
+};
+`;
+
+function createKernel(capabilityBroker: CapabilityBroker): KernelDeps {
+    return {
+        capabilityBroker,
+        fileWatcherManager: {
+            registerSubscriber: () => undefined,
+            unregisterSubscriber: () => undefined,
+        },
+    };
+}
+
 describe('capabilityBroker sandbox sync', () => {
     let tempDir: string;
 
@@ -583,6 +630,317 @@ describe('capabilityBroker sandbox sync', () => {
             expect(typeof Option.getOrThrow(handler).execute).toBe('function');
             expect('activate' in Option.getOrThrow(handler)).toBe(true);
         }
+    });
+});
+
+describe('Workflow State authorization for Node Plugins', () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+        tempDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-state-auth-'));
+    });
+
+    afterEach(() => {
+        rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it('routes an honest Plugin state read through the Engine Capability Broker', async () => {
+        const pluginId = 'com.sigil.state-honest-read';
+        const pluginDir = join(tempDir, 'state-access');
+        writePlugin(
+            pluginDir,
+            {
+                id: pluginId,
+                version: '0.0.1',
+                permissions: ['state.read'],
+                emits: ['x'],
+                nodeType: 'state-access',
+            },
+            STATE_ACCESS_HANDLER,
+        );
+
+        const manifestRegistry = createManifestRegistry();
+        const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+        const capabilityBroker: CapabilityBroker = {
+            request: vi.fn().mockReturnValue(Either.right(undefined)),
+        };
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            kernel: createKernel(capabilityBroker),
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const state = {
+            get: vi.fn().mockReturnValue(Option.some('from-state')),
+            set: vi.fn(),
+            flush: vi.fn(),
+        };
+        const handler = Option.getOrThrow(handlerRegistry.get('state-access'));
+        const output = await handler.execute(
+            {
+                node: {
+                    id: 'n1',
+                    type: 'state-access',
+                    pluginId,
+                    config: { operation: 'get' },
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            },
+            { state } as never,
+        );
+
+        expect(output.outputCtx.vars.secret).toBe('from-state');
+        expect(capabilityBroker.request).toHaveBeenCalledWith({
+            pluginId,
+            capability: 'state.read',
+        });
+        expect(state.get).toHaveBeenCalledWith('secret');
+    });
+
+    it('rejects a crafted state read without state.read before reaching the state adapter', async () => {
+        const pluginId = 'com.sigil.state-crafted-read';
+        const pluginDir = join(tempDir, 'state-access');
+        writePlugin(
+            pluginDir,
+            {
+                id: pluginId,
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'state-access',
+            },
+            STATE_ACCESS_HANDLER,
+        );
+
+        const manifestRegistry = createManifestRegistry();
+        const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+        const capabilityBroker: CapabilityBroker = {
+            request: vi
+                .fn()
+                .mockReturnValue(
+                    Either.left({ kind: 'denied' as const, capability: 'state.read' }),
+                ),
+        };
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            kernel: createKernel(capabilityBroker),
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const state = {
+            get: vi.fn().mockReturnValue(Option.some('should-not-be-read')),
+            set: vi.fn(),
+            flush: vi.fn(),
+        };
+        const handler = Option.getOrThrow(handlerRegistry.get('state-access'));
+        await expect(
+            handler.execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'state-access',
+                        pluginId,
+                        config: { operation: 'get' },
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                { state } as never,
+            ),
+        ).rejects.toThrow('Permission denied: state.read');
+
+        expect(capabilityBroker.request).toHaveBeenCalledWith({
+            pluginId,
+            capability: 'state.read',
+        });
+        expect(state.get).not.toHaveBeenCalled();
+    });
+
+    it('rejects a state write without state.write before mutating the state adapter', async () => {
+        const pluginId = 'com.sigil.state-crafted-write';
+        const pluginDir = join(tempDir, 'state-access');
+        writePlugin(
+            pluginDir,
+            {
+                id: pluginId,
+                version: '0.0.1',
+                permissions: ['state.read'],
+                emits: ['x'],
+                nodeType: 'state-access',
+            },
+            STATE_ACCESS_HANDLER,
+        );
+
+        const manifestRegistry = createManifestRegistry();
+        const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+        const capabilityBroker: CapabilityBroker = {
+            request: vi
+                .fn()
+                .mockReturnValue(
+                    Either.left({ kind: 'denied' as const, capability: 'state.write' }),
+                ),
+        };
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            kernel: createKernel(capabilityBroker),
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const state = {
+            get: vi.fn(),
+            set: vi.fn(),
+            flush: vi.fn(),
+        };
+        const handler = Option.getOrThrow(handlerRegistry.get('state-access'));
+        await expect(
+            handler.execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'state-access',
+                        pluginId,
+                        config: { operation: 'set' },
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                { state } as never,
+            ),
+        ).rejects.toThrow('Permission denied: state.write');
+
+        expect(capabilityBroker.request).toHaveBeenCalledWith({
+            pluginId,
+            capability: 'state.write',
+        });
+        expect(state.set).not.toHaveBeenCalled();
+    });
+
+    it('routes state.set and state.flush through state.write authorization', async () => {
+        const pluginId = 'com.sigil.state-honest-write';
+        const pluginDir = join(tempDir, 'state-access');
+        writePlugin(
+            pluginDir,
+            {
+                id: pluginId,
+                version: '0.0.1',
+                permissions: ['state.write'],
+                emits: ['x'],
+                nodeType: 'state-access',
+            },
+            STATE_ACCESS_HANDLER,
+        );
+
+        const manifestRegistry = createManifestRegistry();
+        const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+        const capabilityBroker: CapabilityBroker = {
+            request: vi.fn().mockReturnValue(Either.right(undefined)),
+        };
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            kernel: createKernel(capabilityBroker),
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const state = {
+            get: vi.fn(),
+            set: vi.fn(),
+            flush: vi.fn(),
+        };
+        const handler = Option.getOrThrow(handlerRegistry.get('state-access'));
+        const input = {
+            node: {
+                id: 'n1',
+                type: 'state-access' as const,
+                pluginId,
+                config: { operation: 'set' as const },
+            },
+            ctx: { event: '', payload: {}, vars: {} },
+        };
+
+        await handler.execute(input, { state } as never);
+        await handler.execute(
+            { ...input, node: { ...input.node, id: 'n2', config: { operation: 'flush' } } },
+            { state } as never,
+        );
+
+        expect(capabilityBroker.request).toHaveBeenNthCalledWith(1, {
+            pluginId,
+            capability: 'state.write',
+        });
+        expect(capabilityBroker.request).toHaveBeenNthCalledWith(2, {
+            pluginId,
+            capability: 'state.write',
+        });
+        expect(state.set).toHaveBeenCalledWith('secret', 'mutated');
+        expect(state.flush).toHaveBeenCalledTimes(1);
+    });
+
+    it('applies a permission revocation to the next state read without restarting the Plugin', async () => {
+        const pluginId = 'com.sigil.state-revoked-read';
+        const pluginDir = join(tempDir, 'state-access');
+        writePlugin(
+            pluginDir,
+            {
+                id: pluginId,
+                version: '0.0.1',
+                permissions: ['state.read'],
+                emits: ['x'],
+                nodeType: 'state-access',
+            },
+            STATE_ACCESS_HANDLER,
+        );
+
+        const manifestRegistry = createManifestRegistry();
+        const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+        const overrides = createPermissionOverrideStore();
+        const capabilityBroker = createCapabilityBroker(manifestRegistry, overrides);
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            kernel: createKernel(capabilityBroker),
+            permissionOverrides: overrides,
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const state = {
+            get: vi.fn().mockReturnValue(Option.some('before-revocation')),
+            set: vi.fn(),
+            flush: vi.fn(),
+        };
+        const handler = Option.getOrThrow(handlerRegistry.get('state-access'));
+        const executeRead = (id: string) =>
+            handler.execute(
+                {
+                    node: {
+                        id,
+                        type: 'state-access',
+                        pluginId,
+                        config: { operation: 'get' },
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                { state } as never,
+            );
+
+        const beforeRevocation = await executeRead('n1');
+        expect(beforeRevocation.outputCtx.vars.secret).toBe('before-revocation');
+
+        overrides.set(pluginId, []);
+
+        await expect(executeRead('n2')).rejects.toThrow('Permission denied: state.read');
+        expect(state.get).toHaveBeenCalledTimes(1);
     });
 });
 

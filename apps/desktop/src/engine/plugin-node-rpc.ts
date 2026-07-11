@@ -6,7 +6,6 @@ import { CollisionSuffixStyleSchema } from '@sigil/schema/properties-file';
 import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { z } from 'zod';
 
-import { CapabilityRequestSchema } from './capability-broker.js';
 import {
     EngineDiagnosticPayloadSchema,
     LogOutputPayloadSchema,
@@ -163,7 +162,7 @@ export const NodePluginDepsRpcSchema = z.discriminatedUnion('operation', [
     }),
     NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('capabilityBroker.request'),
-        args: z.tuple([CapabilityRequestSchema]),
+        args: z.tuple([CapabilitySchema]),
     }),
     NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('fileWatcherManager.registerSubscriber'),
