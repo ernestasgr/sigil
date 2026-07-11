@@ -1,21 +1,13 @@
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { CompiledPipeline } from '@sigil/schema';
-import type { PipelineNode } from '@sigil/schema/nodes';
-import { isPluginNode } from '@sigil/schema/nodes';
 import {
     DEFAULT_PROPERTIES,
     loadPropertiesFile,
     type ResolvedProperties,
 } from '@sigil/schema/properties-file';
-import {
-    type ExecutableWorkflow,
-    type TopologyDiagnostic,
-    validateWorkflowTopology,
-} from '@sigil/schema/topology';
+import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import Database from 'better-sqlite3';
-import { Option } from 'effect';
 
 import type { Bridge } from './bridge.js';
 import { createBridge } from './bridge.js';
@@ -28,11 +20,11 @@ import { createFileWatcherManager, type FileWatcherManager } from './file-watche
 import type { ManifestRegistry } from './manifest-registry.js';
 import { createManifestRegistry } from './manifest-registry.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
-import { isTriggerHandler } from './node-handlers/types.js';
 import { loadNodePlugins, type NodePluginLoadResult } from './node-plugin-loader.js';
 import { createNodeHandlerRegistry, type NodeHandlerRegistry } from './node-registry.js';
 import type { PermissionOverrideStore } from './permission-override-store.js';
 import { createPermissionOverrideStore } from './permission-override-store.js';
+import { acceptWorkflow, type WorkflowInput } from './workflow-acceptance.js';
 import { createWorkflowStateStore, type WorkflowStateStore } from './workflow-state.js';
 import { createWorkflowTopologyError } from './workflow-topology-error.js';
 
@@ -54,10 +46,7 @@ export interface Engine {
     readonly handlerRegistry: NodeHandlerRegistry;
     readonly registerBuiltinManifests: () => void;
     readonly loadNodePlugins: (dir?: string) => Promise<readonly NodePluginLoadResult[]>;
-    readonly execute: (
-        pipeline: CompiledPipeline | ExecutableWorkflow,
-        seedContext?: WorkflowContext,
-    ) => Promise<void>;
+    readonly execute: (pipeline: WorkflowInput, seedContext?: WorkflowContext) => Promise<void>;
     readonly dispose: () => void;
 }
 
@@ -66,21 +55,6 @@ export function resolveSettings(properties: ResolvedProperties): ExecutorSetting
         notifyOnWorkflowError: properties.notifyOnWorkflowError,
         collisionSuffixStyle: properties.collisionSuffixStyle,
     };
-}
-
-function isEngineTrigger(node: PipelineNode, handlerRegistry: NodeHandlerRegistry): boolean {
-    if (!isPluginNode(node) && (node.type === 'manual-trigger' || node.type === 'file-watcher')) {
-        return true;
-    }
-
-    const handler = handlerRegistry.get(node.type);
-    return Option.isSome(handler) && isTriggerHandler(handler.value);
-}
-
-function isExecutableWorkflow(
-    pipeline: CompiledPipeline | ExecutableWorkflow,
-): pipeline is ExecutableWorkflow {
-    return 'pipeline' in pipeline && 'triggerId' in pipeline && 'executionOrder' in pipeline;
 }
 
 function emitTopologyDiagnostics(bus: EventBus, diagnostics: readonly TopologyDiagnostic[]): void {
@@ -147,11 +121,7 @@ export function createEngine(options?: EngineOptions): Engine {
             return builtinResults;
         },
         execute: async (pipeline, seedContext): Promise<void> => {
-            const topology = isExecutableWorkflow(pipeline)
-                ? { ok: true as const, value: pipeline }
-                : validateWorkflowTopology(pipeline, {
-                      isTrigger: (node) => isEngineTrigger(node, handlerRegistry),
-                  });
+            const topology = acceptWorkflow(pipeline, handlerRegistry);
             if (!topology.ok) {
                 emitTopologyDiagnostics(bus, topology.diagnostics);
                 throw createWorkflowTopologyError(topology.diagnostics);

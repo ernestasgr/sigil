@@ -55,6 +55,43 @@ describe('createEngine', () => {
         engine.dispose();
     });
 
+    it('rejects unsupported Node handlers before execution begins', async () => {
+        const engine = createEngine();
+        const events: BusEvent[] = [];
+        engine.bus.subscribe((event) => {
+            events.push(event);
+        });
+        const unsupportedPipeline: CompiledPipeline = {
+            ...sampleManualTriggerToLog,
+            nodes: [
+                ...sampleManualTriggerToLog.nodes,
+                {
+                    id: 'missing',
+                    type: 'missing-node',
+                    pluginId: 'com.example.missing',
+                    config: {},
+                },
+            ],
+            edges: [
+                ...sampleManualTriggerToLog.edges,
+                { id: 'log-missing', source: 'log', target: 'missing', sourcePort: 'out' },
+            ],
+        };
+
+        await expect(engine.execute(unsupportedPipeline)).rejects.toMatchObject({
+            kind: 'workflow_topology',
+            diagnostics: expect.arrayContaining([
+                expect.objectContaining({
+                    code: 'unsupported_node_handler',
+                    nodeId: 'missing',
+                    target: { kind: 'node', nodeId: 'missing' },
+                }),
+            ]),
+        });
+        expect(events.some((event) => event.name === 'workflow.started')).toBe(false);
+        engine.dispose();
+    });
+
     it('executes a validated Trigger-rooted fan-out', async () => {
         const engine = createEngine();
         const events: BusEvent[] = [];

@@ -4,6 +4,7 @@ import { Option } from 'effect';
 import type { Engine } from './engine.js';
 import { isTriggerHandler } from './node-handlers/types.js';
 import type { NodeHandlerRegistry } from './node-registry.js';
+import { acceptWorkflow } from './workflow-acceptance.js';
 import type { WorkflowStore } from './workflow-store.js';
 
 export interface WorkflowActivator {
@@ -37,8 +38,23 @@ export function createWorkflowActivator(
             const data = store.get(workflowId);
             if (Option.isNone(data)) return false;
 
-            const trigger = data.value.executable.pipeline.nodes.find(
-                (node) => node.id === data.value.executable.triggerId,
+            const accepted = acceptWorkflow(data.value.executable, handlerRegistry);
+            if (!accepted.ok) {
+                for (const diagnostic of accepted.diagnostics) {
+                    engine.bus.next({
+                        name: 'engine.diagnostic',
+                        payload: {
+                            kind: 'workflow_topology',
+                            message: `[activator][topology:${diagnostic.code}] ${diagnostic.message}`,
+                        },
+                    });
+                }
+                return false;
+            }
+
+            const executable = accepted.value;
+            const trigger = executable.pipeline.nodes.find(
+                (node) => node.id === executable.triggerId,
             );
             if (!trigger) return false;
 
@@ -64,7 +80,7 @@ export function createWorkflowActivator(
             }
 
             const onEvent = (ctx: WorkflowContext): void => {
-                void engine.execute(data.value.executable, ctx).catch((err: unknown) => {
+                void engine.execute(executable, ctx).catch((err: unknown) => {
                     engine.bus.next({
                         name: 'engine.diagnostic',
                         payload: {

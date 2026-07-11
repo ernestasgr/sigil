@@ -13,6 +13,7 @@ import {
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
 import { createEngine } from './engine.js';
 import { readPropertiesFile } from './properties-loader.js';
+import { workflowTopologyOptions } from './workflow-acceptance.js';
 import { createWorkflowActivator } from './workflow-activator.js';
 import { createWorkflowStore } from './workflow-store.js';
 
@@ -41,28 +42,6 @@ const engine = createEngine({
     permissionOverridesPath: overridesPath,
 });
 
-const workflowsDir = join(userDataPath ?? '', 'workflows');
-const store = createWorkflowStore(workflowsDir);
-const activator = createWorkflowActivator(
-    engine,
-    store,
-    engine.handlerRegistry,
-    broadcastWorkflowsList,
-);
-
-process.on('exit', () => {
-    activator.dispose();
-    engine.dispose();
-});
-
-function broadcastWorkflowsList(): void {
-    const message: EngineWorkflowsList = {
-        type: EngineChannel.WorkflowsList,
-        workflows: store.list(),
-    };
-    port.postMessage(message);
-}
-
 function log(message: string): void {
     engine.bus.next({ name: 'engine.diagnostic', payload: { message } });
 }
@@ -73,41 +52,6 @@ engine.bus.subscribe((event) => {
     if (event.name === 'log.output') {
         const log: EngineLog = { type: EngineChannel.Log, line: event.payload.message };
         port.postMessage(log);
-    }
-});
-
-const subsystems: DispatchSubsystems = {
-    postMessage: (msg: unknown) => port.postMessage(msg),
-    engine,
-    store,
-    activator,
-    broadcastWorkflowsList,
-    log,
-    propertiesPath,
-};
-
-port.on('message', (raw: unknown) => {
-    const parsed = WorkerInboundSchema.safeParse(raw);
-    if (!parsed.success) {
-        const errMsg = parsed.error.issues
-            .map((i) => `${i.path.join('.')}: ${i.message}`)
-            .join('; ');
-        console.error(`[worker] invalid message envelope: ${errMsg}`);
-        port.postMessage({
-            type: EngineChannel.Log,
-            line: `[error] invalid message envelope: ${errMsg}`,
-        });
-        return;
-    }
-    const message = parsed.data;
-    try {
-        dispatch(message, subsystems);
-    } catch (err) {
-        console.error('[worker] unhandled error processing message:', err);
-        port.postMessage({
-            type: EngineChannel.Log,
-            line: `[error] unhandled error processing message: ${err instanceof Error ? err.message : String(err)}`,
-        });
     }
 });
 
@@ -158,6 +102,64 @@ for (const result of pluginResults) {
         );
     }
 }
+
+const workflowsDir = join(userDataPath ?? '', 'workflows');
+const store = createWorkflowStore(workflowsDir, workflowTopologyOptions(engine.handlerRegistry));
+
+function broadcastWorkflowsList(): void {
+    const message: EngineWorkflowsList = {
+        type: EngineChannel.WorkflowsList,
+        workflows: store.list(),
+    };
+    port.postMessage(message);
+}
+
+const activator = createWorkflowActivator(
+    engine,
+    store,
+    engine.handlerRegistry,
+    broadcastWorkflowsList,
+);
+
+process.on('exit', () => {
+    activator.dispose();
+    engine.dispose();
+});
+
+const subsystems: DispatchSubsystems = {
+    postMessage: (msg: unknown) => port.postMessage(msg),
+    engine,
+    store,
+    activator,
+    broadcastWorkflowsList,
+    log,
+    propertiesPath,
+};
+
+port.on('message', (raw: unknown) => {
+    const parsed = WorkerInboundSchema.safeParse(raw);
+    if (!parsed.success) {
+        const errMsg = parsed.error.issues
+            .map((i) => `${i.path.join('.')}: ${i.message}`)
+            .join('; ');
+        console.error(`[worker] invalid message envelope: ${errMsg}`);
+        port.postMessage({
+            type: EngineChannel.Log,
+            line: `[error] invalid message envelope: ${errMsg}`,
+        });
+        return;
+    }
+    const message = parsed.data;
+    try {
+        dispatch(message, subsystems);
+    } catch (err) {
+        console.error('[worker] unhandled error processing message:', err);
+        port.postMessage({
+            type: EngineChannel.Log,
+            line: `[error] unhandled error processing message: ${err instanceof Error ? err.message : String(err)}`,
+        });
+    }
+});
 
 for (const wf of store.list()) {
     if (wf.enabled) {
