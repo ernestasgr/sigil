@@ -7,7 +7,7 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
 import type { PluginPipelineNode } from '@sigil/schema/nodes';
 import { type WorkflowContext, WorkflowContextSchema } from '@sigil/schema/workflow-context';
-import { Either, Option } from 'effect';
+import { Either } from 'effect';
 import { z } from 'zod';
 import type { CapabilityResult } from './capability-broker.js';
 import type { FileEventCallback, SubscriberRegistration } from './file-watcher-manager.js';
@@ -218,7 +218,7 @@ function normalizePluginBusEvent(value: unknown): Either.Either<PluginEventEmiss
     return Either.right({ eventName, payload });
 }
 
-let depsTeardown: Option.Option<() => void> = Option.none();
+const activationTeardowns = new Map<string, () => void>();
 
 // ─── Callback registry (for registerSubscriber etc.) ─────────
 
@@ -643,7 +643,10 @@ async function main(): Promise<void> {
                 break;
             }
             case NodePluginWorkerKind.Teardown: {
-                Option.getOrUndefined(depsTeardown)?.();
+                const teardown = activationTeardowns.get(msg.requestId);
+                if (!teardown) break;
+                activationTeardowns.delete(msg.requestId);
+                teardown();
                 break;
             }
             case NodePluginWorkerKind.UpdatePermissions: {
@@ -741,7 +744,7 @@ async function handleActivate(
             });
         };
 
-        depsTeardown = Option.some(handler.activate(msg.config, onEvent));
+        activationTeardowns.set(msg.requestId, handler.activate(msg.config, onEvent));
         send({
             kind: NodePluginWorkerKind.ActivateResult,
             requestId: msg.requestId,

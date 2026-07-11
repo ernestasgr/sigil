@@ -1,13 +1,14 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
 import { Option } from 'effect';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { compileGraph } from '../renderer/workflow-builder/compile.js';
 import { createEngine } from './engine.js';
-import { createWorkflowActivator } from './workflow-activator.js';
+import { workflowTopologyOptions } from './workflow-acceptance.js';
+import { createWorkflowActivator, type WorkflowActivator } from './workflow-activator.js';
 import { createWorkflowStore } from './workflow-store.js';
 
 describe('Workflow topology contract', () => {
@@ -94,6 +95,89 @@ describe('Workflow topology contract', () => {
             expect(messages).toEqual(['from contract']);
             expect(activator.deactivate(summary.id)).toBe(true);
         } finally {
+            engine.dispose();
+            rmSync(storageDir, { recursive: true, force: true });
+        }
+    });
+
+    it('keeps two Workflows sharing the File Watcher Plugin independently active', async () => {
+        const storageDir = mkdtempSync(join(tmpdir(), 'sigil-trigger-lifecycle-'));
+        const engine = createEngine();
+        let activator: WorkflowActivator | undefined;
+
+        try {
+            await engine.loadNodePlugins();
+
+            const store = createWorkflowStore(
+                storageDir,
+                workflowTopologyOptions(engine.handlerRegistry),
+            );
+            const createFileWatcherPipeline = (
+                pipelineId: string,
+                workflowId: string,
+            ): CompiledPipeline => ({
+                id: pipelineId,
+                workflowId,
+                schemaVersion: 1,
+                nodes: [
+                    {
+                        id: 'trigger',
+                        type: 'file-watcher',
+                        config: {
+                            path: storageDir,
+                            recursive: false,
+                            events: ['file.created'],
+                            ignorePatterns: [],
+                        },
+                    },
+                ],
+                edges: [],
+            });
+
+            const first = store.create(
+                'First File Watcher Workflow',
+                createFileWatcherPipeline('pipeline-first', 'workflow-first'),
+                {},
+            );
+            const second = store.create(
+                'Second File Watcher Workflow',
+                createFileWatcherPipeline('pipeline-second', 'workflow-second'),
+                {},
+            );
+
+            activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
+            expect(activator.activate(first.id)).toBe(true);
+            expect(activator.activate(second.id)).toBe(true);
+
+            await vi.waitFor(() => {
+                expect(engine.fileWatcherManager.getSubscriberCount()).toBe(2);
+            });
+
+            expect(activator.deactivate(first.id)).toBe(true);
+            await vi.waitFor(() => {
+                expect(engine.fileWatcherManager.getSubscriberCount()).toBe(1);
+            });
+            expect(activator.isActive(second.id)).toBe(true);
+
+            const startedPipelineIds: string[] = [];
+            engine.bus.subscribe((event) => {
+                if (event.name === 'workflow.started') {
+                    startedPipelineIds.push(event.payload.pipelineId);
+                }
+            });
+            writeFileSync(join(storageDir, 'after-first-deactivation.txt'), 'event');
+
+            await vi.waitFor(() => {
+                expect(startedPipelineIds).toContain('pipeline-second');
+            });
+            expect(startedPipelineIds).not.toContain('pipeline-first');
+
+            expect(activator.deactivate(second.id)).toBe(true);
+            await vi.waitFor(() => {
+                expect(engine.fileWatcherManager.getSubscriberCount()).toBe(0);
+            });
+        } finally {
+            activator?.dispose();
             engine.dispose();
             rmSync(storageDir, { recursive: true, force: true });
         }

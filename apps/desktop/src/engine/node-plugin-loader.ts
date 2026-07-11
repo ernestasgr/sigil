@@ -412,8 +412,15 @@ function createWorkerNodeHandlerProxy(
                           requestId,
                           config,
                       });
+                      let tornDown = false;
                       return () => {
-                          worker.postMessage({ kind: NodePluginWorkerKind.Teardown });
+                          if (tornDown) return;
+                          tornDown = true;
+                          pendingActivates.delete(requestId);
+                          worker.postMessage({
+                              kind: NodePluginWorkerKind.Teardown,
+                              requestId,
+                          });
                       };
                   },
               }
