@@ -4,6 +4,7 @@ import {
     formatTopologyDiagnostics,
     type TopologyDiagnostic,
     validateWorkflowTopology,
+    type WorkflowTopologyOptions,
 } from '@sigil/schema/topology';
 
 export interface PipelineMeta {
@@ -17,6 +18,7 @@ export interface VisualNode {
     readonly data: {
         readonly type: string;
         readonly config: unknown;
+        readonly pluginId?: string;
     };
 }
 
@@ -63,6 +65,7 @@ export function compileGraph(
     nodes: readonly VisualNode[],
     edges: readonly VisualEdge[],
     meta: PipelineMeta,
+    topologyOptions?: WorkflowTopologyOptions,
 ): CompileResult {
     const droppedEdgeDiagnostics = edges
         .filter((edge) => edge.sourceHandle == null)
@@ -74,6 +77,7 @@ export function compileGraph(
         nodes: nodes.map((node) => ({
             id: node.id,
             type: node.data.type,
+            ...(node.data.pluginId != null ? { pluginId: node.data.pluginId } : {}),
             config: node.data.config,
         })),
         edges: edges
@@ -93,7 +97,7 @@ export function compileGraph(
         return { ok: false, error: formatTopologyDiagnostics(diagnostics), diagnostics };
     }
 
-    const topology = validateWorkflowTopology(parsed.value);
+    const topology = validateWorkflowTopology(parsed.value, topologyOptions);
     if (!topology.ok) {
         const diagnostics = [...topology.diagnostics, ...droppedEdgeDiagnostics];
         return {

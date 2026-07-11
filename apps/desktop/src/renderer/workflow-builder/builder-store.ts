@@ -162,7 +162,11 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
                 id: pn.id,
                 type: BUILDER_NODE_TYPE,
                 position: positions?.[pn.id] ?? { x: 0, y: 0 },
-                data: { type: pn.type, config: structuredClone(pn.config) } as NodeSpec,
+                data: {
+                    type: pn.type,
+                    config: structuredClone(pn.config),
+                    ...('pluginId' in pn ? { pluginId: pn.pluginId } : {}),
+                } as NodeSpec,
             }),
         );
         const edges: Edge[] = pipeline.edges.map((pe) => ({

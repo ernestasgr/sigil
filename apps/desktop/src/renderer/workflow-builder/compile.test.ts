@@ -165,4 +165,88 @@ describe('compileGraph', () => {
             expect(result.diagnostics[0]?.message).toMatch(/reconnect/i);
         }
     });
+
+    it('round-trips a plugin trigger node with pluginId preserved', () => {
+        const nodes = [
+            {
+                id: 'plugin-trigger',
+                data: {
+                    type: 'tick-trigger',
+                    pluginId: 'com.example.tick',
+                    config: {},
+                },
+            },
+            { id: 'log', data: { type: 'log', config: { message: 'hi' } } },
+        ];
+        const edges = [{ id: 'e1', source: 'plugin-trigger', target: 'log', sourceHandle: 'out' }];
+
+        const result = compileGraph(
+            nodes,
+            edges,
+            { id: 'p', workflowId: 'w' },
+            {
+                isTrigger: (node) => node.type === 'tick-trigger',
+            },
+        );
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            const pluginNode = result.value.nodes.find((n) => n.id === 'plugin-trigger');
+            expect(pluginNode).toBeDefined();
+            if (pluginNode && 'pluginId' in pluginNode) {
+                expect(pluginNode.pluginId).toBe('com.example.tick');
+            }
+        }
+    });
+
+    it('recognises a plugin trigger when topology options supply isTrigger', () => {
+        const nodes = [
+            {
+                id: 'plugin-trigger',
+                data: {
+                    type: 'tick-trigger',
+                    pluginId: 'com.example.tick',
+                    config: {},
+                },
+            },
+            { id: 'log', data: { type: 'log', config: { message: 'hi' } } },
+        ];
+        const edges = [{ id: 'e1', source: 'plugin-trigger', target: 'log', sourceHandle: 'out' }];
+
+        const result = compileGraph(
+            nodes,
+            edges,
+            { id: 'p', workflowId: 'w' },
+            {
+                isTrigger: (node) => node.type === 'tick-trigger',
+            },
+        );
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.executable.triggerId).toBe('plugin-trigger');
+        }
+    });
+
+    it('reports missing_trigger for a plugin trigger without topology options', () => {
+        const nodes = [
+            {
+                id: 'plugin-trigger',
+                data: {
+                    type: 'tick-trigger',
+                    pluginId: 'com.example.tick',
+                    config: {},
+                },
+            },
+        ];
+
+        const result = compileGraph(nodes, [], { id: 'p', workflowId: 'w' });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.diagnostics).toEqual(
+                expect.arrayContaining([expect.objectContaining({ code: 'missing_trigger' })]),
+            );
+        }
+    });
 });
