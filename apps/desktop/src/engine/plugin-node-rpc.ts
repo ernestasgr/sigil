@@ -1,19 +1,10 @@
 import { PipelineConditionSchema } from '@sigil/schema/conditions';
-import { FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
 import { CapabilitySchema } from '@sigil/schema/manifest';
 import { SwitchConfigSchema } from '@sigil/schema/nodes/switch';
 import { CollisionSuffixStyleSchema } from '@sigil/schema/properties-file';
 import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { z } from 'zod';
 
-import {
-    EngineDiagnosticPayloadSchema,
-    LogOutputPayloadSchema,
-    NotificationShowPayloadSchema,
-    PluginBusEventPayloadSchema,
-    WorkflowErrorPayloadSchema,
-    WorkflowRunPayloadSchema,
-} from './event-payload-schemas.js';
 import { SubscriberRegistrationSchema } from './file-watcher-manager.js';
 
 export const NodePluginWorkerKind = {
@@ -86,41 +77,6 @@ export const NodePluginWorkerActivateEventSchema = z.object({
 });
 export type NodePluginWorkerActivateEvent = z.infer<typeof NodePluginWorkerActivateEventSchema>;
 
-const NodePluginBusEventSchema = z.union([
-    z.object({
-        name: z.literal('workflow.started'),
-        payload: WorkflowRunPayloadSchema,
-    }),
-    z.object({
-        name: z.literal('workflow.completed'),
-        payload: WorkflowRunPayloadSchema,
-    }),
-    z.object({
-        name: z.literal('workflow.error'),
-        payload: WorkflowErrorPayloadSchema,
-    }),
-    z.object({
-        name: z.literal('manual.trigger.fired'),
-        payload: FileEventPayloadSchema,
-    }),
-    z.object({
-        name: z.literal('log.output'),
-        payload: LogOutputPayloadSchema,
-    }),
-    z.object({
-        name: z.literal('notification.show'),
-        payload: NotificationShowPayloadSchema,
-    }),
-    z.object({
-        name: z.literal('plugin.event'),
-        payload: PluginBusEventPayloadSchema,
-    }),
-    z.object({
-        name: z.literal('engine.diagnostic'),
-        payload: EngineDiagnosticPayloadSchema,
-    }),
-]);
-
 const NodePluginDepsRpcEnvelopeSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.DepsRpc),
     requestId: z.string(),
@@ -129,8 +85,8 @@ const NodePluginDepsRpcEnvelopeSchema = z.object({
 
 export const NodePluginDepsRpcSchema = z.discriminatedUnion('operation', [
     NodePluginDepsRpcEnvelopeSchema.extend({
-        operation: z.literal('bus.next'),
-        args: z.tuple([NodePluginBusEventSchema]),
+        operation: z.literal('event.emit'),
+        args: z.tuple([z.string().min(1), z.record(z.string(), z.unknown())]),
     }),
     NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('sleep'),

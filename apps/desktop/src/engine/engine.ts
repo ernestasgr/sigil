@@ -108,6 +108,7 @@ export function createEngine(options?: EngineOptions): Engine {
                 manifestRegistry: registry,
                 handlerRegistry,
                 kernel,
+                bridge,
                 permissionOverrides,
                 diagnostic: (message: string): void => {
                     bus.next({ name: 'engine.diagnostic', payload: { message } });

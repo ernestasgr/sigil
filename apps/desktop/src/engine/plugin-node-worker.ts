@@ -64,7 +64,7 @@ let currentPermissionGatedModules: Partial<Record<SandboxModuleName, Record<stri
 const workerRequire = createRequire(import.meta.url);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null;
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 type Callable = (...args: unknown[]) => unknown;
@@ -187,6 +187,37 @@ function remoteCall<TOperation extends NodePluginDepsRpcOperation, TResult>(
     };
 }
 
+type PluginBusEvent = Parameters<NodeHandlerDeps['bus']['next']>[0];
+
+interface PluginEventEmission {
+    readonly eventName: string;
+    readonly payload: Readonly<Record<string, unknown>>;
+}
+
+function normalizePluginBusEvent(value: unknown): Either.Either<PluginEventEmission, string> {
+    if (!isRecord(value)) {
+        return Either.left('Invalid Plugin Event emission: expected an Event object');
+    }
+
+    const eventName = value.name;
+    if (typeof eventName !== 'string' || eventName.length === 0) {
+        return Either.left('Invalid Plugin Event emission: event name must be a non-empty string');
+    }
+
+    if (eventName === 'plugin.event') {
+        return Either.left(
+            'Invalid Plugin Event emission: the internal "plugin.event" envelope is Engine-owned',
+        );
+    }
+
+    const payload = value.payload;
+    if (!isRecord(payload)) {
+        return Either.left('Invalid Plugin Event emission: payload must be an object');
+    }
+
+    return Either.right({ eventName, payload });
+}
+
 let depsTeardown: Option.Option<() => void> = Option.none();
 
 // ─── Callback registry (for registerSubscriber etc.) ─────────
@@ -239,13 +270,26 @@ function createProxiedDeps(
     executeRequestId: string,
     collisionSuffixStyle: NodeHandlerDeps['collisionSuffixStyle'] = undefined,
 ): NodeHandlerDeps {
+    const emit = remoteCall<'event.emit', Promise<void>>('event.emit', executeRequestId);
+    const next: NodeHandlerDeps['bus']['next'] = (value: PluginBusEvent) => {
+        const emission = normalizePluginBusEvent(value);
+        if (Either.isLeft(emission)) {
+            // Send an intentionally invalid event.emit envelope so the main-side
+            // receive site records the Plugin identity and rejects the request
+            // before it can reach the Bridge or Event Bus.
+            void emit('', {}).catch(() => undefined);
+            throw new Error(
+                `[plugin:${data.pluginId}] denied operation "event.emit": ${emission.left}`,
+            );
+        }
+        return emit(emission.right.eventName, emission.right.payload);
+    };
+
     return {
         bus: {
-            next: remoteCall<'bus.next', ReturnType<NodeHandlerDeps['bus']['next']>>(
-                'bus.next',
-                executeRequestId,
-            ),
+            next,
         },
+        event: { emit },
         sleep: remoteCall<'sleep', ReturnType<NodeHandlerDeps['sleep']>>('sleep', executeRequestId),
         resolveTemplate: remoteCall<
             'resolveTemplate',

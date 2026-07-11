@@ -3,9 +3,8 @@ import type { NodeType, PipelineNode, UnknownNodeDescriptor } from '@sigil/schem
 import type { SwitchConfig } from '@sigil/schema/nodes/switch';
 import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
-
 import type { CapabilityBroker } from '../capability-broker.js';
-import type { EventBus } from '../event-bus.js';
+import type { BusEvent } from '../event-bus.js';
 import type { FileWatcherManager } from '../file-watcher-manager.js';
 import type { WorkflowState } from '../workflow-state.js';
 
@@ -14,7 +13,13 @@ export interface NodeRunResult {
     readonly activePort: string;
 }
 
-export type EventSink = Pick<EventBus, 'next'>;
+export interface EventSink {
+    readonly next: (event: BusEvent) => void | Promise<void>;
+}
+
+export interface PluginEventSink {
+    readonly emit: (eventName: string, payload: Readonly<Record<string, unknown>>) => Promise<void>;
+}
 
 export type Sleep = (ms: number) => Promise<void>;
 export type ResolveTemplate = (template: string, ctx: WorkflowContext) => string;
@@ -23,6 +28,8 @@ export type MatchSwitchCase = (config: SwitchConfig, ctx: WorkflowContext) => st
 
 export interface NodeHandlerDeps {
     readonly bus: EventSink;
+    /** Present for worker-backed Plugins; built-in Nodes use the Event Bus directly. */
+    readonly event?: PluginEventSink;
     readonly sleep: Sleep;
     readonly resolveTemplate: ResolveTemplate;
     readonly evaluateCondition: EvaluateCondition;
