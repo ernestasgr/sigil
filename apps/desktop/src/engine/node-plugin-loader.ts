@@ -257,8 +257,53 @@ function createWorkerNodeHandlerProxy(
         }
     >();
     const pendingActivates = new Map<string, { onEvent: (ctx: WorkflowContext) => void }>();
+    let workerFailure: Error | undefined;
+
+    const publishDiagnostic = (message: string): void => {
+        try {
+            diagnostic?.(message);
+        } catch {
+            // A diagnostic subscriber must not prevent pending work from settling.
+        }
+    };
+
+    const failWorker = (failure: Error): void => {
+        if (workerFailure) return;
+        workerFailure = failure;
+        if (pluginWorkers.get(pluginId) === worker) pluginWorkers.delete(pluginId);
+        publishDiagnostic(`[proxy] ${failure.message}`);
+
+        const executions = [...pendingExecutes.values()];
+        pendingExecutes.clear();
+        for (const pending of executions) pending.reject(failure);
+
+        const activations = [...pendingActivates.values()];
+        pendingActivates.clear();
+        for (const pending of activations) {
+            try {
+                Option.getOrUndefined(getDeactivationHook(pending.onEvent))?.(failure.message);
+            } catch (err) {
+                publishDiagnostic(
+                    `[proxy] failed to settle activation after plugin worker failure: ${err instanceof Error ? err.message : String(err)}`,
+                );
+            }
+        }
+    };
+
+    const workerFailureFor = (detail: string): Error =>
+        new Error(
+            `Plugin worker "${pluginId}" stopped unexpectedly (${detail}). Retry the Workflow or restart the plugin.`,
+        );
+
+    worker.on('error', (error: Error) => {
+        failWorker(workerFailureFor(`error: ${error.message}`));
+    });
+    worker.on('exit', (code: number) => {
+        failWorker(workerFailureFor(`exited with code ${code}`));
+    });
 
     worker.on('message', (raw: unknown) => {
+        if (workerFailure) return;
         const parsed = NodePluginWorkerToMainSchema.safeParse(raw);
         if (!parsed.success) {
             const operation =
@@ -366,6 +411,7 @@ function createWorkerNodeHandlerProxy(
 
     const handler: NodeHandler = {
         async execute({ node, ctx }, deps): Promise<NodeRunResult> {
+            if (workerFailure) throw workerFailure;
             const requestId = randomUUID();
             return new Promise<NodeRunResult>((resolve, reject) => {
                 const timer = setTimeout(() => {
@@ -387,16 +433,25 @@ function createWorkerNodeHandlerProxy(
                     deps,
                 });
 
-                worker.postMessage({
-                    kind: NodePluginWorkerKind.ExecuteRequest,
-                    requestId,
-                    nodeType: node.type,
-                    nodeConfig: node.config,
-                    ctx,
-                    deps: {
-                        collisionSuffixStyle: deps.collisionSuffixStyle,
-                    },
-                });
+                try {
+                    worker.postMessage({
+                        kind: NodePluginWorkerKind.ExecuteRequest,
+                        requestId,
+                        nodeType: node.type,
+                        nodeConfig: node.config,
+                        ctx,
+                        deps: {
+                            collisionSuffixStyle: deps.collisionSuffixStyle,
+                        },
+                    });
+                } catch (err) {
+                    pendingExecutes.delete(requestId);
+                    const failure = workerFailureFor(
+                        `could not accept an execute request: ${err instanceof Error ? err.message : String(err)}`,
+                    );
+                    reject(failure);
+                    failWorker(failure);
+                }
             });
         },
         ...(isTrigger
@@ -405,22 +460,41 @@ function createWorkerNodeHandlerProxy(
                       config: unknown,
                       onEvent: (ctx: WorkflowContext) => void,
                   ): (() => void) => {
+                      if (workerFailure) throw workerFailure;
                       const requestId = randomUUID();
                       pendingActivates.set(requestId, { onEvent });
-                      worker.postMessage({
-                          kind: NodePluginWorkerKind.ActivateRequest,
-                          requestId,
-                          config,
-                      });
+                      try {
+                          worker.postMessage({
+                              kind: NodePluginWorkerKind.ActivateRequest,
+                              requestId,
+                              config,
+                          });
+                      } catch (err) {
+                          pendingActivates.delete(requestId);
+                          const failure = workerFailureFor(
+                              `could not accept an activation request: ${err instanceof Error ? err.message : String(err)}`,
+                          );
+                          failWorker(failure);
+                          throw failure;
+                      }
                       let tornDown = false;
                       return () => {
                           if (tornDown) return;
                           tornDown = true;
                           pendingActivates.delete(requestId);
-                          worker.postMessage({
-                              kind: NodePluginWorkerKind.Teardown,
-                              requestId,
-                          });
+                          if (workerFailure) return;
+                          try {
+                              worker.postMessage({
+                                  kind: NodePluginWorkerKind.Teardown,
+                                  requestId,
+                              });
+                          } catch (err) {
+                              failWorker(
+                                  workerFailureFor(
+                                      `could not accept a teardown request: ${err instanceof Error ? err.message : String(err)}`,
+                                  ),
+                              );
+                          }
                       };
                   },
               }

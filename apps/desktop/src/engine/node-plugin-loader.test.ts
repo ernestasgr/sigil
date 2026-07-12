@@ -77,6 +77,29 @@ export const handler: TriggerHandler = {
 };
 `;
 
+const CRASHING_PLUGIN_HANDLER = `
+import { z } from 'zod';
+import type { NodeHandler } from '../../node-handlers/types.js';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'crashing-node' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler: NodeHandler = {
+    async execute({ ctx }): Promise<never> {
+        setTimeout(() => {
+            throw new Error('plugin worker exploded');
+        }, 0);
+        return new Promise<never>(() => {});
+    },
+};
+`;
+
 describe('loadNodePlugin', () => {
     let tempDir: string;
 
@@ -136,6 +159,51 @@ describe('loadNodePlugin', () => {
             expect(result.descriptor.type).toBe('tick-trigger');
             expect(handlerRegistry.has('tick-trigger')).toBe(true);
         }
+    });
+
+    it('rejects pending executions and publishes a diagnostic when the worker exits', async () => {
+        const pluginDir = join(tempDir, 'crashing-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.crashing',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'crashing-node',
+            },
+            CRASHING_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const diagnostics: string[] = [];
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            diagnostic: (message) => diagnostics.push(message),
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('crashing-node'));
+        const execution = handler.execute(
+            {
+                node: {
+                    id: 'n1',
+                    type: 'crashing-node',
+                    pluginId: 'com.sigil.crashing',
+                    config: {},
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            },
+            {} as never,
+        );
+
+        await expect(execution).rejects.toThrow(/plugin worker|worker exited/i);
+        expect(diagnostics).toEqual(
+            expect.arrayContaining([expect.stringContaining('com.sigil.crashing')]),
+        );
     });
 
     it('fails when manifest is missing', async () => {
