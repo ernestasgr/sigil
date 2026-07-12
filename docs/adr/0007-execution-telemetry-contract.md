@@ -34,9 +34,16 @@ assignment-style redaction. Domain payloads remain available to Engine Event
 consumers for their existing contracts, but adapters and the Renderer use the
 telemetry summary for display.
 
-The Renderer retains at most 500 Bus Events in its telemetry index, evicting
-the oldest entry first. The index exposes Workflow and run-scoped views over
-that same bounded buffer, and uses the Engine timestamp when indexing them;
-renderer receipt time is only a fallback for legacy events without an Engine
-timestamp. No remote metrics dependency or durable telemetry store is
-introduced.
+The Renderer retains at most 500 Bus Events in its telemetry index, including
+unscoped Engine and Plugin Worker diagnostics. When the cap is reached, the
+oldest entry is evicted before the newest entry is appended. Workflow, run,
+failure, and diagnostic views all derive from that same bounded buffer, so an
+evicted Event cannot remain in a secondary index. The index uses the Engine
+timestamp when indexing entries; renderer receipt time is only a fallback for
+legacy Events without an Engine timestamp.
+
+Plugin and worker diagnostics carry a source, outcome, and any available
+Plugin, Workflow, Pipeline, run, or Node identity. A support export contains
+only those structured fields and bounded summaries: raw Event payloads are
+omitted, and summaries are redacted again at the Renderer boundary. No remote
+metrics dependency or durable telemetry store is introduced.

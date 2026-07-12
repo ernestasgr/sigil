@@ -18,6 +18,7 @@ import {
 } from '../shared/persistence.js';
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
 import { createEngine } from './engine.js';
+import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
 import { readPropertiesFile } from './properties-loader.js';
 import { workflowTopologyOptions } from './workflow-acceptance.js';
 import { createWorkflowActivator } from './workflow-activator.js';
@@ -53,16 +54,24 @@ const engine = createEngine({
     permissionOverridesPath: overridesPath,
 });
 
-function log(message: string): void {
-    engine.bus.next({ name: 'engine.diagnostic', payload: { message } });
+function log(message: string, context: Omit<EngineDiagnosticPayload, 'message'> = {}): void {
+    engine.bus.next({ name: 'engine.diagnostic', payload: { message, ...context } });
 }
 
 if (propertiesDiagnostic && !isExpectedMissingFileDiagnostic(propertiesDiagnostic)) {
-    log(`Properties file diagnostic: ${formatPersistenceDiagnostic(propertiesDiagnostic)}`);
+    log(`Properties file diagnostic: ${formatPersistenceDiagnostic(propertiesDiagnostic)}`, {
+        source: 'worker',
+        kind: 'properties',
+        outcome: 'failed',
+    });
 }
 
 for (const diagnostic of engine.permissionOverrides.diagnostics()) {
-    log(`Permission override file diagnostic: ${formatPersistenceDiagnostic(diagnostic)}`);
+    log(`Permission override file diagnostic: ${formatPersistenceDiagnostic(diagnostic)}`, {
+        source: 'worker',
+        kind: 'permission-overrides',
+        outcome: 'failed',
+    });
 }
 
 engine.bus.subscribe((event) => {
@@ -78,7 +87,11 @@ engine.bus.subscribe((event) => {
 // user-installed TS node plugins from the user data directory.
 const pluginsDir = join(userDataPath ?? '', 'plugins');
 const pluginResults = await engine.loadNodePlugins(pluginsDir).catch((err: unknown) => {
-    log(`Failed to load node plugins: ${err instanceof Error ? err.message : String(err)}`);
+    log(`Failed to load node plugins: ${err instanceof Error ? err.message : String(err)}`, {
+        source: 'worker',
+        kind: 'plugin-load',
+        outcome: 'failed',
+    });
     return [] as const;
 });
 for (const result of pluginResults) {
@@ -183,6 +196,10 @@ let shutdownQueued = false;
 
 function reportDispatchError(err: unknown): void {
     console.error('[worker] unhandled async error processing message:', err);
+    subsystems.log(
+        `[error] unhandled error processing message: ${err instanceof Error ? err.message : String(err)}`,
+        { source: 'worker', kind: 'dispatch', outcome: 'failed' },
+    );
     port.postMessage({
         type: EngineChannel.Log,
         line: `[error] unhandled error processing message: ${err instanceof Error ? err.message : String(err)}`,
@@ -207,6 +224,11 @@ port.on('message', (raw: unknown) => {
             .map((i) => `${i.path.join('.')}: ${i.message}`)
             .join('; ');
         console.error(`[worker] invalid message envelope: ${errMsg}`);
+        subsystems.log(`[error] invalid message envelope: ${errMsg}`, {
+            source: 'worker',
+            kind: 'envelope',
+            outcome: 'failed',
+        });
         port.postMessage({
             type: EngineChannel.Log,
             line: `[error] invalid message envelope: ${errMsg}`,

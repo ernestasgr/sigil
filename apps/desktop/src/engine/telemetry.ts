@@ -6,6 +6,7 @@ import type {
     TelemetryOutcome,
     TelemetrySeverity,
 } from '../shared/telemetry.js';
+import { isSensitiveTelemetryKey, redactTelemetryText } from '../shared/telemetry-safety.js';
 import type {
     BusEvent,
     EventBus,
@@ -19,10 +20,6 @@ const MAX_SUMMARY_STRING_LENGTH = 96;
 const MAX_SUMMARY_DEPTH = 2;
 const MAX_SUMMARY_ENTRIES = 16;
 const MAX_SUMMARY_ARRAY_ITEMS = 8;
-const SENSITIVE_KEY_PATTERN =
-    /(?:password|passphrase|secret|token|authorization|cookie|api[-_]?key|private[-_]?key)/i;
-const SENSITIVE_TEXT_PATTERN =
-    /\b((?:password|passphrase|secret|token|authorization|cookie|api[-_]?key|private[-_]?key)\s*[:=]\s*)([^\r\n,;]+)/gi;
 
 export interface RunTelemetryIdentity {
     readonly workflowId: string;
@@ -79,7 +76,7 @@ function truncate(value: string, maxLength: number): string {
 }
 
 function summaryValue(value: unknown, depth: number, key?: string): unknown {
-    if (key && SENSITIVE_KEY_PATTERN.test(key)) return '[REDACTED]';
+    if (key && isSensitiveTelemetryKey(key)) return '[REDACTED]';
     if (value === null) return null;
     if (typeof value === 'string') {
         return truncate(safeTelemetryMessage(value), MAX_SUMMARY_STRING_LENGTH);
@@ -171,16 +168,16 @@ function eventOutcome(event: BusEvent): TelemetryOutcome | undefined {
         case 'notification.show':
         case 'plugin.event':
         case 'engine.diagnostic':
-            return undefined;
+            return 'outcome' in event.payload ? event.payload.outcome : undefined;
         default:
             return assertNever(event);
     }
 }
 
 function eventSeverity(event: BusEvent, outcome: TelemetryOutcome | undefined): TelemetrySeverity {
+    if (outcome === 'failed') return 'error';
     if (event.name === 'workflow.error') return 'error';
     if (event.name === 'engine.diagnostic') return 'warn';
-    if (outcome === 'failed') return 'error';
     if (outcome === 'dropped') return 'warn';
     return 'info';
 }
@@ -199,10 +196,18 @@ function boundedMessage(message: string | undefined): string | undefined {
 }
 
 export function safeTelemetryMessage(message: string): string {
-    return truncate(
-        message.replace(SENSITIVE_TEXT_PATTERN, (_match, prefix: string) => `${prefix}[REDACTED]`),
-        MAX_SUMMARY_LENGTH,
-    );
+    return redactTelemetryText(message, MAX_SUMMARY_LENGTH);
+}
+
+function nodeEventOptions(event: BusEvent, options: TelemetryEventOptions): TelemetryEventOptions {
+    switch (event.name) {
+        case 'plugin.event':
+            return { ...options, kind: 'plugin' };
+        case 'engine.diagnostic':
+            return { ...options, kind: 'diagnostic', severity: 'error', outcome: 'failed' };
+        default:
+            return options;
+    }
 }
 
 function nodePayload(
@@ -295,7 +300,7 @@ export function createRunTelemetry(
         };
         const nodeBus: EventSink = {
             next: (event) => {
-                emit(event, nodeOptions);
+                emit(event, nodeEventOptions(event, nodeOptions));
             },
         };
 

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CapabilityBroker } from './capability-broker.js';
 import { createCapabilityBroker } from './capability-broker.js';
+import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
 import { createManifestRegistry } from './manifest-registry.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
 import type { KernelDeps } from './node-handlers/types.js';
@@ -1218,6 +1219,7 @@ describe('unbypassable enforcement', () => {
         const registerSubscriber = vi.fn();
         const unregisterSubscriber = vi.fn();
         const diagnostics: string[] = [];
+        const diagnosticEvents: EngineDiagnosticPayload[] = [];
         const result = await loadNodePlugin(pluginDir, {
             manifestRegistry,
             handlerRegistry,
@@ -1226,6 +1228,7 @@ describe('unbypassable enforcement', () => {
                 fileWatcherManager: { registerSubscriber, unregisterSubscriber },
             },
             diagnostic: (message) => diagnostics.push(message),
+            diagnosticEvent: (event) => diagnosticEvents.push(event),
         });
 
         expect(result.ok).toBe(true);
@@ -1261,6 +1264,17 @@ describe('unbypassable enforcement', () => {
         expect(
             diagnostics.filter((message) => message.includes('evil-kernel-adapter')),
         ).toHaveLength(2);
+        expect(diagnosticEvents).toHaveLength(2);
+        expect(diagnosticEvents).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    kind: 'authorization',
+                    source: 'plugin',
+                    pluginId,
+                    outcome: 'failed',
+                }),
+            ]),
+        );
     });
 
     it('allows kernel adapter operations after the mapped capability is granted', async () => {

@@ -1,7 +1,13 @@
 import type { ReactElement } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { eventColor, eventNameLabel, formatTime, payloadPreview } from '../../lib/event-display.js';
+import {
+    eventColor,
+    eventNameLabel,
+    formatTime,
+    telemetryEntryContext,
+    telemetryEntryPreview,
+} from '../../lib/event-display.js';
 import { useWorkflowState } from '../../lib/use-workflow-state.js';
 import { type BusEventEntry, useAppStore } from '../../store/app-store.js';
 
@@ -15,6 +21,9 @@ function isWorkflowOutput(entry: BusEventEntry): boolean {
         case 'workflow.completed':
         case 'workflow.error':
         case 'workflow.cancelled':
+        case 'node.completed':
+        case 'engine.diagnostic':
+        case 'plugin.event':
             return true;
         default:
             return false;
@@ -90,8 +99,12 @@ export function VariableInspector({ workflowId }: VariableInspectorProps): React
                                             {eventNameLabel(entry.name)}
                                         </span>
                                         <span className="text-parchment min-w-0 break-words">
-                                            {entry.telemetry?.summary ??
-                                                payloadPreview(entry.payload)}
+                                            {telemetryEntryPreview(entry)}
+                                            {telemetryEntryContext(entry) ? (
+                                                <span className="text-veil ml-2 text-[10px] uppercase">
+                                                    {telemetryEntryContext(entry)}
+                                                </span>
+                                            ) : null}
                                         </span>
                                     </div>
                                 ))}

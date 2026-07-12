@@ -27,6 +27,7 @@ import {
 } from '../shared/persistence.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import type { Engine } from './engine.js';
+import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
 import { updatePluginPermissions } from './node-plugin-loader.js';
 import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
 import type { WorkflowActivator } from './workflow-activator.js';
@@ -43,7 +44,7 @@ export interface DispatchSubsystems {
     readonly lifecycle?: WorkflowLifecycle;
     readonly shutdown?: () => Promise<void>;
     readonly broadcastWorkflowsList: () => void;
-    readonly log: (message: string) => void;
+    readonly log: (message: string, context?: Omit<EngineDiagnosticPayload, 'message'>) => void;
     readonly propertiesPath: string;
 }
 
@@ -63,6 +64,11 @@ function handlePing(message: EnginePing, subsystems: DispatchSubsystems): void {
 function handleFireTestEvent(subsystems: DispatchSubsystems): void {
     void subsystems.engine.execute(sampleManualTriggerToLog).catch((err: unknown) => {
         const detail = err instanceof Error ? err.message : String(err);
+        subsystems.log(`[error] engine.execute failed: ${detail}`, {
+            source: 'worker',
+            kind: 'execution-dispatch',
+            outcome: 'failed',
+        });
         subsystems.postMessage({
             type: EngineChannel.Log,
             line: `[error] engine.execute failed: ${detail}`,
@@ -76,6 +82,11 @@ function handleFireManualTrigger(
 ): void {
     void subsystems.engine.execute(message.pipeline).catch((err: unknown) => {
         const detail = err instanceof Error ? err.message : String(err);
+        subsystems.log(`[error] manual trigger execution failed: ${detail}`, {
+            source: 'worker',
+            kind: 'execution-dispatch',
+            outcome: 'failed',
+        });
         subsystems.postMessage({
             type: EngineChannel.Log,
             line: `[error] manual trigger execution failed: ${detail}`,

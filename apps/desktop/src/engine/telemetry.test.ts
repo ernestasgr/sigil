@@ -110,4 +110,39 @@ describe('run telemetry', () => {
             timestamp: 125,
         });
     });
+
+    it('keeps plugin diagnostic identity and failure outcome on a Workflow-scoped sink', () => {
+        const bus = createEventBus();
+        const events: BusEvent[] = [];
+        bus.subscribe((event) => events.push(event));
+
+        const telemetry = createRunTelemetry(
+            bus,
+            { workflowId: 'workflow-1', pipelineId: 'pipeline-1', runId: 'run-1' },
+            { now: () => 1234, createEventId: () => 'diagnostic-1' },
+        );
+
+        telemetry
+            .forNode({ nodeId: 'node-1', nodeType: 'plugin-node', pluginId: 'plugin-1' })
+            .bus.next({
+                name: 'engine.diagnostic',
+                payload: {
+                    message: 'Permission denied: filesystem.read',
+                    kind: 'authorization',
+                    source: 'plugin',
+                    pluginId: 'plugin-1',
+                    outcome: 'failed',
+                },
+            });
+
+        expect(events[0]?.telemetry).toMatchObject({
+            kind: 'diagnostic',
+            severity: 'error',
+            workflowId: 'workflow-1',
+            runId: 'run-1',
+            nodeId: 'node-1',
+            pluginId: 'plugin-1',
+            outcome: 'failed',
+        });
+    });
 });

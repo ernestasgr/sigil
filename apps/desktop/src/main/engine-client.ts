@@ -23,6 +23,7 @@ import {
 } from '../shared/ipc-channels.js';
 import type { PersistenceWriteOutcome } from '../shared/persistence.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
+import { redactTelemetryText } from '../shared/telemetry-safety.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -97,6 +98,27 @@ export type RpcClient = {
     readonly rejectAll: (reason: string) => void;
     readonly dispatch: (message: EngineMessage) => void;
 };
+
+function workerDiagnosticEvent(message: string): EngineBusEventPayload {
+    const timestamp = Date.now();
+    return {
+        name: 'engine.diagnostic',
+        payload: {
+            message,
+            kind: 'engine-worker',
+            source: 'worker',
+            outcome: 'failed',
+        },
+        timestamp,
+        telemetry: {
+            eventId: randomUUID(),
+            timestamp,
+            kind: 'diagnostic',
+            severity: 'error',
+            summary: redactTelemetryText(message),
+        },
+    };
+}
 
 type WorkflowWriteResponse = {
     readonly summary?: WorkflowSummary;
@@ -257,6 +279,14 @@ export function spawnEngine(): EngineHandle {
     const busEventHandlers = new Set<(event: EngineBusEventPayload) => void>();
     const readyHandlers = new Set<() => void>();
     let ready = false;
+    let workerFailureReported = false;
+
+    const reportWorkerFailure = (message: string): void => {
+        if (workerFailureReported) return;
+        workerFailureReported = true;
+        const event = workerDiagnosticEvent(message);
+        for (const handler of [...busEventHandlers]) handler(event);
+    };
 
     const client = createRpcClient({
         postMessage: (msg: unknown) => {
@@ -289,12 +319,16 @@ export function spawnEngine(): EngineHandle {
 
     worker.on('error', (err) => {
         console.error('[engine] worker error:', err);
+        reportWorkerFailure(
+            `[worker] engine worker error: ${err instanceof Error ? err.message : String(err)}`,
+        );
         client.rejectAll('engine worker error');
     });
 
     worker.on('exit', (code) => {
         if (code !== 0) {
             console.warn(`[engine] worker exited with code ${code}`);
+            reportWorkerFailure(`[worker] engine worker exited with code ${code}`);
         }
         client.rejectAll(`engine worker exited with code ${code}`);
     });
