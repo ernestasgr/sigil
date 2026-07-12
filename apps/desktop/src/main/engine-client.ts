@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import type { CompiledPipeline } from '@sigil/schema';
 import type { Capability } from '@sigil/schema/manifest';
-import { Option } from 'effect';
 import { app } from 'electron';
 import { z } from 'zod';
 import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
@@ -17,6 +16,8 @@ import {
     type EnginePong,
     EngineReadySchema,
     type PersistenceDiagnostic,
+    type WorkflowActionOutcome,
+    type WorkflowDeleteOutcome,
     type WorkflowWriteDiagnostic,
     type WorkflowWriteOutcome,
 } from '../shared/ipc-channels.js';
@@ -30,8 +31,8 @@ export type EngineHandle = {
     readonly ping: (timeoutMs?: number) => Promise<EnginePong>;
     readonly fireTestEvent: () => void;
     readonly fireManualTrigger: (pipeline: CompiledPipeline) => void;
-    readonly toggleWorkflow: (id: string) => Promise<Option.Option<WorkflowSummary>>;
-    readonly retryWorkflow: (id: string) => Promise<Option.Option<WorkflowSummary>>;
+    readonly toggleWorkflow: (id: string) => Promise<WorkflowActionOutcome>;
+    readonly retryWorkflow: (id: string) => Promise<WorkflowActionOutcome>;
     readonly createWorkflow: (
         name: string,
         pipeline: CompiledPipeline,
@@ -43,7 +44,7 @@ export type EngineHandle = {
         pipeline: CompiledPipeline,
         positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
     ) => Promise<WorkflowWriteOutcome>;
-    readonly deleteWorkflow: (id: string) => Promise<boolean>;
+    readonly deleteWorkflow: (id: string) => Promise<WorkflowDeleteOutcome>;
     readonly getWorkflow: (id: string, timeoutMs?: number) => Promise<EngineGetWorkflowResult>;
     readonly listPlugins: (timeoutMs?: number) => Promise<readonly PluginInfo[]>;
     readonly setPermissionOverride: (
@@ -97,29 +98,25 @@ export type RpcClient = {
     readonly dispatch: (message: EngineMessage) => void;
 };
 
-export interface EnginePersistenceError extends Error {
-    readonly kind: 'persistence';
-    readonly diagnostics: readonly PersistenceDiagnostic[];
-}
-
-type WorkflowMutationResponse = {
+type WorkflowWriteResponse = {
     readonly summary?: WorkflowSummary;
     readonly error?: string;
     readonly diagnostics?: readonly WorkflowWriteDiagnostic[];
 };
 
-function createPersistenceError(
-    message: string,
-    diagnostics: readonly PersistenceDiagnostic[],
-): EnginePersistenceError {
-    return Object.assign(new Error(message), {
-        name: 'EnginePersistenceError',
-        kind: 'persistence' as const,
-        diagnostics,
-    });
-}
+type WorkflowActionResponse = {
+    readonly summary: WorkflowSummary | null;
+    readonly error?: string;
+    readonly diagnostics?: readonly PersistenceDiagnostic[];
+};
 
-function toWorkflowWriteOutcome(response: WorkflowMutationResponse): WorkflowWriteOutcome {
+type WorkflowDeleteResponse = {
+    readonly success: boolean;
+    readonly error?: string;
+    readonly diagnostic?: PersistenceDiagnostic;
+};
+
+function toWorkflowWriteOutcome(response: WorkflowWriteResponse): WorkflowWriteOutcome {
     if (response.summary) return { ok: true, summary: response.summary };
     return {
         ok: false,
@@ -128,15 +125,27 @@ function toWorkflowWriteOutcome(response: WorkflowMutationResponse): WorkflowWri
     };
 }
 
-function requireWorkflowOption(response: {
-    readonly summary: WorkflowSummary | null;
-    readonly error?: string;
-    readonly diagnostics?: readonly PersistenceDiagnostic[];
-}): Option.Option<WorkflowSummary> {
+function toWorkflowActionOutcome(response: WorkflowActionResponse): WorkflowActionOutcome {
     if (response.error) {
-        throw createPersistenceError(response.error, response.diagnostics ?? []);
+        return {
+            ok: false,
+            error: response.error,
+            diagnostics: response.diagnostics ?? [],
+        };
     }
-    return Option.fromNullable(response.summary);
+    return { ok: true, summary: response.summary };
+}
+
+function toWorkflowDeleteOutcome(response: WorkflowDeleteResponse): WorkflowDeleteOutcome {
+    if (response.error) {
+        return {
+            ok: false,
+            success: false,
+            error: response.error,
+            diagnostics: response.diagnostic ? [response.diagnostic] : [],
+        };
+    }
+    return { ok: true, success: response.success };
 }
 
 export function createRpcClient(props: RpcClientProps): RpcClient {
@@ -300,23 +309,15 @@ export function spawnEngine(): EngineHandle {
         fireManualTrigger(pipeline: CompiledPipeline): void {
             worker.postMessage({ type: EngineChannel.FireManualTrigger, pipeline });
         },
-        toggleWorkflow(id: string): Promise<Option.Option<WorkflowSummary>> {
+        toggleWorkflow(id: string): Promise<WorkflowActionOutcome> {
             return client
-                .rpc<{
-                    summary: WorkflowSummary | null;
-                    error?: string;
-                    diagnostics?: readonly PersistenceDiagnostic[];
-                }>(EngineChannel.ToggleWorkflow, { id }, 5000)
-                .then(requireWorkflowOption);
+                .rpc<WorkflowActionResponse>(EngineChannel.ToggleWorkflow, { id }, 5000)
+                .then(toWorkflowActionOutcome);
         },
-        retryWorkflow(id: string): Promise<Option.Option<WorkflowSummary>> {
+        retryWorkflow(id: string): Promise<WorkflowActionOutcome> {
             return client
-                .rpc<{
-                    summary: WorkflowSummary | null;
-                    error?: string;
-                    diagnostics?: readonly PersistenceDiagnostic[];
-                }>(EngineChannel.RetryWorkflow, { id }, 5000)
-                .then(requireWorkflowOption);
+                .rpc<WorkflowActionResponse>(EngineChannel.RetryWorkflow, { id }, 5000)
+                .then(toWorkflowActionOutcome);
         },
         createWorkflow(
             name: string,
@@ -324,7 +325,7 @@ export function spawnEngine(): EngineHandle {
             positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
         ): Promise<WorkflowWriteOutcome> {
             return client
-                .rpc<WorkflowMutationResponse>(
+                .rpc<WorkflowWriteResponse>(
                     EngineChannel.CreateWorkflow,
                     { name, pipeline, positions },
                     5000,
@@ -338,26 +339,17 @@ export function spawnEngine(): EngineHandle {
             positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
         ): Promise<WorkflowWriteOutcome> {
             return client
-                .rpc<WorkflowMutationResponse>(
+                .rpc<WorkflowWriteResponse>(
                     EngineChannel.UpdateWorkflow,
                     { id, name, pipeline, positions },
                     5000,
                 )
                 .then(toWorkflowWriteOutcome);
         },
-        deleteWorkflow(id: string): Promise<boolean> {
+        deleteWorkflow(id: string): Promise<WorkflowDeleteOutcome> {
             return client
-                .rpc<{
-                    success: boolean;
-                    error?: string;
-                    diagnostic?: PersistenceDiagnostic;
-                }>(EngineChannel.DeleteWorkflow, { id }, 5000)
-                .then((r) => {
-                    if (r.error) {
-                        throw createPersistenceError(r.error, r.diagnostic ? [r.diagnostic] : []);
-                    }
-                    return r.success;
-                });
+                .rpc<WorkflowDeleteResponse>(EngineChannel.DeleteWorkflow, { id }, 5000)
+                .then(toWorkflowDeleteOutcome);
         },
         getWorkflow(id: string, timeoutMs = 5000): Promise<EngineGetWorkflowResult> {
             return client.rpc<EngineGetWorkflowResult>(

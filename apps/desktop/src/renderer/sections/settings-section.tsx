@@ -19,6 +19,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function persistenceErrorMessage(
+    error: string,
+    diagnostic: { readonly phase: string; readonly path: string },
+): string {
+    return `${error} [${diagnostic.phase}] ${diagnostic.path}`;
+}
+
 function capabilityLabel(cap: Capability): string {
     return cap
         .split('.')
@@ -589,6 +596,7 @@ export function SettingsSection(): ReactElement {
     const [pluginsLoading, setPluginsLoading] = useState(true);
     const [properties, setProperties] = useState<Record<string, unknown>>({});
     const [propertiesLoading, setPropertiesLoading] = useState(true);
+    const [persistenceError, setPersistenceError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'permissions' | 'properties' | 'workflow-state'>(
         'permissions',
     );
@@ -596,6 +604,7 @@ export function SettingsSection(): ReactElement {
     const sigil = useSigil();
 
     const loadData = useCallback(() => {
+        setPersistenceError(null);
         setPluginsLoading(true);
         setPropertiesLoading(true);
         sigil
@@ -620,6 +629,7 @@ export function SettingsSection(): ReactElement {
                 .setPermissionOverride(pluginId, overrides)
                 .then((result) => {
                     if (result.ok) {
+                        setPersistenceError(null);
                         setPlugins((prev) =>
                             prev.map((p) =>
                                 p.manifest.id === pluginId
@@ -628,6 +638,9 @@ export function SettingsSection(): ReactElement {
                             ),
                         );
                     } else {
+                        setPersistenceError(
+                            persistenceErrorMessage(result.error, result.diagnostic),
+                        );
                         console.error(
                             'Failed to set permission override:',
                             result.error,
@@ -636,6 +649,7 @@ export function SettingsSection(): ReactElement {
                     }
                 })
                 .catch((err: unknown) => {
+                    setPersistenceError(err instanceof Error ? err.message : String(err));
                     console.error('Failed to set permission override:', err);
                 });
         },
@@ -648,8 +662,12 @@ export function SettingsSection(): ReactElement {
                 .saveProperties(props)
                 .then((result) => {
                     if (result.ok) {
+                        setPersistenceError(null);
                         setProperties(props);
                     } else {
+                        setPersistenceError(
+                            persistenceErrorMessage(result.error, result.diagnostic),
+                        );
                         console.error(
                             'Failed to save properties:',
                             result.error,
@@ -658,6 +676,7 @@ export function SettingsSection(): ReactElement {
                     }
                 })
                 .catch((err: unknown) => {
+                    setPersistenceError(err instanceof Error ? err.message : String(err));
                     console.error('Failed to save properties:', err);
                 });
         },
@@ -673,6 +692,11 @@ export function SettingsSection(): ReactElement {
     return (
         <SectionShell title="Settings" subtitle="Permissions, properties, and workflow state.">
             <div className="flex flex-col gap-8">
+                {persistenceError ? (
+                    <p role="alert" className="font-data text-old-blood text-xs">
+                        {persistenceError}
+                    </p>
+                ) : null}
                 <div className="border-gilt/30 flex border-b">
                     <button
                         type="button"

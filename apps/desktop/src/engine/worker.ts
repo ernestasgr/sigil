@@ -11,7 +11,11 @@ import {
     type WorkerInbound,
     WorkerInboundSchema,
 } from '../shared/ipc-channels.js';
-import { formatPersistenceDiagnostic, type PersistenceDiagnostic } from '../shared/persistence.js';
+import {
+    formatPersistenceDiagnostic,
+    isExpectedMissingFileDiagnostic,
+    type PersistenceDiagnostic,
+} from '../shared/persistence.js';
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
 import { createEngine } from './engine.js';
 import { readPropertiesFile } from './properties-loader.js';
@@ -53,7 +57,7 @@ function log(message: string): void {
     engine.bus.next({ name: 'engine.diagnostic', payload: { message } });
 }
 
-if (propertiesDiagnostic?.phase === 'parse') {
+if (propertiesDiagnostic && !isExpectedMissingFileDiagnostic(propertiesDiagnostic)) {
     log(`Properties file diagnostic: ${formatPersistenceDiagnostic(propertiesDiagnostic)}`);
 }
 

@@ -21,7 +21,10 @@ import {
     type EngineUpdateWorkflow,
     type WorkerInbound,
 } from '../shared/ipc-channels.js';
-import { formatPersistenceDiagnostic } from '../shared/persistence.js';
+import {
+    formatPersistenceDiagnostic,
+    isExpectedMissingFileDiagnostic,
+} from '../shared/persistence.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import type { Engine } from './engine.js';
 import { updatePluginPermissions } from './node-plugin-loader.js';
@@ -372,7 +375,7 @@ function handleSetPermissionOverride(
 function handleReadProperties(message: EngineReadProperties, subsystems: DispatchSubsystems): void {
     const current = readPropertiesFile(subsystems.propertiesPath).pipe(
         Effect.catchAll((error) => {
-            if (error.phase === 'parse') {
+            if (!isExpectedMissingFileDiagnostic(error)) {
                 subsystems.log(`Properties file diagnostic: ${formatPersistenceDiagnostic(error)}`);
             }
             return Effect.succeed({});

@@ -7,6 +7,8 @@ import {
     type EngineBusEventPayload,
     type EnginePong,
     RendererChannel,
+    type WorkflowActionOutcome,
+    type WorkflowDeleteOutcome,
     type WorkflowWriteOutcome,
 } from '../shared/ipc-channels.js';
 import type { PersistenceWriteOutcome } from '../shared/persistence.js';
@@ -17,9 +19,9 @@ const api = {
     rendererReady: (): Promise<void> => ipcRenderer.invoke(RendererChannel.RendererReady),
     pingEngine: (): Promise<EnginePong | null> => ipcRenderer.invoke(RendererChannel.EnginePong),
     fireTestEvent: (): Promise<void> => ipcRenderer.invoke(RendererChannel.FireTestEvent),
-    toggleWorkflow: (id: string): Promise<WorkflowSummary | null> =>
+    toggleWorkflow: (id: string): Promise<WorkflowActionOutcome> =>
         ipcRenderer.invoke(RendererChannel.ToggleWorkflow, id),
-    retryWorkflow: (id: string): Promise<WorkflowSummary | null> =>
+    retryWorkflow: (id: string): Promise<WorkflowActionOutcome> =>
         ipcRenderer.invoke(RendererChannel.RetryWorkflow, id),
     createWorkflow: (
         name: string,
@@ -34,7 +36,7 @@ const api = {
         positions: Readonly<Record<string, NodePosition>>,
     ): Promise<WorkflowWriteOutcome> =>
         ipcRenderer.invoke(RendererChannel.UpdateWorkflow, id, name, pipeline, positions),
-    deleteWorkflow: (id: string): Promise<boolean> =>
+    deleteWorkflow: (id: string): Promise<WorkflowDeleteOutcome> =>
         ipcRenderer.invoke(RendererChannel.DeleteWorkflow, id),
     getWorkflow: (
         id: string,

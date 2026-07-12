@@ -132,6 +132,58 @@ describe('EngineMessageSchema', () => {
             expect('error' in result.data).toBe(true);
         }
     });
+
+    it.each([
+        EngineChannel.ToggleWorkflowResult,
+        EngineChannel.RetryWorkflowResult,
+    ])('rejects a %s success response with unknown fields', (type) => {
+        const result = EngineMessageSchema.safeParse({
+            type,
+            correlationId: 'corr-action-extra',
+            summary: null,
+            extra: true,
+        });
+
+        expect(result.success).toBe(false);
+    });
+
+    it.each([
+        EngineChannel.ToggleWorkflowResult,
+        EngineChannel.RetryWorkflowResult,
+    ])('rejects a %s failure when its diagnostics are invalid', (type) => {
+        const result = EngineMessageSchema.safeParse({
+            type,
+            correlationId: 'corr-action-invalid',
+            summary: null,
+            error: 42,
+            diagnostics: [],
+        });
+
+        expect(result.success).toBe(false);
+    });
+
+    it('does not let an invalid delete failure fall through to not-found', () => {
+        const result = EngineMessageSchema.safeParse({
+            type: EngineChannel.DeleteWorkflowResult,
+            correlationId: 'corr-delete-invalid',
+            success: false,
+            error: 'replacement denied',
+            diagnostic: { invalid: true },
+        });
+
+        expect(result.success).toBe(false);
+    });
+
+    it('rejects a delete success response with unknown fields', () => {
+        const result = EngineMessageSchema.safeParse({
+            type: EngineChannel.DeleteWorkflowResult,
+            correlationId: 'corr-delete-extra',
+            success: false,
+            extra: true,
+        });
+
+        expect(result.success).toBe(false);
+    });
 });
 
 describe('EngineWorkflowsListSchema', () => {
