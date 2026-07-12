@@ -16,6 +16,7 @@ import {
     type EngineSaveProperties,
     type EngineSetPermissionOverride,
     type EngineSetWorkflowStateKey,
+    type EngineShutdown,
     type EngineToggleWorkflow,
     type EngineUpdateWorkflow,
     type WorkerInbound,
@@ -35,6 +36,7 @@ export interface DispatchSubsystems {
     readonly store: WorkflowStore;
     readonly activator: WorkflowActivator;
     readonly lifecycle?: WorkflowLifecycle;
+    readonly shutdown?: () => Promise<void>;
     readonly broadcastWorkflowsList: () => void;
     readonly log: (message: string) => void;
     readonly propertiesPath: string;
@@ -151,12 +153,15 @@ function handleCreateWorkflow(message: EngineCreateWorkflow, subsystems: Dispatc
     });
 }
 
-function handleUpdateWorkflow(message: EngineUpdateWorkflow, subsystems: DispatchSubsystems): void {
+async function handleUpdateWorkflow(
+    message: EngineUpdateWorkflow,
+    subsystems: DispatchSubsystems,
+): Promise<void> {
     const existed = Option.isSome(subsystems.store.get(message.id));
     let summary: ReturnType<WorkflowStore['save']>;
     try {
         summary = subsystems.lifecycle
-            ? subsystems.lifecycle.update(message.id, () =>
+            ? await subsystems.lifecycle.updateAndDrain(message.id, () =>
                   subsystems.store.save(
                       message.id,
                       message.name,
@@ -195,11 +200,17 @@ function handleUpdateWorkflow(message: EngineUpdateWorkflow, subsystems: Dispatc
     });
 }
 
-function handleDeleteWorkflow(message: EngineDeleteWorkflow, subsystems: DispatchSubsystems): void {
+async function handleDeleteWorkflow(
+    message: EngineDeleteWorkflow,
+    subsystems: DispatchSubsystems,
+): Promise<void> {
     if (subsystems.lifecycle) {
         subsystems.lifecycle.disable(message.id);
     } else {
         subsystems.activator.deactivate(message.id);
+    }
+    if (subsystems.activator.hasInFlightRuns?.(message.id)) {
+        await subsystems.activator.waitForRuns(message.id);
     }
     const removed = subsystems.store.remove(message.id);
     if (removed) {
@@ -210,6 +221,26 @@ function handleDeleteWorkflow(message: EngineDeleteWorkflow, subsystems: Dispatc
         type: EngineChannel.DeleteWorkflowResult,
         correlationId: message.correlationId,
         success: removed,
+    });
+}
+
+async function handleShutdown(
+    message: EngineShutdown,
+    subsystems: DispatchSubsystems,
+): Promise<void> {
+    let ok = true;
+    try {
+        await subsystems.shutdown?.();
+    } catch (err) {
+        ok = false;
+        subsystems.log(
+            `[error] engine shutdown failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+    }
+    subsystems.postMessage({
+        type: EngineChannel.ShutdownResult,
+        correlationId: message.correlationId,
+        ok,
     });
 }
 
@@ -323,8 +354,11 @@ function handleDeleteWorkflowStateKey(
     });
 }
 
-export function dispatch(message: WorkerInbound, subsystems: DispatchSubsystems): void {
-    Match.value(message).pipe(
+export function dispatch(
+    message: WorkerInbound,
+    subsystems: DispatchSubsystems,
+): void | Promise<void> {
+    return Match.value(message).pipe(
         Match.when({ type: EngineChannel.Ping }, (msg) => handlePing(msg, subsystems)),
         Match.when({ type: EngineChannel.FireTestEvent }, () => handleFireTestEvent(subsystems)),
         Match.when({ type: EngineChannel.FireManualTrigger }, (msg) =>
@@ -345,6 +379,7 @@ export function dispatch(message: WorkerInbound, subsystems: DispatchSubsystems)
         Match.when({ type: EngineChannel.DeleteWorkflow }, (msg) =>
             handleDeleteWorkflow(msg, subsystems),
         ),
+        Match.when({ type: EngineChannel.Shutdown }, (msg) => handleShutdown(msg, subsystems)),
         Match.when({ type: EngineChannel.GetWorkflow }, (msg) =>
             handleGetWorkflow(msg, subsystems),
         ),

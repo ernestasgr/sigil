@@ -21,7 +21,7 @@ export interface PluginEventSink {
     readonly emit: (eventName: string, payload: Readonly<Record<string, unknown>>) => Promise<void>;
 }
 
-export type Sleep = (ms: number) => Promise<void>;
+export type Sleep = (ms: number, signal?: AbortSignal) => Promise<void>;
 export type ResolveTemplate = (template: string, ctx: WorkflowContext) => string;
 export type EvaluateCondition = (condition: PipelineCondition, ctx: WorkflowContext) => boolean;
 export type MatchSwitchCase = (config: SwitchConfig, ctx: WorkflowContext) => string;
@@ -30,6 +30,8 @@ export interface NodeHandlerDeps {
     readonly bus: EventSink;
     /** Present for worker-backed Plugins; built-in Nodes use the Event Bus directly. */
     readonly event?: PluginEventSink;
+    /** Aborted when the owning Workflow run is cancelled or drained. */
+    readonly signal?: AbortSignal;
     readonly sleep: Sleep;
     readonly resolveTemplate: ResolveTemplate;
     readonly evaluateCondition: EvaluateCondition;

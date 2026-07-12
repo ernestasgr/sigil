@@ -11,6 +11,11 @@ export interface WorkflowLifecycle {
     readonly toggle: (workflowId: string) => Option.Option<WorkflowSummary>;
     readonly activateEnabled: (workflowId: string) => Option.Option<WorkflowSummary>;
     readonly update: (workflowId: string, save: () => WorkflowSummary) => WorkflowSummary;
+    readonly updateAndDrain: (
+        workflowId: string,
+        save: () => WorkflowSummary,
+    ) => Promise<WorkflowSummary>;
+    readonly waitForRuns: (workflowId: string) => Promise<void>;
 }
 
 export function createWorkflowLifecycle(
@@ -79,6 +84,40 @@ export function createWorkflowLifecycle(
                 }
                 throw error;
             }
+        },
+
+        async updateAndDrain(
+            workflowId: string,
+            save: () => WorkflowSummary,
+        ): Promise<WorkflowSummary> {
+            const current = store.getSummary(workflowId);
+            if (Option.isNone(current)) return save();
+
+            const wasEnabled = current.value.enabled;
+            const wasActivated = current.value.activation.kind !== 'disabled';
+            if (wasActivated) activator.deactivate(workflowId);
+            if (activator.hasInFlightRuns(workflowId)) {
+                await activator.waitForRuns(workflowId);
+            }
+
+            try {
+                const saved = save();
+                if (!wasEnabled) return saved;
+
+                activator.activate(workflowId);
+                const reactivated = store.setEnabled(workflowId, true);
+                return Option.isSome(reactivated) ? reactivated.value : saved;
+            } catch (error) {
+                if (wasEnabled) {
+                    activator.activate(workflowId);
+                    store.setEnabled(workflowId, true);
+                }
+                throw error;
+            }
+        },
+
+        waitForRuns(workflowId: string): Promise<void> {
+            return activator.waitForRuns(workflowId);
         },
     };
 }

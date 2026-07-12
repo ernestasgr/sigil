@@ -19,6 +19,9 @@ describe('EventPayloadSchemaRegistry', () => {
             'workflow.started',
             'workflow.completed',
             'workflow.error',
+            'workflow.queued',
+            'workflow.dropped',
+            'workflow.cancelled',
             'manual.trigger.fired',
             'log.output',
             'notification.show',
@@ -34,6 +37,37 @@ describe('EventPayloadSchemaRegistry', () => {
         ['workflow.started', { pipelineId: 'p1' }],
         ['workflow.completed', { pipelineId: 'p1' }],
         ['workflow.error', { pipelineId: 'p1', nodeId: 'log', message: 'boom' }],
+        [
+            'workflow.queued',
+            {
+                pipelineId: 'p1',
+                workflowId: 'wf1',
+                runId: 'run1',
+                queueSize: 1,
+                policy: { concurrency: 1, queueLimit: 16, overflow: 'drop-newest' },
+            },
+        ],
+        [
+            'workflow.dropped',
+            {
+                pipelineId: 'p1',
+                workflowId: 'wf1',
+                runId: 'run2',
+                queueSize: 16,
+                policy: { concurrency: 1, queueLimit: 16, overflow: 'drop-newest' },
+                reason: 'queue_full',
+            },
+        ],
+        [
+            'workflow.cancelled',
+            {
+                pipelineId: 'p1',
+                workflowId: 'wf1',
+                runId: 'run1',
+                phase: 'running',
+                reason: 'disabled',
+            },
+        ],
         [
             'manual.trigger.fired',
             { path: '/dl/foo.txt', name: 'foo.txt', ext: 'txt', size: 1024, dir: '/dl' },

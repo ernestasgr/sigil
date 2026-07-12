@@ -123,9 +123,29 @@ const activator = createWorkflowActivator(
 );
 const lifecycle = createWorkflowLifecycle(store, activator);
 
+let disposed = false;
+let shutdownPromise: Promise<void> | undefined;
+
+function disposeEngine(): void {
+    if (disposed) return;
+    disposed = true;
+    engine.dispose();
+}
+
+function shutdown(): Promise<void> {
+    if (!shutdownPromise) {
+        shutdownPromise = (async (): Promise<void> => {
+            activator.dispose();
+            await activator.waitForAllRuns();
+            disposeEngine();
+        })();
+    }
+    return shutdownPromise;
+}
+
 process.on('exit', () => {
     activator.dispose();
-    engine.dispose();
+    disposeEngine();
 });
 
 const subsystems: DispatchSubsystems = {
@@ -134,6 +154,7 @@ const subsystems: DispatchSubsystems = {
     store,
     activator,
     lifecycle,
+    shutdown,
     broadcastWorkflowsList,
     log,
     propertiesPath,
@@ -154,7 +175,13 @@ port.on('message', (raw: unknown) => {
     }
     const message = parsed.data;
     try {
-        dispatch(message, subsystems);
+        void Promise.resolve(dispatch(message, subsystems)).catch((err: unknown) => {
+            console.error('[worker] unhandled async error processing message:', err);
+            port.postMessage({
+                type: EngineChannel.Log,
+                line: `[error] unhandled error processing message: ${err instanceof Error ? err.message : String(err)}`,
+            });
+        });
     } catch (err) {
         console.error('[worker] unhandled error processing message:', err);
         port.postMessage({
