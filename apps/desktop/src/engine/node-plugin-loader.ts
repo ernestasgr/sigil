@@ -615,7 +615,7 @@ function handleDepsRpc(
                 );
                 return;
             }
-            handleEventEmitRpc(msg, pendingExecutes, worker, pluginId, bridge, diagnostic);
+            void handleEventEmitRpc(msg, pendingExecutes, worker, pluginId, bridge, diagnostic);
             return;
         case 'fileWatcherManager.registerSubscriber':
         case 'fileWatcherManager.unregisterSubscriber':
@@ -707,7 +707,7 @@ function handleNodeHandlerDepsRpc(
     }
 }
 
-function handleEventEmitRpc(
+async function handleEventEmitRpc(
     msg: NodePluginEventRpc,
     pendingExecutes: Map<
         string,
@@ -721,7 +721,7 @@ function handleEventEmitRpc(
     pluginId: string,
     bridge: Pick<Bridge, 'emit'>,
     diagnostic?: (message: string) => void,
-): void {
+): Promise<void> {
     const executeRequestId = msg.executeRequestId;
     if (!executeRequestId) {
         denyPluginOperation(
@@ -750,9 +750,12 @@ function handleEventEmitRpc(
 
     try {
         const [eventName, payload] = msg.args;
-        const result = bridge.emit(pluginId, { eventName, payload }, pending.deps.bus);
+        const result = await bridge.emit(pluginId, { eventName, payload }, pending.deps.bus);
         if (Either.isLeft(result)) {
-            const reason = `${result.left.kind} for event "${eventName}"`;
+            const reason =
+                result.left.kind === 'sink_failed'
+                    ? `${result.left.kind} for event "${eventName}": ${result.left.error}`
+                    : `${result.left.kind} for event "${eventName}"`;
             denyPluginOperation(worker, msg.requestId, pluginId, msg.operation, reason, diagnostic);
             return;
         }

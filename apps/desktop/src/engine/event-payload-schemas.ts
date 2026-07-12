@@ -75,19 +75,32 @@ export const WorkflowCancelledPayloadSchema = z
     .readonly();
 export type WorkflowCancelledPayload = z.infer<typeof WorkflowCancelledPayloadSchema>;
 
-export const NodeRunPayloadSchema = z
+const NodeRunPayloadFields = {
+    pipelineId: z.string(),
+    workflowId: z.string().optional(),
+    runId: z.string().optional(),
+    nodeId: z.string(),
+    nodeType: z.string(),
+} as const;
+
+export const NodeStartedPayloadSchema = z
     .object({
-        pipelineId: z.string(),
-        workflowId: z.string().optional(),
-        runId: z.string().optional(),
-        nodeId: z.string(),
-        nodeType: z.string(),
-        outcome: z.enum(['running', 'succeeded', 'failed', 'cancelled']),
-        durationMs: z.number().finite().nonnegative().optional(),
+        ...NodeRunPayloadFields,
+        outcome: z.literal('running'),
         message: z.string().max(256).optional(),
     })
     .readonly();
-export type NodeRunPayload = z.infer<typeof NodeRunPayloadSchema>;
+export type NodeStartedPayload = z.infer<typeof NodeStartedPayloadSchema>;
+
+export const NodeCompletedPayloadSchema = z
+    .object({
+        ...NodeRunPayloadFields,
+        outcome: z.enum(['succeeded', 'failed', 'cancelled']),
+        durationMs: z.number().finite().nonnegative(),
+        message: z.string().max(256).optional(),
+    })
+    .readonly();
+export type NodeCompletedPayload = z.infer<typeof NodeCompletedPayloadSchema>;
 
 export const LogOutputPayloadSchema = z
     .object({
@@ -128,8 +141,8 @@ type EventPayloadMap = {
     'workflow.queued': WorkflowQueuedPayload;
     'workflow.dropped': WorkflowDroppedPayload;
     'workflow.cancelled': WorkflowCancelledPayload;
-    'node.started': NodeRunPayload;
-    'node.completed': NodeRunPayload;
+    'node.started': NodeStartedPayload;
+    'node.completed': NodeCompletedPayload;
     'manual.trigger.fired': FileEventPayload;
     'log.output': LogOutputPayload;
     'notification.show': NotificationShowPayload;
@@ -184,12 +197,12 @@ const EVENT_PAYLOAD_SCHEMA_REGISTRY = {
         color: 'text-veil',
     },
     'node.started': {
-        schema: NodeRunPayloadSchema,
+        schema: NodeStartedPayloadSchema,
         label: 'Node Started',
         color: 'text-gilt',
     },
     'node.completed': {
-        schema: NodeRunPayloadSchema,
+        schema: NodeCompletedPayloadSchema,
         label: 'Node Completed',
         color: 'text-verdigris',
     },

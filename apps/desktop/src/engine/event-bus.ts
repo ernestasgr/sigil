@@ -8,8 +8,10 @@ import {
     EngineDiagnosticPayloadSchema,
     type LogOutputPayload,
     LogOutputPayloadSchema,
-    type NodeRunPayload,
-    NodeRunPayloadSchema,
+    type NodeCompletedPayload,
+    NodeCompletedPayloadSchema,
+    type NodeStartedPayload,
+    NodeStartedPayloadSchema,
     type NotificationShowPayload,
     NotificationShowPayloadSchema,
     type PluginBusEventPayload,
@@ -32,7 +34,8 @@ import {
 export type {
     EngineDiagnosticPayload,
     LogOutputPayload,
-    NodeRunPayload,
+    NodeCompletedPayload,
+    NodeStartedPayload,
     NotificationShowPayload,
     PluginBusEventPayload,
     WorkflowCancelledPayload,
@@ -47,7 +50,8 @@ export type {
 export {
     EngineDiagnosticPayloadSchema,
     LogOutputPayloadSchema,
-    NodeRunPayloadSchema,
+    NodeCompletedPayloadSchema,
+    NodeStartedPayloadSchema,
     NotificationShowPayloadSchema,
     PluginBusEventPayloadSchema,
     WorkflowCancelledPayloadSchema,
@@ -72,8 +76,8 @@ export type BusEvent =
     | BusEventEnvelope<'workflow.queued', WorkflowQueuedPayload>
     | BusEventEnvelope<'workflow.dropped', WorkflowDroppedPayload>
     | BusEventEnvelope<'workflow.cancelled', WorkflowCancelledPayload>
-    | BusEventEnvelope<'node.started', NodeRunPayload>
-    | BusEventEnvelope<'node.completed', NodeRunPayload>
+    | BusEventEnvelope<'node.started', NodeStartedPayload>
+    | BusEventEnvelope<'node.completed', NodeCompletedPayload>
     | BusEventEnvelope<'manual.trigger.fired', FileEventPayload>
     | BusEventEnvelope<'log.output', LogOutputPayload>
     | BusEventEnvelope<'notification.show', NotificationShowPayload>

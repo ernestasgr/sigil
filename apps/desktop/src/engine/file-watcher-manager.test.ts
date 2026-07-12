@@ -76,7 +76,7 @@ function collectFileEvents(): { events: FileEvent[]; onEvent: (e: FileEvent) => 
 // ─── Tests ────────────────────────────────────────────────────────
 
 describe('Bridge + Manifest validation seam', () => {
-    it('delivers a declared file.created event through the bridge onto the bus', () => {
+    it('delivers a declared file.created event through the bridge onto the bus', async () => {
         const bus = createEventBus();
         const registry = createManifestRegistry();
         registry.register(fileWatcherManifest);
@@ -84,7 +84,7 @@ describe('Bridge + Manifest validation seam', () => {
         const busEvents: BusEvent[] = [];
         bus.subscribe((e) => busEvents.push(e));
 
-        const result = bridge.emit(FILE_WATCHER_PLUGIN_ID, {
+        const result = await bridge.emit(FILE_WATCHER_PLUGIN_ID, {
             eventName: 'file.created',
             payload: {
                 path: '/tmp/report.pdf',
@@ -111,7 +111,7 @@ describe('Bridge + Manifest validation seam', () => {
         }
     });
 
-    it('delivers file.modified and file.deleted through the bridge', () => {
+    it('delivers file.modified and file.deleted through the bridge', async () => {
         const bus = createEventBus();
         const registry = createManifestRegistry();
         registry.register(fileWatcherManifest);
@@ -121,11 +121,11 @@ describe('Bridge + Manifest validation seam', () => {
             if (e.name === 'plugin.event') names.push(e.payload.eventName);
         });
 
-        bridge.emit(FILE_WATCHER_PLUGIN_ID, {
+        await bridge.emit(FILE_WATCHER_PLUGIN_ID, {
             eventName: 'file.modified',
             payload: { path: '/a.txt', name: 'a.txt', ext: 'txt', size: 10, dir: '/' },
         });
-        bridge.emit(FILE_WATCHER_PLUGIN_ID, {
+        await bridge.emit(FILE_WATCHER_PLUGIN_ID, {
             eventName: 'file.deleted',
             payload: { path: '/b.txt', name: 'b.txt', ext: 'txt', size: 0, dir: '/' },
         });
@@ -133,7 +133,7 @@ describe('Bridge + Manifest validation seam', () => {
         expect(names).toEqual(['file.modified', 'file.deleted']);
     });
 
-    it('blocks an undeclared event name at the bridge', () => {
+    it('blocks an undeclared event name at the bridge', async () => {
         const bus = createEventBus();
         const registry = createManifestRegistry();
         registry.register(fileWatcherManifest);
@@ -141,7 +141,7 @@ describe('Bridge + Manifest validation seam', () => {
         const busEvents: BusEvent[] = [];
         bus.subscribe((e) => busEvents.push(e));
 
-        const result = bridge.emit(FILE_WATCHER_PLUGIN_ID, {
+        const result = await bridge.emit(FILE_WATCHER_PLUGIN_ID, {
             eventName: 'evil.exfil',
             payload: {},
         });
@@ -153,7 +153,7 @@ describe('Bridge + Manifest validation seam', () => {
         expect(busEvents).toHaveLength(0);
     });
 
-    it('carries FileEventPayload-shaped data to the subscriber', () => {
+    it('carries FileEventPayload-shaped data to the subscriber', async () => {
         const bus = createEventBus();
         const registry = createManifestRegistry();
         registry.register(fileWatcherManifest);
@@ -161,7 +161,7 @@ describe('Bridge + Manifest validation seam', () => {
         const busEvents: BusEvent[] = [];
         bus.subscribe((e) => busEvents.push(e));
 
-        bridge.emit(FILE_WATCHER_PLUGIN_ID, {
+        await bridge.emit(FILE_WATCHER_PLUGIN_ID, {
             eventName: 'file.created',
             payload: {
                 path: '/data/photo.jpg',

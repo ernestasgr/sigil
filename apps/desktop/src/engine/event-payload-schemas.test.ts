@@ -5,7 +5,8 @@ import {
     EngineDiagnosticPayloadSchema,
     EventPayloadSchemaRegistry,
     LogOutputPayloadSchema,
-    NodeRunPayloadSchema,
+    NodeCompletedPayloadSchema,
+    NodeStartedPayloadSchema,
     NotificationShowPayloadSchema,
     PluginBusEventPayloadSchema,
     safeParsePayload,
@@ -172,6 +173,24 @@ describe('EventPayloadSchemaRegistry', () => {
             'workflow.cancelled',
             { pipelineId: 'p1', workflowId: 'wf1', runId: 'run1', phase: 'running' },
         ],
+        [
+            'node.started',
+            {
+                pipelineId: 'p1',
+                nodeId: 'node1',
+                nodeType: 'log',
+                outcome: 'succeeded',
+            },
+        ],
+        [
+            'node.completed',
+            {
+                pipelineId: 'p1',
+                nodeId: 'node1',
+                nodeType: 'log',
+                outcome: 'running',
+            },
+        ],
         ['manual.trigger.fired', { path: '' }],
         ['log.output', {}],
         ['notification.show', { title: 123 }],
@@ -303,9 +322,44 @@ describe('WorkflowCancelledPayloadSchema', () => {
     });
 });
 
-describe('NodeRunPayloadSchema', () => {
-    it('requires correlated node identity and a node outcome', () => {
-        const result = NodeRunPayloadSchema.safeParse({
+describe('NodeStartedPayloadSchema', () => {
+    it('requires a running outcome and correlated node identity', () => {
+        const result = NodeStartedPayloadSchema.safeParse({
+            pipelineId: 'p1',
+            workflowId: 'wf1',
+            runId: 'run1',
+            nodeId: 'node1',
+            nodeType: 'log',
+            outcome: 'running',
+        });
+
+        expect(result.success).toBe(true);
+    });
+
+    it('rejects a terminal outcome', () => {
+        const result = NodeStartedPayloadSchema.safeParse({
+            pipelineId: 'p1',
+            nodeId: 'node1',
+            nodeType: 'log',
+            outcome: 'succeeded',
+        });
+
+        expect(result.success).toBe(false);
+    });
+
+    it('rejects a node payload without its identity', () => {
+        const result = NodeStartedPayloadSchema.safeParse({
+            pipelineId: 'p1',
+            outcome: 'running',
+        });
+
+        expect(result.success).toBe(false);
+    });
+});
+
+describe('NodeCompletedPayloadSchema', () => {
+    it('requires a terminal outcome and duration', () => {
+        const result = NodeCompletedPayloadSchema.safeParse({
             pipelineId: 'p1',
             workflowId: 'wf1',
             runId: 'run1',
@@ -318,9 +372,22 @@ describe('NodeRunPayloadSchema', () => {
         expect(result.success).toBe(true);
     });
 
-    it('rejects a node payload without its identity', () => {
-        const result = NodeRunPayloadSchema.safeParse({
+    it('rejects a running outcome without duration', () => {
+        const result = NodeCompletedPayloadSchema.safeParse({
             pipelineId: 'p1',
+            nodeId: 'node1',
+            nodeType: 'log',
+            outcome: 'running',
+        });
+
+        expect(result.success).toBe(false);
+    });
+
+    it('rejects a terminal outcome without duration', () => {
+        const result = NodeCompletedPayloadSchema.safeParse({
+            pipelineId: 'p1',
+            nodeId: 'node1',
+            nodeType: 'log',
             outcome: 'succeeded',
         });
 

@@ -25,7 +25,7 @@ describe('run telemetry', () => {
                     pluginId: 'com.example.plugin',
                     eventName: 'plugin.output',
                     data: {
-                        message: 'authorization=also-do-not-leak',
+                        message: 'authorization: Bearer also-do-not-leak',
                         token: 'do-not-leak',
                     },
                 },
@@ -49,6 +49,29 @@ describe('run telemetry', () => {
             },
         });
         expect(events[0]?.telemetry?.summary).not.toContain('do-not-leak');
+    });
+
+    it('falls back for non-finite timestamps and omits non-finite durations', () => {
+        const bus = createEventBus();
+        const events: BusEvent[] = [];
+        bus.subscribe((event) => events.push(event));
+
+        const telemetry = createRunTelemetry(
+            bus,
+            { workflowId: 'workflow-1', pipelineId: 'pipeline-1', runId: 'run-1' },
+            { now: () => 1234, createEventId: () => 'event-1' },
+        );
+
+        telemetry.emit(
+            { name: 'log.output', payload: { message: 'hello' } },
+            { timestamp: Number.NaN, durationMs: Number.POSITIVE_INFINITY },
+        );
+
+        expect(events[0]).toMatchObject({
+            timestamp: 1234,
+            telemetry: { timestamp: 1234 },
+        });
+        expect(events[0]?.telemetry).not.toHaveProperty('durationMs');
     });
 
     it('publishes a terminal node outcome once with its duration', () => {
