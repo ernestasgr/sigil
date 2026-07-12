@@ -204,7 +204,7 @@ function nodeEventOptions(event: BusEvent, options: TelemetryEventOptions): Tele
         case 'plugin.event':
             return { ...options, kind: 'plugin' };
         case 'engine.diagnostic':
-            return { ...options, kind: 'diagnostic', severity: 'error', outcome: 'failed' };
+            return { ...options, kind: 'diagnostic' };
         default:
             return options;
     }
