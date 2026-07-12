@@ -4,6 +4,7 @@ import type { CompiledPipeline } from './pipeline.js';
 
 const TOPOLOGY_DIAGNOSTIC_CODES = [
     'invalid_pipeline',
+    'unsupported_schema_version',
     'empty_pipeline',
     'missing_trigger',
     'multiple_triggers',

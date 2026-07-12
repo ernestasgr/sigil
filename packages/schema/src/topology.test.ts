@@ -45,6 +45,17 @@ function diagnosticCodes(result: ReturnType<typeof validateWorkflowTopology>): r
 }
 
 describe('validateWorkflowTopology', () => {
+    it('accepts persistence schema-version diagnostics as first-class diagnostics', () => {
+        const result = TopologyDiagnosticSchema.safeParse({
+            severity: 'error',
+            code: 'unsupported_schema_version',
+            target: { kind: 'pipeline' },
+            message: 'The stored Workflow uses an unsupported schema version.',
+        });
+
+        expect(result.success).toBe(true);
+    });
+
     it('accepts warning diagnostics as a first-class severity', () => {
         const result = TopologyDiagnosticSchema.safeParse({
             severity: 'warning',

@@ -22,6 +22,7 @@ import { PipelineNodeSchema } from '@sigil/schema/nodes';
 import {
     type ExecutableWorkflow,
     type TopologyDiagnostic,
+    type TopologyDiagnosticCode,
     validateWorkflowTopology,
     type WorkflowTopologyOptions,
 } from '@sigil/schema/topology';
@@ -236,11 +237,14 @@ function filePath(dir: string, id: string): string {
 }
 
 const NodePositionSchema = z.object({ x: z.number(), y: z.number() }).readonly();
+const CURRENT_WORKFLOW_SCHEMA_VERSION = PipelineSchemaVersionSchema.value;
+const LEGACY_WORKFLOW_SCHEMA_VERSION = 0;
 
 const StoredWorkflowFileSchema = z.object({
     id: WorkflowIdSchema,
     name: z.string(),
     enabled: z.boolean().optional(),
+    schemaVersion: z.number().int().optional(),
     positions: z.record(z.string(), z.unknown()).optional(),
     pipelineId: z.string().min(1).optional(),
     workflowId: WorkflowIdSchema.optional(),
@@ -270,12 +274,40 @@ function workflowIdentity(
     };
 }
 
-function storedWorkflowDiagnostic(fileName: string, detail: string): TopologyDiagnostic {
+function storedWorkflowDiagnostic(
+    fileName: string,
+    detail: string,
+    code: TopologyDiagnosticCode = 'invalid_pipeline',
+): TopologyDiagnostic {
     return {
         severity: 'error',
-        code: 'invalid_pipeline',
+        code,
         target: { kind: 'pipeline' },
         message: `Stored Workflow file "${fileName}" is malformed: ${detail} Repair or remove the file before enabling it.`,
+    };
+}
+
+function migrateSchemaVersion(
+    fileName: string,
+    schemaVersion: number | undefined,
+):
+    | { readonly ok: true; readonly value: PipelineSchemaVersion }
+    | { readonly ok: false; readonly diagnostic: TopologyDiagnostic } {
+    if (
+        schemaVersion === undefined ||
+        schemaVersion === LEGACY_WORKFLOW_SCHEMA_VERSION ||
+        schemaVersion === CURRENT_WORKFLOW_SCHEMA_VERSION
+    ) {
+        return { ok: true, value: CURRENT_WORKFLOW_SCHEMA_VERSION };
+    }
+
+    return {
+        ok: false,
+        diagnostic: storedWorkflowDiagnostic(
+            fileName,
+            `it uses unsupported schema version ${schemaVersion}. Supported versions are the legacy version ${LEGACY_WORKFLOW_SCHEMA_VERSION} and current version ${CURRENT_WORKFLOW_SCHEMA_VERSION}; leave the file unchanged for recovery.`,
+            'unsupported_schema_version',
+        ),
     };
 }
 
@@ -362,6 +394,11 @@ function readWorkflowFile(
         ]);
     }
 
+    const schemaVersion = migrateSchemaVersion(fileName, parsedFile.data.schemaVersion);
+    if (!schemaVersion.ok) {
+        return invalidWorkflowRecord(storagePath, workflowId, raw, [schemaVersion.diagnostic]);
+    }
+
     if (parsedFile.data.id !== workflowId) {
         return invalidWorkflowRecord(storagePath, workflowId, raw, [
             storedWorkflowDiagnostic(
@@ -384,7 +421,7 @@ function readWorkflowFile(
     const pipeline = {
         id: parsedFile.data.pipelineId ?? parsedFile.data.id,
         workflowId: persistedWorkflowId,
-        schemaVersion: PipelineSchemaVersionSchema.value,
+        schemaVersion: schemaVersion.value,
         nodes: parsedFile.data.nodes ?? [],
         edges: parsedFile.data.edges ?? [],
     };
