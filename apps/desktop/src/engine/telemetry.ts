@@ -6,7 +6,13 @@ import type {
     TelemetryOutcome,
     TelemetrySeverity,
 } from '../shared/telemetry.js';
-import type { BusEvent, EventBus, EventSink } from './event-bus.js';
+import type {
+    BusEvent,
+    EventBus,
+    EventSink,
+    NodeCompletedPayload,
+    NodeStartedPayload,
+} from './event-bus.js';
 
 const MAX_SUMMARY_LENGTH = 256;
 const MAX_SUMMARY_STRING_LENGTH = 96;
@@ -16,7 +22,7 @@ const MAX_SUMMARY_ARRAY_ITEMS = 8;
 const SENSITIVE_KEY_PATTERN =
     /(?:password|passphrase|secret|token|authorization|cookie|api[-_]?key|private[-_]?key)/i;
 const SENSITIVE_TEXT_PATTERN =
-    /\b(password|passphrase|secret|token|authorization|cookie|api[-_]?key|private[-_]?key)\s*[:=]\s*([^\s,;]+)/gi;
+    /\b((?:password|passphrase|secret|token|authorization|cookie|api[-_]?key|private[-_]?key)\s*[:=]\s*)([^\r\n,;]+)/gi;
 
 export interface RunTelemetryIdentity {
     readonly workflowId: string;
@@ -194,7 +200,7 @@ function boundedMessage(message: string | undefined): string | undefined {
 
 export function safeTelemetryMessage(message: string): string {
     return truncate(
-        message.replace(SENSITIVE_TEXT_PATTERN, (_match, key: string) => `${key}=[REDACTED]`),
+        message.replace(SENSITIVE_TEXT_PATTERN, (_match, prefix: string) => `${prefix}[REDACTED]`),
         MAX_SUMMARY_LENGTH,
     );
 }
@@ -202,17 +208,36 @@ export function safeTelemetryMessage(message: string): string {
 function nodePayload(
     identity: RunTelemetryIdentity,
     node: NodeTelemetryIdentity,
+    outcome: 'running',
+    durationMs?: undefined,
+    message?: string,
+): NodeStartedPayload;
+function nodePayload(
+    identity: RunTelemetryIdentity,
+    node: NodeTelemetryIdentity,
+    outcome: NodeRunOutcome,
+    durationMs: number,
+    message?: string,
+): NodeCompletedPayload;
+function nodePayload(
+    identity: RunTelemetryIdentity,
+    node: NodeTelemetryIdentity,
     outcome: NodeRunOutcome | 'running',
     durationMs?: number,
     message?: string,
-) {
-    return {
+): NodeStartedPayload | NodeCompletedPayload {
+    const common = {
         ...identity,
         ...node,
-        outcome,
-        ...(durationMs === undefined ? {} : { durationMs }),
-        ...(message === undefined ? {} : { message: boundedMessage(message) }),
     };
+    const messagePayload = message === undefined ? {} : { message: boundedMessage(message) };
+    if (outcome === 'running') {
+        return { ...common, outcome, ...messagePayload };
+    }
+    if (durationMs === undefined) {
+        throw new Error('Node completion telemetry requires a duration');
+    }
+    return { ...common, outcome, durationMs, ...messagePayload };
 }
 
 export function nodeTelemetryIdentity(node: PipelineNode): NodeTelemetryIdentity {
@@ -232,12 +257,17 @@ export function createRunTelemetry(
 
     function emit(event: BusEvent, eventOptions: TelemetryEventOptions = {}): void {
         const outcome = eventOptions.outcome ?? eventOutcome(event);
+        const timestamp =
+            eventOptions.timestamp === undefined || !Number.isFinite(eventOptions.timestamp)
+                ? eventTime(now)
+                : Math.max(0, Math.trunc(eventOptions.timestamp));
+        const durationMs =
+            eventOptions.durationMs === undefined || !Number.isFinite(eventOptions.durationMs)
+                ? undefined
+                : Math.max(0, eventOptions.durationMs);
         const metadata: EventTelemetry = {
             eventId: createEventId(),
-            timestamp:
-                eventOptions.timestamp === undefined
-                    ? eventTime(now)
-                    : Math.max(0, Math.trunc(eventOptions.timestamp)),
+            timestamp,
             kind: eventOptions.kind ?? eventKind(event.name),
             severity: eventOptions.severity ?? eventSeverity(event, outcome),
             ...identity,
@@ -245,9 +275,7 @@ export function createRunTelemetry(
             ...(eventOptions.nodeType === undefined ? {} : { nodeType: eventOptions.nodeType }),
             ...(eventOptions.pluginId === undefined ? {} : { pluginId: eventOptions.pluginId }),
             ...(outcome === undefined ? {} : { outcome }),
-            ...(eventOptions.durationMs === undefined
-                ? {}
-                : { durationMs: Math.max(0, eventOptions.durationMs) }),
+            ...(durationMs === undefined ? {} : { durationMs }),
             summary: summarize(event.payload),
         };
 

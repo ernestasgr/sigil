@@ -109,6 +109,58 @@ describe('Node Plugin Event Bridge mediation', () => {
         }
     });
 
+    it('reports an asynchronous sink failure through the plugin RPC acknowledgement', async () => {
+        const pluginId = 'com.sigil.event-sink-failure';
+        const pluginDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-event-sink-failure-'));
+        const events: BusEvent[] = [];
+        const diagnostics: string[] = [];
+        try {
+            writePlugin(
+                pluginDir,
+                pluginId,
+                ['plugin.output'],
+                "        await deps.event.emit('plugin.output', { message: 'hello' });",
+            );
+
+            const manifestRegistry = createManifestRegistry();
+            const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+            const eventBus = createEventBus();
+            eventBus.subscribe((event) => events.push(event));
+            const bridge = createBridge(eventBus, manifestRegistry);
+            const result = await loadNodePlugin(pluginDir, {
+                manifestRegistry,
+                handlerRegistry,
+                bridge,
+                diagnostic: (message) => diagnostics.push(message),
+            });
+
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+
+            const handler = Option.getOrThrow(handlerRegistry.get(NODE_TYPE));
+            await expect(
+                handler.execute(
+                    {
+                        node: { id: 'node-1', type: NODE_TYPE, pluginId, config: {} },
+                        ctx: { event: '', payload: {}, vars: {} },
+                    },
+                    {
+                        bus: {
+                            next: async () => {
+                                throw new Error('telemetry sink failed');
+                            },
+                        },
+                    } as never,
+                ),
+            ).rejects.toThrow('telemetry sink failed');
+
+            expect(events).toEqual([]);
+            expect(diagnostics.some((message) => message.includes('sink_failed'))).toBe(true);
+        } finally {
+            rmSync(pluginDir, { recursive: true, force: true });
+        }
+    });
+
     it('rejects an undeclared emission before publication and identifies the operation', async () => {
         const pluginId = 'com.sigil.event-undeclared';
         const pluginDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-event-undeclared-'));

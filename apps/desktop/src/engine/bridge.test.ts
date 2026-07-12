@@ -15,7 +15,7 @@ const stubPingManifest: Manifest = {
 };
 
 describe('createBridge', () => {
-    it('forwards a declared emission onto the bus as a plugin.event', () => {
+    it('forwards a declared emission onto the bus as a plugin.event', async () => {
         const bus = createEventBus();
         const registry = createManifestRegistry();
         registry.register(stubPingManifest);
@@ -25,7 +25,7 @@ describe('createBridge', () => {
             received.push(event);
         });
 
-        const result = bridge.emit('com.sigil.stub-ping', {
+        const result = await bridge.emit('com.sigil.stub-ping', {
             eventName: 'stub.ping',
             payload: { message: 'hello' },
         });
@@ -40,7 +40,7 @@ describe('createBridge', () => {
         }
     });
 
-    it('blocks an undeclared emission before it reaches the bus', () => {
+    it('blocks an undeclared emission before it reaches the bus', async () => {
         const bus = createEventBus();
         const registry = createManifestRegistry();
         registry.register(stubPingManifest);
@@ -50,7 +50,7 @@ describe('createBridge', () => {
             received.push(event);
         });
 
-        const result = bridge.emit('com.sigil.stub-ping', {
+        const result = await bridge.emit('com.sigil.stub-ping', {
             eventName: 'evil.exfil',
             payload: { secret: 'data' },
         });
@@ -63,7 +63,7 @@ describe('createBridge', () => {
         expect(received).toHaveLength(0);
     });
 
-    it('publishes Plugin events through the execution-scoped telemetry sink', () => {
+    it('publishes Plugin events through the execution-scoped telemetry sink', async () => {
         const bus = createEventBus();
         const registry = createManifestRegistry();
         registry.register(stubPingManifest);
@@ -81,7 +81,7 @@ describe('createBridge', () => {
         const received: BusEvent[] = [];
         bus.subscribe((event) => received.push(event));
 
-        const result = bridge.emit(
+        const result = await bridge.emit(
             stubPingManifest.id,
             { eventName: 'stub.ping', payload: { token: 'secret' } },
             node.bus,
@@ -97,7 +97,33 @@ describe('createBridge', () => {
         expect(received[0]?.telemetry?.summary).not.toContain('secret');
     });
 
-    it('blocks an emission from an unknown plugin', () => {
+    it('returns a failed result when an asynchronous sink rejects', async () => {
+        const bus = createEventBus();
+        const registry = createManifestRegistry();
+        registry.register(stubPingManifest);
+        const bridge = createBridge(bus, registry);
+
+        const result = await bridge.emit(
+            stubPingManifest.id,
+            { eventName: 'stub.ping', payload: {} },
+            {
+                next: async () => {
+                    throw new Error('sink failed');
+                },
+            },
+        );
+
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left).toEqual({
+                kind: 'sink_failed',
+                error: 'sink failed',
+                eventName: 'stub.ping',
+            });
+        }
+    });
+
+    it('blocks an emission from an unknown plugin', async () => {
         const bus = createEventBus();
         const registry = createManifestRegistry();
         const bridge = createBridge(bus, registry);
@@ -106,7 +132,7 @@ describe('createBridge', () => {
             received.push(event);
         });
 
-        const result = bridge.emit('com.sigil.ghost', {
+        const result = await bridge.emit('com.sigil.ghost', {
             eventName: 'stub.ping',
             payload: {},
         });
@@ -115,7 +141,7 @@ describe('createBridge', () => {
         expect(received).toHaveLength(0);
     });
 
-    it('carries the typed payload through to the subscriber', () => {
+    it('carries the typed payload through to the subscriber', async () => {
         const bus = createEventBus();
         const registry = createManifestRegistry();
         registry.register(stubPingManifest);
@@ -125,7 +151,7 @@ describe('createBridge', () => {
             received.push(event);
         });
 
-        bridge.emit('com.sigil.stub-ping', {
+        await bridge.emit('com.sigil.stub-ping', {
             eventName: 'stub.ping',
             payload: { message: 'hello sigil' },
         });
@@ -154,7 +180,7 @@ describe('createBridge', () => {
         expect(logEvent?.name === 'log.output' && logEvent.payload.message).toBe('plugin says hi');
     });
 
-    it('delivers multiple events to subscribers in order', () => {
+    it('delivers multiple events to subscribers in order', async () => {
         const bus = createEventBus();
         const registry = createManifestRegistry();
         const multiManifest: Manifest = {
@@ -172,8 +198,8 @@ describe('createBridge', () => {
             }
         });
 
-        bridge.emit('com.sigil.multi', { eventName: 'a.first', payload: {} });
-        bridge.emit('com.sigil.multi', { eventName: 'a.second', payload: {} });
+        await bridge.emit('com.sigil.multi', { eventName: 'a.first', payload: {} });
+        await bridge.emit('com.sigil.multi', { eventName: 'a.second', payload: {} });
 
         expect(names).toEqual(['a.first', 'a.second']);
     });

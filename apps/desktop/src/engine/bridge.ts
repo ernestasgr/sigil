@@ -5,10 +5,11 @@ import type { ManifestRegistry } from './manifest-registry.js';
 
 export type EmissionError =
     | { readonly kind: 'malformed'; readonly error: string; readonly eventName: string }
-    | { readonly kind: 'undeclared'; readonly eventName: string };
+    | { readonly kind: 'undeclared'; readonly eventName: string }
+    | { readonly kind: 'sink_failed'; readonly error: string; readonly eventName: string };
 export type EmissionResult = Either.Either<void, EmissionError>;
 
-export type BridgeEmissionResult = EmissionResult;
+export type BridgeEmissionResult = Promise<EmissionResult>;
 
 export const PluginEmissionSchema = z
     .object({
@@ -29,7 +30,7 @@ export interface Bridge {
 
 export function createBridge(bus: EventBus, registry: ManifestRegistry): Bridge {
     return {
-        emit: (pluginId, emission, sink) => {
+        emit: async (pluginId, emission, sink) => {
             const parsedEmission = PluginEmissionSchema.safeParse(emission);
             if (!parsedEmission.success) {
                 return Either.left({
@@ -52,8 +53,16 @@ export function createBridge(bus: EventBus, registry: ManifestRegistry): Bridge 
                     data: payload,
                 },
             };
-            void (sink ?? bus).next(event);
-            return Either.right(undefined);
+            try {
+                await (sink ?? bus).next(event);
+                return Either.right(undefined);
+            } catch (error) {
+                return Either.left({
+                    kind: 'sink_failed',
+                    error: error instanceof Error ? error.message : String(error),
+                    eventName,
+                });
+            }
         },
         log: (pluginId, message) => {
             if (!registry.has(pluginId)) {
