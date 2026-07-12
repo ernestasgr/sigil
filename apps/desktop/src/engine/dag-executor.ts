@@ -180,9 +180,10 @@ export async function executeValidatedWorkflow(
     executionOptions: ExecutionOptions = {},
 ): Promise<WorkflowExecutionResult> {
     const pipeline = workflow.pipeline;
+    const workflowId = executionOptions.workflowId ?? pipeline.workflowId;
     const runPayload: WorkflowRunPayload = {
         pipelineId: pipeline.id,
-        workflowId: executionOptions.workflowId ?? pipeline.workflowId,
+        workflowId,
         ...(executionOptions.runId ? { runId: executionOptions.runId } : {}),
     };
 
@@ -191,7 +192,7 @@ export async function executeValidatedWorkflow(
     }
 
     bus.next({ name: 'workflow.started', payload: runPayload });
-    const state = stateStore.forWorkflow(pipeline.workflowId);
+    const state = stateStore.forWorkflow(workflowId);
 
     try {
         const nodeById = new Map<string, PipelineNode>(
