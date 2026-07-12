@@ -469,6 +469,116 @@ describe('WorkflowStore', () => {
         expect(parsePipeline(Option.getOrThrow(loaded).pipeline).ok).toBe(true);
     });
 
+    it('loads legacy unversioned Workflows and canonicalizes them on the next successful write', () => {
+        const legacyPipeline = {
+            ...samplePipeline,
+            id: 'pipeline-legacy',
+            workflowId: 'wf-legacy',
+        };
+        writeFileSync(
+            join(dir, 'wf-legacy.json'),
+            JSON.stringify({
+                id: legacyPipeline.workflowId,
+                name: 'Legacy Workflow',
+                enabled: false,
+                positions: samplePositions,
+                pipelineId: legacyPipeline.id,
+                workflowId: legacyPipeline.workflowId,
+                nodes: legacyPipeline.nodes,
+                edges: legacyPipeline.edges,
+            }),
+        );
+
+        store = createWorkflowStore(dir);
+
+        const loaded = store.get('wf-legacy');
+        expect(Option.isSome(loaded)).toBe(true);
+        if (Option.isSome(loaded)) {
+            expect(loaded.value.pipeline.schemaVersion).toBe(1);
+        }
+
+        expect(Option.isSome(store.setActivation('wf-legacy', { kind: 'active' }))).toBe(true);
+        expect(JSON.parse(readFileSync(join(dir, 'wf-legacy.json'), 'utf8')).schemaVersion).toBe(1);
+    });
+
+    it('loads an explicit legacy schema version as the current in-memory Pipeline without rewriting on startup', () => {
+        const legacyPipeline = {
+            ...samplePipeline,
+            id: 'pipeline-legacy-zero',
+            workflowId: 'wf-legacy-zero',
+        };
+        writeFileSync(
+            join(dir, 'wf-legacy-zero.json'),
+            JSON.stringify({
+                id: legacyPipeline.workflowId,
+                name: 'Legacy Zero Workflow',
+                schemaVersion: 0,
+                pipelineId: legacyPipeline.id,
+                workflowId: legacyPipeline.workflowId,
+                nodes: legacyPipeline.nodes,
+                edges: legacyPipeline.edges,
+            }),
+        );
+
+        store = createWorkflowStore(dir);
+
+        const loaded = store.get('wf-legacy-zero');
+        expect(Option.isSome(loaded)).toBe(true);
+        if (Option.isSome(loaded)) {
+            expect(loaded.value.pipeline.schemaVersion).toBe(1);
+        }
+        expect(
+            JSON.parse(readFileSync(join(dir, 'wf-legacy-zero.json'), 'utf8')).schemaVersion,
+        ).toBe(0);
+    });
+
+    it('keeps unsupported schema versions visible with diagnostics without hiding valid Workflows', () => {
+        const supportedPipeline = {
+            ...samplePipeline,
+            id: 'pipeline-supported',
+            workflowId: 'wf-supported',
+        };
+        store.create('Supported Workflow', supportedPipeline, {});
+
+        const futurePipeline = {
+            ...samplePipeline,
+            id: 'pipeline-future',
+            workflowId: 'wf-future',
+        };
+        writeFileSync(
+            join(dir, 'wf-future.json'),
+            JSON.stringify({
+                id: futurePipeline.workflowId,
+                name: 'Future Workflow',
+                enabled: true,
+                schemaVersion: 2,
+                pipelineId: futurePipeline.id,
+                workflowId: futurePipeline.workflowId,
+                nodes: futurePipeline.nodes,
+                edges: futurePipeline.edges,
+            }),
+        );
+
+        store = createWorkflowStore(dir);
+
+        expect(store.getSummary('wf-supported')).toMatchObject(
+            Option.some({ id: 'wf-supported', name: 'Supported Workflow' }),
+        );
+        expect(store.get('wf-future')).toEqual(Option.none());
+        expect(store.getSummary('wf-future')).toMatchObject(
+            Option.some({
+                id: 'wf-future',
+                enabled: false,
+                diagnostics: [
+                    expect.objectContaining({
+                        code: 'unsupported_schema_version',
+                        target: { kind: 'pipeline' },
+                    }),
+                ],
+            }),
+        );
+    });
+
     it('keeps valid positions while ignoring malformed position entries', () => {
         const fileData = {
             id: 'wf-positions',
