@@ -361,6 +361,26 @@ describe('createWorkflowStateStore — listKeys / setKey / deleteKey', () => {
         store.dispose();
         database.close();
     });
+
+    it('does not resurrect pending state after a failed Workflow deletion', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        store.setKey('wf-a', 'persisted', 'a');
+        store.forWorkflow('wf-a').set('pending', 'a-pending');
+        database.exec(
+            "CREATE TRIGGER fail_workflow_state_delete BEFORE DELETE ON workflow_state BEGIN SELECT RAISE(ABORT, 'delete failed'); END;",
+        );
+
+        expect(() => store.deleteWorkflow('wf-a')).toThrow('delete failed');
+
+        database.exec('DROP TRIGGER fail_workflow_state_delete');
+        store.flushAll();
+
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'persisted', value: 'a' }]);
+
+        store.dispose();
+        database.close();
+    });
 });
 
 describe('createInMemoryWorkflowStateStore — listKeys / setKey / deleteKey', () => {
