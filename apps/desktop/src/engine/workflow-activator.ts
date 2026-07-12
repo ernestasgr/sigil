@@ -6,6 +6,12 @@ import type { Engine } from './engine.js';
 import { isTriggerHandler } from './node-handlers/types.js';
 import type { NodeHandlerRegistry } from './node-registry.js';
 import { acceptWorkflow } from './workflow-acceptance.js';
+import {
+    createWorkflowRunSupervisor,
+    type WorkflowRunLifecycleEvent,
+    type WorkflowRunPolicy,
+    type WorkflowRunSupervisor,
+} from './workflow-run-supervisor.js';
 import type { WorkflowStore } from './workflow-store.js';
 
 export interface WorkflowActivator {
@@ -13,7 +19,14 @@ export interface WorkflowActivator {
     readonly deactivate: (workflowId: string) => boolean;
     readonly isActive: (workflowId: string) => boolean;
     readonly activeWorkflowIds: () => readonly string[];
+    readonly hasInFlightRuns: (workflowId: string) => boolean;
+    readonly waitForRuns: (workflowId: string) => Promise<void>;
+    readonly waitForAllRuns: () => Promise<void>;
     readonly dispose: () => void;
+}
+
+export interface WorkflowActivatorOptions {
+    readonly runPolicy?: Readonly<Partial<WorkflowRunPolicy>>;
 }
 
 type WorkflowEventCallback = (ctx: WorkflowContext) => void;
@@ -22,6 +35,7 @@ interface ActiveActivation {
     readonly token: number;
     readonly onEvent: WorkflowEventCallback;
     readonly teardown: () => void;
+    readonly supervisor: WorkflowRunSupervisor;
 }
 
 const deactivationHooks = new WeakMap<WorkflowEventCallback, (reason?: string) => void>();
@@ -45,8 +59,13 @@ export function createWorkflowActivator(
     store: WorkflowStore,
     handlerRegistry: NodeHandlerRegistry,
     onStateChange?: () => void,
+    options?: WorkflowActivatorOptions,
 ): WorkflowActivator {
     const active = new Map<string, ActiveActivation>();
+    const stoppedRuns = new Map<
+        string,
+        readonly { readonly supervisor: WorkflowRunSupervisor; readonly promise: Promise<void> }[]
+    >();
     let nextToken = 0;
 
     function setActivation(workflowId: string, activation: WorkflowActivationState): void {
@@ -69,6 +88,93 @@ export function createWorkflowActivator(
         setActivation(workflowId, { kind: 'failed', message });
         emitDiagnostic(diagnostic, 'workflow_activation');
         if (publishStateChange) onStateChange?.();
+    }
+
+    function publishRunLifecycleEvent(
+        event: WorkflowRunLifecycleEvent,
+        supervisor: WorkflowRunSupervisor,
+    ): void {
+        switch (event.kind) {
+            case 'queued':
+                engine.bus.next({
+                    name: 'workflow.queued',
+                    payload: {
+                        ...event.run,
+                        queueSize: event.queueSize,
+                        policy: supervisor.policy,
+                    },
+                });
+                return;
+            case 'dropped':
+                engine.bus.next({
+                    name: 'workflow.dropped',
+                    payload: {
+                        ...event.run,
+                        queueSize: event.queueSize,
+                        policy: supervisor.policy,
+                        reason: event.reason,
+                    },
+                });
+                return;
+            case 'cancelled':
+                // An active run publishes its cancellation from the executor;
+                // queued work has no executor to publish that terminal event.
+                if (event.phase === 'queued') {
+                    engine.bus.next({
+                        name: 'workflow.cancelled',
+                        payload: {
+                            ...event.run,
+                            phase: event.phase,
+                            reason: event.reason,
+                        },
+                    });
+                }
+                return;
+            case 'started':
+            case 'finished':
+                return;
+            default:
+                assertNever(event);
+        }
+    }
+
+    function rememberStoppedRuns(
+        workflowId: string,
+        supervisor: WorkflowRunSupervisor,
+        pending: Promise<void>,
+    ): void {
+        const guarded = pending.catch((error: unknown) => {
+            emitDiagnostic(
+                `[activator] run supervisor shutdown failed for ${workflowId}: ${errorMessage(error)}`,
+                'workflow_run',
+            );
+        });
+        const entry = { supervisor, promise: guarded };
+        stoppedRuns.set(workflowId, [...(stoppedRuns.get(workflowId) ?? []), entry]);
+        void guarded.then(() => {
+            const current = stoppedRuns.get(workflowId);
+            if (!current) return;
+            const remaining = current.filter((candidate) => candidate !== entry);
+            if (remaining.length === 0) {
+                stoppedRuns.delete(workflowId);
+            } else {
+                stoppedRuns.set(workflowId, remaining);
+            }
+        });
+    }
+
+    function stopRuns(
+        workflowId: string,
+        supervisor: WorkflowRunSupervisor,
+        reason: string,
+    ): Promise<void> {
+        const pending = supervisor.cancel(reason);
+        rememberStoppedRuns(workflowId, supervisor, pending);
+        return pending;
+    }
+
+    function assertNever(value: never): never {
+        throw new Error(`Unhandled Workflow run lifecycle event: ${JSON.stringify(value)}`);
     }
 
     return {
@@ -139,13 +245,33 @@ export function createWorkflowActivator(
             }
 
             const token = nextToken++;
+            let supervisor: WorkflowRunSupervisor | undefined;
             const onEvent: WorkflowEventCallback = (ctx): void => {
-                void engine.execute(executable, ctx).catch((err: unknown) => {
-                    emitDiagnostic(
-                        `[activator] workflow ${data.value.name} (${workflowId}) execution failed: ${errorMessage(err)}`,
-                    );
-                });
+                supervisor?.submit(ctx);
             };
+
+            supervisor = createWorkflowRunSupervisor({
+                workflowId,
+                pipelineId: executable.pipeline.id,
+                policy: options?.runPolicy,
+                onEvent: (event) => {
+                    if (supervisor) publishRunLifecycleEvent(event, supervisor);
+                },
+                execute: (run) =>
+                    engine.execute(executable, run.context, {
+                        runId: run.runId,
+                        workflowId,
+                        signal: run.signal,
+                    }),
+            });
+
+            engine.bus.next({
+                name: 'engine.diagnostic',
+                payload: {
+                    kind: 'workflow_run_policy',
+                    message: `[activator] workflow "${data.value.name}" (${workflowId}) run policy: ${supervisor.policy.concurrency === 1 ? 'serial' : 'parallel'} admission with concurrency=${supervisor.policy.concurrency}, queueLimit=${supervisor.policy.queueLimit}, overflow=${supervisor.policy.overflow}`,
+                },
+            });
 
             const handleActivationFailure = (reason?: string): void => {
                 const current = active.get(workflowId);
@@ -153,6 +279,7 @@ export function createWorkflowActivator(
 
                 active.delete(workflowId);
                 deactivationHooks.delete(onEvent);
+                stopRuns(workflowId, current.supervisor, reason ?? 'Trigger activation failed.');
                 try {
                     current.teardown();
                 } catch (err) {
@@ -172,7 +299,7 @@ export function createWorkflowActivator(
 
             try {
                 const teardown = handler.value.activate(trigger.config, onEvent);
-                active.set(workflowId, { token, onEvent, teardown });
+                active.set(workflowId, { token, onEvent, teardown, supervisor });
                 setActivation(workflowId, { kind: 'active' });
                 emitDiagnostic(
                     `[activator] trigger "${trigger.type}" active for "${data.value.name}" (${workflowId})`,
@@ -181,6 +308,7 @@ export function createWorkflowActivator(
                 return true;
             } catch (err) {
                 deactivationHooks.delete(onEvent);
+                stopRuns(workflowId, supervisor, 'Trigger activation failed.');
                 recordFailure(
                     workflowId,
                     errorMessage(err),
@@ -196,6 +324,7 @@ export function createWorkflowActivator(
             if (activation) {
                 active.delete(workflowId);
                 deactivationHooks.delete(activation.onEvent);
+                stopRuns(workflowId, activation.supervisor, 'Workflow disabled.');
                 try {
                     activation.teardown();
                 } catch (err) {
@@ -223,11 +352,44 @@ export function createWorkflowActivator(
             return [...active.keys()];
         },
 
+        hasInFlightRuns(workflowId: string): boolean {
+            const activation = active.get(workflowId);
+            if (
+                activation &&
+                (activation.supervisor.activeCount() > 0 || activation.supervisor.queuedCount() > 0)
+            ) {
+                return true;
+            }
+            return (stoppedRuns.get(workflowId) ?? []).some(
+                (entry) => entry.supervisor.activeCount() > 0 || entry.supervisor.queuedCount() > 0,
+            );
+        },
+
+        waitForRuns(workflowId: string): Promise<void> {
+            const activation = active.get(workflowId);
+            const pending = stoppedRuns.get(workflowId) ?? [];
+            return Promise.all([
+                ...(activation ? [activation.supervisor.waitForIdle()] : []),
+                ...pending.map((entry) => entry.promise),
+            ]).then(() => undefined);
+        },
+
+        async waitForAllRuns(): Promise<void> {
+            await Promise.all([
+                ...[...active.values()].map((activation) => activation.supervisor.waitForIdle()),
+                ...[...stoppedRuns.values()].flatMap((entries) =>
+                    entries.map((entry) => entry.promise),
+                ),
+            ]);
+        },
+
         dispose(): void {
             for (const workflowId of [...active.keys()]) {
                 const activation = active.get(workflowId);
                 if (activation) {
+                    active.delete(workflowId);
                     deactivationHooks.delete(activation.onEvent);
+                    stopRuns(workflowId, activation.supervisor, 'Engine shutting down.');
                     try {
                         activation.teardown();
                     } catch (err) {
@@ -237,7 +399,6 @@ export function createWorkflowActivator(
                         );
                     }
                 }
-                active.delete(workflowId);
                 setActivation(workflowId, disabledState());
             }
         },

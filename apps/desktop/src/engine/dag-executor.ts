@@ -12,6 +12,7 @@ import type { NodeHandlerDeps, NodeRunResult, Sleep } from './node-handlers/type
 import type { NodeHandlerRegistry } from './node-registry.js';
 import { resolveTemplate } from './template.js';
 import { acceptWorkflow } from './workflow-acceptance.js';
+import type { WorkflowRunOutcome } from './workflow-run-supervisor.js';
 import { createInMemoryWorkflowStateStore, type WorkflowStateStore } from './workflow-state.js';
 import { createWorkflowTopologyError } from './workflow-topology-error.js';
 
@@ -20,27 +21,62 @@ export interface ExecutorSettings {
     readonly collisionSuffixStyle: CollisionSuffixStyle;
 }
 
+export interface ExecutionOptions {
+    readonly runId?: string;
+    readonly workflowId?: string;
+    readonly signal?: AbortSignal;
+}
+
+export interface WorkflowExecutionResult {
+    readonly pipelineId: string;
+    readonly workflowId: string;
+    readonly runId?: string;
+    readonly outcome: WorkflowRunOutcome;
+    readonly message?: string;
+}
+
 export const DEFAULT_EXECUTOR_SETTINGS: ExecutorSettings = {
     notifyOnWorkflowError: true,
     collisionSuffixStyle: 'windows',
 };
 
-const DEFAULT_SLEEP: Sleep = (ms: number): Promise<void> =>
-    new Promise((resolve) => setTimeout(resolve, ms));
+const DEFAULT_SLEEP: Sleep = (ms: number, signal?: AbortSignal): Promise<void> => {
+    if (signal?.aborted) return Promise.reject(new Error('Workflow run cancelled.'));
+
+    return new Promise<void>((resolve, reject) => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+
+        const cleanup = (): void => {
+            if (timer !== undefined) clearTimeout(timer);
+            signal?.removeEventListener('abort', onAbort);
+        };
+        const onAbort = (): void => {
+            cleanup();
+            reject(new Error('Workflow run cancelled.'));
+        };
+
+        timer = setTimeout(() => {
+            cleanup();
+            resolve();
+        }, ms);
+        signal?.addEventListener('abort', onAbort, { once: true });
+    });
+};
 
 const SEED_CONTEXT: WorkflowContext = { event: '', payload: {}, vars: {} };
 
 function reportNodeError(
     bus: EventBus,
     settings: ExecutorSettings,
+    pipeline: CompiledPipeline,
     runPayload: WorkflowRunPayload,
     nodeId: string,
     err: unknown,
-): void {
+): WorkflowExecutionResult {
     const message = err instanceof Error ? err.message : String(err);
     bus.next({
         name: 'workflow.error',
-        payload: { pipelineId: runPayload.pipelineId, nodeId, message },
+        payload: { ...runPayload, nodeId, message },
     });
     if (settings.notifyOnWorkflowError) {
         bus.next({
@@ -48,7 +84,59 @@ function reportNodeError(
             payload: { title: 'Workflow error', body: message },
         });
     }
-    bus.next({ name: 'workflow.completed', payload: runPayload });
+    bus.next({
+        name: 'workflow.completed',
+        payload: { ...runPayload, outcome: 'failed' },
+    });
+    return {
+        pipelineId: pipeline.id,
+        workflowId: pipeline.workflowId,
+        ...(runPayload.runId ? { runId: runPayload.runId } : {}),
+        outcome: 'failed',
+        message,
+    };
+}
+
+function cancellationMessage(signal: AbortSignal | undefined): string {
+    const reason: unknown = signal?.reason;
+    if (typeof reason === 'string' && reason.length > 0) return reason;
+    if (reason instanceof Error) return reason.message;
+    return 'Workflow run cancelled.';
+}
+
+function executionResult(
+    pipeline: CompiledPipeline,
+    runPayload: WorkflowRunPayload,
+    outcome: WorkflowRunOutcome,
+    message?: string,
+): WorkflowExecutionResult {
+    return {
+        pipelineId: pipeline.id,
+        workflowId: pipeline.workflowId,
+        ...(runPayload.runId ? { runId: runPayload.runId } : {}),
+        outcome,
+        ...(message ? { message } : {}),
+    };
+}
+
+function emitCancelled(
+    bus: EventBus,
+    pipeline: CompiledPipeline,
+    runPayload: WorkflowRunPayload,
+    signal: AbortSignal | undefined,
+): WorkflowExecutionResult {
+    const reason = cancellationMessage(signal);
+    bus.next({
+        name: 'workflow.cancelled',
+        payload: {
+            pipelineId: pipeline.id,
+            ...(runPayload.workflowId ? { workflowId: runPayload.workflowId } : {}),
+            ...(runPayload.runId ? { runId: runPayload.runId } : {}),
+            phase: 'running',
+            reason,
+        },
+    });
+    return executionResult(pipeline, runPayload, 'cancelled', reason);
 }
 
 export async function executePipeline(
@@ -60,7 +148,8 @@ export async function executePipeline(
     stateStore: WorkflowStateStore = createInMemoryWorkflowStateStore(),
     capabilityBroker?: CapabilityBroker,
     seedContext?: WorkflowContext,
-): Promise<void> {
+    executionOptions: ExecutionOptions = {},
+): Promise<WorkflowExecutionResult> {
     const topology = acceptWorkflow(pipeline, handlerRegistry);
     if (!topology.ok) {
         throw createWorkflowTopologyError(topology.diagnostics);
@@ -75,6 +164,7 @@ export async function executePipeline(
         stateStore,
         capabilityBroker,
         seedContext,
+        executionOptions,
     );
 }
 
@@ -87,9 +177,19 @@ export async function executeValidatedWorkflow(
     stateStore: WorkflowStateStore = createInMemoryWorkflowStateStore(),
     capabilityBroker?: CapabilityBroker,
     seedContext?: WorkflowContext,
-): Promise<void> {
+    executionOptions: ExecutionOptions = {},
+): Promise<WorkflowExecutionResult> {
     const pipeline = workflow.pipeline;
-    const runPayload: WorkflowRunPayload = { pipelineId: pipeline.id };
+    const runPayload: WorkflowRunPayload = {
+        pipelineId: pipeline.id,
+        workflowId: executionOptions.workflowId ?? pipeline.workflowId,
+        ...(executionOptions.runId ? { runId: executionOptions.runId } : {}),
+    };
+
+    if (executionOptions.signal?.aborted) {
+        return emitCancelled(bus, pipeline, runPayload, executionOptions.signal);
+    }
+
     bus.next({ name: 'workflow.started', payload: runPayload });
     const state = stateStore.forWorkflow(pipeline.workflowId);
 
@@ -102,8 +202,11 @@ export async function executeValidatedWorkflow(
 
         const triggerNode = nodeById.get(workflow.triggerId);
         if (!triggerNode) {
-            bus.next({ name: 'workflow.completed', payload: runPayload });
-            return;
+            bus.next({
+                name: 'workflow.completed',
+                payload: { ...runPayload, outcome: 'succeeded' },
+            });
+            return executionResult(pipeline, runPayload, 'succeeded');
         }
 
         const baseDeps: NodeHandlerDeps = {
@@ -115,6 +218,7 @@ export async function executeValidatedWorkflow(
             state,
             capabilityBroker: capabilityBroker ?? createDenyAllCapabilityBroker(),
             collisionSuffixStyle: settings.collisionSuffixStyle,
+            signal: executionOptions.signal,
         };
 
         let triggerResult: NodeRunResult;
@@ -128,8 +232,10 @@ export async function executeValidatedWorkflow(
                 baseDeps,
             );
         } catch (err) {
-            reportNodeError(bus, settings, runPayload, triggerNode.id, err);
-            return;
+            if (executionOptions.signal?.aborted) {
+                return emitCancelled(bus, pipeline, runPayload, executionOptions.signal);
+            }
+            return reportNodeError(bus, settings, pipeline, runPayload, triggerNode.id, err);
         }
 
         const scheduled = new Set<string>([triggerNode.id]);
@@ -148,6 +254,10 @@ export async function executeValidatedWorkflow(
         scheduleDownstream(triggerNode.id, triggerResult.activePort, triggerResult.outputCtx);
 
         while (queue.length > 0) {
+            if (executionOptions.signal?.aborted) {
+                return emitCancelled(bus, pipeline, runPayload, executionOptions.signal);
+            }
+
             const nextIdx = queue.reduce(
                 (best, _, i) =>
                     (topoIndex.get(queue[i].nodeId) ?? 0) < (topoIndex.get(queue[best].nodeId) ?? 0)
@@ -171,12 +281,22 @@ export async function executeValidatedWorkflow(
                 );
                 scheduleDownstream(entry.nodeId, activePort, outputCtx);
             } catch (err) {
-                reportNodeError(bus, settings, runPayload, entry.nodeId, err);
-                return;
+                if (executionOptions.signal?.aborted) {
+                    return emitCancelled(bus, pipeline, runPayload, executionOptions.signal);
+                }
+                return reportNodeError(bus, settings, pipeline, runPayload, entry.nodeId, err);
             }
         }
 
-        bus.next({ name: 'workflow.completed', payload: runPayload });
+        if (executionOptions.signal?.aborted) {
+            return emitCancelled(bus, pipeline, runPayload, executionOptions.signal);
+        }
+
+        bus.next({
+            name: 'workflow.completed',
+            payload: { ...runPayload, outcome: 'succeeded' },
+        });
+        return executionResult(pipeline, runPayload, 'succeeded');
     } finally {
         state.flush();
     }

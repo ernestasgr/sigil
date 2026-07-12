@@ -173,6 +173,7 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
             case EngineChannel.ReadWorkflowStateResult:
             case EngineChannel.SetWorkflowStateKeyResult:
             case EngineChannel.DeleteWorkflowStateKeyResult:
+            case EngineChannel.ShutdownResult:
                 resolvePending(message.correlationId, message);
                 break;
             case EngineChannel.Ping:
@@ -191,6 +192,7 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
             case EngineChannel.ReadWorkflowState:
             case EngineChannel.SetWorkflowStateKey:
             case EngineChannel.DeleteWorkflowStateKey:
+            case EngineChannel.Shutdown:
                 console.warn(`[engine] unexpected message from worker: ${message.type}`);
                 break;
         }
@@ -366,7 +368,10 @@ export function spawnEngine(): EngineHandle {
                 .then((r) => r.ok);
         },
         terminate(): Promise<number> {
-            return worker.terminate();
+            return client
+                .rpc<{ readonly ok: boolean }>(EngineChannel.Shutdown, {}, 30_000)
+                .catch(() => undefined)
+                .then(() => worker.terminate());
         },
         onReady(handler: () => void): void {
             if (ready) {

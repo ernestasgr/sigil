@@ -66,6 +66,8 @@ export const EngineChannel = {
     SetWorkflowStateKeyResult: 'engine:set-workflow-state-key-result',
     DeleteWorkflowStateKey: 'engine:delete-workflow-state-key',
     DeleteWorkflowStateKeyResult: 'engine:delete-workflow-state-key-result',
+    Shutdown: 'engine:shutdown',
+    ShutdownResult: 'engine:shutdown-result',
 } as const;
 
 export const EnginePingSchema = z.object({
@@ -339,6 +341,19 @@ export type EngineDeleteWorkflowStateKeyResult = z.infer<
     typeof EngineDeleteWorkflowStateKeyResultSchema
 >;
 
+export const EngineShutdownSchema = z.object({
+    type: z.literal(EngineChannel.Shutdown),
+    correlationId: z.string(),
+});
+export type EngineShutdown = z.infer<typeof EngineShutdownSchema>;
+
+export const EngineShutdownResultSchema = z.object({
+    type: z.literal(EngineChannel.ShutdownResult),
+    correlationId: z.string(),
+    ok: z.boolean(),
+});
+export type EngineShutdownResult = z.infer<typeof EngineShutdownResultSchema>;
+
 export const EngineMessageSchema = z.union([
     EnginePingSchema,
     EnginePongSchema,
@@ -373,6 +388,8 @@ export const EngineMessageSchema = z.union([
     EngineSetWorkflowStateKeyResultSchema,
     EngineDeleteWorkflowStateKeySchema,
     EngineDeleteWorkflowStateKeyResultSchema,
+    EngineShutdownSchema,
+    EngineShutdownResultSchema,
 ]);
 
 export type EngineMessage = z.infer<typeof EngineMessageSchema>;
@@ -398,6 +415,7 @@ export const WorkerInboundSchema = z.union([
     EngineReadWorkflowStateSchema,
     EngineSetWorkflowStateKeySchema,
     EngineDeleteWorkflowStateKeySchema,
+    EngineShutdownSchema,
 ]);
 export type WorkerInbound = z.infer<typeof WorkerInboundSchema>;
 

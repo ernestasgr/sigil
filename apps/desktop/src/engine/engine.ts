@@ -13,7 +13,12 @@ import type { Bridge } from './bridge.js';
 import { createBridge } from './bridge.js';
 import type { CapabilityBroker } from './capability-broker.js';
 import { createCapabilityBroker } from './capability-broker.js';
-import { type ExecutorSettings, executeValidatedWorkflow } from './dag-executor.js';
+import {
+    type ExecutionOptions,
+    type ExecutorSettings,
+    executeValidatedWorkflow,
+    type WorkflowExecutionResult,
+} from './dag-executor.js';
 import type { EventBus } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
 import { createFileWatcherManager, type FileWatcherManager } from './file-watcher-manager.js';
@@ -46,7 +51,11 @@ export interface Engine {
     readonly handlerRegistry: NodeHandlerRegistry;
     readonly registerBuiltinManifests: () => void;
     readonly loadNodePlugins: (dir?: string) => Promise<readonly NodePluginLoadResult[]>;
-    readonly execute: (pipeline: WorkflowInput, seedContext?: WorkflowContext) => Promise<void>;
+    readonly execute: (
+        pipeline: WorkflowInput,
+        seedContext?: WorkflowContext,
+        executionOptions?: ExecutionOptions,
+    ) => Promise<WorkflowExecutionResult>;
     readonly dispose: () => void;
 }
 
@@ -121,7 +130,11 @@ export function createEngine(options?: EngineOptions): Engine {
             }
             return builtinResults;
         },
-        execute: async (pipeline, seedContext): Promise<void> => {
+        execute: async (
+            pipeline,
+            seedContext,
+            executionOptions,
+        ): Promise<WorkflowExecutionResult> => {
             const topology = acceptWorkflow(pipeline, handlerRegistry);
             if (!topology.ok) {
                 emitTopologyDiagnostics(bus, topology.diagnostics);
@@ -137,6 +150,7 @@ export function createEngine(options?: EngineOptions): Engine {
                 workflowStateStore,
                 capabilityBroker,
                 seedContext,
+                executionOptions,
             );
         },
         dispose: (): void => {

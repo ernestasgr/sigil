@@ -5,6 +5,9 @@ import { z } from 'zod';
 export const WorkflowRunPayloadSchema = z
     .object({
         pipelineId: z.string(),
+        workflowId: z.string().optional(),
+        runId: z.string().optional(),
+        outcome: z.enum(['succeeded', 'failed', 'cancelled']).optional(),
     })
     .readonly();
 export type WorkflowRunPayload = z.infer<typeof WorkflowRunPayloadSchema>;
@@ -12,11 +15,52 @@ export type WorkflowRunPayload = z.infer<typeof WorkflowRunPayloadSchema>;
 export const WorkflowErrorPayloadSchema = z
     .object({
         pipelineId: z.string(),
+        workflowId: z.string().optional(),
+        runId: z.string().optional(),
         nodeId: z.string(),
         message: z.string(),
     })
     .readonly();
 export type WorkflowErrorPayload = z.infer<typeof WorkflowErrorPayloadSchema>;
+
+export const WorkflowRunPolicyPayloadSchema = z
+    .object({
+        concurrency: z.number().int().positive(),
+        queueLimit: z.number().int().nonnegative(),
+        overflow: z.literal('drop-newest'),
+    })
+    .readonly();
+export type WorkflowRunPolicyPayload = z.infer<typeof WorkflowRunPolicyPayloadSchema>;
+
+const WorkflowAdmissionPayloadFields = {
+    pipelineId: z.string(),
+    workflowId: z.string(),
+    runId: z.string(),
+    queueSize: z.number().int().nonnegative(),
+    policy: WorkflowRunPolicyPayloadSchema,
+} as const;
+
+export const WorkflowQueuedPayloadSchema = z.object(WorkflowAdmissionPayloadFields).readonly();
+export type WorkflowQueuedPayload = z.infer<typeof WorkflowQueuedPayloadSchema>;
+
+export const WorkflowDroppedPayloadSchema = z
+    .object({
+        ...WorkflowAdmissionPayloadFields,
+        reason: z.enum(['queue_full', 'not_accepting']),
+    })
+    .readonly();
+export type WorkflowDroppedPayload = z.infer<typeof WorkflowDroppedPayloadSchema>;
+
+export const WorkflowCancelledPayloadSchema = z
+    .object({
+        pipelineId: z.string(),
+        workflowId: z.string().optional(),
+        runId: z.string().optional(),
+        phase: z.enum(['queued', 'running']).optional(),
+        reason: z.string(),
+    })
+    .readonly();
+export type WorkflowCancelledPayload = z.infer<typeof WorkflowCancelledPayloadSchema>;
 
 export const LogOutputPayloadSchema = z
     .object({
@@ -54,6 +98,9 @@ type EventPayloadMap = {
     'workflow.started': WorkflowRunPayload;
     'workflow.completed': WorkflowRunPayload;
     'workflow.error': WorkflowErrorPayload;
+    'workflow.queued': WorkflowQueuedPayload;
+    'workflow.dropped': WorkflowDroppedPayload;
+    'workflow.cancelled': WorkflowCancelledPayload;
     'manual.trigger.fired': FileEventPayload;
     'log.output': LogOutputPayload;
     'notification.show': NotificationShowPayload;
@@ -91,6 +138,21 @@ const EVENT_PAYLOAD_SCHEMA_REGISTRY = {
         schema: WorkflowErrorPayloadSchema,
         label: 'Workflow Error',
         color: 'text-old-blood',
+    },
+    'workflow.queued': {
+        schema: WorkflowQueuedPayloadSchema,
+        label: 'Workflow Queued',
+        color: 'text-gilt',
+    },
+    'workflow.dropped': {
+        schema: WorkflowDroppedPayloadSchema,
+        label: 'Workflow Dropped',
+        color: 'text-old-blood',
+    },
+    'workflow.cancelled': {
+        schema: WorkflowCancelledPayloadSchema,
+        label: 'Workflow Cancelled',
+        color: 'text-veil',
     },
     'manual.trigger.fired': {
         schema: FileEventPayloadSchema,
