@@ -250,4 +250,32 @@ describe('WorkflowLifecycle transitions', () => {
         expect(activate).toHaveBeenCalledTimes(2);
         expect(teardowns[0]).toHaveBeenCalledTimes(1);
     });
+
+    it('restores enabled state and reactivates when update save throws', () => {
+        const teardowns: Array<ReturnType<typeof vi.fn>> = [];
+        const activate = vi.fn<TriggerHandler['activate']>(() => {
+            const teardown = vi.fn(() => {});
+            teardowns.push(teardown);
+            return teardown;
+        });
+        const fixture = createFixture(activate);
+        fixtures.push(fixture);
+        fixture.lifecycle.enable(fixture.workflowId);
+
+        const saveError = new Error('disk full');
+        expect(() =>
+            fixture.lifecycle.update(fixture.workflowId, () => {
+                throw saveError;
+            }),
+        ).toThrow(saveError);
+
+        expect(fixture.store.getSummary(fixture.workflowId)).toMatchObject(
+            Option.some({
+                enabled: true,
+                activation: { kind: 'active' },
+            }),
+        );
+        expect(activate).toHaveBeenCalledTimes(2);
+        expect(teardowns[0]).toHaveBeenCalledTimes(1);
+    });
 });

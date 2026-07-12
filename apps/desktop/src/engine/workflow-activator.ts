@@ -153,7 +153,14 @@ export function createWorkflowActivator(
 
                 active.delete(workflowId);
                 deactivationHooks.delete(onEvent);
-                current.teardown();
+                try {
+                    current.teardown();
+                } catch (err) {
+                    emitDiagnostic(
+                        `[activator] teardown failed for "${data.value.name}" (${workflowId}): ${errorMessage(err)}`,
+                        'workflow_activation',
+                    );
+                }
                 recordFailure(
                     workflowId,
                     reason ?? 'The Trigger worker failed during activation.',
@@ -189,7 +196,14 @@ export function createWorkflowActivator(
             if (activation) {
                 active.delete(workflowId);
                 deactivationHooks.delete(activation.onEvent);
-                activation.teardown();
+                try {
+                    activation.teardown();
+                } catch (err) {
+                    emitDiagnostic(
+                        `[activator] teardown failed for workflow ${workflowId}: ${errorMessage(err)}`,
+                        'workflow_activation',
+                    );
+                }
                 setActivation(workflowId, disabledState());
                 return true;
             }
@@ -214,7 +228,14 @@ export function createWorkflowActivator(
                 const activation = active.get(workflowId);
                 if (activation) {
                     deactivationHooks.delete(activation.onEvent);
-                    activation.teardown();
+                    try {
+                        activation.teardown();
+                    } catch (err) {
+                        emitDiagnostic(
+                            `[activator] teardown failed for workflow ${workflowId}: ${errorMessage(err)}`,
+                            'workflow_activation',
+                        );
+                    }
                 }
                 active.delete(workflowId);
                 setActivation(workflowId, disabledState());
