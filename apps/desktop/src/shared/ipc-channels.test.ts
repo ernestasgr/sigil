@@ -3,11 +3,14 @@ import { z } from 'zod';
 
 import {
     EngineChannel,
+    EngineCreateWorkflowSchema,
+    EngineDeleteWorkflowSchema,
     EngineMessageSchema,
     type EnginePing,
     type EnginePong,
     EngineReadySchema,
     type EngineToggleWorkflow,
+    EngineUpdateWorkflowSchema,
     EngineWorkflowsListSchema,
     WorkerInboundSchema,
     WorkflowIdSchema,
@@ -136,6 +139,81 @@ describe('WorkflowIdSchema', () => {
 
     it('rejects a non-string value', () => {
         const result = WorkflowIdSchema.safeParse(42);
+        expect(result.success).toBe(false);
+    });
+
+    it.each([
+        '../outside',
+        '..\\outside',
+        '/tmp/outside',
+        'C:\\tmp\\outside',
+    ])('rejects a path-shaped identifier: %s', (id) => {
+        expect(WorkflowIdSchema.safeParse(id).success).toBe(false);
+    });
+});
+
+describe('EngineUpdateWorkflowSchema', () => {
+    const pipeline = {
+        id: 'pipeline-1',
+        workflowId: 'wf-1',
+        schemaVersion: 1 as const,
+        nodes: [],
+        edges: [],
+    };
+
+    it('requires the request id and Pipeline workflowId to agree', () => {
+        const result = EngineUpdateWorkflowSchema.safeParse({
+            type: EngineChannel.UpdateWorkflow,
+            correlationId: 'corr-1',
+            id: 'wf-2',
+            name: 'Workflow',
+            pipeline,
+            positions: {},
+        });
+
+        expect(result.success).toBe(false);
+    });
+
+    it('accepts an aligned Workflow identity', () => {
+        const result = EngineUpdateWorkflowSchema.safeParse({
+            type: EngineChannel.UpdateWorkflow,
+            correlationId: 'corr-1',
+            id: 'wf-1',
+            name: 'Workflow',
+            pipeline,
+            positions: {},
+        });
+
+        expect(result.success).toBe(true);
+    });
+});
+
+describe('Workflow command identity schemas', () => {
+    it('rejects a traversal-shaped Workflow id in a create Pipeline', () => {
+        const result = EngineCreateWorkflowSchema.safeParse({
+            type: EngineChannel.CreateWorkflow,
+            correlationId: 'corr-1',
+            name: 'Workflow',
+            pipeline: {
+                id: 'pipeline-1',
+                workflowId: '../outside',
+                schemaVersion: 1,
+                nodes: [],
+                edges: [],
+            },
+            positions: {},
+        });
+
+        expect(result.success).toBe(false);
+    });
+
+    it('rejects an absolute Workflow id in a delete command', () => {
+        const result = EngineDeleteWorkflowSchema.safeParse({
+            type: EngineChannel.DeleteWorkflow,
+            correlationId: 'corr-1',
+            id: 'C:\\tmp\\outside',
+        });
+
         expect(result.success).toBe(false);
     });
 });

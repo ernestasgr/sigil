@@ -1,13 +1,14 @@
-import { randomUUID } from 'node:crypto';
 import {
     existsSync,
+    lstatSync,
     mkdirSync,
     readdirSync,
     readFileSync,
+    realpathSync,
     unlinkSync,
     writeFileSync,
 } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
 import {
     type CompiledPipeline,
     type PipelineSchemaVersion,
@@ -22,6 +23,7 @@ import {
     validateWorkflowTopology,
     type WorkflowTopologyOptions,
 } from '@sigil/schema/topology';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Option } from 'effect';
 import { z } from 'zod';
 
@@ -63,6 +65,16 @@ interface InvalidWorkflowRecord {
 
 type WorkflowRecord = ValidWorkflowRecord | InvalidWorkflowRecord;
 
+export type WorkflowIdentityErrorKind =
+    | 'invalid_workflow_id'
+    | 'workflow_identity_mismatch'
+    | 'duplicate_workflow_id';
+
+export interface WorkflowIdentityError extends Error {
+    readonly kind: WorkflowIdentityErrorKind;
+    readonly workflowId?: string;
+}
+
 export interface WorkflowStore {
     readonly list: () => readonly WorkflowSummary[];
     readonly get: (id: string) => Option.Option<{
@@ -92,19 +104,88 @@ export interface WorkflowStore {
     readonly toggle: (id: string) => Option.Option<WorkflowSummary>;
 }
 
+function createWorkflowIdentityError(
+    kind: WorkflowIdentityErrorKind,
+    message: string,
+    workflowId?: string,
+): WorkflowIdentityError {
+    return Object.assign(new Error(message), { kind, workflowId });
+}
+
+export function isWorkflowIdentityError(value: unknown): value is WorkflowIdentityError {
+    return (
+        value instanceof Error &&
+        isRecord(value) &&
+        (value.kind === 'invalid_workflow_id' ||
+            value.kind === 'workflow_identity_mismatch' ||
+            value.kind === 'duplicate_workflow_id')
+    );
+}
+
+function requireWorkflowId(id: string): string {
+    const parsedId = WorkflowIdSchema.safeParse(id);
+    if (!parsedId.success) {
+        throw createWorkflowIdentityError(
+            'invalid_workflow_id',
+            `Invalid Workflow id "${id}". Workflow ids must be safe file identifiers.`,
+            id,
+        );
+    }
+    return parsedId.data;
+}
+
+function isPathContained(root: string, candidate: string): boolean {
+    const relativeCandidate = relative(root, candidate);
+    return (
+        relativeCandidate.length === 0 ||
+        (relativeCandidate !== '..' &&
+            !relativeCandidate.startsWith(`..${sep}`) &&
+            !isAbsolute(relativeCandidate))
+    );
+}
+
 function filePath(dir: string, id: string): string {
-    return join(dir, `${id}.json`);
+    const safeId = requireWorkflowId(id);
+    const root = resolve(dir);
+    const candidate = resolve(root, `${safeId}.json`);
+    if (!isPathContained(root, candidate)) {
+        throw createWorkflowIdentityError(
+            'invalid_workflow_id',
+            `Workflow path escapes its storage directory: ${id}`,
+            id,
+        );
+    }
+
+    if (existsSync(candidate)) {
+        const rootRealPath = existsSync(root) ? realpathSync(root) : root;
+        const candidateStat = lstatSync(candidate);
+        if (candidateStat.isSymbolicLink()) {
+            throw createWorkflowIdentityError(
+                'invalid_workflow_id',
+                `Workflow path is a symbolic link outside its storage directory: ${id}`,
+                id,
+            );
+        }
+        if (!isPathContained(rootRealPath, realpathSync(candidate))) {
+            throw createWorkflowIdentityError(
+                'invalid_workflow_id',
+                `Workflow path resolves outside its storage directory: ${id}`,
+                id,
+            );
+        }
+    }
+    return candidate;
 }
 
 const NodePositionSchema = z.object({ x: z.number(), y: z.number() }).readonly();
 
 const StoredWorkflowFileSchema = z.object({
-    id: z.string().min(1),
+    id: WorkflowIdSchema,
     name: z.string(),
     enabled: z.boolean().optional(),
     positions: z.record(z.string(), z.unknown()).optional(),
     pipelineId: z.string().min(1).optional(),
-    workflowId: z.string().min(1).optional(),
+    workflowId: WorkflowIdSchema.optional(),
     nodes: z.array(PipelineNodeSchema).optional(),
     edges: z.array(PipelineEdgeSchema).optional(),
     activation: WorkflowActivationStateSchema.optional(),
@@ -121,13 +202,12 @@ function stringField(value: unknown, field: string): string | undefined {
 }
 
 function workflowIdentity(
-    storagePath: string,
+    workflowId: string,
     raw: unknown,
 ): { readonly id: string; readonly name: string; readonly enabled: boolean } {
-    const id = stringField(raw, 'id') ?? basename(storagePath, '.json');
     return {
-        id,
-        name: stringField(raw, 'name') ?? `Unreadable Workflow (${id})`,
+        id: workflowId,
+        name: stringField(raw, 'name') ?? `Unreadable Workflow (${workflowId})`,
         enabled: isRecord(raw) && raw.enabled === true,
     };
 }
@@ -143,10 +223,11 @@ function storedWorkflowDiagnostic(fileName: string, detail: string): TopologyDia
 
 function invalidWorkflowRecord(
     storagePath: string,
+    workflowId: string,
     raw: unknown,
     diagnostics: readonly TopologyDiagnostic[],
 ): InvalidWorkflowRecord {
-    const identity = workflowIdentity(storagePath, raw);
+    const identity = workflowIdentity(workflowId, raw);
     return {
         ...identity,
         enabled: false,
@@ -181,6 +262,7 @@ function readPositions(
 
 function readWorkflowFile(
     storagePath: string,
+    workflowId: string,
     topologyOptions: WorkflowTopologyOptions,
 ): WorkflowRecord {
     const fileName = basename(storagePath);
@@ -188,7 +270,7 @@ function readWorkflowFile(
     try {
         raw = JSON.parse(readFileSync(storagePath, 'utf-8'));
     } catch {
-        return invalidWorkflowRecord(storagePath, raw, [
+        return invalidWorkflowRecord(storagePath, workflowId, raw, [
             storedWorkflowDiagnostic(fileName, 'it is not valid JSON.'),
         ]);
     }
@@ -196,30 +278,51 @@ function readWorkflowFile(
     const parsedFile = StoredWorkflowFileSchema.safeParse(raw);
     if (!parsedFile.success) {
         const detail = parsedFile.error.issues[0]?.message ?? 'its shape is not a Workflow.';
-        return invalidWorkflowRecord(storagePath, raw, [
+        return invalidWorkflowRecord(storagePath, workflowId, raw, [
             storedWorkflowDiagnostic(fileName, detail),
+        ]);
+    }
+
+    if (parsedFile.data.id !== workflowId) {
+        return invalidWorkflowRecord(storagePath, workflowId, raw, [
+            storedWorkflowDiagnostic(
+                fileName,
+                `its Workflow id "${parsedFile.data.id}" does not match the filename id "${workflowId}".`,
+            ),
+        ]);
+    }
+
+    const persistedWorkflowId = parsedFile.data.workflowId ?? parsedFile.data.id;
+    if (persistedWorkflowId !== workflowId) {
+        return invalidWorkflowRecord(storagePath, workflowId, raw, [
+            storedWorkflowDiagnostic(
+                fileName,
+                `its Pipeline workflowId "${persistedWorkflowId}" does not match the Workflow id "${workflowId}".`,
+            ),
         ]);
     }
 
     const pipeline = {
         id: parsedFile.data.pipelineId ?? parsedFile.data.id,
-        workflowId: parsedFile.data.workflowId ?? parsedFile.data.id,
+        workflowId: persistedWorkflowId,
         schemaVersion: PipelineSchemaVersionSchema.value,
         nodes: parsedFile.data.nodes ?? [],
         edges: parsedFile.data.edges ?? [],
     };
     const parseResult = parsePipeline(pipeline);
     if (!parseResult.ok) {
-        return invalidWorkflowRecord(storagePath, raw, [
+        return invalidWorkflowRecord(storagePath, workflowId, raw, [
             storedWorkflowDiagnostic(fileName, parseResult.error),
         ]);
     }
 
     const topology = validateWorkflowTopology(parseResult.value, topologyOptions);
-    if (!topology.ok) return invalidWorkflowRecord(storagePath, raw, topology.diagnostics);
+    if (!topology.ok) {
+        return invalidWorkflowRecord(storagePath, workflowId, raw, topology.diagnostics);
+    }
 
     return {
-        id: parsedFile.data.id,
+        id: workflowId,
         name: parsedFile.data.name,
         enabled: parsedFile.data.enabled ?? false,
         positions: readPositions(parsedFile.data.positions),
@@ -282,7 +385,9 @@ function loadAll(
     const entries = readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
         if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
-        const stored = readWorkflowFile(join(dir, entry.name), topologyOptions);
+        const workflowId = basename(entry.name, '.json');
+        if (!WorkflowIdSchema.safeParse(workflowId).success) continue;
+        const stored = readWorkflowFile(filePath(dir, workflowId), workflowId, topologyOptions);
         workflows.set(stored.id, stored);
     }
     return workflows;
@@ -298,12 +403,14 @@ export function createWorkflowStore(
         list: () => Array.from(workflows.values()).map(toSummary),
 
         getSummary: (id) => {
-            const stored = workflows.get(id);
+            const workflowId = requireWorkflowId(id);
+            const stored = workflows.get(workflowId);
             return stored ? Option.some(toSummary(stored)) : Option.none();
         },
 
         get: (id) => {
-            const stored = workflows.get(id);
+            const workflowId = requireWorkflowId(id);
+            const stored = workflows.get(workflowId);
             if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
             return Option.some({
                 pipeline: stored.executable.pipeline,
@@ -314,13 +421,21 @@ export function createWorkflowStore(
         },
 
         create: (name, pipeline, positions) => {
+            const workflowId = requireWorkflowId(pipeline.workflowId);
+            const storagePath = filePath(storageDir, workflowId);
+            if (workflows.has(workflowId) || existsSync(storagePath)) {
+                throw createWorkflowIdentityError(
+                    'duplicate_workflow_id',
+                    `Workflow already exists: ${workflowId}`,
+                    workflowId,
+                );
+            }
             const topology = validateWorkflowTopology(pipeline, topologyOptions);
             if (!topology.ok) {
                 throw createWorkflowTopologyError(topology.diagnostics);
             }
-            const id = randomUUID();
             const stored: ValidWorkflowRecord = {
-                id,
+                id: workflowId,
                 name,
                 enabled: false,
                 positions,
@@ -332,24 +447,34 @@ export function createWorkflowStore(
                 activation: { kind: 'disabled' },
                 executable: topology.value,
                 diagnostics: [],
-                storagePath: filePath(storageDir, id),
+                storagePath,
             };
-            workflows.set(stored.id, stored);
             writeWorkflowFile(storageDir, stored);
+            workflows.set(stored.id, stored);
             return toSummary(stored);
         },
 
         save: (id, name, pipeline, positions) => {
+            const workflowId = requireWorkflowId(id);
+            const storagePath = filePath(storageDir, workflowId);
+            if (pipeline.workflowId !== workflowId) {
+                throw createWorkflowIdentityError(
+                    'workflow_identity_mismatch',
+                    `Pipeline workflowId "${pipeline.workflowId}" does not match Workflow id "${workflowId}".`,
+                    workflowId,
+                );
+            }
             const topology = validateWorkflowTopology(pipeline, topologyOptions);
             if (!topology.ok) {
                 throw createWorkflowTopologyError(topology.diagnostics);
             }
-            const existing = workflows.get(id);
+            const existing = workflows.get(workflowId);
             const existingValid =
                 existing && isValidWorkflowRecord(existing) ? existing : undefined;
             const stored: ValidWorkflowRecord = existingValid
                 ? {
                       ...existingValid,
+                      id: workflowId,
                       name,
                       positions,
                       pipelineId: pipeline.id,
@@ -360,9 +485,10 @@ export function createWorkflowStore(
                       activation: existingValid.activation,
                       executable: topology.value,
                       diagnostics: [],
+                      storagePath,
                   }
                 : {
-                      id,
+                      id: workflowId,
                       name,
                       enabled: false,
                       positions,
@@ -374,45 +500,50 @@ export function createWorkflowStore(
                       activation: { kind: 'disabled' },
                       executable: topology.value,
                       diagnostics: [],
-                      storagePath: filePath(storageDir, id),
+                      storagePath,
                   };
-            workflows.set(id, stored);
             writeWorkflowFile(storageDir, stored);
+            workflows.set(workflowId, stored);
             return toSummary(stored);
         },
 
         remove: (id) => {
-            const stored = workflows.get(id);
+            const workflowId = requireWorkflowId(id);
+            const storagePath = filePath(storageDir, workflowId);
+            const stored = workflows.get(workflowId);
             if (!stored) return false;
-            workflows.delete(id);
-            if (existsSync(stored.storagePath)) {
-                unlinkSync(stored.storagePath);
+            if (existsSync(storagePath)) {
+                unlinkSync(storagePath);
             }
+            workflows.delete(workflowId);
             return true;
         },
 
         setEnabled: (id, enabled) => {
-            const stored = workflows.get(id);
+            const workflowId = requireWorkflowId(id);
+            const stored = workflows.get(workflowId);
             if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
             const updated: ValidWorkflowRecord = {
                 ...stored,
                 enabled,
                 activation: enabled ? stored.activation : { kind: 'disabled' },
             };
-            workflows.set(id, updated);
             writeWorkflowFile(storageDir, updated);
+            workflows.set(workflowId, updated);
             return Option.some(toSummary(updated));
         },
         setActivation: (id, activation) => {
-            const stored = workflows.get(id);
+            const workflowId = requireWorkflowId(id);
+            const stored = workflows.get(workflowId);
             if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
             const updated: ValidWorkflowRecord = { ...stored, activation };
-            workflows.set(id, updated);
             writeWorkflowFile(storageDir, updated);
+            workflows.set(workflowId, updated);
             return Option.some(toSummary(updated));
         },
         toggle: (id) => {
-            const stored = workflows.get(id);
+            const workflowId = requireWorkflowId(id);
+            const stored = workflows.get(workflowId);
             if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
             const enabled = !stored.enabled;
             const updated: ValidWorkflowRecord = {
@@ -420,8 +551,8 @@ export function createWorkflowStore(
                 enabled,
                 activation: enabled ? stored.activation : { kind: 'disabled' },
             };
-            workflows.set(id, updated);
             writeWorkflowFile(storageDir, updated);
+            workflows.set(workflowId, updated);
             return Option.some(toSummary(updated));
         },
     };

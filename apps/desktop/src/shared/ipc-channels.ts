@@ -2,7 +2,9 @@ import { CompiledPipelineSchema } from '@sigil/schema';
 import { CapabilitySchema, ManifestSchema } from '@sigil/schema/manifest';
 import { TopologyDiagnosticSchema } from '@sigil/schema/topology';
 import { z } from 'zod';
-import { WorkflowSummarySchema } from './workflow.js';
+import { WorkflowIdSchema, WorkflowSummarySchema } from './workflow.js';
+
+export { WorkflowIdSchema } from './workflow.js';
 
 const NodePositionSchema = z.object({ x: z.number(), y: z.number() }).readonly();
 export const NodePositionRecordSchema = z.record(z.string(), NodePositionSchema).readonly();
@@ -29,8 +31,6 @@ const PluginInfoSchema = z
         grantedPermissions: z.array(CapabilitySchema).readonly(),
     })
     .readonly();
-
-export const WorkflowIdSchema = z.string().min(1);
 
 export const EngineChannel = {
     Ping: 'engine:ping',
@@ -102,7 +102,7 @@ export type EngineWorkflowsList = z.infer<typeof EngineWorkflowsListSchema>;
 export const EngineToggleWorkflowSchema = z.object({
     type: z.literal(EngineChannel.ToggleWorkflow),
     correlationId: z.string(),
-    id: z.string(),
+    id: WorkflowIdSchema,
 });
 export type EngineToggleWorkflow = z.infer<typeof EngineToggleWorkflowSchema>;
 
@@ -116,7 +116,7 @@ export type EngineToggleWorkflowResult = z.infer<typeof EngineToggleWorkflowResu
 export const EngineRetryWorkflowSchema = z.object({
     type: z.literal(EngineChannel.RetryWorkflow),
     correlationId: z.string(),
-    id: z.string(),
+    id: WorkflowIdSchema,
 });
 export type EngineRetryWorkflow = z.infer<typeof EngineRetryWorkflowSchema>;
 
@@ -153,14 +153,24 @@ export const EngineCreateWorkflowResultSchema = z.union([
 ]);
 export type EngineCreateWorkflowResult = z.infer<typeof EngineCreateWorkflowResultSchema>;
 
-export const EngineUpdateWorkflowSchema = z.object({
-    type: z.literal(EngineChannel.UpdateWorkflow),
-    correlationId: z.string(),
-    id: z.string(),
-    name: z.string(),
-    pipeline: CompiledPipelineSchema,
-    positions: NodePositionRecordSchema,
-});
+export const EngineUpdateWorkflowSchema = z
+    .object({
+        type: z.literal(EngineChannel.UpdateWorkflow),
+        correlationId: z.string(),
+        id: WorkflowIdSchema,
+        name: z.string(),
+        pipeline: CompiledPipelineSchema,
+        positions: NodePositionRecordSchema,
+    })
+    .superRefine((message, ctx) => {
+        if (message.id !== message.pipeline.workflowId) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['pipeline', 'workflowId'],
+                message: 'Pipeline workflowId must match the requested Workflow id.',
+            });
+        }
+    });
 export type EngineUpdateWorkflow = z.infer<typeof EngineUpdateWorkflowSchema>;
 
 const EngineUpdateWorkflowSuccessSchema = z.object({
@@ -183,7 +193,7 @@ export type EngineUpdateWorkflowResult = z.infer<typeof EngineUpdateWorkflowResu
 export const EngineDeleteWorkflowSchema = z.object({
     type: z.literal(EngineChannel.DeleteWorkflow),
     correlationId: z.string(),
-    id: z.string(),
+    id: WorkflowIdSchema,
 });
 export type EngineDeleteWorkflow = z.infer<typeof EngineDeleteWorkflowSchema>;
 
@@ -196,7 +206,7 @@ export type EngineDeleteWorkflowResult = z.infer<typeof EngineDeleteWorkflowResu
 
 export const EngineGetWorkflowSchema = z.object({
     type: z.literal(EngineChannel.GetWorkflow),
-    id: z.string(),
+    id: WorkflowIdSchema,
     correlationId: z.string(),
 });
 export type EngineGetWorkflow = z.infer<typeof EngineGetWorkflowSchema>;
@@ -297,7 +307,7 @@ export type EngineFireManualTrigger = z.infer<typeof EngineFireManualTriggerSche
 export const EngineReadWorkflowStateSchema = z.object({
     type: z.literal(EngineChannel.ReadWorkflowState),
     correlationId: z.string(),
-    workflowId: z.string(),
+    workflowId: WorkflowIdSchema,
 });
 export type EngineReadWorkflowState = z.infer<typeof EngineReadWorkflowStateSchema>;
 
@@ -311,7 +321,7 @@ export type EngineReadWorkflowStateResult = z.infer<typeof EngineReadWorkflowSta
 export const EngineSetWorkflowStateKeySchema = z.object({
     type: z.literal(EngineChannel.SetWorkflowStateKey),
     correlationId: z.string(),
-    workflowId: z.string(),
+    workflowId: WorkflowIdSchema,
     key: z.string(),
     value: z.string(),
 });
@@ -327,7 +337,7 @@ export type EngineSetWorkflowStateKeyResult = z.infer<typeof EngineSetWorkflowSt
 export const EngineDeleteWorkflowStateKeySchema = z.object({
     type: z.literal(EngineChannel.DeleteWorkflowStateKey),
     correlationId: z.string(),
-    workflowId: z.string(),
+    workflowId: WorkflowIdSchema,
     key: z.string(),
 });
 export type EngineDeleteWorkflowStateKey = z.infer<typeof EngineDeleteWorkflowStateKeySchema>;

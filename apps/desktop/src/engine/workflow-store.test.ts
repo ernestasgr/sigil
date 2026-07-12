@@ -1,12 +1,16 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
 import { parsePipeline } from '@sigil/schema';
 import { Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createWorkflowStore, type WorkflowStore } from './workflow-store.js';
+import {
+    createWorkflowStore,
+    isWorkflowIdentityError,
+    type WorkflowStore,
+} from './workflow-store.js';
 import { isWorkflowTopologyError } from './workflow-topology-error.js';
 
 function randomDir(): string {
@@ -159,10 +163,20 @@ describe('WorkflowStore', () => {
         expect(raw.nodes).toHaveLength(2);
     });
 
-    it('gives each create a unique id even when pipeline.workflowId is the same', () => {
+    it('uses pipeline.workflowId as the authoritative Workflow id', () => {
         const a = store.create('A', samplePipeline, {});
-        const b = store.create('B', samplePipeline, {});
-        expect(a.id).not.toBe(b.id);
+        expect(a.id).toBe(samplePipeline.workflowId);
+
+        let error: unknown;
+        try {
+            store.create('B', samplePipeline, {});
+        } catch (caught) {
+            error = caught;
+        }
+        expect(isWorkflowIdentityError(error)).toBe(true);
+        if (isWorkflowIdentityError(error)) {
+            expect(error.kind).toBe('duplicate_workflow_id');
+        }
     });
 
     it('lists created workflows', () => {
@@ -213,6 +227,68 @@ describe('WorkflowStore', () => {
     it('returns false when removing a non-existent workflow', () => {
         const removed = store.remove('nonexistent');
         expect(removed).toBe(false);
+    });
+
+    it('rejects traversal-shaped workflow ids without touching an external file', () => {
+        const externalPath = join(dir, '..', `sigil-workflow-store-${crypto.randomUUID()}.json`);
+        writeFileSync(externalPath, 'sentinel');
+        const escapedId = `../${basename(externalPath, '.json')}`;
+
+        expect(() => store.save(escapedId, 'Escaped', samplePipeline, {})).toThrow();
+        expect(() => store.remove(escapedId)).toThrow();
+
+        expect(readFileSync(externalPath, 'utf-8')).toBe('sentinel');
+        rmSync(externalPath, { force: true });
+    });
+
+    it.each([
+        '',
+        '../outside',
+        '..\\outside',
+        '/tmp/outside',
+        'C:\\tmp\\outside',
+    ])('rejects unsafe Workflow ids at the persistence seam: %s', (id) => {
+        expect(() => store.get(id)).toThrow();
+        expect(() => store.getSummary(id)).toThrow();
+        expect(() => store.remove(id)).toThrow();
+    });
+
+    it('rejects an unsafe Pipeline workflowId when creating a Workflow', () => {
+        const unsafePipeline = { ...samplePipeline, workflowId: '../outside' };
+
+        expect(() => store.create('Unsafe Workflow', unsafePipeline, {})).toThrow();
+        expect(store.list()).toEqual([]);
+    });
+
+    it('persists and retrieves a valid identifier without changing it', () => {
+        const pipeline = { ...samplePipeline, workflowId: 'safe_workflow-123' };
+        const summary = store.create('Safe Workflow', pipeline, {});
+
+        expect(summary.id).toBe('safe_workflow-123');
+        expect(existsSync(join(dir, 'safe_workflow-123.json'))).toBe(true);
+        expect(Option.isSome(store.get('safe_workflow-123'))).toBe(true);
+    });
+
+    it('updates and deletes only the Workflow selected by its authoritative id', () => {
+        const first = store.create('First', samplePipeline, {});
+        const second = store.create('Second', samplePipeline2, {});
+        const updatedPipeline = {
+            ...samplePipeline,
+            workflowId: first.id,
+            nodes: [samplePipeline.nodes[0]],
+            edges: [],
+        };
+
+        store.save(first.id, 'First Updated', updatedPipeline, {});
+        expect(store.getSummary(second.id)).toMatchObject(
+            Option.some({ id: second.id, name: 'Second' }),
+        );
+
+        expect(store.remove(first.id)).toBe(true);
+        expect(store.getSummary(second.id)).toMatchObject(
+            Option.some({ id: second.id, name: 'Second' }),
+        );
+        expect(existsSync(join(dir, `${second.id}.json`))).toBe(true);
     });
 
     it('toggles the enabled state and persists it', () => {
@@ -268,6 +344,27 @@ describe('WorkflowStore', () => {
         expect(Option.getOrThrow(loaded).pipeline.nodes).toHaveLength(2);
         expect(Option.getOrThrow(loaded).pipeline.nodes[1].type).toBe('delay');
         expect(Option.getOrThrow(loaded).positions).toEqual(updatedPositions);
+    });
+
+    it('rejects an update whose Pipeline identity does not match the Workflow id', () => {
+        const summary = store.create('Original', samplePipeline, samplePositions);
+        const mismatchedPipeline = { ...samplePipeline, workflowId: 'another-workflow' };
+
+        let error: unknown;
+        try {
+            store.save(summary.id, 'Mismatched', mismatchedPipeline, {});
+        } catch (caught) {
+            error = caught;
+        }
+
+        expect(isWorkflowIdentityError(error)).toBe(true);
+        if (isWorkflowIdentityError(error)) {
+            expect(error.kind).toBe('workflow_identity_mismatch');
+        }
+        expect(store.get(summary.id)).toEqual(expect.anything());
+        expect(store.getSummary(summary.id)).toMatchObject(
+            Option.some({ name: 'Original', id: summary.id }),
+        );
     });
 
     it('reads pre-existing topology-valid JSON files on startup', () => {
@@ -363,7 +460,7 @@ describe('WorkflowStore', () => {
 
     it('keeps topology-invalid stored Workflows visible with repair diagnostics', () => {
         writeFileSync(
-            join(dir, 'broken.json'),
+            join(dir, 'wf-broken.json'),
             JSON.stringify({ id: 'wf-broken', name: 'Broken', nodes: [], edges: [] }),
         );
 
@@ -406,15 +503,44 @@ describe('WorkflowStore', () => {
         ]);
     });
 
+    it('does not trust a stored identity that disagrees with its filename', () => {
+        writeFileSync(
+            join(dir, 'wf-file.json'),
+            JSON.stringify({
+                id: 'wf-record',
+                name: 'Mismatched',
+                nodes: [],
+                edges: [],
+            }),
+        );
+
+        store = createWorkflowStore(dir);
+
+        expect(store.list()).toEqual([
+            expect.objectContaining({
+                id: 'wf-file',
+                diagnostics: [
+                    expect.objectContaining({
+                        code: 'invalid_pipeline',
+                        message: expect.stringContaining('does not match the filename id'),
+                    }),
+                ],
+            }),
+        ]);
+        expect(Option.isNone(store.get('wf-file'))).toBe(true);
+        expect(Option.isNone(store.get('wf-record'))).toBe(true);
+    });
+
     it('upserts a new workflow when save() is called with a non-existent id', () => {
-        const saved = store.save('new-id', 'New via save', samplePipeline, samplePositions);
+        const newPipeline = { ...samplePipeline, workflowId: 'new-id' };
+        const saved = store.save('new-id', 'New via save', newPipeline, samplePositions);
         expect(saved.id).toBe('new-id');
         expect(saved.name).toBe('New via save');
         expect(saved.enabled).toBe(false);
 
         const loaded = store.get('new-id');
         expect(Option.isSome(loaded)).toBe(true);
-        expect(Option.getOrThrow(loaded).pipeline).toEqual(samplePipeline);
+        expect(Option.getOrThrow(loaded).pipeline).toEqual(newPipeline);
         expect(Option.getOrThrow(loaded).positions).toEqual(samplePositions);
 
         const filePath = join(dir, 'new-id.json');
