@@ -240,4 +240,74 @@ describe('Workflow run lifecycle supervision', () => {
             fixture.dispose();
         }
     });
+
+    it('cancels admitted work and releases Workflow ownership before shutdown resolves', async () => {
+        const fixture = createRunFixture(true, 1);
+        const events: Array<{ readonly name: string; readonly payload: unknown }> = [];
+        const messages: unknown[] = [];
+        fixture.engine.bus.subscribe((event) => events.push(event));
+
+        try {
+            fixture.lifecycle.enable(fixture.workflowId);
+            const callback = fixture.callbacks[0];
+            if (!callback) throw new Error('Trigger callback was not registered');
+
+            callback(context);
+            callback(context);
+            expect(fixture.releases).toHaveLength(1);
+
+            const shutdown = dispatch(
+                { type: EngineChannel.Shutdown, correlationId: 'shutdown-run-lifecycle' },
+                {
+                    postMessage: (message) => messages.push(message),
+                    engine: fixture.engine,
+                    store: fixture.store,
+                    activator: fixture.activator,
+                    lifecycle: fixture.lifecycle,
+                    shutdown: async (): Promise<void> => {
+                        fixture.activator.dispose();
+                        await fixture.activator.waitForAllRuns();
+                    },
+                    broadcastWorkflowsList: vi.fn(),
+                    log: vi.fn(),
+                    propertiesPath: '',
+                },
+            );
+
+            await shutdown;
+
+            expect(messages).toContainEqual({
+                type: EngineChannel.ShutdownResult,
+                correlationId: 'shutdown-run-lifecycle',
+                ok: true,
+            });
+            expect(fixture.activator.activeWorkflowIds()).toEqual([]);
+            expect(fixture.activator.hasInFlightRuns(fixture.workflowId)).toBe(false);
+            expect(fixture.teardown).toHaveBeenCalledTimes(1);
+            expect(events).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        name: 'workflow.cancelled',
+                        payload: expect.objectContaining({ phase: 'running' }),
+                    }),
+                    expect.objectContaining({
+                        name: 'workflow.cancelled',
+                        payload: expect.objectContaining({ phase: 'queued' }),
+                    }),
+                ]),
+            );
+
+            callback(context);
+            expect(events).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        name: 'workflow.dropped',
+                        payload: expect.objectContaining({ reason: 'not_accepting' }),
+                    }),
+                ]),
+            );
+        } finally {
+            fixture.dispose();
+        }
+    });
 });
