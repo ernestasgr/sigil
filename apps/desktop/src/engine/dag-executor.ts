@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
@@ -10,6 +11,13 @@ import { evaluateCondition, matchSwitchCase } from './condition-evaluator.js';
 import type { EventBus, WorkflowRunPayload } from './event-bus.js';
 import type { NodeHandlerDeps, NodeRunResult, Sleep } from './node-handlers/types.js';
 import type { NodeHandlerRegistry } from './node-registry.js';
+import {
+    createRunTelemetry,
+    type NodeTelemetryIdentity,
+    nodeTelemetryIdentity,
+    type RunTelemetry,
+    safeTelemetryMessage,
+} from './telemetry.js';
 import { resolveTemplate } from './template.js';
 import { acceptWorkflow } from './workflow-acceptance.js';
 import type { WorkflowRunOutcome } from './workflow-run-supervisor.js';
@@ -30,7 +38,7 @@ export interface ExecutionOptions {
 export interface WorkflowExecutionResult {
     readonly pipelineId: string;
     readonly workflowId: string;
-    readonly runId?: string;
+    readonly runId: string;
     readonly outcome: WorkflowRunOutcome;
     readonly message?: string;
 }
@@ -65,36 +73,54 @@ const DEFAULT_SLEEP: Sleep = (ms: number, signal?: AbortSignal): Promise<void> =
 
 const SEED_CONTEXT: WorkflowContext = { event: '', payload: {}, vars: {} };
 
+type CorrelatedWorkflowRunPayload = WorkflowRunPayload & {
+    readonly workflowId: string;
+    readonly runId: string;
+};
+
 function reportNodeError(
-    bus: EventBus,
+    telemetry: RunTelemetry,
     settings: ExecutorSettings,
     pipeline: CompiledPipeline,
-    runPayload: WorkflowRunPayload,
-    nodeId: string,
+    runPayload: CorrelatedWorkflowRunPayload,
+    node: NodeTelemetryIdentity,
     err: unknown,
 ): WorkflowExecutionResult {
-    const message = err instanceof Error ? err.message : String(err);
-    bus.next({
-        name: 'workflow.error',
-        payload: { ...runPayload, nodeId, message },
-    });
+    const message = safeTelemetryMessage(errorMessage(err));
+    telemetry.emit(
+        {
+            name: 'workflow.error',
+            payload: { ...runPayload, ...node, message, outcome: 'failed' },
+        },
+        { kind: 'outcome', severity: 'error', outcome: 'failed', ...node },
+    );
     if (settings.notifyOnWorkflowError) {
-        bus.next({
-            name: 'notification.show',
-            payload: { title: 'Workflow error', body: message },
-        });
+        telemetry.emit(
+            {
+                name: 'notification.show',
+                payload: { title: 'Workflow error', body: message },
+            },
+            { kind: 'node', ...node },
+        );
     }
-    bus.next({
-        name: 'workflow.completed',
-        payload: { ...runPayload, outcome: 'failed' },
-    });
+    telemetry.emit(
+        {
+            name: 'workflow.completed',
+            payload: { ...runPayload, outcome: 'failed' },
+        },
+        { kind: 'outcome', severity: 'error', outcome: 'failed' },
+    );
     return {
         pipelineId: pipeline.id,
-        workflowId: runPayload.workflowId ?? pipeline.workflowId,
-        ...(runPayload.runId ? { runId: runPayload.runId } : {}),
+        workflowId: runPayload.workflowId,
+        runId: runPayload.runId,
         outcome: 'failed',
         message,
     };
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }
 
 function cancellationMessage(signal: AbortSignal | undefined): string {
@@ -106,36 +132,38 @@ function cancellationMessage(signal: AbortSignal | undefined): string {
 
 function executionResult(
     pipeline: CompiledPipeline,
-    runPayload: WorkflowRunPayload,
+    runPayload: CorrelatedWorkflowRunPayload,
     outcome: WorkflowRunOutcome,
     message?: string,
 ): WorkflowExecutionResult {
     return {
         pipelineId: pipeline.id,
-        workflowId: runPayload.workflowId ?? pipeline.workflowId,
-        ...(runPayload.runId ? { runId: runPayload.runId } : {}),
+        workflowId: runPayload.workflowId,
+        runId: runPayload.runId,
         outcome,
         ...(message ? { message } : {}),
     };
 }
 
 function emitCancelled(
-    bus: EventBus,
+    telemetry: RunTelemetry,
     pipeline: CompiledPipeline,
-    runPayload: WorkflowRunPayload,
+    runPayload: CorrelatedWorkflowRunPayload,
     signal: AbortSignal | undefined,
 ): WorkflowExecutionResult {
     const reason = cancellationMessage(signal);
-    bus.next({
-        name: 'workflow.cancelled',
-        payload: {
-            pipelineId: pipeline.id,
-            ...(runPayload.workflowId ? { workflowId: runPayload.workflowId } : {}),
-            ...(runPayload.runId ? { runId: runPayload.runId } : {}),
-            phase: 'running',
-            reason,
+    telemetry.emit(
+        {
+            name: 'workflow.cancelled',
+            payload: {
+                ...runPayload,
+                phase: 'running',
+                reason,
+                outcome: 'cancelled',
+            },
         },
-    });
+        { kind: 'outcome', outcome: 'cancelled' },
+    );
     return executionResult(pipeline, runPayload, 'cancelled', reason);
 }
 
@@ -181,17 +209,23 @@ export async function executeValidatedWorkflow(
 ): Promise<WorkflowExecutionResult> {
     const pipeline = workflow.pipeline;
     const workflowId = executionOptions.workflowId ?? pipeline.workflowId;
-    const runPayload: WorkflowRunPayload = {
+    const runId = executionOptions.runId ?? randomUUID();
+    const runPayload: CorrelatedWorkflowRunPayload = {
         pipelineId: pipeline.id,
         workflowId,
-        ...(executionOptions.runId ? { runId: executionOptions.runId } : {}),
+        runId,
     };
+    const telemetry = createRunTelemetry(bus, {
+        workflowId,
+        pipelineId: pipeline.id,
+        runId,
+    });
 
     if (executionOptions.signal?.aborted) {
-        return emitCancelled(bus, pipeline, runPayload, executionOptions.signal);
+        return emitCancelled(telemetry, pipeline, runPayload, executionOptions.signal);
     }
 
-    bus.next({ name: 'workflow.started', payload: runPayload });
+    telemetry.emit({ name: 'workflow.started', payload: runPayload });
     const state = stateStore.forWorkflow(workflowId);
 
     try {
@@ -203,15 +237,14 @@ export async function executeValidatedWorkflow(
 
         const triggerNode = nodeById.get(workflow.triggerId);
         if (!triggerNode) {
-            bus.next({
+            telemetry.emit({
                 name: 'workflow.completed',
                 payload: { ...runPayload, outcome: 'succeeded' },
             });
             return executionResult(pipeline, runPayload, 'succeeded');
         }
 
-        const baseDeps: NodeHandlerDeps = {
-            bus,
+        const commonDeps: Omit<NodeHandlerDeps, 'bus'> = {
             sleep,
             resolveTemplate,
             evaluateCondition,
@@ -222,21 +255,48 @@ export async function executeValidatedWorkflow(
             signal: executionOptions.signal,
         };
 
+        const executeNode = async (
+            node: PipelineNode,
+            ctx: WorkflowContext,
+        ): Promise<NodeRunResult> => {
+            const nodeIdentity = nodeTelemetryIdentity(node);
+            const nodeTelemetry = telemetry.forNode(nodeIdentity);
+            const span = nodeTelemetry.start();
+            try {
+                const handler = handlerRegistry.get(node.type);
+                if (Option.isNone(handler)) {
+                    throw new Error(`No handler registered for node type "${node.type}"`);
+                }
+                const result = await handler.value.execute(
+                    { node, ctx },
+                    { ...commonDeps, bus: nodeTelemetry.bus },
+                );
+                span.finish('succeeded');
+                return result;
+            } catch (err) {
+                span.finish(
+                    executionOptions.signal?.aborted ? 'cancelled' : 'failed',
+                    errorMessage(err),
+                );
+                throw err;
+            }
+        };
+
         let triggerResult: NodeRunResult;
         try {
-            const triggerHandler = handlerRegistry.get(triggerNode.type);
-            if (Option.isNone(triggerHandler)) {
-                throw new Error(`No handler registered for node type "${triggerNode.type}"`);
-            }
-            triggerResult = await triggerHandler.value.execute(
-                { node: triggerNode, ctx: seedContext ?? SEED_CONTEXT },
-                baseDeps,
-            );
+            triggerResult = await executeNode(triggerNode, seedContext ?? SEED_CONTEXT);
         } catch (err) {
             if (executionOptions.signal?.aborted) {
-                return emitCancelled(bus, pipeline, runPayload, executionOptions.signal);
+                return emitCancelled(telemetry, pipeline, runPayload, executionOptions.signal);
             }
-            return reportNodeError(bus, settings, pipeline, runPayload, triggerNode.id, err);
+            return reportNodeError(
+                telemetry,
+                settings,
+                pipeline,
+                runPayload,
+                nodeTelemetryIdentity(triggerNode),
+                err,
+            );
         }
 
         const scheduled = new Set<string>([triggerNode.id]);
@@ -256,7 +316,7 @@ export async function executeValidatedWorkflow(
 
         while (queue.length > 0) {
             if (executionOptions.signal?.aborted) {
-                return emitCancelled(bus, pipeline, runPayload, executionOptions.signal);
+                return emitCancelled(telemetry, pipeline, runPayload, executionOptions.signal);
             }
 
             const nextIdx = queue.reduce(
@@ -272,28 +332,28 @@ export async function executeValidatedWorkflow(
             if (!node) continue;
 
             try {
-                const handler = handlerRegistry.get(node.type);
-                if (Option.isNone(handler)) {
-                    throw new Error(`No handler registered for node type "${node.type}"`);
-                }
-                const { outputCtx, activePort } = await handler.value.execute(
-                    { node, ctx: entry.ctx },
-                    baseDeps,
-                );
+                const { outputCtx, activePort } = await executeNode(node, entry.ctx);
                 scheduleDownstream(entry.nodeId, activePort, outputCtx);
             } catch (err) {
                 if (executionOptions.signal?.aborted) {
-                    return emitCancelled(bus, pipeline, runPayload, executionOptions.signal);
+                    return emitCancelled(telemetry, pipeline, runPayload, executionOptions.signal);
                 }
-                return reportNodeError(bus, settings, pipeline, runPayload, entry.nodeId, err);
+                return reportNodeError(
+                    telemetry,
+                    settings,
+                    pipeline,
+                    runPayload,
+                    nodeTelemetryIdentity(node),
+                    err,
+                );
             }
         }
 
         if (executionOptions.signal?.aborted) {
-            return emitCancelled(bus, pipeline, runPayload, executionOptions.signal);
+            return emitCancelled(telemetry, pipeline, runPayload, executionOptions.signal);
         }
 
-        bus.next({
+        telemetry.emit({
             name: 'workflow.completed',
             payload: { ...runPayload, outcome: 'succeeded' },
         });

@@ -2,6 +2,9 @@ import { type FileEventPayload, FileEventPayloadSchema } from '@sigil/schema/fil
 import { Either } from 'effect';
 import { z } from 'zod';
 
+export type { EventTelemetry } from '../shared/telemetry.js';
+export { EventTelemetrySchema } from '../shared/telemetry.js';
+
 export const WorkflowRunPayloadSchema = z
     .object({
         pipelineId: z.string(),
@@ -18,7 +21,10 @@ export const WorkflowErrorPayloadSchema = z
         workflowId: z.string().optional(),
         runId: z.string().optional(),
         nodeId: z.string(),
+        nodeType: z.string().optional(),
+        pluginId: z.string().optional(),
         message: z.string(),
+        outcome: z.literal('failed').optional(),
     })
     .readonly();
 export type WorkflowErrorPayload = z.infer<typeof WorkflowErrorPayloadSchema>;
@@ -40,13 +46,19 @@ const WorkflowAdmissionPayloadFields = {
     policy: WorkflowRunPolicyPayloadSchema,
 } as const;
 
-export const WorkflowQueuedPayloadSchema = z.object(WorkflowAdmissionPayloadFields).readonly();
+export const WorkflowQueuedPayloadSchema = z
+    .object({
+        ...WorkflowAdmissionPayloadFields,
+        outcome: z.literal('queued').optional(),
+    })
+    .readonly();
 export type WorkflowQueuedPayload = z.infer<typeof WorkflowQueuedPayloadSchema>;
 
 export const WorkflowDroppedPayloadSchema = z
     .object({
         ...WorkflowAdmissionPayloadFields,
         reason: z.enum(['queue_full', 'not_accepting']),
+        outcome: z.literal('dropped').optional(),
     })
     .readonly();
 export type WorkflowDroppedPayload = z.infer<typeof WorkflowDroppedPayloadSchema>;
@@ -58,9 +70,24 @@ export const WorkflowCancelledPayloadSchema = z
         runId: z.string().optional(),
         phase: z.enum(['queued', 'running']).optional(),
         reason: z.string(),
+        outcome: z.literal('cancelled').optional(),
     })
     .readonly();
 export type WorkflowCancelledPayload = z.infer<typeof WorkflowCancelledPayloadSchema>;
+
+export const NodeRunPayloadSchema = z
+    .object({
+        pipelineId: z.string(),
+        workflowId: z.string().optional(),
+        runId: z.string().optional(),
+        nodeId: z.string(),
+        nodeType: z.string(),
+        outcome: z.enum(['running', 'succeeded', 'failed', 'cancelled']),
+        durationMs: z.number().finite().nonnegative().optional(),
+        message: z.string().max(256).optional(),
+    })
+    .readonly();
+export type NodeRunPayload = z.infer<typeof NodeRunPayloadSchema>;
 
 export const LogOutputPayloadSchema = z
     .object({
@@ -101,6 +128,8 @@ type EventPayloadMap = {
     'workflow.queued': WorkflowQueuedPayload;
     'workflow.dropped': WorkflowDroppedPayload;
     'workflow.cancelled': WorkflowCancelledPayload;
+    'node.started': NodeRunPayload;
+    'node.completed': NodeRunPayload;
     'manual.trigger.fired': FileEventPayload;
     'log.output': LogOutputPayload;
     'notification.show': NotificationShowPayload;
@@ -153,6 +182,16 @@ const EVENT_PAYLOAD_SCHEMA_REGISTRY = {
         schema: WorkflowCancelledPayloadSchema,
         label: 'Workflow Cancelled',
         color: 'text-veil',
+    },
+    'node.started': {
+        schema: NodeRunPayloadSchema,
+        label: 'Node Started',
+        color: 'text-gilt',
+    },
+    'node.completed': {
+        schema: NodeRunPayloadSchema,
+        label: 'Node Completed',
+        color: 'text-verdigris',
     },
     'manual.trigger.fired': {
         schema: FileEventPayloadSchema,

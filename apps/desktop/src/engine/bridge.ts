@@ -1,6 +1,6 @@
 import { Either, Option } from 'effect';
 import { z } from 'zod';
-import type { BusEvent, EventBus } from './event-bus.js';
+import type { BusEvent, EventBus, EventSink } from './event-bus.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 
 export type EmissionError =
@@ -19,13 +19,17 @@ export const PluginEmissionSchema = z
 export type PluginEmission = z.infer<typeof PluginEmissionSchema>;
 
 export interface Bridge {
-    readonly emit: (pluginId: string, emission: PluginEmission) => BridgeEmissionResult;
+    readonly emit: (
+        pluginId: string,
+        emission: PluginEmission,
+        sink?: EventSink,
+    ) => BridgeEmissionResult;
     readonly log: (pluginId: string, message: string) => EmissionResult;
 }
 
 export function createBridge(bus: EventBus, registry: ManifestRegistry): Bridge {
     return {
-        emit: (pluginId, emission) => {
+        emit: (pluginId, emission, sink) => {
             const parsedEmission = PluginEmissionSchema.safeParse(emission);
             if (!parsedEmission.success) {
                 return Either.left({
@@ -48,7 +52,7 @@ export function createBridge(bus: EventBus, registry: ManifestRegistry): Bridge 
                     data: payload,
                 },
             };
-            bus.next(event);
+            void (sink ?? bus).next(event);
             return Either.right(undefined);
         },
         log: (pluginId, message) => {

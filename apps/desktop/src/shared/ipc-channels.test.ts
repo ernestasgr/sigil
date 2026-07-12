@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import {
+    EngineBusEventSchema,
     EngineChannel,
     EngineCreateWorkflowSchema,
     EngineDeleteWorkflowSchema,
@@ -244,6 +245,43 @@ describe('EngineReadySchema', () => {
     it('accepts engine:ready with extra fields (zod strips unknown keys by default)', () => {
         const message = { type: 'engine:ready', extra: true };
         const result = EngineReadySchema.safeParse(message);
+        expect(result.success).toBe(true);
+    });
+});
+
+describe('EngineBusEventSchema', () => {
+    it('preserves correlated Engine telemetry through the IPC envelope', () => {
+        const result = EngineBusEventSchema.safeParse({
+            type: EngineChannel.BusEvent,
+            event: {
+                name: 'node.completed',
+                timestamp: 1234,
+                payload: {
+                    pipelineId: 'pipeline-1',
+                    workflowId: 'workflow-1',
+                    runId: 'run-1',
+                    nodeId: 'node-1',
+                    nodeType: 'log',
+                    outcome: 'succeeded',
+                    durationMs: 12,
+                },
+                telemetry: {
+                    eventId: 'event-1',
+                    timestamp: 1234,
+                    kind: 'node',
+                    severity: 'info',
+                    workflowId: 'workflow-1',
+                    pipelineId: 'pipeline-1',
+                    runId: 'run-1',
+                    nodeId: 'node-1',
+                    nodeType: 'log',
+                    outcome: 'succeeded',
+                    durationMs: 12,
+                    summary: '{"outcome":"succeeded"}',
+                },
+            },
+        });
+
         expect(result.success).toBe(true);
     });
 });

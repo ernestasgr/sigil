@@ -5,6 +5,7 @@ import {
     EngineDiagnosticPayloadSchema,
     EventPayloadSchemaRegistry,
     LogOutputPayloadSchema,
+    NodeRunPayloadSchema,
     NotificationShowPayloadSchema,
     PluginBusEventPayloadSchema,
     safeParsePayload,
@@ -25,6 +26,8 @@ describe('EventPayloadSchemaRegistry', () => {
             'workflow.queued',
             'workflow.dropped',
             'workflow.cancelled',
+            'node.started',
+            'node.completed',
             'manual.trigger.fired',
             'log.output',
             'notification.show',
@@ -69,6 +72,29 @@ describe('EventPayloadSchemaRegistry', () => {
                 runId: 'run1',
                 phase: 'running',
                 reason: 'disabled',
+            },
+        ],
+        [
+            'node.started',
+            {
+                pipelineId: 'p1',
+                workflowId: 'wf1',
+                runId: 'run1',
+                nodeId: 'node1',
+                nodeType: 'log',
+                outcome: 'running',
+            },
+        ],
+        [
+            'node.completed',
+            {
+                pipelineId: 'p1',
+                workflowId: 'wf1',
+                runId: 'run1',
+                nodeId: 'node1',
+                nodeType: 'log',
+                outcome: 'succeeded',
+                durationMs: 4,
             },
         ],
         [
@@ -273,6 +299,31 @@ describe('WorkflowCancelledPayloadSchema', () => {
             runId: 'run1',
             phase: 'running',
         });
+        expect(result.success).toBe(false);
+    });
+});
+
+describe('NodeRunPayloadSchema', () => {
+    it('requires correlated node identity and a node outcome', () => {
+        const result = NodeRunPayloadSchema.safeParse({
+            pipelineId: 'p1',
+            workflowId: 'wf1',
+            runId: 'run1',
+            nodeId: 'node1',
+            nodeType: 'log',
+            outcome: 'succeeded',
+            durationMs: 4,
+        });
+
+        expect(result.success).toBe(true);
+    });
+
+    it('rejects a node payload without its identity', () => {
+        const result = NodeRunPayloadSchema.safeParse({
+            pipelineId: 'p1',
+            outcome: 'succeeded',
+        });
+
         expect(result.success).toBe(false);
     });
 });

@@ -89,7 +89,11 @@ describe('dag-executor', () => {
 
             await executePipeline(sampleManualTriggerToLog, bus, handlerRegistry);
 
-            expect(events.map((event) => event.name)).toEqual([
+            expect(
+                events
+                    .filter((event) => !event.name.startsWith('node.'))
+                    .map((event) => event.name),
+            ).toEqual([
                 'workflow.started',
                 'manual.trigger.fired',
                 'log.output',
@@ -107,6 +111,32 @@ describe('dag-executor', () => {
             expect(triggerEvent?.name === 'manual.trigger.fired' && triggerEvent.payload).toEqual(
                 payload,
             );
+        });
+
+        it('keeps one generated run identity across workflow and Node telemetry', async () => {
+            const bus = createEventBus();
+            const events = captureEvents(bus);
+
+            const result = await executePipeline(sampleManualTriggerToLog, bus, handlerRegistry);
+            const started = events.find((event) => event.name === 'workflow.started');
+            const completed = events.find((event) => event.name === 'workflow.completed');
+            const nodeEvents = events.filter((event) => event.name.startsWith('node.'));
+
+            expect(result.runId).toBeTruthy();
+            expect(started?.telemetry).toMatchObject({
+                workflowId: 'workflow-download-sorter',
+                pipelineId: 'sample-manual-trigger-to-log',
+                runId: result.runId,
+                outcome: 'running',
+            });
+            expect(completed?.telemetry).toMatchObject({
+                workflowId: 'workflow-download-sorter',
+                pipelineId: 'sample-manual-trigger-to-log',
+                runId: result.runId,
+                outcome: 'succeeded',
+            });
+            expect(nodeEvents).toHaveLength(4);
+            expect(nodeEvents.every((event) => event.telemetry?.runId === result.runId)).toBe(true);
         });
     });
 
@@ -269,7 +299,11 @@ describe('dag-executor', () => {
             );
 
             expect(sleepCalls).toEqual([50]);
-            expect(events.map((event) => event.name)).toEqual([
+            expect(
+                events
+                    .filter((event) => !event.name.startsWith('node.'))
+                    .map((event) => event.name),
+            ).toEqual([
                 'workflow.started',
                 'manual.trigger.fired',
                 'log.output',
@@ -379,6 +413,11 @@ describe('dag-executor', () => {
             const errorEvent = events.find((event) => event.name === 'workflow.error');
             expect(errorEvent).toBeDefined();
             expect(errorEvent?.name === 'workflow.error' && errorEvent.payload.nodeId).toBe('wait');
+            expect(errorEvent?.telemetry).toMatchObject({
+                nodeId: 'wait',
+                outcome: 'failed',
+                severity: 'error',
+            });
 
             expect(
                 events.some(
@@ -387,6 +426,52 @@ describe('dag-executor', () => {
                 ),
             ).toBe(false);
             expect(events[events.length - 1]?.name).toBe('workflow.completed');
+            const completed = events[events.length - 1];
+            expect(completed?.name === 'workflow.completed' && completed.payload.outcome).toBe(
+                'failed',
+            );
+            expect(
+                events.some(
+                    (event) =>
+                        event.name === 'workflow.completed' &&
+                        event.payload.outcome === 'succeeded',
+                ),
+            ).toBe(false);
+        });
+
+        it('publishes cancellation as a distinct correlated terminal outcome', async () => {
+            const bus = createEventBus();
+            const events = captureEvents(bus);
+            const controller = new AbortController();
+            controller.abort('user cancelled');
+
+            const result = await executePipeline(
+                sampleManualTriggerToLog,
+                bus,
+                handlerRegistry,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                { signal: controller.signal },
+            );
+
+            const cancelled = events.find((event) => event.name === 'workflow.cancelled');
+            expect(result).toMatchObject({ outcome: 'cancelled', runId: expect.any(String) });
+            expect(cancelled?.payload).toMatchObject({
+                workflowId: 'workflow-download-sorter',
+                pipelineId: 'sample-manual-trigger-to-log',
+                runId: result.runId,
+                outcome: 'cancelled',
+                reason: 'user cancelled',
+            });
+            expect(cancelled?.telemetry).toMatchObject({
+                outcome: 'cancelled',
+                severity: 'info',
+                runId: result.runId,
+            });
+            expect(events.some((event) => event.name === 'workflow.completed')).toBe(false);
         });
 
         it('emits a default error notification when notifyOnWorkflowError is true', async () => {
@@ -726,7 +811,7 @@ describe('dag-executor', () => {
 
             expect(existsSync(srcPath)).toBe(false);
             expect(existsSync(join(dstDir, 'file.txt'))).toBe(true);
-            expect(events.map((e) => e.name)).toEqual([
+            expect(events.filter((e) => !e.name.startsWith('node.')).map((e) => e.name)).toEqual([
                 'workflow.started',
                 'manual.trigger.fired',
                 'workflow.completed',
@@ -769,7 +854,7 @@ describe('dag-executor', () => {
 
             expect(existsSync(srcPath)).toBe(true);
             expect(existsSync(join(dstDir, 'file.txt'))).toBe(true);
-            expect(events.map((e) => e.name)).toEqual([
+            expect(events.filter((e) => !e.name.startsWith('node.')).map((e) => e.name)).toEqual([
                 'workflow.started',
                 'manual.trigger.fired',
                 'workflow.completed',
@@ -808,7 +893,7 @@ describe('dag-executor', () => {
 
             expect(existsSync(srcPath)).toBe(false);
             expect(existsSync(join(dir, 'new-name.txt'))).toBe(true);
-            expect(events.map((e) => e.name)).toEqual([
+            expect(events.filter((e) => !e.name.startsWith('node.')).map((e) => e.name)).toEqual([
                 'workflow.started',
                 'manual.trigger.fired',
                 'workflow.completed',
@@ -853,7 +938,7 @@ describe('dag-executor', () => {
 
             expect(existsSync(srcPath)).toBe(true);
             expect(existsSync(dstPath)).toBe(true);
-            expect(events.map((e) => e.name)).toEqual([
+            expect(events.filter((e) => !e.name.startsWith('node.')).map((e) => e.name)).toEqual([
                 'workflow.started',
                 'manual.trigger.fired',
                 'workflow.completed',
@@ -945,7 +1030,7 @@ describe('dag-executor', () => {
             expect(existsSync(srcPath)).toBe(false);
             expect(existsSync(dstPath)).toBe(true);
             expect(existsSync(join(dstDir, 'file_2.txt'))).toBe(true);
-            expect(events.map((e) => e.name)).toEqual([
+            expect(events.filter((e) => !e.name.startsWith('node.')).map((e) => e.name)).toEqual([
                 'workflow.started',
                 'manual.trigger.fired',
                 'workflow.completed',

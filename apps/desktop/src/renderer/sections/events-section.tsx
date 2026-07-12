@@ -134,7 +134,7 @@ export function EventsSection(): ReactElement {
                                         {eventNameLabel(entry.name)}
                                     </span>
                                     <span className="text-parchment truncate">
-                                        {payloadPreview(entry.payload)}
+                                        {entry.telemetry?.summary ?? payloadPreview(entry.payload)}
                                     </span>
                                 </li>
                             ))}
