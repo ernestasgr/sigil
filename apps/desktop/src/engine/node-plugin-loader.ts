@@ -735,7 +735,8 @@ function handleEventEmitRpc(
         return;
     }
 
-    if (!pendingExecutes.has(executeRequestId)) {
+    const pending = pendingExecutes.get(executeRequestId);
+    if (!pending) {
         denyPluginOperation(
             worker,
             msg.requestId,
@@ -749,7 +750,7 @@ function handleEventEmitRpc(
 
     try {
         const [eventName, payload] = msg.args;
-        const result = bridge.emit(pluginId, { eventName, payload });
+        const result = bridge.emit(pluginId, { eventName, payload }, pending.deps.bus);
         if (Either.isLeft(result)) {
             const reason = `${result.left.kind} for event "${eventName}"`;
             denyPluginOperation(worker, msg.requestId, pluginId, msg.operation, reason, diagnostic);

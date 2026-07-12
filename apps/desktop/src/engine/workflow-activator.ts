@@ -5,6 +5,7 @@ import type { WorkflowActivationState } from '../shared/workflow.js';
 import type { Engine } from './engine.js';
 import { isTriggerHandler } from './node-handlers/types.js';
 import type { NodeHandlerRegistry } from './node-registry.js';
+import { createRunTelemetry } from './telemetry.js';
 import { acceptWorkflow } from './workflow-acceptance.js';
 import {
     createWorkflowRunSupervisor,
@@ -94,40 +95,56 @@ export function createWorkflowActivator(
         event: WorkflowRunLifecycleEvent,
         supervisor: WorkflowRunSupervisor,
     ): void {
+        const telemetry =
+            event.kind === 'started' || event.kind === 'finished'
+                ? undefined
+                : createRunTelemetry(engine.bus, event.run);
         switch (event.kind) {
             case 'queued':
-                engine.bus.next({
-                    name: 'workflow.queued',
-                    payload: {
-                        ...event.run,
-                        queueSize: event.queueSize,
-                        policy: supervisor.policy,
+                telemetry?.emit(
+                    {
+                        name: 'workflow.queued',
+                        payload: {
+                            ...event.run,
+                            queueSize: event.queueSize,
+                            policy: supervisor.policy,
+                            outcome: 'queued',
+                        },
                     },
-                });
+                    { kind: 'queue', outcome: 'queued' },
+                );
                 return;
             case 'dropped':
-                engine.bus.next({
-                    name: 'workflow.dropped',
-                    payload: {
-                        ...event.run,
-                        queueSize: event.queueSize,
-                        policy: supervisor.policy,
-                        reason: event.reason,
+                telemetry?.emit(
+                    {
+                        name: 'workflow.dropped',
+                        payload: {
+                            ...event.run,
+                            queueSize: event.queueSize,
+                            policy: supervisor.policy,
+                            reason: event.reason,
+                            outcome: 'dropped',
+                        },
                     },
-                });
+                    { kind: 'queue', outcome: 'dropped', severity: 'warn' },
+                );
                 return;
             case 'cancelled':
                 // An active run publishes its cancellation from the executor;
                 // queued work has no executor to publish that terminal event.
                 if (event.phase === 'queued') {
-                    engine.bus.next({
-                        name: 'workflow.cancelled',
-                        payload: {
-                            ...event.run,
-                            phase: event.phase,
-                            reason: event.reason,
+                    telemetry?.emit(
+                        {
+                            name: 'workflow.cancelled',
+                            payload: {
+                                ...event.run,
+                                phase: event.phase,
+                                reason: event.reason,
+                                outcome: 'cancelled',
+                            },
                         },
-                    });
+                        { kind: 'outcome', outcome: 'cancelled' },
+                    );
                 }
                 return;
             case 'started':

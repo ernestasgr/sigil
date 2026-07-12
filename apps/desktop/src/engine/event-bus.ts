@@ -1,11 +1,15 @@
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import { Subject } from 'rxjs';
 
+import type { EventTelemetry } from '../shared/telemetry.js';
+
 import {
     type EngineDiagnosticPayload,
     EngineDiagnosticPayloadSchema,
     type LogOutputPayload,
     LogOutputPayloadSchema,
+    type NodeRunPayload,
+    NodeRunPayloadSchema,
     type NotificationShowPayload,
     NotificationShowPayloadSchema,
     type PluginBusEventPayload,
@@ -28,6 +32,7 @@ import {
 export type {
     EngineDiagnosticPayload,
     LogOutputPayload,
+    NodeRunPayload,
     NotificationShowPayload,
     PluginBusEventPayload,
     WorkflowCancelledPayload,
@@ -42,6 +47,7 @@ export type {
 export {
     EngineDiagnosticPayloadSchema,
     LogOutputPayloadSchema,
+    NodeRunPayloadSchema,
     NotificationShowPayloadSchema,
     PluginBusEventPayloadSchema,
     WorkflowCancelledPayloadSchema,
@@ -52,21 +58,31 @@ export {
     WorkflowRunPolicyPayloadSchema,
 };
 
+interface BusEventEnvelope<TName extends string, TPayload> {
+    readonly name: TName;
+    readonly payload: TPayload;
+    readonly timestamp?: number;
+    readonly telemetry?: EventTelemetry;
+}
+
 export type BusEvent =
-    | { readonly name: 'workflow.started'; readonly payload: WorkflowRunPayload }
-    | { readonly name: 'workflow.completed'; readonly payload: WorkflowRunPayload }
-    | { readonly name: 'workflow.error'; readonly payload: WorkflowErrorPayload }
-    | { readonly name: 'workflow.queued'; readonly payload: WorkflowQueuedPayload }
-    | { readonly name: 'workflow.dropped'; readonly payload: WorkflowDroppedPayload }
-    | { readonly name: 'workflow.cancelled'; readonly payload: WorkflowCancelledPayload }
-    | {
-          readonly name: 'manual.trigger.fired';
-          readonly payload: FileEventPayload;
-      }
-    | { readonly name: 'log.output'; readonly payload: LogOutputPayload }
-    | { readonly name: 'notification.show'; readonly payload: NotificationShowPayload }
-    | { readonly name: 'plugin.event'; readonly payload: PluginBusEventPayload }
-    | { readonly name: 'engine.diagnostic'; readonly payload: EngineDiagnosticPayload };
+    | BusEventEnvelope<'workflow.started', WorkflowRunPayload>
+    | BusEventEnvelope<'workflow.completed', WorkflowRunPayload>
+    | BusEventEnvelope<'workflow.error', WorkflowErrorPayload>
+    | BusEventEnvelope<'workflow.queued', WorkflowQueuedPayload>
+    | BusEventEnvelope<'workflow.dropped', WorkflowDroppedPayload>
+    | BusEventEnvelope<'workflow.cancelled', WorkflowCancelledPayload>
+    | BusEventEnvelope<'node.started', NodeRunPayload>
+    | BusEventEnvelope<'node.completed', NodeRunPayload>
+    | BusEventEnvelope<'manual.trigger.fired', FileEventPayload>
+    | BusEventEnvelope<'log.output', LogOutputPayload>
+    | BusEventEnvelope<'notification.show', NotificationShowPayload>
+    | BusEventEnvelope<'plugin.event', PluginBusEventPayload>
+    | BusEventEnvelope<'engine.diagnostic', EngineDiagnosticPayload>;
+
+export interface EventSink {
+    readonly next: (event: BusEvent) => void | Promise<void>;
+}
 
 export type EventBus = Subject<BusEvent>;
 

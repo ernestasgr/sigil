@@ -17,6 +17,7 @@ describe('useAppStore', () => {
             activeSection: 'home',
             workflows: [],
             logs: [],
+            busEvents: [],
         });
     });
 
@@ -76,5 +77,21 @@ describe('useAppStore', () => {
         expect(logs.length).toBe(200);
         expect(logs[0].line).toBe('line-10');
         expect(logs[199].line).toBe('line-209');
+    });
+
+    it('uses the Engine timestamp for Bus events', () => {
+        useAppStore.getState().appendBusEvent({
+            name: 'log.output',
+            payload: { message: 'hello' },
+            telemetry: {
+                eventId: 'event-1',
+                timestamp: 1234,
+                kind: 'node',
+                severity: 'info',
+                summary: '{"message":"hello"}',
+            },
+        });
+
+        expect(useAppStore.getState().busEvents[0]?.timestamp).toBe(1234);
     });
 });

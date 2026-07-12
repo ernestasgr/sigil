@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import type { EngineBusEventPayload } from '../../shared/ipc-channels.js';
+import type { EventTelemetry } from '../../shared/telemetry.js';
 import type { WorkflowSummary } from '../../shared/workflow.js';
 
 export type Section = 'home' | 'workflows' | 'events' | 'plugins' | 'settings';
@@ -16,6 +17,7 @@ export interface BusEventEntry {
     readonly name: string;
     readonly payload: unknown;
     readonly timestamp: number;
+    readonly telemetry?: EventTelemetry;
 }
 
 const LOG_CAP = 200;
@@ -71,7 +73,8 @@ export const useAppStore = create<AppState>((set) => ({
                 id: nextBusEventId(),
                 name: event.name,
                 payload: event.payload,
-                timestamp: Date.now(),
+                timestamp: event.timestamp ?? event.telemetry?.timestamp ?? Date.now(),
+                ...(event.telemetry ? { telemetry: event.telemetry } : {}),
             };
             const busEvents = [...state.busEvents, entry];
             if (busEvents.length <= BUS_EVENT_CAP) return { busEvents };

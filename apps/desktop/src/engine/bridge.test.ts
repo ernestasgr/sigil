@@ -5,6 +5,7 @@ import { createBridge } from './bridge.js';
 import type { BusEvent } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
 import { createManifestRegistry } from './manifest-registry.js';
+import { createRunTelemetry } from './telemetry.js';
 
 const stubPingManifest: Manifest = {
     id: 'com.sigil.stub-ping',
@@ -60,6 +61,40 @@ describe('createBridge', () => {
             expect(result.left.eventName).toBe('evil.exfil');
         }
         expect(received).toHaveLength(0);
+    });
+
+    it('publishes Plugin events through the execution-scoped telemetry sink', () => {
+        const bus = createEventBus();
+        const registry = createManifestRegistry();
+        registry.register(stubPingManifest);
+        const bridge = createBridge(bus, registry);
+        const telemetry = createRunTelemetry(
+            bus,
+            { workflowId: 'workflow-1', pipelineId: 'pipeline-1', runId: 'run-1' },
+            { now: () => 1234, createEventId: () => 'event-1' },
+        );
+        const node = telemetry.forNode({
+            nodeId: 'plugin-node',
+            nodeType: 'plugin-node',
+            pluginId: stubPingManifest.id,
+        });
+        const received: BusEvent[] = [];
+        bus.subscribe((event) => received.push(event));
+
+        const result = bridge.emit(
+            stubPingManifest.id,
+            { eventName: 'stub.ping', payload: { token: 'secret' } },
+            node.bus,
+        );
+
+        expect(Either.isRight(result)).toBe(true);
+        expect(received[0]?.telemetry).toMatchObject({
+            runId: 'run-1',
+            nodeId: 'plugin-node',
+            pluginId: stubPingManifest.id,
+            timestamp: 1234,
+        });
+        expect(received[0]?.telemetry?.summary).not.toContain('secret');
     });
 
     it('blocks an emission from an unknown plugin', () => {

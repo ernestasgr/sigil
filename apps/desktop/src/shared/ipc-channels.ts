@@ -3,6 +3,7 @@ import { CapabilitySchema, ManifestSchema } from '@sigil/schema/manifest';
 import { TopologyDiagnosticSchema } from '@sigil/schema/topology';
 import { z } from 'zod';
 import { PersistenceDiagnosticSchema } from './persistence.js';
+import { EventTelemetrySchema } from './telemetry.js';
 import { WorkflowIdSchema, WorkflowSummarySchema } from './workflow.js';
 
 export type { PersistenceDiagnostic } from './persistence.js';
@@ -86,6 +87,8 @@ const EngineBusEventPayloadSchema = z
     .object({
         name: z.string(),
         payload: z.unknown(),
+        timestamp: z.number().finite().nonnegative().optional(),
+        telemetry: EventTelemetrySchema.optional(),
     })
     .readonly();
 export type EngineBusEventPayload = z.infer<typeof EngineBusEventPayloadSchema>;
