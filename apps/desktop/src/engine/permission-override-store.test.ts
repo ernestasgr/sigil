@@ -148,4 +148,14 @@ describe('createPermissionOverrideStore', () => {
             'com.sigil.test': ['network'],
         });
     });
+
+    it('creates a missing parent directory before committing overrides', () => {
+        const path = join(tempDir, 'nested', 'permission-overrides.json');
+        const store = createPermissionOverrideStore(path);
+
+        expect(Either.isRight(store.set('com.sigil.test', ['network']))).toBe(true);
+        expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+            'com.sigil.test': ['network'],
+        });
+    });
 });
