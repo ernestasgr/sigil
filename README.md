@@ -6,7 +6,7 @@ Sigil watches your filesystem (and, in future phases, other sources) and runs **
 
 ## Status
 
-**Phase 1 (MVP).** Windows only. Sigil is a personal tool and learning project, not a product launch — the architecture is intentionally ambitious relative to the use case because Plugin isolation, reactive pipelines, and visual graph editing are learning goals in their own right. See [`docs/prd-phase1-mvp.md`](docs/prd-phase1-mvp.md) for the full PRD and [`docs/adr/`](docs/adr) for architectural decisions.
+**Phase 1 (MVP).** Windows only. Sigil is a personal tool and learning project, not a product launch — the architecture is intentionally ambitious relative to the use case because Plugin isolation, reactive pipelines, and visual graph editing are learning goals in their own right. See [`docs/adr/`](docs/adr) for architectural decisions.
 
 ## Architecture
 
@@ -24,7 +24,9 @@ Three fully isolated layers, each with a distinct responsibility:
 │  Event Bus │ Bridge │ Capability Broker              │
 │  Manifest Registry │ Condition Evaluator             │
 │  Template Resolver │ DAG Executor                    │
-│  Plugin Loader │ Workflow Registry                   │
+│  Node Plugin Loader │ Workflow Store                 │
+│  Workflow Activator │ Workflow Lifecycle             │
+│  Dispatch │ File Watcher Manager                     │
 └──────┬───────────────────────────────────────────────┘
        │ postMessage RPC
 ┌──────▼──────────────────────────────────────────────┐
@@ -38,7 +40,7 @@ Three fully isolated layers, each with a distinct responsibility:
 
 The shell manages the window, system tray, and IPC routing. It owns no domain logic.
 
-**Boot sequence** (`apps/desktop/src/main/index.ts:132`):
+**Boot sequence** (`apps/desktop/src/main/index.ts:140`):
 
 1. `spawnEngine()` spins up a `Worker` running the Engine
 2. IPC handlers are wired (`ipcMain.handle` for pong, fire-test-event, toggle-workflow)
@@ -51,15 +53,16 @@ The shell manages the window, system tray, and IPC routing. It owns no domain lo
 
 Runs as an isolated `worker_thread` so crashed workflows cannot take down the UI.
 
-**Event Bus** — a single in-memory RxJS `Subject<BusEvent>` through which all Events flow. BusEvent is a discriminated union of 7 event types:
+**Event Bus** — a single in-memory RxJS `Subject<BusEvent>` through which all Events flow. BusEvent is a discriminated union of 8 event types:
 
 - `workflow.started` / `workflow.completed` / `workflow.error` — pipeline lifecycle
 - `manual.trigger.fired` — manual trigger node fired
 - `log.output` — a log line
 - `notification.show` — request to show an OS notification
 - `plugin.event` — plugin emitted an event onto the bus
+- `engine.diagnostic` — internal diagnostics (topology errors, activation failures, plugin load failures)
 
-**Bridge** — the cross-thread serialization layer. Validates every plugin emission against its Manifest (event names must be declared), then pushes onto the Event Bus. Returns `{ ok: true }` or `{ ok: false, error }`.
+**Bridge** — the cross-thread serialization layer. Validates every plugin emission against its Manifest (event names must be declared), then pushes onto the Event Bus. Returns an Effect `Either<void, EmissionError>`.
 
 **Capability Broker** — mediates every privileged operation by re-checking the plugin's Manifest `permissions` array on every call, not just at load time.
 
@@ -71,11 +74,13 @@ Runs as an isolated `worker_thread` so crashed workflows cannot take down the UI
 2. Checks for duplicate plugin ID
 3. Registers the manifest
 4. Spawns a `Worker` pointing at `plugin-worker.js`
-5. Waits for `plugin:ready` (10s timeout), cleans up on failure
+5. Waits for `plugin:ready` (30s timeout), cleans up on failure
+
+Plugin code evaluation inside `vm.Context` has a separate 5-second timeout.
 
 **DAG Executor** — runs a compiled pipeline in topological order (Kahn's algorithm). For each node: evaluates conditions (If/Else, Switch), resolves templates (`{{payload.*}}` / `{{vars.*}}`), emits log/notification events, and sleeps on Delay nodes. On error, emits `workflow.error` + optional notification.
 
-**Condition Evaluator** — evaluates `PipelineCondition` with type coercion. Operators: `equals`, `not_equals`, `contains`, `not_contains`, `starts_with`, `ends_with`, `matches` (regex) for strings; `gt`, `lt`, `gte`, `lte` for numbers. Case-insensitive by default.
+**Condition Evaluator** — evaluates `PipelineCondition` with type coercion. String operators: `equals`, `not_equals`, `contains`, `not_contains`, `starts_with`, `ends_with`, `matches` (regex). Number operators: `equals`, `not_equals`, `gt`, `lt`, `gte`, `lte`. Boolean operators: `equals`, `not_equals`. Case-insensitive by default.
 
 ### Plugins
 
@@ -132,31 +137,31 @@ Event Bus subscriptions:
 | **Preload**           | Only `window.sigil` API surface via `contextBridge`                                                         |
 | **Engine isolation**  | Separate `worker_thread` — independent heap, no shared state                                                |
 | **Plugin isolation**  | Own `worker_thread` + `vm.Context` with no Node.js globals                                                  |
-| **Plugin sandbox**    | Code generation disabled (`strings: false`, `wasm: false`); 5s timeout                                      |
+| **Plugin sandbox**    | Code generation disabled (`strings: false`, `wasm: false`); 5s eval timeout, 30s worker ready timeout |
 | **Permission model**  | Manifest declares capabilities; Bridge checks `emits`; Capability Broker checks `permissions` on every call |
 | **Schema validation** | Zod validates all data at every process boundary                                                            |
 
 ## MVP Node Types
 
-Ten node types, grouped by category:
+Ten node types, grouped by category. Eight are builtin handlers; File Watcher and File Manager are plugins loaded via the Node Plugin Loader in separate worker threads.
 
-| Category  | Node           | Purpose                                                        |
-| --------- | -------------- | -------------------------------------------------------------- |
-| Triggers  | File Watcher   | Subscribes to `file.created`/`modified`/`deleted` on a path.   |
-| Triggers  | Manual Trigger | Fires on click with a static `FileEventPayload` for testing.   |
-| Logic     | If/Else        | Evaluates a `PipelineCondition`, branches to `true`/`false`.   |
-| Logic     | Switch         | Routes to one of N case ports (or `default`) by field value.   |
-| System    | File Manager   | `move`/`copy`/`rename` with a collision policy.                |
-| System    | Notification   | OS notification with `{{event.*}}`/`{{vars.*}}` interpolation. |
-| State     | State Get      | Reads a SQLite key into `vars`.                                |
-| State     | State Set      | Writes a value to SQLite (coalesced, flushed on interval).     |
-| Utilities | Log            | Outputs a templated message to the Variable Inspector.         |
-| Utilities | Delay          | Pauses execution for a duration in milliseconds.               |
+| Category  | Node           | Loaded as    | Purpose                                                        |
+| --------- | -------------- | ------------ | -------------------------------------------------------------- |
+| Triggers  | File Watcher   | Plugin       | Subscribes to `file.created`/`modified`/`deleted` on a path.   |
+| Triggers  | Manual Trigger | Builtin      | Fires on click with a static `FileEventPayload` for testing.   |
+| Logic     | If/Else        | Builtin      | Evaluates a `PipelineCondition`, branches to `true`/`false`.   |
+| Logic     | Switch         | Builtin      | Routes to one of N case ports (or `default`) by field value.   |
+| System    | File Manager   | Plugin       | `move`/`copy`/`rename` with a collision policy.                |
+| System    | Notification   | Builtin      | OS notification with `{{event.*}}`/`{{vars.*}}` interpolation. |
+| State     | State Get      | Builtin      | Reads a SQLite key into `vars`.                                |
+| State     | State Set      | Builtin      | Writes a value to SQLite (coalesced, flushed on interval).     |
+| Utilities | Log            | Builtin      | Outputs a templated message to the Variable Inspector.         |
+| Utilities | Delay          | Builtin      | Pauses execution for a duration in milliseconds.               |
 
 ## MVP Plugins
 
 - **File Watcher** (Trigger) — emits `file.created`, `file.modified`, `file.deleted`. One underlying watcher per unique `(path, recursive)` pair, shared across subscribers. Ignores `*.crdownload`, `*.part`, `*.tmp`, `*.download` by default.
-- **File Manager** (Action) — `move`, `copy`, or `rename` with a collision policy of `skip`, `overwrite`, `auto-rename`, or `error`. Requires `filesystem.read` and `filesystem.write` permissions.
+- **File Manager** (Action) — `move`, `copy`, or `rename` with a collision policy of `skip`, `overwrite`, `auto-rename`, or `error`. Requires `filesystem.read`, `filesystem.write`, and `state.write` permissions.
 
 ## UI
 
@@ -167,7 +172,7 @@ Ten node types, grouped by category:
 
 ## Tech Stack
 
-TypeScript 6 · Electron 42 · React 19 · Zustand 5 · @xyflow/react 12 · Zod 4 · RxJS 7 · better-sqlite3 12 · Tailwind CSS 4 · Vitest 4
+TypeScript 6 · Electron 42 · React 19 · Zustand 5 · @xyflow/react 12 · Zod 4 · RxJS 7 · Effect 3 · better-sqlite3 12 · Drizzle ORM · Tailwind CSS 4 · Biome · Vitest 4
 
 ## Repository Layout
 
@@ -179,16 +184,17 @@ sigil/
 │           ├── main/       # Electron main process: tray, IPC, engine client
 │           ├── preload/    # Electron preload bridge
 │           ├── engine/     # Automation Engine: event bus, bridge, capability broker, DAG executor
-│           ├── renderer/   # React UI: sections, components, store
-│           └── shared/     # Cross-process types and IPC channels
+│           ├── renderer/   # React UI: sections, components, store, workflow builder
+│           ├── shared/     # Cross-process types and IPC channels (Zod-validated)
+│           └── builtin-plugins/  # File Watcher and File Manager plugins
 ├── packages/
 │   └── schema/             # @sigil/schema — Zod schemas for the Pipeline JSON type system
 └── docs/
-    ├── prd-phase1-mvp.md   # Phase 1 PRD
-    └── adr/                # Architecture Decision Records
+    ├── adr/                # Architecture Decision Records
+    └── agents/             # Agent-specific documentation
 ```
 
-The shared contract: `@sigil/schema` defines `CompiledPipeline`, `PipelineNode` (discriminated union of 10 types), `WorkflowContext`, `PipelineCondition`, `Manifest`, and operator schemas — all validated with Zod at every boundary.
+The shared contract: `@sigil/schema` defines `CompiledPipeline`, `PipelineNode` (discriminated union of 10 builtin types, plus `PluginPipelineNode`), `WorkflowContext`, `PipelineCondition`, `Manifest`, and operator schemas — all validated with Zod at every boundary.
 
 ## Prerequisites
 
@@ -210,9 +216,9 @@ pnpm dev          # builds @sigil/schema, then launches the Electron app with HM
 | `pnpm build`        | Build `@sigil/schema` and the desktop app for production. |
 | `pnpm preview`      | Preview the built desktop app.                            |
 | `pnpm typecheck`    | Run `tsc --noEmit` across every workspace package.        |
-| `pnpm lint`         | Lint the whole repo with ESLint.                          |
-| `pnpm lint:fix`     | Lint and auto-fix.                                        |
-| `pnpm format`       | Format the repo with Prettier.                            |
+| `pnpm lint`         | Lint the whole repo with Biome.                           |
+| `pnpm lint:fix`     | Lint and auto-fix with Biome.                             |
+| `pnpm format`       | Format the repo with Biome.                               |
 | `pnpm format:check` | Check formatting without writing.                         |
 | `pnpm test`         | Run tests across every workspace package (Vitest).        |
 | `pnpm test:watch`   | Watch tests for `@sigil/schema`.                          |
@@ -231,10 +237,10 @@ Run the suite with `pnpm test`.
 ## Project Docs
 
 - [`CONTEXT.md`](CONTEXT.md) — the domain glossary. Canonical vocabulary for Event, Plugin, Workflow, Node, Pipeline, Workflow State, Context, and more.
-- [`CODING_STANDARDS.md`](CODING_STANDARDS.md) — TypeScript conventions: no `any`, discriminated unions with exhaustive switches, `readonly` by default, branded IDs, Zod at boundaries, functional style, `Result` types over throwing.
+- [`CODING_STANDARDS.md`](CODING_STANDARDS.md) — TypeScript conventions: no `any`, discriminated unions with exhaustive switches, `readonly` by default, branded IDs, Zod at boundaries, functional style with Effect (`Either`, `Option`, `Match`), `Result` types over throwing.
 - [`UI_STYLE_GUIDANCE.md`](UI_STYLE_GUIDANCE.md) — visual language and color system.
-- [`docs/prd-phase1-mvp.md`](docs/prd-phase1-mvp.md) — the Phase 1 PRD (user stories, implementation decisions, type definitions, testing strategy).
 - [`docs/adr/`](docs/adr) — Architecture Decision Records.
+- [`docs/agents/`](docs/agents) — Agent-specific documentation (domain, issue tracker, triage labels).
 
 ## Roadmap
 
