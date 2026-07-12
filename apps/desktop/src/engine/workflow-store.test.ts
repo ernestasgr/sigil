@@ -436,7 +436,7 @@ describe('WorkflowStore', () => {
         expect(Option.getOrThrow(loaded).positions).toEqual({ valid: { x: 10, y: 20 } });
     });
 
-    it('skips invalid JSON files on startup', () => {
+    it('keeps invalid JSON files visible on startup', () => {
         writeFileSync(join(dir, 'bad.json'), '{invalid}');
 
         store = createWorkflowStore(dir);
@@ -456,6 +456,28 @@ describe('WorkflowStore', () => {
         ]);
         expect(Option.isNone(store.get('bad'))).toBe(true);
         expect(store.remove('bad')).toBe(true);
+    });
+
+    it('keeps files with invalid filename ids visible for recovery', () => {
+        writeFileSync(join(dir, 'bad name.json'), '{invalid}');
+
+        store = createWorkflowStore(dir);
+
+        expect(store.list()).toEqual([
+            expect.objectContaining({
+                id: 'bad name',
+                enabled: false,
+                diagnostics: [
+                    expect.objectContaining({
+                        severity: 'error',
+                        code: 'invalid_pipeline',
+                        target: { kind: 'pipeline' },
+                    }),
+                ],
+            }),
+        ]);
+        expect(() => store.get('bad name')).toThrow();
+        expect(() => store.remove('bad name')).toThrow();
     });
 
     it('keeps topology-invalid stored Workflows visible with repair diagnostics', () => {

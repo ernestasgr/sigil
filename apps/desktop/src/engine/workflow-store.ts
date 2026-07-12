@@ -1,10 +1,17 @@
+import { randomUUID } from 'node:crypto';
 import {
+    closeSync,
     existsSync,
+    constants as fsConstants,
+    fstatSync,
+    fsyncSync,
     lstatSync,
     mkdirSync,
+    openSync,
     readdirSync,
     readFileSync,
     realpathSync,
+    renameSync,
     unlinkSync,
     writeFileSync,
 } from 'node:fs';
@@ -268,7 +275,28 @@ function readWorkflowFile(
     const fileName = basename(storagePath);
     let raw: unknown;
     try {
-        raw = JSON.parse(readFileSync(storagePath, 'utf-8'));
+        const initialStat = lstatSync(storagePath);
+        if (initialStat.isSymbolicLink()) {
+            throw new Error(`Workflow file is a symbolic link: ${storagePath}`);
+        }
+        const initialRealPath = realpathSync(storagePath);
+        const fileDescriptor = openSync(
+            storagePath,
+            fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
+        );
+        try {
+            const openedStat = fstatSync(fileDescriptor);
+            if (
+                openedStat.dev !== initialStat.dev ||
+                openedStat.ino !== initialStat.ino ||
+                realpathSync(storagePath) !== initialRealPath
+            ) {
+                throw new Error(`Workflow file changed while opening: ${storagePath}`);
+            }
+            raw = JSON.parse(readFileSync(fileDescriptor, 'utf-8'));
+        } finally {
+            closeSync(fileDescriptor);
+        }
     } catch {
         return invalidWorkflowRecord(storagePath, workflowId, raw, [
             storedWorkflowDiagnostic(fileName, 'it is not valid JSON.'),
@@ -357,7 +385,31 @@ function writeWorkflowFile(dir: string, stored: StoredWorkflow): void {
         edges: stored.edges,
         activation: stored.activation,
     };
-    writeFileSync(filePath(dir, stored.id), JSON.stringify(data, null, 2), 'utf-8');
+    const storagePath = filePath(dir, stored.id);
+    const temporaryPath = `${storagePath}.${randomUUID()}.tmp`;
+    let fileDescriptor: number | undefined;
+    try {
+        fileDescriptor = openSync(
+            temporaryPath,
+            fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY,
+            0o600,
+        );
+        writeFileSync(fileDescriptor, JSON.stringify(data, null, 2), 'utf-8');
+        fsyncSync(fileDescriptor);
+        closeSync(fileDescriptor);
+        fileDescriptor = undefined;
+        renameSync(temporaryPath, storagePath);
+    } catch (error) {
+        if (fileDescriptor !== undefined) {
+            closeSync(fileDescriptor);
+        }
+        try {
+            unlinkSync(temporaryPath);
+        } catch {
+            // Best-effort cleanup must not hide the original write error.
+        }
+        throw error;
+    }
 }
 
 function isValidWorkflowRecord(record: WorkflowRecord): record is ValidWorkflowRecord {
@@ -386,8 +438,10 @@ function loadAll(
     for (const entry of entries) {
         if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
         const workflowId = basename(entry.name, '.json');
-        if (!WorkflowIdSchema.safeParse(workflowId).success) continue;
-        const stored = readWorkflowFile(filePath(dir, workflowId), workflowId, topologyOptions);
+        const storagePath = WorkflowIdSchema.safeParse(workflowId).success
+            ? filePath(dir, workflowId)
+            : resolve(dir, entry.name);
+        const stored = readWorkflowFile(storagePath, workflowId, topologyOptions);
         workflows.set(stored.id, stored);
     }
     return workflows;

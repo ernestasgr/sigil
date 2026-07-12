@@ -1,5 +1,4 @@
 import { TopologyDiagnosticSchema } from '@sigil/schema/topology';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { z } from 'zod';
 
 export { WorkflowIdSchema } from '@sigil/schema/workflow-id';
@@ -15,7 +14,8 @@ export type WorkflowActivationState = z.infer<typeof WorkflowActivationStateSche
 
 export const WorkflowSummarySchema = z
     .object({
-        id: WorkflowIdSchema,
+        // Startup diagnostics may expose an invalid filename id for recovery.
+        id: z.string(),
         name: z.string(),
         /** The user's persisted intent, independent from live trigger activation. */
         enabled: z.boolean(),
