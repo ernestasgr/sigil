@@ -8,6 +8,7 @@ import {
     EngineChannel,
     type EngineLog,
     type EngineWorkflowsList,
+    type WorkerInbound,
     WorkerInboundSchema,
 } from '../shared/ipc-channels.js';
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
@@ -160,6 +161,28 @@ const subsystems: DispatchSubsystems = {
     propertiesPath,
 };
 
+let dispatchQueue: Promise<void> = Promise.resolve();
+let shutdownQueued = false;
+
+function reportDispatchError(err: unknown): void {
+    console.error('[worker] unhandled async error processing message:', err);
+    port.postMessage({
+        type: EngineChannel.Log,
+        line: `[error] unhandled error processing message: ${err instanceof Error ? err.message : String(err)}`,
+    });
+}
+
+function enqueueDispatch(message: WorkerInbound): void {
+    if (shutdownQueued) return;
+    if (message.type === EngineChannel.Shutdown) shutdownQueued = true;
+
+    dispatchQueue = dispatchQueue
+        .then(() => Promise.resolve(dispatch(message, subsystems)))
+        .catch((err: unknown) => {
+            reportDispatchError(err);
+        });
+}
+
 port.on('message', (raw: unknown) => {
     const parsed = WorkerInboundSchema.safeParse(raw);
     if (!parsed.success) {
@@ -174,21 +197,7 @@ port.on('message', (raw: unknown) => {
         return;
     }
     const message = parsed.data;
-    try {
-        void Promise.resolve(dispatch(message, subsystems)).catch((err: unknown) => {
-            console.error('[worker] unhandled async error processing message:', err);
-            port.postMessage({
-                type: EngineChannel.Log,
-                line: `[error] unhandled error processing message: ${err instanceof Error ? err.message : String(err)}`,
-            });
-        });
-    } catch (err) {
-        console.error('[worker] unhandled error processing message:', err);
-        port.postMessage({
-            type: EngineChannel.Log,
-            line: `[error] unhandled error processing message: ${err instanceof Error ? err.message : String(err)}`,
-        });
-    }
+    enqueueDispatch(message);
 });
 
 for (const wf of store.list()) {

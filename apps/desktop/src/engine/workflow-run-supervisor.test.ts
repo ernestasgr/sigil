@@ -92,7 +92,7 @@ describe('Workflow run supervisor', () => {
                 return new Promise<WorkflowRunExecutionResult>((resolve) => {
                     signal.addEventListener(
                         'abort',
-                        () => resolve({ outcome: 'cancelled', message: 'disabled' }),
+                        () => resolve({ outcome: 'cancelled', message: 'executor cancellation' }),
                         { once: true },
                     );
                 });
@@ -105,7 +105,8 @@ describe('Workflow run supervisor', () => {
 
         supervisor.submit(context);
         supervisor.submit(context);
-        const stopping = supervisor.cancel('disabled');
+        const stopping = supervisor.cancel('supervisor reason');
+        const repeatedStopping = supervisor.cancel('repeated reason');
 
         expect(activeSignal?.aborted).toBe(true);
         expect(supervisor.accepting()).toBe(false);
@@ -114,17 +115,27 @@ describe('Workflow run supervisor', () => {
             reason: 'not_accepting',
         });
 
-        await stopping;
+        await Promise.all([stopping, repeatedStopping]);
 
         expect(events).toEqual(
             expect.arrayContaining([
-                expect.objectContaining({ kind: 'cancelled', phase: 'queued', reason: 'disabled' }),
+                expect.objectContaining({
+                    kind: 'cancelled',
+                    phase: 'queued',
+                    reason: 'supervisor reason',
+                }),
                 expect.objectContaining({
                     kind: 'finished',
-                    outcome: expect.objectContaining({ outcome: 'cancelled' }),
+                    outcome: expect.objectContaining({
+                        outcome: 'cancelled',
+                        message: 'executor cancellation',
+                    }),
                 }),
             ]),
         );
+        expect(
+            events.filter((event) => event.kind === 'cancelled' && event.phase === 'running'),
+        ).toHaveLength(1);
         expect(supervisor.activeCount()).toBe(0);
         expect(supervisor.queuedCount()).toBe(0);
     });
