@@ -110,6 +110,29 @@ describe('EngineWorkflowsListSchema', () => {
 
         expect(result.success).toBe(true);
     });
+
+    it('allows invalid filename ids in recovery summaries', () => {
+        const result = EngineWorkflowsListSchema.safeParse({
+            type: EngineChannel.WorkflowsList,
+            workflows: [
+                {
+                    id: 'bad name',
+                    name: 'Unreadable Workflow (bad name)',
+                    enabled: false,
+                    diagnostics: [
+                        {
+                            severity: 'error',
+                            code: 'invalid_pipeline',
+                            target: { kind: 'pipeline' },
+                            message: 'Repair or remove the stored file.',
+                        },
+                    ],
+                },
+            ],
+        });
+
+        expect(result.success).toBe(true);
+    });
 });
 
 describe('EngineReadySchema', () => {
