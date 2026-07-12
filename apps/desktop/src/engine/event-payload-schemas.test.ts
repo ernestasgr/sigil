@@ -457,6 +457,32 @@ describe('EngineDiagnosticPayloadSchema', () => {
         expect(result.success).toBe(true);
     });
 
+    it('preserves plugin identity and failed outcome context', () => {
+        const result = EngineDiagnosticPayloadSchema.safeParse({
+            message: 'Permission denied: filesystem.read',
+            kind: 'authorization',
+            source: 'plugin',
+            pluginId: 'com.example.plugin',
+            workflowId: 'workflow-1',
+            pipelineId: 'pipeline-1',
+            runId: 'run-1',
+            nodeId: 'node-1',
+            nodeType: 'plugin-node',
+            outcome: 'failed',
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data).toMatchObject({
+                source: 'plugin',
+                pluginId: 'com.example.plugin',
+                workflowId: 'workflow-1',
+                runId: 'run-1',
+                outcome: 'failed',
+            });
+        }
+    });
+
     it('rejects a missing message', () => {
         const result = EngineDiagnosticPayloadSchema.safeParse({});
         expect(result.success).toBe(false);

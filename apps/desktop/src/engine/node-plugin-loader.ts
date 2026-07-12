@@ -12,6 +12,7 @@ import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { Either, Option } from 'effect';
 import type { Bridge } from './bridge.js';
+import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
 import { FileEventSchema } from './file-watcher-manager.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 import type {
@@ -68,6 +69,25 @@ export interface NodePluginLoaderDeps {
     readonly bridge?: Pick<Bridge, 'emit'>;
     readonly permissionOverrides?: PermissionOverrideStore;
     readonly diagnostic?: (message: string) => void;
+    readonly diagnosticEvent?: (event: EngineDiagnosticPayload) => void;
+}
+
+function notifyDiagnostic(
+    diagnostic: ((message: string) => void) | undefined,
+    diagnosticEvent: ((event: EngineDiagnosticPayload) => void) | undefined,
+    message: string,
+    context: Omit<EngineDiagnosticPayload, 'message'> = {},
+): void {
+    try {
+        diagnostic?.(message);
+    } catch {
+        // A diagnostic subscriber must not affect plugin execution.
+    }
+    try {
+        diagnosticEvent?.({ message, ...context });
+    } catch {
+        // A diagnostic subscriber must not affect plugin execution.
+    }
 }
 
 function resolveHandlerPath(pluginDir: string): Option.Option<string> {
@@ -208,6 +228,7 @@ export async function loadNodePlugin(
         deps.kernel,
         deps.bridge,
         deps.diagnostic,
+        deps.diagnosticEvent,
     );
     deps.handlerRegistry.register(manifest.nodeType, handler);
 
@@ -247,6 +268,7 @@ function createWorkerNodeHandlerProxy(
     kernel?: KernelDeps,
     bridge?: Pick<Bridge, 'emit'>,
     diagnostic?: (message: string) => void,
+    diagnosticEvent?: (event: EngineDiagnosticPayload) => void,
 ): NodeHandler {
     const pendingExecutes = new Map<
         string,
@@ -259,12 +281,39 @@ function createWorkerNodeHandlerProxy(
     const pendingActivates = new Map<string, { onEvent: (ctx: WorkflowContext) => void }>();
     let workerFailure: Error | undefined;
 
-    const publishDiagnostic = (message: string): void => {
-        try {
-            diagnostic?.(message);
-        } catch {
-            // A diagnostic subscriber must not prevent pending work from settling.
-        }
+    const publishDiagnostic = (message: string, kind = 'worker'): void => {
+        notifyDiagnostic(diagnostic, diagnosticEvent, message, {
+            kind,
+            source: 'plugin',
+            pluginId,
+            outcome: 'failed',
+        });
+    };
+    const publishScopedDiagnostic = (
+        executeRequestId: string | undefined,
+        message: string,
+        kind: string,
+    ): void => {
+        if (executeRequestId === undefined) return;
+        const pending = pendingExecutes.get(executeRequestId);
+        const bus = pending?.deps.bus;
+        if (!bus) return;
+        void Promise.resolve(
+            bus.next({
+                name: 'engine.diagnostic',
+                payload: {
+                    message,
+                    kind,
+                    source: 'plugin',
+                    pluginId,
+                    outcome: 'failed',
+                },
+            }),
+        ).catch(() => undefined);
+    };
+    const publishOperationDiagnostic = (message: string, executeRequestId?: string): void => {
+        publishDiagnostic(message, 'authorization');
+        publishScopedDiagnostic(executeRequestId, message, 'authorization');
     };
 
     const failWorker = (failure: Error): void => {
@@ -273,9 +322,12 @@ function createWorkerNodeHandlerProxy(
         if (pluginWorkers.get(pluginId) === worker) pluginWorkers.delete(pluginId);
         publishDiagnostic(`[proxy] ${failure.message}`);
 
-        const executions = [...pendingExecutes.values()];
+        const executions = [...pendingExecutes.entries()];
         pendingExecutes.clear();
-        for (const pending of executions) pending.reject(failure);
+        for (const [requestId, pending] of executions) {
+            publishScopedDiagnostic(requestId, `[proxy] ${failure.message}`, 'worker');
+            pending.reject(failure);
+        }
 
         const activations = [...pendingActivates.values()];
         pendingActivates.clear();
@@ -313,7 +365,7 @@ function createWorkerNodeHandlerProxy(
             const message =
                 `[proxy] plugin "${pluginId}" sent an invalid${operation} message: ` +
                 parsed.error.message;
-            diagnostic?.(message);
+            publishDiagnostic(message);
             if (isRecord(raw) && typeof raw.requestId === 'string') {
                 postDepsRpcError(worker, raw.requestId, message);
             }
@@ -353,7 +405,7 @@ function createWorkerNodeHandlerProxy(
                             `[plugin:${pluginId}] denied operation "event.emit"`,
                         )
                     ) {
-                        diagnostic?.(`[proxy] ${runtimeMsg.error}`);
+                        publishDiagnostic(`[proxy] ${runtimeMsg.error}`, 'authorization');
                     }
                     pending.reject(new Error(runtimeMsg.error));
                 }
@@ -366,7 +418,7 @@ function createWorkerNodeHandlerProxy(
                 console.warn(
                     `[proxy] activation error for plugin "${pluginId}": ${runtimeMsg.error}`,
                 );
-                diagnostic?.(
+                publishDiagnostic(
                     `[proxy] activation error for plugin "${pluginId}": ${runtimeMsg.error}`,
                 );
                 Option.getOrUndefined(getDeactivationHook(pending.onEvent))?.(runtimeMsg.error);
@@ -384,7 +436,7 @@ function createWorkerNodeHandlerProxy(
                     vars: runtimeMsg.vars ?? {},
                 });
                 if (!parsedContext.success) {
-                    diagnostic?.(
+                    publishDiagnostic(
                         `[proxy] plugin "${pluginId}" emitted an invalid workflow context: ${parsedContext.error.message}`,
                     );
                     break;
@@ -400,7 +452,7 @@ function createWorkerNodeHandlerProxy(
                     pluginId,
                     kernel,
                     bridge,
-                    diagnostic,
+                    (message) => publishOperationDiagnostic(message, runtimeMsg.executeRequestId),
                 );
                 break;
             }

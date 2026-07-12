@@ -2,8 +2,14 @@ import { type FileEventPayload, FileEventPayloadSchema } from '@sigil/schema/fil
 import { Either } from 'effect';
 import { z } from 'zod';
 
+import { TelemetryDiagnosticSourceSchema, TelemetryOutcomeSchema } from '../shared/telemetry.js';
+
 export type { EventTelemetry } from '../shared/telemetry.js';
-export { EventTelemetrySchema } from '../shared/telemetry.js';
+export {
+    EventTelemetrySchema,
+    TelemetryDiagnosticSourceSchema,
+    TelemetryOutcomeSchema,
+} from '../shared/telemetry.js';
 
 export const WorkflowRunPayloadSchema = z
     .object({
@@ -130,6 +136,14 @@ export const EngineDiagnosticPayloadSchema = z
     .object({
         message: z.string(),
         kind: z.string().optional(),
+        source: TelemetryDiagnosticSourceSchema.optional(),
+        pluginId: z.string().min(1).optional(),
+        workflowId: z.string().min(1).optional(),
+        pipelineId: z.string().min(1).optional(),
+        runId: z.string().min(1).optional(),
+        nodeId: z.string().min(1).optional(),
+        nodeType: z.string().min(1).optional(),
+        outcome: TelemetryOutcomeSchema.optional(),
     })
     .readonly();
 export type EngineDiagnosticPayload = z.infer<typeof EngineDiagnosticPayloadSchema>;

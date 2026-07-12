@@ -1,4 +1,6 @@
 import { EventPayloadSchemaRegistry } from '../../engine/event-payload-schemas.js';
+import { redactTelemetrySummary, redactTelemetryText } from '../../shared/telemetry-safety.js';
+import type { BusEventEntry } from '../store/app-store.js';
 
 export function eventNameLabel(name: string): string {
     return EventPayloadSchemaRegistry[name]?.label ?? name;
@@ -43,6 +45,38 @@ export function payloadPreview(payload: unknown): string {
         }
     }
     return parts.join(', ');
+}
+
+export function telemetryEntryPreview(entry: BusEventEntry): string {
+    if (entry.telemetry) return redactTelemetrySummary(entry.telemetry.summary);
+    if (entry.name === 'engine.diagnostic' && isRecord(entry.payload)) {
+        const message = entry.payload.message;
+        if (typeof message === 'string') return redactTelemetryText(message);
+    }
+    return payloadPreview(entry.payload);
+}
+
+function diagnosticField(entry: BusEventEntry, key: string): string | undefined {
+    if (entry.name !== 'engine.diagnostic' || !isRecord(entry.payload)) return undefined;
+    const value = entry.payload[key];
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+export function telemetryEntryContext(entry: BusEventEntry): string {
+    const workflowId = entry.telemetry?.workflowId ?? diagnosticField(entry, 'workflowId');
+    const runId = entry.telemetry?.runId ?? diagnosticField(entry, 'runId');
+    const pluginId = entry.telemetry?.pluginId ?? diagnosticField(entry, 'pluginId');
+    const outcome = entry.telemetry?.outcome ?? diagnosticField(entry, 'outcome');
+    const source = diagnosticField(entry, 'source');
+    return [
+        workflowId === undefined ? undefined : `workflow=${workflowId}`,
+        runId === undefined ? undefined : `run=${runId}`,
+        pluginId === undefined ? undefined : `plugin=${pluginId}`,
+        outcome === undefined ? undefined : `outcome=${outcome}`,
+        source === undefined ? undefined : `source=${source}`,
+    ]
+        .filter((value): value is string => value !== undefined)
+        .join(' · ');
 }
 
 export function extractPluginId(payload: unknown): string | undefined {

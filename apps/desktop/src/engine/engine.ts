@@ -21,6 +21,7 @@ import {
 } from './dag-executor.js';
 import type { EventBus } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
+import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
 import { createFileWatcherManager, type FileWatcherManager } from './file-watcher-manager.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 import { createManifestRegistry } from './manifest-registry.js';
@@ -70,7 +71,12 @@ function emitTopologyDiagnostics(bus: EventBus, diagnostics: readonly TopologyDi
     for (const diagnostic of diagnostics) {
         bus.next({
             name: 'engine.diagnostic',
-            payload: { message: `[topology:${diagnostic.code}] ${diagnostic.message}` },
+            payload: {
+                message: `[topology:${diagnostic.code}] ${diagnostic.message}`,
+                kind: 'topology',
+                source: 'engine',
+                outcome: 'failed',
+            },
         });
     }
 }
@@ -119,8 +125,8 @@ export function createEngine(options?: EngineOptions): Engine {
                 kernel,
                 bridge,
                 permissionOverrides,
-                diagnostic: (message: string): void => {
-                    bus.next({ name: 'engine.diagnostic', payload: { message } });
+                diagnosticEvent: (event: EngineDiagnosticPayload): void => {
+                    bus.next({ name: 'engine.diagnostic', payload: event });
                 },
             };
             const builtinResults = await loadNodePlugins(builtinPluginsDir, deps);

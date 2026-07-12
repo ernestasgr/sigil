@@ -6,16 +6,34 @@ import {
     eventNameLabel,
     extractPluginId,
     formatTime,
-    payloadPreview,
+    telemetryEntryContext,
+    telemetryEntryPreview,
 } from '../lib/event-display.js';
 import type { BusEventEntry } from '../store/app-store.js';
 import { useAppStore } from '../store/app-store.js';
+import {
+    formatTelemetryExport,
+    isTelemetryDiagnostic,
+    isTelemetryFailure,
+} from '../store/telemetry-index.js';
 
 interface FilterState {
     readonly eventType: string;
     readonly pluginId: string;
     readonly workflowId: string;
     readonly runId: string;
+    readonly view: 'all' | 'failures' | 'diagnostics';
+}
+
+function parseFilterView(value: string): FilterState['view'] {
+    switch (value) {
+        case 'failures':
+            return 'failures';
+        case 'diagnostics':
+            return 'diagnostics';
+        default:
+            return 'all';
+    }
 }
 
 export function EventsSection(): ReactElement {
@@ -27,7 +45,9 @@ export function EventsSection(): ReactElement {
         pluginId: '',
         workflowId: '',
         runId: '',
+        view: 'all',
     });
+    const [copied, setCopied] = useState(false);
 
     const workflowIds = telemetryIndex.workflowIds;
     const runIds = useMemo(
@@ -41,8 +61,8 @@ export function EventsSection(): ReactElement {
                 ? telemetryIndex.forRun(filter.runId, filter.workflowId)
                 : telemetryIndex.forWorkflow(filter.workflowId);
         }
-        return busEvents;
-    }, [busEvents, filter.workflowId, filter.runId, telemetryIndex]);
+        return telemetryIndex.entries;
+    }, [filter.workflowId, filter.runId, telemetryIndex]);
 
     const eventTypes = useMemo(() => {
         const types = new Set<string>();
@@ -71,15 +91,54 @@ export function EventsSection(): ReactElement {
                 (e) => (e.telemetry?.pluginId ?? extractPluginId(e.payload)) === filter.pluginId,
             );
         }
+        if (filter.view === 'failures') {
+            result = result.filter(isTelemetryFailure);
+        }
+        if (filter.view === 'diagnostics') {
+            result = result.filter(isTelemetryDiagnostic);
+        }
         return result;
-    }, [filter.eventType, filter.pluginId, scopedEvents]);
+    }, [filter.eventType, filter.pluginId, filter.view, scopedEvents]);
 
     const reversed = useMemo(() => [...filtered].reverse(), [filtered]);
+
+    const copySupportExport = async (): Promise<void> => {
+        try {
+            await navigator.clipboard.writeText(formatTelemetryExport(filtered));
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        } catch {
+            setCopied(false);
+        }
+    };
 
     return (
         <SectionShell title="Events" subtitle="The live inspector — every echo on the Bus.">
             <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <label
+                            htmlFor="telemetry-view-filter"
+                            className="font-ui text-veil text-xs tracking-widest uppercase"
+                        >
+                            View
+                        </label>
+                        <select
+                            id="telemetry-view-filter"
+                            className="bg-obsidian-ink border-gilt/40 text-parchment font-ui rounded-none border px-3 py-1.5 text-sm"
+                            value={filter.view}
+                            onChange={(e) =>
+                                setFilter((prev) => ({
+                                    ...prev,
+                                    view: parseFilterView(e.target.value),
+                                }))
+                            }
+                        >
+                            <option value="all">All history</option>
+                            <option value="failures">Failures only</option>
+                            <option value="diagnostics">Diagnostics</option>
+                        </select>
+                    </div>
                     {workflowIds.length > 0 && (
                         <div className="flex items-center gap-2">
                             <label
@@ -191,6 +250,14 @@ export function EventsSection(): ReactElement {
                     <span className="font-ui text-veil ml-auto text-xs tracking-widest">
                         {filtered.length} event{filtered.length !== 1 ? 's' : ''}
                     </span>
+                    <button
+                        type="button"
+                        className="font-ui text-gilt hover:text-parchment border-gilt/40 rounded-none border px-3 py-1.5 text-xs tracking-widest uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={filtered.length === 0}
+                        onClick={() => void copySupportExport()}
+                    >
+                        {copied ? 'Copied' : 'Copy support export'}
+                    </button>
                 </div>
 
                 <div className="border-gilt/40 border">
@@ -215,9 +282,16 @@ export function EventsSection(): ReactElement {
                                     >
                                         {eventNameLabel(entry.name)}
                                     </span>
-                                    <span className="text-parchment truncate">
-                                        {entry.telemetry?.summary ?? payloadPreview(entry.payload)}
-                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="text-parchment truncate">
+                                            {telemetryEntryPreview(entry)}
+                                        </div>
+                                        {telemetryEntryContext(entry) ? (
+                                            <div className="text-veil mt-1 truncate text-[10px] uppercase">
+                                                {telemetryEntryContext(entry)}
+                                            </div>
+                                        ) : null}
+                                    </div>
                                 </li>
                             ))}
                         </ul>

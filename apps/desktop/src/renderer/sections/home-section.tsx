@@ -1,7 +1,12 @@
 import type { ReactElement } from 'react';
 import { isWorkflowActive } from '../../shared/workflow.js';
 import { SectionShell } from '../components/section-shell.js';
-import { eventColor, eventNameLabel, formatTime, payloadPreview } from '../lib/event-display.js';
+import {
+    eventColor,
+    eventNameLabel,
+    formatTime,
+    telemetryEntryPreview,
+} from '../lib/event-display.js';
 import { useAppStore } from '../store/app-store.js';
 
 export function HomeSection(): ReactElement {
@@ -64,8 +69,7 @@ export function HomeSection(): ReactElement {
                                               {eventNameLabel(entry.name)}
                                           </span>
                                           <span className="text-parchment truncate">
-                                              {entry.telemetry?.summary ??
-                                                  payloadPreview(entry.payload)}
+                                              {telemetryEntryPreview(entry)}
                                           </span>
                                       </li>
                                   ))

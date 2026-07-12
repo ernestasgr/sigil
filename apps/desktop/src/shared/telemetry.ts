@@ -13,6 +13,9 @@ export type TelemetryKind = z.infer<typeof TelemetryKindSchema>;
 export const TelemetrySeveritySchema = z.enum(['debug', 'info', 'warn', 'error']);
 export type TelemetrySeverity = z.infer<typeof TelemetrySeveritySchema>;
 
+export const TelemetryDiagnosticSourceSchema = z.enum(['engine', 'worker', 'plugin']);
+export type TelemetryDiagnosticSource = z.infer<typeof TelemetryDiagnosticSourceSchema>;
+
 export const TelemetryOutcomeSchema = z.enum([
     'queued',
     'running',

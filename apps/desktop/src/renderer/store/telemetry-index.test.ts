@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { EngineBusEventPayload } from '../../shared/ipc-channels.js';
 
-import { createTelemetryEntry, createTelemetryIndex } from './telemetry-index.js';
+import {
+    createTelemetryEntry,
+    createTelemetryIndex,
+    formatTelemetryExport,
+} from './telemetry-index.js';
 
 const correlatedEvent: EngineBusEventPayload = {
     name: 'log.output',
@@ -89,5 +93,77 @@ describe('telemetry index', () => {
         expect(index.forWorkflow('workflow-a').map((entry) => entry.id)).toEqual([1]);
         expect(index.forRun('run-a', 'workflow-a').map((entry) => entry.id)).toEqual([1]);
         expect(index.forRun('run-a', 'workflow-b').map((entry) => entry.id)).toEqual([2]);
+    });
+
+    it('returns only failed Workflow entries for a failure-focused history view', () => {
+        const succeeded = createTelemetryEntry(1, correlatedEvent);
+        const failed = createTelemetryEntry(2, {
+            ...correlatedEvent,
+            name: 'workflow.error',
+            telemetry: {
+                eventId: 'event-failed',
+                timestamp: 1700000000000,
+                kind: 'outcome',
+                severity: 'error',
+                workflowId: 'workflow-a',
+                pipelineId: 'pipeline-a',
+                runId: 'run-a',
+                outcome: 'failed',
+                summary: '{"message":"failure"}',
+            },
+        });
+
+        const index = createTelemetryIndex().append(succeeded).append(failed);
+
+        expect(index.failuresForWorkflow('workflow-a').map((entry) => entry.id)).toEqual([2]);
+    });
+
+    it('exports diagnostic identity without raw payloads and redacts sensitive summaries', () => {
+        const entry = createTelemetryEntry(1, {
+            name: 'engine.diagnostic',
+            payload: {
+                pluginId: 'com.example.plugin',
+                password: 'payload-secret',
+            },
+            telemetry: {
+                eventId: 'diagnostic-1',
+                timestamp: 1700000000000,
+                kind: 'diagnostic',
+                severity: 'error',
+                pluginId: 'com.example.plugin',
+                outcome: 'failed',
+                summary: '{"token":"summary-secret","message":"authorization: Bearer raw-secret"}',
+            },
+        });
+
+        const output = formatTelemetryExport([entry]);
+
+        expect(output).toContain('com.example.plugin');
+        expect(output).toContain('[REDACTED]');
+        expect(output).not.toContain('payload-secret');
+        expect(output).not.toContain('summary-secret');
+        expect(output).not.toContain('raw-secret');
+    });
+
+    it('keeps unscoped worker diagnostics in the same bounded history', () => {
+        const diagnostic = createTelemetryEntry(1, {
+            name: 'engine.diagnostic',
+            payload: {
+                message: 'Plugin worker stopped unexpectedly',
+                kind: 'worker',
+                source: 'plugin',
+                pluginId: 'com.example.plugin',
+                outcome: 'failed',
+            },
+        });
+        const event = createTelemetryEntry(2, correlatedEvent);
+
+        const index = createTelemetryIndex().append(diagnostic).append(event);
+
+        expect(index.diagnostics().map((entry) => entry.id)).toEqual([1]);
+        const output = formatTelemetryExport(index.diagnostics());
+        expect(output).toContain('com.example.plugin');
+        expect(output).toContain('failed');
+        expect(output).toContain('Plugin worker stopped unexpectedly');
     });
 });
