@@ -12,7 +12,8 @@ Accepted
 
 Every existing TypeScript message union now has a corresponding Zod schema co-located in the same module. The TypeScript type is derived from the schema via `z.infer<>` (single source of truth):
 
-- `apps/desktop/src/shared/ipc-channels.ts` — `EnginePingSchema`, `EnginePongSchema`, …, `EngineMessageSchema`, `WorkerInboundSchema`, `EngineReadySchema`, `WorkflowIdSchema`.
+- `apps/desktop/src/shared/ipc-channels.ts` — `EnginePingSchema`, `EnginePongSchema`, …, `MainToEngineMessageSchema`, `EngineToMainMessageSchema`, `EngineReadySchema`, `WorkflowIdSchema`.
+- `apps/desktop/src/shared/command-contracts.ts` — the logical `CommandContracts` registry, renderer command request/response schemas, engine command response mapping, timeout policy, correlation policy, and failure schemas.
 - `apps/desktop/src/engine/plugin-rpc.ts` — `PluginRpcRequestSchema`, `PluginRpcResponseSchema`, `PluginToEngineMessageSchema`, `EngineToPluginMessageSchema`.
 
 ### Receive-site discipline
@@ -22,7 +23,7 @@ Each `worker.on('message')`, `port.on('message')`, or `ipcMain.handle` receive s
 | Site                                   | Behaviour                                                                                                                        |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `worker.ts` (Engine worker)            | Emits a `log.output` bus event and drops the message. Replaces the previous `assertNever` crash.                                 |
-| `engine-client.ts` (Main process)      | Logs a `console.error` and drops the message. Replaces the previous silent-drop.                                                 |
+| `engine-client.ts` (Main process)      | Logs a `console.error` and drops the message. Replaces the previous silent-drop. The receive schema accepts only `EngineToMainMessage`. |
 | `plugin-loader.ts` (Engine)            | Responds to the plugin worker with a `PluginRpcResponse` carrying `error: 'invalid_message'`. Does not reach `handleRpcRequest`. |
 | `plugin-worker.ts` (Plugin worker)     | Rejects the pending RPC promise (or logs if no matching requestId). Replaces the previous silent-ignore.                         |
 | `main/index.ts` (`ToggleWorkflow` IPC) | Uses `WorkflowIdSchema.safeParse` instead of a manual `typeof` guard.                                                            |
@@ -45,4 +46,4 @@ ADR-0002 deferred the `EventPayloadSchemaRegistry` until it has a real consumer.
 
 - **TypeScript-only unions with `assertNever`** — The previous approach. A message with an unknown `type` crashes the worker (in `worker.ts`) or is silently dropped (in `engine-client.ts`). Rejected because it fails the deletion test — removing the type annotation changes zero runtime behaviour — and the README's "Zod at every process boundary" claim was unfalsifiable at these sites.
 - **Zod-only at the content layer, keep envelopes as casts** — The previous half-application. Rejected because the process boundaries the README enumerates (Renderer↔Main, Main→Renderer, Engine↔Plugins, Engine worker_thread) all have envelope-only receive sites that do not validate.
-- **Single `z.discriminatedUnion` for all message unions** — Used for `PluginToEngineMessage` (unique `kind` values) but not for `EngineMessage` where `EngineGetWorkflowResultFound` and `EngineGetWorkflowResultNotFound` share the same `type` literal and are discriminated by `found`. In the Engine message case `z.union` is used instead; the sub-union for `EngineGetWorkflowResult` uses `z.discriminatedUnion('found', [...])`.
+- **Single `z.discriminatedUnion` for all message unions** — Used for `PluginToEngineMessage` (unique `kind` values) but not for the direction-specific Engine message sets where `EngineGetWorkflowResultFound` and `EngineGetWorkflowResultNotFound` share the same `type` literal and are discriminated by `found`. In the Engine result case `z.union` is used instead; the sub-union for `EngineGetWorkflowResult` uses `z.discriminatedUnion('found', [...])`.

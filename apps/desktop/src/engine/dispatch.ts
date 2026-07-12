@@ -6,6 +6,7 @@ import {
     type EngineDeleteWorkflow,
     type EngineDeleteWorkflowStateKey,
     type EngineFireManualTrigger,
+    type EngineFireTestEvent,
     type EngineGetWorkflow,
     type EngineListPlugins,
     type EnginePing,
@@ -19,7 +20,7 @@ import {
     type EngineShutdown,
     type EngineToggleWorkflow,
     type EngineUpdateWorkflow,
-    type WorkerInbound,
+    type MainToEngineMessage,
 } from '../shared/ipc-channels.js';
 import {
     formatPersistenceDiagnostic,
@@ -54,15 +55,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function handlePing(message: EnginePing, subsystems: DispatchSubsystems): void {
     const pong: EnginePong = {
-        id: message.id,
+        correlationId: message.correlationId,
         type: EngineChannel.Pong,
         receivedAt: Date.now(),
     };
     subsystems.postMessage(pong);
 }
 
-function handleFireTestEvent(subsystems: DispatchSubsystems): void {
-    void subsystems.engine.execute(sampleManualTriggerToLog).catch((err: unknown) => {
+async function handleFireTestEvent(
+    message: EngineFireTestEvent,
+    subsystems: DispatchSubsystems,
+): Promise<void> {
+    try {
+        await subsystems.engine.execute(sampleManualTriggerToLog);
+        subsystems.postMessage({
+            type: EngineChannel.FireTestEventResult,
+            correlationId: message.correlationId,
+            ok: true,
+        });
+    } catch (err: unknown) {
         const detail = err instanceof Error ? err.message : String(err);
         subsystems.log(`[error] engine.execute failed: ${detail}`, {
             source: 'worker',
@@ -73,14 +84,27 @@ function handleFireTestEvent(subsystems: DispatchSubsystems): void {
             type: EngineChannel.Log,
             line: `[error] engine.execute failed: ${detail}`,
         });
-    });
+        subsystems.postMessage({
+            type: EngineChannel.FireTestEventResult,
+            correlationId: message.correlationId,
+            ok: false,
+            error: detail,
+        });
+    }
 }
 
-function handleFireManualTrigger(
+async function handleFireManualTrigger(
     message: EngineFireManualTrigger,
     subsystems: DispatchSubsystems,
-): void {
-    void subsystems.engine.execute(message.pipeline).catch((err: unknown) => {
+): Promise<void> {
+    try {
+        await subsystems.engine.execute(message.pipeline);
+        subsystems.postMessage({
+            type: EngineChannel.FireManualTriggerResult,
+            correlationId: message.correlationId,
+            ok: true,
+        });
+    } catch (err: unknown) {
         const detail = err instanceof Error ? err.message : String(err);
         subsystems.log(`[error] manual trigger execution failed: ${detail}`, {
             source: 'worker',
@@ -91,7 +115,13 @@ function handleFireManualTrigger(
             type: EngineChannel.Log,
             line: `[error] manual trigger execution failed: ${detail}`,
         });
-    });
+        subsystems.postMessage({
+            type: EngineChannel.FireManualTriggerResult,
+            correlationId: message.correlationId,
+            ok: false,
+            error: detail,
+        });
+    }
 }
 
 function handleToggleWorkflow(message: EngineToggleWorkflow, subsystems: DispatchSubsystems): void {
@@ -460,12 +490,14 @@ function handleDeleteWorkflowStateKey(
 }
 
 export function dispatch(
-    message: WorkerInbound,
+    message: MainToEngineMessage,
     subsystems: DispatchSubsystems,
 ): void | Promise<void> {
     return Match.value(message).pipe(
         Match.when({ type: EngineChannel.Ping }, (msg) => handlePing(msg, subsystems)),
-        Match.when({ type: EngineChannel.FireTestEvent }, () => handleFireTestEvent(subsystems)),
+        Match.when({ type: EngineChannel.FireTestEvent }, (msg) =>
+            handleFireTestEvent(msg, subsystems),
+        ),
         Match.when({ type: EngineChannel.FireManualTrigger }, (msg) =>
             handleFireManualTrigger(msg, subsystems),
         ),

@@ -8,8 +8,8 @@ import {
     EngineChannel,
     type EngineLog,
     type EngineWorkflowsList,
-    type WorkerInbound,
-    WorkerInboundSchema,
+    type MainToEngineMessage,
+    MainToEngineMessageSchema,
 } from '../shared/ipc-channels.js';
 import {
     formatPersistenceDiagnostic,
@@ -206,7 +206,7 @@ function reportDispatchError(err: unknown): void {
     });
 }
 
-function enqueueDispatch(message: WorkerInbound): void {
+function enqueueDispatch(message: MainToEngineMessage): void {
     if (shutdownQueued) return;
     if (message.type === EngineChannel.Shutdown) shutdownQueued = true;
 
@@ -218,7 +218,7 @@ function enqueueDispatch(message: WorkerInbound): void {
 }
 
 port.on('message', (raw: unknown) => {
-    const parsed = WorkerInboundSchema.safeParse(raw);
+    const parsed = MainToEngineMessageSchema.safeParse(raw);
     if (!parsed.success) {
         const errMsg = parsed.error.issues
             .map((i) => `${i.path.join('.')}: ${i.message}`)

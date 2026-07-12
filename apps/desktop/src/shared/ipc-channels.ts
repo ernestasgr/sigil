@@ -81,7 +81,18 @@ const WorkflowStateEntrySchema = z
         value: z.string(),
     })
     .readonly();
+
+export { WorkflowStateEntrySchema };
 export type WorkflowStateEntry = z.infer<typeof WorkflowStateEntrySchema>;
+
+export const CorrelationIdSchema = z
+    .string()
+    .min(1, 'Correlation id must not be empty.')
+    .max(128, 'Correlation id must be at most 128 characters.')
+    .readonly();
+export type CorrelationId = z.infer<typeof CorrelationIdSchema>;
+export const CommandCorrelationIdSchema = CorrelationIdSchema;
+export type CommandCorrelationId = CorrelationId;
 
 const EngineBusEventPayloadSchema = z
     .object({
@@ -100,10 +111,13 @@ const PluginInfoSchema = z
     })
     .readonly();
 
+export { PluginInfoSchema };
+
 export const EngineChannel = {
     Ping: 'engine:ping',
     Pong: 'engine:pong',
     FireTestEvent: 'engine:fire-test-event',
+    FireTestEventResult: 'engine:fire-test-event-result',
     Log: 'engine:log',
     WorkflowsList: 'engine:workflows-list',
     ToggleWorkflow: 'engine:toggle-workflow',
@@ -128,6 +142,7 @@ export const EngineChannel = {
     SaveProperties: 'engine:save-properties',
     SavePropertiesResult: 'engine:save-properties-result',
     FireManualTrigger: 'engine:fire-manual-trigger',
+    FireManualTriggerResult: 'engine:fire-manual-trigger-result',
     ReadWorkflowState: 'engine:read-workflow-state',
     ReadWorkflowStateResult: 'engine:read-workflow-state-result',
     SetWorkflowStateKey: 'engine:set-workflow-state-key',
@@ -139,21 +154,43 @@ export const EngineChannel = {
 } as const;
 
 export const EnginePingSchema = z.object({
-    id: z.string(),
+    correlationId: CorrelationIdSchema,
     type: z.literal(EngineChannel.Ping),
 });
 export type EnginePing = z.infer<typeof EnginePingSchema>;
 export const EnginePongSchema = z.object({
-    id: z.string(),
+    correlationId: CorrelationIdSchema,
     type: z.literal(EngineChannel.Pong),
     receivedAt: z.number(),
 });
 export type EnginePong = z.infer<typeof EnginePongSchema>;
 
 export const EngineFireTestEventSchema = z.object({
+    correlationId: CorrelationIdSchema,
     type: z.literal(EngineChannel.FireTestEvent),
 });
 export type EngineFireTestEvent = z.infer<typeof EngineFireTestEventSchema>;
+
+const EngineFireTestEventSuccessSchema = z
+    .object({
+        correlationId: CorrelationIdSchema,
+        type: z.literal(EngineChannel.FireTestEventResult),
+        ok: z.literal(true),
+    })
+    .strict();
+const EngineFireTestEventFailureSchema = z
+    .object({
+        correlationId: CorrelationIdSchema,
+        type: z.literal(EngineChannel.FireTestEventResult),
+        ok: z.literal(false),
+        error: z.string(),
+    })
+    .strict();
+export const EngineFireTestEventResultSchema = z.union([
+    EngineFireTestEventSuccessSchema,
+    EngineFireTestEventFailureSchema,
+]);
+export type EngineFireTestEventResult = z.infer<typeof EngineFireTestEventResultSchema>;
 
 export const EngineLogSchema = z.object({
     type: z.literal(EngineChannel.Log),
@@ -169,7 +206,7 @@ export type EngineWorkflowsList = z.infer<typeof EngineWorkflowsListSchema>;
 
 export const EngineToggleWorkflowSchema = z.object({
     type: z.literal(EngineChannel.ToggleWorkflow),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     id: WorkflowIdSchema,
 });
 export type EngineToggleWorkflow = z.infer<typeof EngineToggleWorkflowSchema>;
@@ -177,14 +214,14 @@ export type EngineToggleWorkflow = z.infer<typeof EngineToggleWorkflowSchema>;
 const EngineToggleWorkflowSuccessSchema = z
     .object({
         type: z.literal(EngineChannel.ToggleWorkflowResult),
-        correlationId: z.string(),
+        correlationId: CorrelationIdSchema,
         summary: WorkflowSummarySchema.nullable(),
     })
     .strict();
 const EngineToggleWorkflowFailureSchema = z
     .object({
         type: z.literal(EngineChannel.ToggleWorkflowResult),
-        correlationId: z.string(),
+        correlationId: CorrelationIdSchema,
         summary: z.null(),
         error: z.string(),
         diagnostics: z.array(PersistenceDiagnosticSchema).readonly(),
@@ -198,7 +235,7 @@ export type EngineToggleWorkflowResult = z.infer<typeof EngineToggleWorkflowResu
 
 export const EngineRetryWorkflowSchema = z.object({
     type: z.literal(EngineChannel.RetryWorkflow),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     id: WorkflowIdSchema,
 });
 export type EngineRetryWorkflow = z.infer<typeof EngineRetryWorkflowSchema>;
@@ -206,14 +243,14 @@ export type EngineRetryWorkflow = z.infer<typeof EngineRetryWorkflowSchema>;
 const EngineRetryWorkflowSuccessSchema = z
     .object({
         type: z.literal(EngineChannel.RetryWorkflowResult),
-        correlationId: z.string(),
+        correlationId: CorrelationIdSchema,
         summary: WorkflowSummarySchema.nullable(),
     })
     .strict();
 const EngineRetryWorkflowFailureSchema = z
     .object({
         type: z.literal(EngineChannel.RetryWorkflowResult),
-        correlationId: z.string(),
+        correlationId: CorrelationIdSchema,
         summary: z.null(),
         error: z.string(),
         diagnostics: z.array(PersistenceDiagnosticSchema).readonly(),
@@ -227,7 +264,7 @@ export type EngineRetryWorkflowResult = z.infer<typeof EngineRetryWorkflowResult
 
 export const EngineCreateWorkflowSchema = z.object({
     type: z.literal(EngineChannel.CreateWorkflow),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     name: z.string(),
     pipeline: CompiledPipelineSchema,
     positions: NodePositionRecordSchema,
@@ -236,12 +273,12 @@ export type EngineCreateWorkflow = z.infer<typeof EngineCreateWorkflowSchema>;
 
 const EngineCreateWorkflowSuccessSchema = z.object({
     type: z.literal(EngineChannel.CreateWorkflowResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     summary: WorkflowSummarySchema,
 });
 const EngineCreateWorkflowFailureSchema = z.object({
     type: z.literal(EngineChannel.CreateWorkflowResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     error: z.string(),
     diagnostics: z.array(WorkflowWriteDiagnosticSchema).readonly(),
 });
@@ -254,7 +291,7 @@ export type EngineCreateWorkflowResult = z.infer<typeof EngineCreateWorkflowResu
 export const EngineUpdateWorkflowSchema = z
     .object({
         type: z.literal(EngineChannel.UpdateWorkflow),
-        correlationId: z.string(),
+        correlationId: CorrelationIdSchema,
         id: WorkflowIdSchema,
         name: z.string(),
         pipeline: CompiledPipelineSchema,
@@ -273,12 +310,12 @@ export type EngineUpdateWorkflow = z.infer<typeof EngineUpdateWorkflowSchema>;
 
 const EngineUpdateWorkflowSuccessSchema = z.object({
     type: z.literal(EngineChannel.UpdateWorkflowResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     summary: WorkflowSummarySchema,
 });
 const EngineUpdateWorkflowFailureSchema = z.object({
     type: z.literal(EngineChannel.UpdateWorkflowResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     error: z.string(),
     diagnostics: z.array(WorkflowWriteDiagnosticSchema).readonly(),
 });
@@ -290,7 +327,7 @@ export type EngineUpdateWorkflowResult = z.infer<typeof EngineUpdateWorkflowResu
 
 export const EngineDeleteWorkflowSchema = z.object({
     type: z.literal(EngineChannel.DeleteWorkflow),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     id: WorkflowIdSchema,
 });
 export type EngineDeleteWorkflow = z.infer<typeof EngineDeleteWorkflowSchema>;
@@ -298,21 +335,21 @@ export type EngineDeleteWorkflow = z.infer<typeof EngineDeleteWorkflowSchema>;
 const EngineDeleteWorkflowSuccessSchema = z
     .object({
         type: z.literal(EngineChannel.DeleteWorkflowResult),
-        correlationId: z.string(),
+        correlationId: CorrelationIdSchema,
         success: z.literal(true),
     })
     .strict();
 const EngineDeleteWorkflowNotFoundSchema = z
     .object({
         type: z.literal(EngineChannel.DeleteWorkflowResult),
-        correlationId: z.string(),
+        correlationId: CorrelationIdSchema,
         success: z.literal(false),
     })
     .strict();
 const EngineDeleteWorkflowFailureSchema = z
     .object({
         type: z.literal(EngineChannel.DeleteWorkflowResult),
-        correlationId: z.string(),
+        correlationId: CorrelationIdSchema,
         success: z.literal(false),
         error: z.string(),
         diagnostic: PersistenceDiagnosticSchema,
@@ -328,13 +365,13 @@ export type EngineDeleteWorkflowResult = z.infer<typeof EngineDeleteWorkflowResu
 export const EngineGetWorkflowSchema = z.object({
     type: z.literal(EngineChannel.GetWorkflow),
     id: WorkflowIdSchema,
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
 });
 export type EngineGetWorkflow = z.infer<typeof EngineGetWorkflowSchema>;
 
 export const EngineGetWorkflowResultFoundSchema = z.object({
     type: z.literal(EngineChannel.GetWorkflowResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     found: z.literal(true),
     name: z.string(),
     pipeline: CompiledPipelineSchema,
@@ -344,7 +381,7 @@ export type EngineGetWorkflowResultFound = z.infer<typeof EngineGetWorkflowResul
 
 export const EngineGetWorkflowResultNotFoundSchema = z.object({
     type: z.literal(EngineChannel.GetWorkflowResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     found: z.literal(false),
     error: z.string(),
 });
@@ -364,20 +401,20 @@ export type EngineBusEvent = z.infer<typeof EngineBusEventSchema>;
 
 export const EngineListPluginsSchema = z.object({
     type: z.literal(EngineChannel.ListPlugins),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
 });
 export type EngineListPlugins = z.infer<typeof EngineListPluginsSchema>;
 
 export const EngineListPluginsResultSchema = z.object({
     type: z.literal(EngineChannel.ListPluginsResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     plugins: z.array(PluginInfoSchema).readonly(),
 });
 export type EngineListPluginsResult = z.infer<typeof EngineListPluginsResultSchema>;
 
 export const EngineSetPermissionOverrideSchema = z.object({
     type: z.literal(EngineChannel.SetPermissionOverride),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     pluginId: z.string(),
     overrides: z.array(CapabilitySchema).readonly(),
 });
@@ -385,12 +422,12 @@ export type EngineSetPermissionOverride = z.infer<typeof EngineSetPermissionOver
 
 const EngineSetPermissionOverrideSuccessSchema = z.object({
     type: z.literal(EngineChannel.SetPermissionOverrideResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     ok: z.literal(true),
 });
 const EngineSetPermissionOverrideFailureSchema = z.object({
     type: z.literal(EngineChannel.SetPermissionOverrideResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     ok: z.literal(false),
     error: z.string(),
     diagnostic: PersistenceDiagnosticSchema,
@@ -405,32 +442,32 @@ export type EngineSetPermissionOverrideResult = z.infer<
 
 export const EngineReadPropertiesSchema = z.object({
     type: z.literal(EngineChannel.ReadProperties),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
 });
 export type EngineReadProperties = z.infer<typeof EngineReadPropertiesSchema>;
 
 export const EngineReadPropertiesResultSchema = z.object({
     type: z.literal(EngineChannel.ReadPropertiesResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     properties: z.record(z.string(), z.unknown()).readonly(),
 });
 export type EngineReadPropertiesResult = z.infer<typeof EngineReadPropertiesResultSchema>;
 
 export const EngineSavePropertiesSchema = z.object({
     type: z.literal(EngineChannel.SaveProperties),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     properties: z.record(z.string(), z.unknown()).readonly(),
 });
 export type EngineSaveProperties = z.infer<typeof EngineSavePropertiesSchema>;
 
 const EngineSavePropertiesSuccessSchema = z.object({
     type: z.literal(EngineChannel.SavePropertiesResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     ok: z.literal(true),
 });
 const EngineSavePropertiesFailureSchema = z.object({
     type: z.literal(EngineChannel.SavePropertiesResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     ok: z.literal(false),
     error: z.string(),
     diagnostic: PersistenceDiagnosticSchema,
@@ -442,28 +479,50 @@ export const EngineSavePropertiesResultSchema = z.union([
 export type EngineSavePropertiesResult = z.infer<typeof EngineSavePropertiesResultSchema>;
 
 export const EngineFireManualTriggerSchema = z.object({
+    correlationId: CorrelationIdSchema,
     type: z.literal(EngineChannel.FireManualTrigger),
     pipeline: CompiledPipelineSchema,
 });
 export type EngineFireManualTrigger = z.infer<typeof EngineFireManualTriggerSchema>;
 
+const EngineFireManualTriggerSuccessSchema = z
+    .object({
+        correlationId: CorrelationIdSchema,
+        type: z.literal(EngineChannel.FireManualTriggerResult),
+        ok: z.literal(true),
+    })
+    .strict();
+const EngineFireManualTriggerFailureSchema = z
+    .object({
+        correlationId: CorrelationIdSchema,
+        type: z.literal(EngineChannel.FireManualTriggerResult),
+        ok: z.literal(false),
+        error: z.string(),
+    })
+    .strict();
+export const EngineFireManualTriggerResultSchema = z.union([
+    EngineFireManualTriggerSuccessSchema,
+    EngineFireManualTriggerFailureSchema,
+]);
+export type EngineFireManualTriggerResult = z.infer<typeof EngineFireManualTriggerResultSchema>;
+
 export const EngineReadWorkflowStateSchema = z.object({
     type: z.literal(EngineChannel.ReadWorkflowState),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     workflowId: WorkflowIdSchema,
 });
 export type EngineReadWorkflowState = z.infer<typeof EngineReadWorkflowStateSchema>;
 
 export const EngineReadWorkflowStateResultSchema = z.object({
     type: z.literal(EngineChannel.ReadWorkflowStateResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     entries: z.array(WorkflowStateEntrySchema).readonly(),
 });
 export type EngineReadWorkflowStateResult = z.infer<typeof EngineReadWorkflowStateResultSchema>;
 
 export const EngineSetWorkflowStateKeySchema = z.object({
     type: z.literal(EngineChannel.SetWorkflowStateKey),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     workflowId: WorkflowIdSchema,
     key: z.string(),
     value: z.string(),
@@ -472,14 +531,14 @@ export type EngineSetWorkflowStateKey = z.infer<typeof EngineSetWorkflowStateKey
 
 export const EngineSetWorkflowStateKeyResultSchema = z.object({
     type: z.literal(EngineChannel.SetWorkflowStateKeyResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     ok: z.boolean(),
 });
 export type EngineSetWorkflowStateKeyResult = z.infer<typeof EngineSetWorkflowStateKeyResultSchema>;
 
 export const EngineDeleteWorkflowStateKeySchema = z.object({
     type: z.literal(EngineChannel.DeleteWorkflowStateKey),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     workflowId: WorkflowIdSchema,
     key: z.string(),
 });
@@ -487,7 +546,7 @@ export type EngineDeleteWorkflowStateKey = z.infer<typeof EngineDeleteWorkflowSt
 
 export const EngineDeleteWorkflowStateKeyResultSchema = z.object({
     type: z.literal(EngineChannel.DeleteWorkflowStateKeyResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     ok: z.boolean(),
 });
 export type EngineDeleteWorkflowStateKeyResult = z.infer<
@@ -496,62 +555,22 @@ export type EngineDeleteWorkflowStateKeyResult = z.infer<
 
 export const EngineShutdownSchema = z.object({
     type: z.literal(EngineChannel.Shutdown),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
 });
 export type EngineShutdown = z.infer<typeof EngineShutdownSchema>;
 
 export const EngineShutdownResultSchema = z.object({
     type: z.literal(EngineChannel.ShutdownResult),
-    correlationId: z.string(),
+    correlationId: CorrelationIdSchema,
     ok: z.boolean(),
 });
 export type EngineShutdownResult = z.infer<typeof EngineShutdownResultSchema>;
-
-export const EngineMessageSchema = z.union([
-    EnginePingSchema,
-    EnginePongSchema,
-    EngineFireTestEventSchema,
-    EngineLogSchema,
-    EngineWorkflowsListSchema,
-    EngineToggleWorkflowSchema,
-    EngineToggleWorkflowResultSchema,
-    EngineRetryWorkflowSchema,
-    EngineRetryWorkflowResultSchema,
-    EngineCreateWorkflowSchema,
-    EngineCreateWorkflowResultSchema,
-    EngineUpdateWorkflowSchema,
-    EngineUpdateWorkflowResultSchema,
-    EngineDeleteWorkflowSchema,
-    EngineDeleteWorkflowResultSchema,
-    EngineGetWorkflowSchema,
-    EngineGetWorkflowResultSchema,
-    EngineBusEventSchema,
-    EngineListPluginsSchema,
-    EngineListPluginsResultSchema,
-    EngineSetPermissionOverrideSchema,
-    EngineSetPermissionOverrideResultSchema,
-    EngineReadPropertiesSchema,
-    EngineReadPropertiesResultSchema,
-    EngineSavePropertiesSchema,
-    EngineSavePropertiesResultSchema,
-    EngineFireManualTriggerSchema,
-    EngineReadWorkflowStateSchema,
-    EngineReadWorkflowStateResultSchema,
-    EngineSetWorkflowStateKeySchema,
-    EngineSetWorkflowStateKeyResultSchema,
-    EngineDeleteWorkflowStateKeySchema,
-    EngineDeleteWorkflowStateKeyResultSchema,
-    EngineShutdownSchema,
-    EngineShutdownResultSchema,
-]);
-
-export type EngineMessage = z.infer<typeof EngineMessageSchema>;
 
 export const EngineReadySchema = z.object({
     type: z.literal('engine:ready'),
 });
 
-export const WorkerInboundSchema = z.union([
+export const MainToEngineMessageSchema = z.union([
     EnginePingSchema,
     EngineFireTestEventSchema,
     EngineFireManualTriggerSchema,
@@ -570,7 +589,45 @@ export const WorkerInboundSchema = z.union([
     EngineDeleteWorkflowStateKeySchema,
     EngineShutdownSchema,
 ]);
-export type WorkerInbound = z.infer<typeof WorkerInboundSchema>;
+export type MainToEngineMessage = z.infer<typeof MainToEngineMessageSchema>;
+
+export const WorkerInboundSchema = MainToEngineMessageSchema;
+export type WorkerInbound = MainToEngineMessage;
+
+export const EngineToMainMessageSchema = z.union([
+    EnginePongSchema,
+    EngineFireTestEventResultSchema,
+    EngineLogSchema,
+    EngineWorkflowsListSchema,
+    EngineToggleWorkflowResultSchema,
+    EngineRetryWorkflowResultSchema,
+    EngineCreateWorkflowResultSchema,
+    EngineUpdateWorkflowResultSchema,
+    EngineDeleteWorkflowResultSchema,
+    EngineGetWorkflowResultSchema,
+    EngineBusEventSchema,
+    EngineListPluginsResultSchema,
+    EngineSetPermissionOverrideResultSchema,
+    EngineReadPropertiesResultSchema,
+    EngineSavePropertiesResultSchema,
+    EngineFireManualTriggerResultSchema,
+    EngineReadWorkflowStateResultSchema,
+    EngineSetWorkflowStateKeyResultSchema,
+    EngineDeleteWorkflowStateKeyResultSchema,
+    EngineShutdownResultSchema,
+]);
+export type EngineToMainMessage = z.infer<typeof EngineToMainMessageSchema>;
+
+/** @deprecated Use MainToEngineMessageSchema or EngineToMainMessageSchema. */
+export const EngineMessageSchema = EngineToMainMessageSchema;
+/** @deprecated Use MainToEngineMessage or EngineToMainMessage. */
+export type EngineMessage = EngineToMainMessage;
+
+export const EngineToMainMessageOrReadySchema = z.union([
+    EngineToMainMessageSchema,
+    EngineReadySchema,
+]);
+export type EngineToMainMessageOrReady = z.infer<typeof EngineToMainMessageOrReadySchema>;
 
 export const RendererChannel = {
     EnginePong: 'renderer:engine-pong',
