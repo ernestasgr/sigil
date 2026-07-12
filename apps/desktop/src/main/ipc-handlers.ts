@@ -25,6 +25,21 @@ export interface IpcHandlerContext {
     readonly onRendererReady: () => void;
 }
 
+const UpdateWorkflowArgsSchema = z
+    .tuple([WorkflowIdSchema, z.string(), CompiledPipelineSchema, NodePositionRecordSchema])
+    .superRefine(([workflowId, , pipeline], ctx) => {
+        if (workflowId !== pipeline.workflowId) {
+            ctx.addIssue({
+                code: 'custom',
+                path: [2, 'workflowId'],
+                message: 'Pipeline workflowId must match the requested Workflow id.',
+            });
+        }
+    });
+
+const SetWorkflowStateKeyArgsSchema = z.tuple([WorkflowIdSchema, z.string(), z.string()]);
+const DeleteWorkflowStateKeyArgsSchema = z.tuple([WorkflowIdSchema, z.string()]);
+
 export function registerIpcHandlers(ctx: IpcHandlerContext): void {
     const h = ctx;
 
@@ -79,7 +94,7 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
 
     ipcHandle(
         RendererChannel.UpdateWorkflow,
-        z.tuple([z.string(), z.string(), CompiledPipelineSchema, NodePositionRecordSchema]),
+        UpdateWorkflowArgsSchema,
         async ([id, name, pipeline, positions]): Promise<WorkflowSummary> => {
             const engine = h.getEngine();
             if (!engine) throw new Error('Engine not ready');
@@ -239,7 +254,7 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
 
     ipcHandle(
         RendererChannel.SetWorkflowStateKey,
-        z.tuple([z.string(), z.string(), z.string()]),
+        SetWorkflowStateKeyArgsSchema,
         async ([workflowId, key, value]): Promise<boolean> => {
             const engine = h.getEngine();
             if (!engine) return false;
@@ -254,7 +269,7 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
 
     ipcHandle(
         RendererChannel.DeleteWorkflowStateKey,
-        z.tuple([z.string(), z.string()]),
+        DeleteWorkflowStateKeyArgsSchema,
         async ([workflowId, key]): Promise<boolean> => {
             const engine = h.getEngine();
             if (!engine) return false;

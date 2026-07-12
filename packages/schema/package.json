@@ -98,6 +98,10 @@
         "./properties-file": {
             "types": "./dist/properties-file.d.ts",
             "import": "./dist/properties-file.js"
+        },
+        "./workflow-id": {
+            "types": "./dist/workflow-id.d.ts",
+            "import": "./dist/workflow-id.js"
         }
     },
     "files": [

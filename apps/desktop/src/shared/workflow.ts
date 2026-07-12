@@ -1,5 +1,8 @@
 import { TopologyDiagnosticSchema } from '@sigil/schema/topology';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { z } from 'zod';
+
+export { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 
 export const WorkflowActivationStateSchema = z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('disabled') }).readonly(),
@@ -12,7 +15,7 @@ export type WorkflowActivationState = z.infer<typeof WorkflowActivationStateSche
 
 export const WorkflowSummarySchema = z
     .object({
-        id: z.string(),
+        id: WorkflowIdSchema,
         name: z.string(),
         /** The user's persisted intent, independent from live trigger activation. */
         enabled: z.boolean(),
