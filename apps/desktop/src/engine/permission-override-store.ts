@@ -113,7 +113,7 @@ function saveOverrides(
     } catch (error) {
         return Either.left(createAtomicWriteFailure(path.value, 'serialize', error));
     }
-    return writer.write(path.value, contents);
+    return writer.write(path.value, contents, { createDirectory: true });
 }
 
 export function createPermissionOverrideStore(
