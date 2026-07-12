@@ -1,19 +1,14 @@
-import { randomUUID } from 'node:crypto';
 import {
     closeSync,
     existsSync,
     constants as fsConstants,
     fstatSync,
-    fsyncSync,
     lstatSync,
-    mkdirSync,
     openSync,
     readdirSync,
     readFileSync,
     realpathSync,
-    renameSync,
     unlinkSync,
-    writeFileSync,
 } from 'node:fs';
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
 import {
@@ -31,7 +26,7 @@ import {
     type WorkflowTopologyOptions,
 } from '@sigil/schema/topology';
 import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
-import { Option } from 'effect';
+import { Either, Option } from 'effect';
 import { z } from 'zod';
 
 import {
@@ -40,6 +35,13 @@ import {
     WorkflowActivationStateSchema,
     type WorkflowSummary,
 } from '../shared/workflow.js';
+import {
+    type AtomicFileWriter,
+    type AtomicWriteFailure,
+    type AtomicWriteResult,
+    atomicFileWriter,
+    createAtomicWriteFailure,
+} from './atomic-file.js';
 import { createWorkflowTopologyError } from './workflow-topology-error.js';
 
 export interface StoredWorkflow {
@@ -82,6 +84,21 @@ export interface WorkflowIdentityError extends Error {
     readonly workflowId?: string;
 }
 
+export type WorkflowPersistenceOperation =
+    | 'create'
+    | 'save'
+    | 'set_enabled'
+    | 'set_activation'
+    | 'toggle';
+
+export interface WorkflowPersistenceError extends Error {
+    readonly kind: 'workflow_persistence';
+    readonly operation: WorkflowPersistenceOperation;
+    readonly workflowId: string;
+    readonly diagnostic: AtomicWriteFailure;
+    readonly diagnostics: readonly AtomicWriteFailure[];
+}
+
 export interface WorkflowStore {
     readonly list: () => readonly WorkflowSummary[];
     readonly get: (id: string) => Option.Option<{
@@ -111,6 +128,10 @@ export interface WorkflowStore {
     readonly toggle: (id: string) => Option.Option<WorkflowSummary>;
 }
 
+export interface WorkflowStoreOptions {
+    readonly fileWriter?: AtomicFileWriter;
+}
+
 function createWorkflowIdentityError(
     kind: WorkflowIdentityErrorKind,
     message: string,
@@ -126,6 +147,36 @@ export function isWorkflowIdentityError(value: unknown): value is WorkflowIdenti
         (value.kind === 'invalid_workflow_id' ||
             value.kind === 'workflow_identity_mismatch' ||
             value.kind === 'duplicate_workflow_id')
+    );
+}
+
+function createWorkflowPersistenceError(
+    operation: WorkflowPersistenceOperation,
+    workflowId: string,
+    diagnostic: AtomicWriteFailure,
+): WorkflowPersistenceError {
+    const message = `Could not ${operation.replace('_', ' ')} Workflow "${workflowId}": ${diagnostic.message}`;
+    const diagnostics: readonly AtomicWriteFailure[] = [diagnostic];
+    return Object.assign(new Error(message), {
+        name: 'WorkflowPersistenceError',
+        kind: 'workflow_persistence' as const,
+        operation,
+        workflowId,
+        diagnostic,
+        diagnostics,
+    });
+}
+
+export function isWorkflowPersistenceError(value: unknown): value is WorkflowPersistenceError {
+    return (
+        value instanceof Error &&
+        isRecord(value) &&
+        value.kind === 'workflow_persistence' &&
+        typeof value.operation === 'string' &&
+        typeof value.workflowId === 'string' &&
+        'diagnostic' in value &&
+        isRecord(value.diagnostic) &&
+        value.diagnostic.kind === 'persistence'
     );
 }
 
@@ -369,10 +420,11 @@ function readWorkflowFile(
     };
 }
 
-function writeWorkflowFile(dir: string, stored: StoredWorkflow): void {
-    if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true });
-    }
+function writeWorkflowFile(
+    dir: string,
+    stored: StoredWorkflow,
+    writer: AtomicFileWriter,
+): AtomicWriteResult {
     const data = {
         id: stored.id,
         name: stored.name,
@@ -386,30 +438,13 @@ function writeWorkflowFile(dir: string, stored: StoredWorkflow): void {
         activation: stored.activation,
     };
     const storagePath = filePath(dir, stored.id);
-    const temporaryPath = `${storagePath}.${randomUUID()}.tmp`;
-    let fileDescriptor: number | undefined;
+    let contents: string;
     try {
-        fileDescriptor = openSync(
-            temporaryPath,
-            fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY,
-            0o600,
-        );
-        writeFileSync(fileDescriptor, JSON.stringify(data, null, 2), 'utf-8');
-        fsyncSync(fileDescriptor);
-        closeSync(fileDescriptor);
-        fileDescriptor = undefined;
-        renameSync(temporaryPath, storagePath);
+        contents = JSON.stringify(data, null, 2);
     } catch (error) {
-        if (fileDescriptor !== undefined) {
-            closeSync(fileDescriptor);
-        }
-        try {
-            unlinkSync(temporaryPath);
-        } catch {
-            // Best-effort cleanup must not hide the original write error.
-        }
-        throw error;
+        return Either.left(createAtomicWriteFailure(storagePath, 'serialize', error));
     }
+    return writer.write(storagePath, contents, { createDirectory: true });
 }
 
 function isValidWorkflowRecord(record: WorkflowRecord): record is ValidWorkflowRecord {
@@ -450,8 +485,10 @@ function loadAll(
 export function createWorkflowStore(
     storageDir: string,
     topologyOptions: WorkflowTopologyOptions = {},
+    options: WorkflowStoreOptions = {},
 ): WorkflowStore {
     const workflows = loadAll(storageDir, topologyOptions);
+    const writer = options.fileWriter ?? atomicFileWriter;
 
     return {
         list: () => Array.from(workflows.values()).map(toSummary),
@@ -503,7 +540,10 @@ export function createWorkflowStore(
                 diagnostics: [],
                 storagePath,
             };
-            writeWorkflowFile(storageDir, stored);
+            const writeResult = writeWorkflowFile(storageDir, stored, writer);
+            if (Either.isLeft(writeResult)) {
+                throw createWorkflowPersistenceError('create', workflowId, writeResult.left);
+            }
             workflows.set(stored.id, stored);
             return toSummary(stored);
         },
@@ -556,7 +596,10 @@ export function createWorkflowStore(
                       diagnostics: [],
                       storagePath,
                   };
-            writeWorkflowFile(storageDir, stored);
+            const writeResult = writeWorkflowFile(storageDir, stored, writer);
+            if (Either.isLeft(writeResult)) {
+                throw createWorkflowPersistenceError('save', workflowId, writeResult.left);
+            }
             workflows.set(workflowId, stored);
             return toSummary(stored);
         },
@@ -582,7 +625,10 @@ export function createWorkflowStore(
                 enabled,
                 activation: enabled ? stored.activation : { kind: 'disabled' },
             };
-            writeWorkflowFile(storageDir, updated);
+            const writeResult = writeWorkflowFile(storageDir, updated, writer);
+            if (Either.isLeft(writeResult)) {
+                throw createWorkflowPersistenceError('set_enabled', workflowId, writeResult.left);
+            }
             workflows.set(workflowId, updated);
             return Option.some(toSummary(updated));
         },
@@ -591,7 +637,14 @@ export function createWorkflowStore(
             const stored = workflows.get(workflowId);
             if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
             const updated: ValidWorkflowRecord = { ...stored, activation };
-            writeWorkflowFile(storageDir, updated);
+            const writeResult = writeWorkflowFile(storageDir, updated, writer);
+            if (Either.isLeft(writeResult)) {
+                throw createWorkflowPersistenceError(
+                    'set_activation',
+                    workflowId,
+                    writeResult.left,
+                );
+            }
             workflows.set(workflowId, updated);
             return Option.some(toSummary(updated));
         },
@@ -605,7 +658,10 @@ export function createWorkflowStore(
                 enabled,
                 activation: enabled ? stored.activation : { kind: 'disabled' },
             };
-            writeWorkflowFile(storageDir, updated);
+            const writeResult = writeWorkflowFile(storageDir, updated, writer);
+            if (Either.isLeft(writeResult)) {
+                throw createWorkflowPersistenceError('toggle', workflowId, writeResult.left);
+            }
             workflows.set(workflowId, updated);
             return Option.some(toSummary(updated));
         },

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Effect, Either } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-
+import type { AtomicFileWriter } from './atomic-file.js';
 import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
 
 let tempDir: string;
@@ -41,6 +41,17 @@ describe('readPropertiesFile', () => {
         writeFileSync(filePath, '{ not valid json');
 
         expect(() => Effect.runSync(readPropertiesFile(filePath))).toThrow();
+
+        const result = Effect.runSync(Effect.either(readPropertiesFile(filePath)));
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left).toMatchObject({
+                kind: 'persistence',
+                operation: 'read',
+                phase: 'parse',
+                path: filePath,
+            });
+        }
     });
 });
 
@@ -67,7 +78,34 @@ describe('writePropertiesFile', () => {
 
         expect(Either.isLeft(result)).toBe(true);
         if (Either.isLeft(result)) {
-            expect(result.left).toBeTruthy();
+            expect(result.left).toMatchObject({
+                kind: 'persistence',
+                operation: 'write',
+                phase: 'open',
+                path: filePath,
+            });
+        }
+    });
+
+    it('returns the replacement failure from its atomic writer', () => {
+        const filePath = join(tempDir, 'sigil.properties.json');
+        const writer: AtomicFileWriter = {
+            write: () =>
+                Either.left({
+                    kind: 'persistence',
+                    operation: 'write',
+                    phase: 'replace',
+                    path: filePath,
+                    message: 'replacement denied',
+                }),
+        };
+
+        const result = writePropertiesFile(filePath, { notifyOnWorkflowError: true }, writer);
+
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left.phase).toBe('replace');
+            expect(result.left.message).toBe('replacement denied');
         }
     });
 });

@@ -1,59 +1,99 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
-import { Effect, Option } from 'effect';
+import { Either, Option } from 'effect';
 import { z } from 'zod';
+import type { PersistenceDiagnostic } from '../shared/persistence.js';
+import {
+    type AtomicFileWriter,
+    type AtomicWriteResult,
+    atomicFileWriter,
+    createAtomicWriteFailure,
+} from './atomic-file.js';
 
 export interface PermissionOverrideStore {
     readonly get: (pluginId: string) => readonly Capability[];
     readonly has: (pluginId: string) => boolean;
-    readonly set: (pluginId: string, overrides: readonly Capability[]) => void;
+    readonly set: (pluginId: string, overrides: readonly Capability[]) => AtomicWriteResult;
     readonly all: () => Readonly<Record<string, readonly Capability[]>>;
+    readonly diagnostics: () => readonly PersistenceDiagnostic[];
 }
 
-function loadOverrides(path: Option.Option<string>): Map<string, readonly Capability[]> {
+function diagnostic(path: string, message: string): PersistenceDiagnostic {
+    return {
+        kind: 'persistence',
+        operation: 'read',
+        phase: 'parse',
+        path,
+        message,
+    };
+}
+
+function loadOverrides(
+    path: Option.Option<string>,
+    diagnostics: PersistenceDiagnostic[],
+): Map<string, readonly Capability[]> {
     const map = new Map<string, readonly Capability[]>();
     if (Option.isNone(path) || !existsSync(path.value)) return map;
 
-    Effect.try(() => {
-        const raw = JSON.parse(readFileSync(path.value, 'utf-8'));
-        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-            for (const [id, caps] of Object.entries(raw)) {
-                if (Array.isArray(caps)) {
-                    const parsed = z.array(CapabilitySchema).safeParse(caps);
-                    if (parsed.success) {
-                        map.set(id, parsed.data);
-                    }
-                }
-            }
+    let raw: unknown;
+    try {
+        raw = JSON.parse(readFileSync(path.value, 'utf-8'));
+    } catch (error) {
+        diagnostics.push(
+            diagnostic(path.value, error instanceof Error ? error.message : String(error)),
+        );
+        return map;
+    }
+
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        diagnostics.push(diagnostic(path.value, 'Permission overrides must be a JSON object.'));
+        return map;
+    }
+
+    for (const [id, caps] of Object.entries(raw)) {
+        const parsed = z.array(CapabilitySchema).safeParse(caps);
+        if (parsed.success) {
+            map.set(id, parsed.data);
+        } else {
+            diagnostics.push(
+                diagnostic(
+                    path.value,
+                    `Permission overrides for plugin "${id}" are malformed: ${parsed.error.issues[0]?.message ?? 'expected an array of capabilities.'}`,
+                ),
+            );
         }
-    }).pipe(
-        Effect.catchAll(() => Effect.void),
-        Effect.runSync,
-    );
+    }
 
     return map;
 }
 
 function saveOverrides(
     path: Option.Option<string>,
-    overrides: Map<string, readonly Capability[]>,
-): void {
-    if (Option.isNone(path)) return;
+    overrides: ReadonlyMap<string, readonly Capability[]>,
+    writer: AtomicFileWriter,
+): AtomicWriteResult {
+    if (Option.isNone(path)) return Either.right(undefined);
     const obj: Record<string, readonly string[]> = {};
     for (const [id, caps] of overrides) {
         obj[id] = caps;
     }
-    Effect.try(() => {
-        writeFileSync(path.value, JSON.stringify(obj, null, 2), 'utf-8');
-    }).pipe(
-        Effect.catchAll(() => Effect.void),
-        Effect.runSync,
-    );
+
+    let contents: string;
+    try {
+        contents = JSON.stringify(obj, null, 2);
+    } catch (error) {
+        return Either.left(createAtomicWriteFailure(path.value, 'serialize', error));
+    }
+    return writer.write(path.value, contents);
 }
 
-export function createPermissionOverrideStore(persistencePath?: string): PermissionOverrideStore {
+export function createPermissionOverrideStore(
+    persistencePath?: string,
+    writer: AtomicFileWriter = atomicFileWriter,
+): PermissionOverrideStore {
     const pathOption = Option.fromNullable(persistencePath ?? null);
-    const overrides = loadOverrides(pathOption);
+    const diagnostics: PersistenceDiagnostic[] = [];
+    let overrides = loadOverrides(pathOption, diagnostics);
 
     return {
         get: (pluginId) => {
@@ -64,8 +104,13 @@ export function createPermissionOverrideStore(persistencePath?: string): Permiss
             return overrides.has(pluginId);
         },
         set: (pluginId, caps) => {
-            overrides.set(pluginId, [...caps]);
-            saveOverrides(pathOption, overrides);
+            const next = new Map(overrides);
+            next.set(pluginId, [...caps]);
+            const result = saveOverrides(pathOption, next, writer);
+            if (Either.isRight(result)) {
+                overrides = next;
+            }
+            return result;
         },
         all: () => {
             const snapshot: Record<string, readonly Capability[]> = {};
@@ -74,5 +119,6 @@ export function createPermissionOverrideStore(persistencePath?: string): Permiss
             }
             return Object.freeze(snapshot);
         },
+        diagnostics: () => [...diagnostics],
     };
 }

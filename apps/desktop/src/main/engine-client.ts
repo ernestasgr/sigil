@@ -16,7 +16,11 @@ import {
     EngineMessageSchema,
     type EnginePong,
     EngineReadySchema,
+    type PersistenceDiagnostic,
+    type WorkflowWriteDiagnostic,
+    type WorkflowWriteOutcome,
 } from '../shared/ipc-channels.js';
+import type { PersistenceWriteOutcome } from '../shared/persistence.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 
@@ -32,22 +36,24 @@ export type EngineHandle = {
         name: string,
         pipeline: CompiledPipeline,
         positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
-    ) => Promise<WorkflowSummary>;
+    ) => Promise<WorkflowWriteOutcome>;
     readonly updateWorkflow: (
         id: string,
         name: string,
         pipeline: CompiledPipeline,
         positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
-    ) => Promise<WorkflowSummary>;
+    ) => Promise<WorkflowWriteOutcome>;
     readonly deleteWorkflow: (id: string) => Promise<boolean>;
     readonly getWorkflow: (id: string, timeoutMs?: number) => Promise<EngineGetWorkflowResult>;
     readonly listPlugins: (timeoutMs?: number) => Promise<readonly PluginInfo[]>;
     readonly setPermissionOverride: (
         pluginId: string,
         overrides: readonly Capability[],
-    ) => Promise<boolean>;
+    ) => Promise<PersistenceWriteOutcome>;
     readonly readProperties: (timeoutMs?: number) => Promise<Record<string, unknown>>;
-    readonly saveProperties: (properties: Record<string, unknown>) => Promise<boolean>;
+    readonly saveProperties: (
+        properties: Record<string, unknown>,
+    ) => Promise<PersistenceWriteOutcome>;
     readonly readWorkflowState: (
         workflowId: string,
         timeoutMs?: number,
@@ -91,15 +97,46 @@ export type RpcClient = {
     readonly dispatch: (message: EngineMessage) => void;
 };
 
+export interface EnginePersistenceError extends Error {
+    readonly kind: 'persistence';
+    readonly diagnostics: readonly PersistenceDiagnostic[];
+}
+
 type WorkflowMutationResponse = {
     readonly summary?: WorkflowSummary;
     readonly error?: string;
+    readonly diagnostics?: readonly WorkflowWriteDiagnostic[];
 };
 
-function requireWorkflowSummary(response: WorkflowMutationResponse): WorkflowSummary {
-    if (response.error) throw new Error(response.error);
-    if (!response.summary) throw new Error('Engine returned no workflow summary');
-    return response.summary;
+function createPersistenceError(
+    message: string,
+    diagnostics: readonly PersistenceDiagnostic[],
+): EnginePersistenceError {
+    return Object.assign(new Error(message), {
+        name: 'EnginePersistenceError',
+        kind: 'persistence' as const,
+        diagnostics,
+    });
+}
+
+function toWorkflowWriteOutcome(response: WorkflowMutationResponse): WorkflowWriteOutcome {
+    if (response.summary) return { ok: true, summary: response.summary };
+    return {
+        ok: false,
+        error: response.error ?? 'Engine returned no workflow summary.',
+        diagnostics: response.diagnostics ?? [],
+    };
+}
+
+function requireWorkflowOption(response: {
+    readonly summary: WorkflowSummary | null;
+    readonly error?: string;
+    readonly diagnostics?: readonly PersistenceDiagnostic[];
+}): Option.Option<WorkflowSummary> {
+    if (response.error) {
+        throw createPersistenceError(response.error, response.diagnostics ?? []);
+    }
+    return Option.fromNullable(response.summary);
 }
 
 export function createRpcClient(props: RpcClientProps): RpcClient {
@@ -267,47 +304,60 @@ export function spawnEngine(): EngineHandle {
             return client
                 .rpc<{
                     summary: WorkflowSummary | null;
+                    error?: string;
+                    diagnostics?: readonly PersistenceDiagnostic[];
                 }>(EngineChannel.ToggleWorkflow, { id }, 5000)
-                .then((r) => Option.fromNullable(r.summary));
+                .then(requireWorkflowOption);
         },
         retryWorkflow(id: string): Promise<Option.Option<WorkflowSummary>> {
             return client
                 .rpc<{
                     summary: WorkflowSummary | null;
+                    error?: string;
+                    diagnostics?: readonly PersistenceDiagnostic[];
                 }>(EngineChannel.RetryWorkflow, { id }, 5000)
-                .then((r) => Option.fromNullable(r.summary));
+                .then(requireWorkflowOption);
         },
         createWorkflow(
             name: string,
             pipeline: CompiledPipeline,
             positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
-        ): Promise<WorkflowSummary> {
+        ): Promise<WorkflowWriteOutcome> {
             return client
                 .rpc<WorkflowMutationResponse>(
                     EngineChannel.CreateWorkflow,
                     { name, pipeline, positions },
                     5000,
                 )
-                .then(requireWorkflowSummary);
+                .then(toWorkflowWriteOutcome);
         },
         updateWorkflow(
             id: string,
             name: string,
             pipeline: CompiledPipeline,
             positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
-        ): Promise<WorkflowSummary> {
+        ): Promise<WorkflowWriteOutcome> {
             return client
                 .rpc<WorkflowMutationResponse>(
                     EngineChannel.UpdateWorkflow,
                     { id, name, pipeline, positions },
                     5000,
                 )
-                .then(requireWorkflowSummary);
+                .then(toWorkflowWriteOutcome);
         },
         deleteWorkflow(id: string): Promise<boolean> {
             return client
-                .rpc<{ success: boolean }>(EngineChannel.DeleteWorkflow, { id }, 5000)
-                .then((r) => r.success);
+                .rpc<{
+                    success: boolean;
+                    error?: string;
+                    diagnostic?: PersistenceDiagnostic;
+                }>(EngineChannel.DeleteWorkflow, { id }, 5000)
+                .then((r) => {
+                    if (r.error) {
+                        throw createPersistenceError(r.error, r.diagnostic ? [r.diagnostic] : []);
+                    }
+                    return r.success;
+                });
         },
         getWorkflow(id: string, timeoutMs = 5000): Promise<EngineGetWorkflowResult> {
             return client.rpc<EngineGetWorkflowResult>(
@@ -324,12 +374,28 @@ export function spawnEngine(): EngineHandle {
         setPermissionOverride(
             pluginId: string,
             overrides: readonly Capability[],
-        ): Promise<boolean> {
+        ): Promise<PersistenceWriteOutcome> {
             return client
                 .rpc<{
                     ok: boolean;
+                    error?: string;
+                    diagnostic?: PersistenceDiagnostic;
                 }>(EngineChannel.SetPermissionOverride, { pluginId, overrides }, 5000)
-                .then((r) => r.ok);
+                .then(({ ok, error, diagnostic }) =>
+                    ok
+                        ? { ok: true }
+                        : {
+                              ok: false,
+                              error: error ?? 'Permission override persistence failed.',
+                              diagnostic: diagnostic ?? {
+                                  kind: 'persistence',
+                                  operation: 'write',
+                                  phase: 'write',
+                                  path: 'permission-overrides.json',
+                                  message: 'Permission override persistence failed.',
+                              },
+                          },
+                );
         },
         readProperties(timeoutMs = 5000): Promise<Record<string, unknown>> {
             return client
@@ -338,10 +404,28 @@ export function spawnEngine(): EngineHandle {
                 }>(EngineChannel.ReadProperties, {}, timeoutMs)
                 .then((r) => r.properties);
         },
-        saveProperties(properties: Record<string, unknown>): Promise<boolean> {
+        saveProperties(properties: Record<string, unknown>): Promise<PersistenceWriteOutcome> {
             return client
-                .rpc<{ ok: boolean }>(EngineChannel.SaveProperties, { properties }, 5000)
-                .then((r) => r.ok);
+                .rpc<{
+                    ok: boolean;
+                    error?: string;
+                    diagnostic?: PersistenceDiagnostic;
+                }>(EngineChannel.SaveProperties, { properties }, 5000)
+                .then(({ ok, error, diagnostic }) =>
+                    ok
+                        ? { ok: true }
+                        : {
+                              ok: false,
+                              error: error ?? 'Properties persistence failed.',
+                              diagnostic: diagnostic ?? {
+                                  kind: 'persistence',
+                                  operation: 'write',
+                                  phase: 'write',
+                                  path: 'sigil.properties.json',
+                                  message: 'Properties persistence failed.',
+                              },
+                          },
+                );
         },
         readWorkflowState(
             workflowId: string,

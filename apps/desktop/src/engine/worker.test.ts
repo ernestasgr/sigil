@@ -69,7 +69,7 @@ function createFakeSubsystems(): {
     const registryAll = vi.fn().mockReturnValue([]);
     const permissionHas = vi.fn();
     const permissionGet = vi.fn();
-    const permissionSet = vi.fn();
+    const permissionSet = vi.fn().mockReturnValue(Either.right(undefined));
     const listKeys = vi.fn().mockReturnValue([]);
     const setKey = vi.fn();
     const deleteKey = vi.fn();
@@ -399,6 +399,45 @@ describe('dispatch', () => {
         });
     });
 
+    it('returns a structured persistence failure when CreateWorkflow cannot commit its file', () => {
+        const { subsystems, postMessage, store, broadcastWorkflowsList } = createFakeSubsystems();
+        const diagnostic = {
+            kind: 'persistence',
+            operation: 'write',
+            phase: 'replace',
+            path: 'C:/workflows/wf-1.json',
+            message: 'replacement denied',
+        } as const;
+        store.create.mockImplementation(() => {
+            throw Object.assign(new Error('Could not create Workflow "wf-1": replacement denied'), {
+                kind: 'workflow_persistence' as const,
+                operation: 'create' as const,
+                workflowId: 'wf-1',
+                diagnostic,
+                diagnostics: [diagnostic],
+            });
+        });
+
+        dispatch(
+            {
+                type: EngineChannel.CreateWorkflow,
+                correlationId: 'corr-write-failed',
+                name: 'Failed WF',
+                pipeline: { id: 'p-1' } as CompiledPipeline,
+                positions: {},
+            },
+            subsystems,
+        );
+
+        expect(broadcastWorkflowsList).not.toHaveBeenCalled();
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.CreateWorkflowResult,
+            correlationId: 'corr-write-failed',
+            error: 'Could not create Workflow "wf-1": replacement denied',
+            diagnostics: [diagnostic],
+        });
+    });
+
     it('routes UpdateWorkflow for an existing workflow', () => {
         const { subsystems, postMessage, store, activator, broadcastWorkflowsList, log } =
             createFakeSubsystems();
@@ -599,6 +638,36 @@ describe('dispatch', () => {
             type: EngineChannel.SetPermissionOverrideResult,
             correlationId: 'corr-7',
             ok: true,
+        });
+    });
+
+    it('returns a failure outcome when a permission override cannot be committed', () => {
+        const { subsystems, postMessage, engine } = createFakeSubsystems();
+        const diagnostic = {
+            kind: 'persistence',
+            operation: 'write',
+            phase: 'write',
+            path: 'C:/permission-overrides.json',
+            message: 'disk full',
+        } as const;
+        engine.permissionOverrides.set.mockReturnValue(Either.left(diagnostic));
+
+        dispatch(
+            {
+                type: EngineChannel.SetPermissionOverride,
+                correlationId: 'corr-permission-failed',
+                pluginId: 'plugin-a',
+                overrides: [],
+            },
+            subsystems,
+        );
+
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.SetPermissionOverrideResult,
+            correlationId: 'corr-permission-failed',
+            ok: false,
+            error: '[persistence:write] C:/permission-overrides.json: disk full',
+            diagnostic,
         });
     });
 

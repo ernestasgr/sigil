@@ -618,14 +618,20 @@ export function SettingsSection(): ReactElement {
         (pluginId: string, overrides: readonly Capability[]) => {
             sigil
                 .setPermissionOverride(pluginId, overrides)
-                .then((ok) => {
-                    if (ok) {
+                .then((result) => {
+                    if (result.ok) {
                         setPlugins((prev) =>
                             prev.map((p) =>
                                 p.manifest.id === pluginId
                                     ? { ...p, grantedPermissions: overrides }
                                     : p,
                             ),
+                        );
+                    } else {
+                        console.error(
+                            'Failed to set permission override:',
+                            result.error,
+                            result.diagnostic,
                         );
                     }
                 })
@@ -640,9 +646,15 @@ export function SettingsSection(): ReactElement {
         (props: Record<string, unknown>) => {
             sigil
                 .saveProperties(props)
-                .then((ok) => {
-                    if (ok) {
+                .then((result) => {
+                    if (result.ok) {
                         setProperties(props);
+                    } else {
+                        console.error(
+                            'Failed to save properties:',
+                            result.error,
+                            result.diagnostic,
+                        );
                     }
                 })
                 .catch((err: unknown) => {

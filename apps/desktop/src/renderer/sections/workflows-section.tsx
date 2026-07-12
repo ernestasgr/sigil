@@ -90,10 +90,12 @@ export function WorkflowsSection(): ReactElement {
             const pipeline: CompiledPipeline = result.value;
             const positions = useBuilderStore.getState().getPositions();
             try {
-                if (editingWorkflowId) {
-                    await sigil.updateWorkflow(editingWorkflowId, name, pipeline, positions);
-                } else {
-                    await sigil.createWorkflow(name, pipeline, positions);
+                const outcome = editingWorkflowId
+                    ? await sigil.updateWorkflow(editingWorkflowId, name, pipeline, positions)
+                    : await sigil.createWorkflow(name, pipeline, positions);
+                if (!outcome.ok) {
+                    console.error('Failed to save workflow:', outcome.error, outcome.diagnostics);
+                    return;
                 }
                 setWorkflowView('list');
                 setEditingWorkflowId(null);

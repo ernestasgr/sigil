@@ -13,7 +13,12 @@ import {
     NodePositionRecordSchema,
     RendererChannel,
     WorkflowIdSchema,
+    type WorkflowWriteOutcome,
 } from '../shared/ipc-channels.js';
+import {
+    PersistenceDiagnosticSchema,
+    type PersistenceWriteOutcome,
+} from '../shared/persistence.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 import type { EngineHandle } from './engine-client.js';
@@ -23,6 +28,52 @@ export interface IpcHandlerContext {
     readonly getEngine: () => EngineHandle | null;
     readonly getMainWindow: () => BrowserWindow | null;
     readonly onRendererReady: () => void;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+function persistenceFailure(error: unknown, fallbackPath: string): PersistenceWriteOutcome {
+    const record = isRecord(error) ? error : undefined;
+    const diagnostics = record?.diagnostics;
+    if (Array.isArray(diagnostics)) {
+        const diagnostic = diagnostics
+            .map((candidate) => PersistenceDiagnosticSchema.safeParse(candidate))
+            .find((result) => result.success);
+        if (diagnostic?.success) {
+            return {
+                ok: false,
+                error: errorMessage(error),
+                diagnostic: diagnostic.data,
+            };
+        }
+    }
+
+    const message = errorMessage(error);
+    return {
+        ok: false,
+        error: message,
+        diagnostic: {
+            kind: 'persistence',
+            operation: 'write',
+            phase: 'write',
+            path: fallbackPath,
+            message,
+        },
+    };
+}
+
+function workflowFailure(error: unknown): WorkflowWriteOutcome {
+    return {
+        ok: false,
+        error: errorMessage(error),
+        diagnostics: [],
+    };
 }
 
 const UpdateWorkflowArgsSchema = z
@@ -85,20 +136,30 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
     ipcHandle(
         RendererChannel.CreateWorkflow,
         z.tuple([z.string(), CompiledPipelineSchema, NodePositionRecordSchema]),
-        async ([name, pipeline, positions]): Promise<WorkflowSummary> => {
+        async ([name, pipeline, positions]): Promise<WorkflowWriteOutcome> => {
             const engine = h.getEngine();
-            if (!engine) throw new Error('Engine not ready');
-            return await engine.createWorkflow(name, pipeline, positions);
+            if (!engine) return workflowFailure(new Error('Engine not ready'));
+            try {
+                return await engine.createWorkflow(name, pipeline, positions);
+            } catch (err) {
+                console.error('[main] createWorkflow failed:', err);
+                return workflowFailure(err);
+            }
         },
     );
 
     ipcHandle(
         RendererChannel.UpdateWorkflow,
         UpdateWorkflowArgsSchema,
-        async ([id, name, pipeline, positions]): Promise<WorkflowSummary> => {
+        async ([id, name, pipeline, positions]): Promise<WorkflowWriteOutcome> => {
             const engine = h.getEngine();
-            if (!engine) throw new Error('Engine not ready');
-            return await engine.updateWorkflow(id, name, pipeline, positions);
+            if (!engine) return workflowFailure(new Error('Engine not ready'));
+            try {
+                return await engine.updateWorkflow(id, name, pipeline, positions);
+            } catch (err) {
+                console.error('[main] updateWorkflow failed:', err);
+                return workflowFailure(err);
+            }
         },
     );
 
@@ -157,14 +218,14 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
     ipcHandle(
         RendererChannel.SetPermissionOverride,
         z.tuple([z.string(), z.array(CapabilitySchema)]),
-        async ([pluginId, overrides]): Promise<boolean> => {
+        async ([pluginId, overrides]): Promise<PersistenceWriteOutcome> => {
             const engine = h.getEngine();
-            if (!engine) return false;
+            if (!engine) return persistenceFailure(new Error('Engine not ready'), 'engine');
             try {
                 return await engine.setPermissionOverride(pluginId, overrides);
             } catch (err) {
                 console.error('[main] setPermissionOverride failed:', err);
-                return false;
+                return persistenceFailure(err, 'permission-overrides.json');
             }
         },
     );
@@ -187,14 +248,14 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
     ipcHandle(
         RendererChannel.SaveProperties,
         z.record(z.string(), z.unknown()),
-        async (properties): Promise<boolean> => {
+        async (properties): Promise<PersistenceWriteOutcome> => {
             const engine = h.getEngine();
-            if (!engine) return false;
+            if (!engine) return persistenceFailure(new Error('Engine not ready'), 'engine');
             try {
                 return await engine.saveProperties(properties);
             } catch (err) {
                 console.error('[main] saveProperties failed:', err);
-                return false;
+                return persistenceFailure(err, 'sigil.properties.json');
             }
         },
     );
