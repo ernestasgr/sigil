@@ -1,11 +1,24 @@
 import type { ReactElement } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { eventColor, eventNameLabel, formatTime, payloadPreview } from '../../lib/event-display.js';
 import { useWorkflowState } from '../../lib/use-workflow-state.js';
-import { type LogEntry, useAppStore } from '../../store/app-store.js';
+import { type BusEventEntry, useAppStore } from '../../store/app-store.js';
 
 interface VariableInspectorProps {
     readonly workflowId: string;
+}
+
+function isWorkflowOutput(entry: BusEventEntry): boolean {
+    switch (entry.name) {
+        case 'log.output':
+        case 'workflow.completed':
+        case 'workflow.error':
+        case 'workflow.cancelled':
+            return true;
+        default:
+            return false;
+    }
 }
 
 export function VariableInspector({ workflowId }: VariableInspectorProps): ReactElement {
@@ -15,14 +28,17 @@ export function VariableInspector({ workflowId }: VariableInspectorProps): React
         refresh: refreshState,
     } = useWorkflowState(workflowId);
     const [activeTab, setActiveTab] = useState<'state' | 'output'>('output');
-    const allLogs = useAppStore((state) => state.logs);
+    const telemetryIndex = useAppStore((state) => state.telemetryIndex);
     const logEndRef = useRef<HTMLDivElement>(null);
+
+    const recentOutput = useMemo(
+        () => telemetryIndex.forWorkflow(workflowId).filter(isWorkflowOutput).slice(-50),
+        [telemetryIndex, workflowId],
+    );
 
     useEffect(() => {
         logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, []);
-
-    const recentLogs: readonly LogEntry[] = allLogs.slice(-50);
 
     return (
         <div className="flex h-full flex-col">
@@ -54,19 +70,29 @@ export function VariableInspector({ workflowId }: VariableInspectorProps): React
             <div className="flex-1 overflow-auto">
                 {activeTab === 'output' ? (
                     <div className="flex flex-col">
-                        {recentLogs.length === 0 ? (
+                        {recentOutput.length === 0 ? (
                             <p className="font-manuscript text-veil p-4 text-xs italic">
-                                No output yet. Run the workflow to see log messages and variable
-                                changes.
+                                No output yet. Run this Workflow to see its structured output.
                             </p>
                         ) : (
                             <div className="font-data divide-gilt/30 divide-y text-xs">
-                                {recentLogs.map((entry) => (
+                                {recentOutput.map((entry) => (
                                     <div
                                         key={entry.id}
-                                        className="hover:bg-veil/5 px-4 py-1.5 transition-colors"
+                                        className="hover:bg-veil/5 flex items-start gap-2 px-4 py-1.5 transition-colors"
                                     >
-                                        {entry.line}
+                                        <span className="text-veil shrink-0 font-mono text-[10px] tabular-nums">
+                                            {formatTime(entry.timestamp)}
+                                        </span>
+                                        <span
+                                            className={`shrink-0 text-[10px] tracking-wider uppercase ${eventColor(entry.name)}`}
+                                        >
+                                            {eventNameLabel(entry.name)}
+                                        </span>
+                                        <span className="text-parchment min-w-0 break-words">
+                                            {entry.telemetry?.summary ??
+                                                payloadPreview(entry.payload)}
+                                        </span>
                                     </div>
                                 ))}
                             </div>

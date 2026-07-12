@@ -1,8 +1,13 @@
 import { create } from 'zustand';
 
 import type { EngineBusEventPayload } from '../../shared/ipc-channels.js';
-import type { EventTelemetry } from '../../shared/telemetry.js';
 import type { WorkflowSummary } from '../../shared/workflow.js';
+import {
+    createTelemetryEntry,
+    createTelemetryIndex,
+    type TelemetryEntry,
+    type TelemetryIndex,
+} from './telemetry-index.js';
 
 export type Section = 'home' | 'workflows' | 'events' | 'plugins' | 'settings';
 export type WorkflowView = 'list' | 'builder';
@@ -12,16 +17,9 @@ export interface LogEntry {
     readonly line: string;
 }
 
-export interface BusEventEntry {
-    readonly id: number;
-    readonly name: string;
-    readonly payload: unknown;
-    readonly timestamp: number;
-    readonly telemetry?: EventTelemetry;
-}
+export type BusEventEntry = TelemetryEntry;
 
 const LOG_CAP = 200;
-const BUS_EVENT_CAP = 500;
 
 function createIdCounter(): () => number {
     let next = 0;
@@ -36,6 +34,7 @@ export interface AppState {
     readonly workflows: readonly WorkflowSummary[];
     readonly logs: readonly LogEntry[];
     readonly busEvents: readonly BusEventEntry[];
+    readonly telemetryIndex: TelemetryIndex;
     readonly workflowView: WorkflowView;
     readonly editingWorkflowId: string | null;
     readonly navigate: (section: Section) => void;
@@ -51,6 +50,7 @@ export const useAppStore = create<AppState>((set) => ({
     workflows: [],
     logs: [],
     busEvents: [],
+    telemetryIndex: createTelemetryIndex(),
     workflowView: 'list',
     editingWorkflowId: null,
     navigate: (section) => {
@@ -68,17 +68,10 @@ export const useAppStore = create<AppState>((set) => ({
         });
     },
     appendBusEvent: (event) => {
+        const entry = createTelemetryEntry(nextBusEventId(), event);
         set((state) => {
-            const entry: BusEventEntry = {
-                id: nextBusEventId(),
-                name: event.name,
-                payload: event.payload,
-                timestamp: event.timestamp ?? event.telemetry?.timestamp ?? Date.now(),
-                ...(event.telemetry ? { telemetry: event.telemetry } : {}),
-            };
-            const busEvents = [...state.busEvents, entry];
-            if (busEvents.length <= BUS_EVENT_CAP) return { busEvents };
-            return { busEvents: busEvents.slice(busEvents.length - BUS_EVENT_CAP) };
+            const telemetryIndex = state.telemetryIndex.append(entry);
+            return { telemetryIndex, busEvents: telemetryIndex.entries };
         });
     },
     setWorkflowView: (view) => {

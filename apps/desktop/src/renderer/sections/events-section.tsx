@@ -14,39 +14,65 @@ import { useAppStore } from '../store/app-store.js';
 interface FilterState {
     readonly eventType: string;
     readonly pluginId: string;
+    readonly workflowId: string;
+    readonly runId: string;
 }
 
 export function EventsSection(): ReactElement {
     const busEvents = useAppStore((state) => state.busEvents);
-    const [filter, setFilter] = useState<FilterState>({ eventType: '', pluginId: '' });
+    const telemetryIndex = useAppStore((state) => state.telemetryIndex);
+    const workflows = useAppStore((state) => state.workflows);
+    const [filter, setFilter] = useState<FilterState>({
+        eventType: '',
+        pluginId: '',
+        workflowId: '',
+        runId: '',
+    });
+
+    const workflowIds = telemetryIndex.workflowIds;
+    const runIds = useMemo(
+        () => (filter.workflowId ? telemetryIndex.runIdsForWorkflow(filter.workflowId) : []),
+        [filter.workflowId, telemetryIndex],
+    );
+
+    const scopedEvents = useMemo(() => {
+        if (filter.workflowId) {
+            return filter.runId
+                ? telemetryIndex.forRun(filter.runId, filter.workflowId)
+                : telemetryIndex.forWorkflow(filter.workflowId);
+        }
+        return busEvents;
+    }, [busEvents, filter.workflowId, filter.runId, telemetryIndex]);
 
     const eventTypes = useMemo(() => {
         const types = new Set<string>();
-        for (const e of busEvents) {
+        for (const e of scopedEvents) {
             types.add(e.name);
         }
         return ['', ...types];
-    }, [busEvents]);
+    }, [scopedEvents]);
 
     const pluginIds = useMemo(() => {
         const ids = new Set<string>();
-        for (const e of busEvents) {
-            const pid = extractPluginId(e.payload);
+        for (const e of scopedEvents) {
+            const pid = e.telemetry?.pluginId ?? extractPluginId(e.payload);
             if (pid) ids.add(pid);
         }
         return ['', ...ids];
-    }, [busEvents]);
+    }, [scopedEvents]);
 
     const filtered = useMemo(() => {
-        let result: readonly BusEventEntry[] = busEvents;
+        let result: readonly BusEventEntry[] = scopedEvents;
         if (filter.eventType) {
             result = result.filter((e) => e.name === filter.eventType);
         }
         if (filter.pluginId) {
-            result = result.filter((e) => extractPluginId(e.payload) === filter.pluginId);
+            result = result.filter(
+                (e) => (e.telemetry?.pluginId ?? extractPluginId(e.payload)) === filter.pluginId,
+            );
         }
         return result;
-    }, [busEvents, filter]);
+    }, [filter.eventType, filter.pluginId, scopedEvents]);
 
     const reversed = useMemo(() => [...filtered].reverse(), [filtered]);
 
@@ -54,6 +80,62 @@ export function EventsSection(): ReactElement {
         <SectionShell title="Events" subtitle="The live inspector — every echo on the Bus.">
             <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-4">
+                    {workflowIds.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <label
+                                htmlFor="workflow-filter"
+                                className="font-ui text-veil text-xs tracking-widest uppercase"
+                            >
+                                Workflow
+                            </label>
+                            <select
+                                id="workflow-filter"
+                                className="bg-obsidian-ink border-gilt/40 text-parchment font-ui rounded-none border px-3 py-1.5 text-sm"
+                                value={filter.workflowId}
+                                onChange={(e) =>
+                                    setFilter((prev) => ({
+                                        ...prev,
+                                        workflowId: e.target.value,
+                                        runId: '',
+                                        pluginId: '',
+                                    }))
+                                }
+                            >
+                                <option value="">All workflows</option>
+                                {workflowIds.map((workflowId) => (
+                                    <option key={workflowId} value={workflowId}>
+                                        {workflows.find((workflow) => workflow.id === workflowId)
+                                            ?.name ?? workflowId}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                    {filter.workflowId && (
+                        <div className="flex items-center gap-2">
+                            <label
+                                htmlFor="run-filter"
+                                className="font-ui text-veil text-xs tracking-widest uppercase"
+                            >
+                                Run
+                            </label>
+                            <select
+                                id="run-filter"
+                                className="bg-obsidian-ink border-gilt/40 text-parchment font-ui rounded-none border px-3 py-1.5 text-sm"
+                                value={filter.runId}
+                                onChange={(e) =>
+                                    setFilter((prev) => ({ ...prev, runId: e.target.value }))
+                                }
+                            >
+                                <option value="">All runs</option>
+                                {runIds.map((runId) => (
+                                    <option key={runId} value={runId}>
+                                        {runId}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                     <div className="flex items-center gap-2">
                         <label
                             htmlFor="event-type-filter"

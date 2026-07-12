@@ -257,11 +257,27 @@ describe('dispatch', () => {
 
         const bus: EngineBusEvent = {
             type: EngineChannel.BusEvent,
-            event: { name: 'test', payload: { x: 1 } },
+            event: {
+                name: 'log.output',
+                payload: { message: 'hello' },
+                timestamp: 1700000000000,
+                telemetry: {
+                    eventId: 'event-1',
+                    timestamp: 1700000000000,
+                    kind: 'node',
+                    severity: 'info',
+                    workflowId: 'workflow-1',
+                    pipelineId: 'pipeline-1',
+                    runId: 'run-1',
+                    nodeId: 'log-node',
+                    nodeType: 'log',
+                    summary: '{"message":"hello"}',
+                },
+            },
         };
         client.dispatch(bus);
 
-        expect(handler).toHaveBeenCalledWith({ name: 'test', payload: { x: 1 } });
+        expect(handler).toHaveBeenCalledWith(bus.event);
     });
 
     it('does not throw on unexpected request-type messages from worker', () => {

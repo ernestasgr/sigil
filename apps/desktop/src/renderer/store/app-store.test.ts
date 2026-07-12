@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { WorkflowSummary } from '../../shared/workflow.js';
 
 import { useAppStore } from './app-store.js';
+import { createTelemetryIndex } from './telemetry-index.js';
 
 const workflow = (id: string, name: string, enabled: boolean): WorkflowSummary => ({
     id,
@@ -18,6 +19,7 @@ describe('useAppStore', () => {
             workflows: [],
             logs: [],
             busEvents: [],
+            telemetryIndex: createTelemetryIndex(),
         });
     });
 
@@ -88,10 +90,14 @@ describe('useAppStore', () => {
                 timestamp: 1234,
                 kind: 'node',
                 severity: 'info',
+                workflowId: 'workflow-1',
+                pipelineId: 'pipeline-1',
+                runId: 'run-1',
                 summary: '{"message":"hello"}',
             },
         });
 
         expect(useAppStore.getState().busEvents[0]?.timestamp).toBe(1234);
+        expect(useAppStore.getState().telemetryIndex.forWorkflow('workflow-1')).toHaveLength(1);
     });
 });
