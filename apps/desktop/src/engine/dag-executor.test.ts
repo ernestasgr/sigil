@@ -518,6 +518,63 @@ describe('dag-executor', () => {
             database.close();
         });
 
+        it('uses the authoritative execution Workflow identity for state writes', async () => {
+            const database = new Database(':memory:');
+            const store = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
+            const bus = createEventBus();
+            const events = captureEvents(bus);
+
+            await executePipeline(
+                pipeline(
+                    [trigger(), stateSet('set', 'last-file', '{{payload.name}}')],
+                    [edge('t-to-set', 'trigger', 'set', 'out')],
+                ),
+                bus,
+                handlerRegistry,
+                undefined,
+                undefined,
+                store,
+                undefined,
+                undefined,
+                { workflowId: 'authoritative-workflow' },
+            );
+
+            expect(store.forWorkflow('authoritative-workflow').get('last-file')).toEqual(
+                Option.some('report.pdf'),
+            );
+            expect(store.forWorkflow('test-workflow').get('last-file')).toEqual(Option.none());
+
+            await executePipeline(
+                pipeline(
+                    [
+                        trigger(),
+                        stateGet('get', 'last-file', 'remembered'),
+                        log('recall', 'loaded {{vars.remembered}}'),
+                    ],
+                    [
+                        edge('t-to-get', 'trigger', 'get', 'out'),
+                        edge('get-to-recall', 'get', 'recall', 'out'),
+                    ],
+                ),
+                bus,
+                handlerRegistry,
+                undefined,
+                undefined,
+                store,
+                undefined,
+                undefined,
+                { workflowId: 'authoritative-workflow' },
+            );
+
+            const recall = events.find((event) => event.name === 'log.output');
+            expect(recall?.name === 'log.output' && recall.payload.message).toBe(
+                'loaded report.pdf',
+            );
+
+            store.dispose();
+            database.close();
+        });
+
         it('preserves payload metadata downstream of a state-get', async () => {
             const database = new Database(':memory:');
             const store = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });

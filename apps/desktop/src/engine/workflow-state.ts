@@ -27,6 +27,7 @@ export interface WorkflowStateStore {
     readonly listKeys: (workflowId: string) => readonly WorkflowStateEntry[];
     readonly setKey: (workflowId: string, key: string, value: string) => void;
     readonly deleteKey: (workflowId: string, key: string) => void;
+    readonly deleteWorkflow: (workflowId: string) => void;
     readonly flushAll: () => void;
     readonly dispose: () => void;
 }
@@ -72,8 +73,8 @@ export function createWorkflowStateStore(
     function flushWorkflow(workflowId: string): void {
         const entries = buffer.get(workflowId);
         if (!entries || entries.size === 0) return;
-        buffer.delete(workflowId);
         upsert(entries, workflowId);
+        buffer.delete(workflowId);
     }
 
     function flushAll(): void {
@@ -101,7 +102,7 @@ export function createWorkflowStateStore(
                         ),
                     )
                     .get();
-                return row?.value ? Option.some(row.value) : Option.none();
+                return row !== undefined ? Option.some(row.value) : Option.none();
             },
             set(key: string, value: string): void {
                 let pending = buffer.get(workflowId);
@@ -148,26 +149,27 @@ export function createWorkflowStateStore(
             .run();
     }
 
-    return { forWorkflow, listKeys, setKey, deleteKey, flushAll, dispose };
+    function deleteWorkflow(workflowId: string): void {
+        db.delete(workflowStateTable).where(eq(workflowStateTable.workflowId, workflowId)).run();
+        buffer.delete(workflowId);
+    }
+
+    return { forWorkflow, listKeys, setKey, deleteKey, deleteWorkflow, flushAll, dispose };
 }
 
 export function createInMemoryWorkflowStateStore(): WorkflowStateStore {
     const buffer = new Map<string, Map<string, string>>();
 
     function forWorkflow(workflowId: string): WorkflowState {
-        let pending = buffer.get(workflowId);
-        if (!pending) {
-            pending = new Map<string, string>();
-            buffer.set(workflowId, pending);
-        }
-        const pendingMap = pending;
         return {
             get: (key: string): Option.Option<string> => {
-                const val = pendingMap.get(key);
+                const val = buffer.get(workflowId)?.get(key);
                 return val !== undefined ? Option.some(val) : Option.none();
             },
             set: (key: string, value: string): void => {
-                pendingMap.set(key, value);
+                const pending = buffer.get(workflowId) ?? new Map<string, string>();
+                pending.set(key, value);
+                buffer.set(workflowId, pending);
             },
             flush: (): void => {},
         };
@@ -195,11 +197,16 @@ export function createInMemoryWorkflowStateStore(): WorkflowStateStore {
         }
     }
 
+    function deleteWorkflow(workflowId: string): void {
+        buffer.delete(workflowId);
+    }
+
     return {
         forWorkflow,
         listKeys,
         setKey,
         deleteKey,
+        deleteWorkflow,
         flushAll: (): void => {},
         dispose: (): void => {},
     };

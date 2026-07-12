@@ -270,6 +270,7 @@ async function handleDeleteWorkflow(
         }
         const removed = subsystems.store.remove(message.id);
         if (removed) {
+            subsystems.engine.workflowStateStore.deleteWorkflow(message.id);
             subsystems.log(`Deleted workflow (${message.id})`);
         }
         subsystems.broadcastWorkflowsList();

@@ -47,6 +47,7 @@ function createFakeSubsystems(): {
             listKeys: ReturnType<typeof vi.fn>;
             setKey: ReturnType<typeof vi.fn>;
             deleteKey: ReturnType<typeof vi.fn>;
+            deleteWorkflow: ReturnType<typeof vi.fn>;
         };
     };
     store: {
@@ -73,6 +74,7 @@ function createFakeSubsystems(): {
     const listKeys = vi.fn().mockReturnValue([]);
     const setKey = vi.fn();
     const deleteKey = vi.fn();
+    const deleteWorkflow = vi.fn();
     const storeGet = vi.fn();
     const storeGetSummary = vi.fn();
     const storeToggle = vi.fn();
@@ -97,6 +99,7 @@ function createFakeSubsystems(): {
                     listKeys,
                     setKey,
                     deleteKey,
+                    deleteWorkflow,
                 },
             } as unknown as DispatchSubsystems['engine'],
             store: {
@@ -122,7 +125,7 @@ function createFakeSubsystems(): {
             execute,
             registry: { all: registryAll },
             permissionOverrides: { has: permissionHas, get: permissionGet, set: permissionSet },
-            workflowStateStore: { listKeys, setKey, deleteKey },
+            workflowStateStore: { listKeys, setKey, deleteKey, deleteWorkflow },
         },
         store: {
             get: storeGet,
@@ -510,7 +513,7 @@ describe('dispatch', () => {
     });
 
     it('routes DeleteWorkflow and calls remove, deactivates, broadcasts, and posts result', () => {
-        const { subsystems, postMessage, store, activator, broadcastWorkflowsList, log } =
+        const { subsystems, postMessage, store, activator, broadcastWorkflowsList, log, engine } =
             createFakeSubsystems();
         store.remove.mockReturnValue(true);
 
@@ -523,6 +526,7 @@ describe('dispatch', () => {
 
         expect(activator.deactivate).toHaveBeenCalledWith('wf-1');
         expect(store.remove).toHaveBeenCalledWith('wf-1');
+        expect(engine.workflowStateStore.deleteWorkflow).toHaveBeenCalledWith('wf-1');
         expect(log).toHaveBeenCalledWith('Deleted workflow (wf-1)');
         expect(broadcastWorkflowsList).toHaveBeenCalledTimes(1);
         expect(postMessage).toHaveBeenCalledWith({
@@ -533,7 +537,7 @@ describe('dispatch', () => {
     });
 
     it('routes DeleteWorkflow and does not log when remove returns false', () => {
-        const { subsystems, store, log } = createFakeSubsystems();
+        const { subsystems, store, log, engine } = createFakeSubsystems();
         store.remove.mockReturnValue(false);
 
         dispatch(
@@ -542,6 +546,7 @@ describe('dispatch', () => {
         );
 
         expect(log).not.toHaveBeenCalled();
+        expect(engine.workflowStateStore.deleteWorkflow).not.toHaveBeenCalled();
     });
 
     it('routes GetWorkflow and posts found result when workflow exists', () => {

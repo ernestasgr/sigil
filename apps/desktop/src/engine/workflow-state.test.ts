@@ -33,6 +33,19 @@ describe('createWorkflowStateStore — get/set', () => {
         store.dispose();
         database.close();
     });
+
+    it('round-trips an empty string through SQLite as a present value', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+
+        store.forWorkflow('wf-a').set('empty', '');
+        store.forWorkflow('wf-a').flush();
+
+        expect(store.forWorkflow('wf-a').get('empty')).toEqual(Option.some(''));
+
+        store.dispose();
+        database.close();
+    });
 });
 
 describe('createWorkflowStateStore — write coalescing', () => {
@@ -150,6 +163,26 @@ describe('createWorkflowStateStore — flush', () => {
 
         store.dispose();
         reader.dispose();
+        database.close();
+    });
+
+    it('retains buffered values when a transaction fails so a later flush can retry', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        const state = store.forWorkflow('wf-a');
+        database.exec(
+            "CREATE TRIGGER fail_workflow_state_insert BEFORE INSERT ON workflow_state BEGIN SELECT RAISE(ABORT, 'flush failed'); END;",
+        );
+        state.set('k', 'retryable');
+
+        expect(() => state.flush()).toThrow('flush failed');
+        expect(state.get('k')).toEqual(Option.some('retryable'));
+
+        database.exec('DROP TRIGGER fail_workflow_state_insert');
+        state.flush();
+        expect(state.get('k')).toEqual(Option.some('retryable'));
+
+        store.dispose();
         database.close();
     });
 });
@@ -310,9 +343,39 @@ describe('createWorkflowStateStore — listKeys / setKey / deleteKey', () => {
         store.dispose();
         database.close();
     });
+
+    it('deletes persisted and pending state for one Workflow without touching another', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+
+        store.setKey('wf-a', 'persisted', 'a');
+        store.forWorkflow('wf-a').set('pending', 'a-pending');
+        store.setKey('wf-b', 'survivor', 'b');
+
+        store.deleteWorkflow('wf-a');
+        store.flushAll();
+
+        expect(store.listKeys('wf-a')).toEqual([]);
+        expect(store.listKeys('wf-b')).toEqual([{ key: 'survivor', value: 'b' }]);
+
+        store.dispose();
+        database.close();
+    });
 });
 
 describe('createInMemoryWorkflowStateStore — listKeys / setKey / deleteKey', () => {
+    it('round-trips missing, empty, and non-empty values consistently', () => {
+        const store = createInMemoryWorkflowStateStore();
+        const state = store.forWorkflow('wf-a');
+
+        expect(state.get('missing')).toEqual(Option.none());
+        state.set('empty', '');
+        state.set('value', 'present');
+
+        expect(state.get('empty')).toEqual(Option.some(''));
+        expect(state.get('value')).toEqual(Option.some('present'));
+    });
+
     it('listKeys returns an empty array when no keys exist', () => {
         const store = createInMemoryWorkflowStateStore();
         expect(store.listKeys('wf-a')).toEqual([]);
@@ -349,5 +412,18 @@ describe('createInMemoryWorkflowStateStore — listKeys / setKey / deleteKey', (
         store.setKey('wf-b', 'kb', 'b');
         expect(store.listKeys('wf-a')).toEqual([{ key: 'ka', value: 'a' }]);
         expect(store.listKeys('wf-b')).toEqual([{ key: 'kb', value: 'b' }]);
+    });
+
+    it('deletes pending state for one Workflow without touching another', () => {
+        const store = createInMemoryWorkflowStateStore();
+        const state = store.forWorkflow('wf-a');
+        state.set('removed', 'a');
+        store.setKey('wf-b', 'survivor', 'b');
+
+        store.deleteWorkflow('wf-a');
+
+        expect(state.get('removed')).toEqual(Option.none());
+        expect(store.listKeys('wf-a')).toEqual([]);
+        expect(store.listKeys('wf-b')).toEqual([{ key: 'survivor', value: 'b' }]);
     });
 });

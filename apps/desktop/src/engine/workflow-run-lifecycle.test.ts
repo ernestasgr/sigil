@@ -241,6 +241,43 @@ describe('Workflow run lifecycle supervision', () => {
         }
     });
 
+    it('cleans up Workflow State when deleting the Workflow', async () => {
+        const fixture = createRunFixture(true);
+        const messages: unknown[] = [];
+
+        try {
+            fixture.engine.workflowStateStore.setKey(fixture.workflowId, 'remembered', 'value');
+
+            const subsystems: DispatchSubsystems = {
+                postMessage: (message) => messages.push(message),
+                engine: fixture.engine,
+                store: fixture.store,
+                activator: fixture.activator,
+                lifecycle: fixture.lifecycle,
+                broadcastWorkflowsList: vi.fn(),
+                log: vi.fn(),
+                propertiesPath: '',
+            };
+            await dispatch(
+                {
+                    type: EngineChannel.DeleteWorkflow,
+                    correlationId: 'delete-workflow-state',
+                    id: fixture.workflowId,
+                },
+                subsystems,
+            );
+
+            expect(fixture.engine.workflowStateStore.listKeys(fixture.workflowId)).toEqual([]);
+            expect(messages).toContainEqual({
+                type: EngineChannel.DeleteWorkflowResult,
+                correlationId: 'delete-workflow-state',
+                success: true,
+            });
+        } finally {
+            fixture.dispose();
+        }
+    });
+
     it('cancels admitted work and releases Workflow ownership before shutdown resolves', async () => {
         const fixture = createRunFixture(true, 1);
         const events: Array<{ readonly name: string; readonly payload: unknown }> = [];
