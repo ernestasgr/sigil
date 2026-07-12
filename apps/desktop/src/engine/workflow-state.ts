@@ -150,8 +150,8 @@ export function createWorkflowStateStore(
     }
 
     function deleteWorkflow(workflowId: string): void {
-        db.delete(workflowStateTable).where(eq(workflowStateTable.workflowId, workflowId)).run();
         buffer.delete(workflowId);
+        db.delete(workflowStateTable).where(eq(workflowStateTable.workflowId, workflowId)).run();
     }
 
     return { forWorkflow, listKeys, setKey, deleteKey, deleteWorkflow, flushAll, dispose };
