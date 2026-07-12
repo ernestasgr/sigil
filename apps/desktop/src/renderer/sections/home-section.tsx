@@ -21,7 +21,8 @@ export function HomeSection(): ReactElement {
                     </h2>
                     {activeWorkflows.length === 0 ? (
                         <p className="font-manuscript text-veil px-4 py-3 text-sm italic">
-                            No live workflows active — enable one from the Workflows section.
+                            No live workflows active — enable one from the Workflows section, or
+                            retry any failed activations.
                         </p>
                     ) : (
                         <ul className="divide-gilt/30 divide-y font-ui">
