@@ -7,7 +7,9 @@ import {
     type EngineBusEventPayload,
     type EnginePong,
     RendererChannel,
+    type WorkflowWriteOutcome,
 } from '../shared/ipc-channels.js';
+import type { PersistenceWriteOutcome } from '../shared/persistence.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import type { NodePosition, WorkflowSummary } from '../shared/workflow.js';
 
@@ -23,14 +25,14 @@ const api = {
         name: string,
         pipeline: CompiledPipeline,
         positions: Readonly<Record<string, NodePosition>>,
-    ): Promise<WorkflowSummary> =>
+    ): Promise<WorkflowWriteOutcome> =>
         ipcRenderer.invoke(RendererChannel.CreateWorkflow, name, pipeline, positions),
     updateWorkflow: (
         id: string,
         name: string,
         pipeline: CompiledPipeline,
         positions: Readonly<Record<string, NodePosition>>,
-    ): Promise<WorkflowSummary> =>
+    ): Promise<WorkflowWriteOutcome> =>
         ipcRenderer.invoke(RendererChannel.UpdateWorkflow, id, name, pipeline, positions),
     deleteWorkflow: (id: string): Promise<boolean> =>
         ipcRenderer.invoke(RendererChannel.DeleteWorkflow, id),
@@ -43,11 +45,14 @@ const api = {
     } | null> => ipcRenderer.invoke(RendererChannel.GetWorkflow, id),
     listPlugins: (): Promise<readonly PluginInfo[]> =>
         ipcRenderer.invoke(RendererChannel.ListPlugins),
-    setPermissionOverride: (pluginId: string, overrides: readonly Capability[]): Promise<boolean> =>
+    setPermissionOverride: (
+        pluginId: string,
+        overrides: readonly Capability[],
+    ): Promise<PersistenceWriteOutcome> =>
         ipcRenderer.invoke(RendererChannel.SetPermissionOverride, pluginId, overrides),
     readProperties: (): Promise<Record<string, unknown>> =>
         ipcRenderer.invoke(RendererChannel.ReadProperties),
-    saveProperties: (properties: Record<string, unknown>): Promise<boolean> =>
+    saveProperties: (properties: Record<string, unknown>): Promise<PersistenceWriteOutcome> =>
         ipcRenderer.invoke(RendererChannel.SaveProperties, properties),
     openFileDialog: (): Promise<FileEventPayload | null> =>
         ipcRenderer.invoke(RendererChannel.OpenFileDialog),

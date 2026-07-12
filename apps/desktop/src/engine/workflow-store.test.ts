@@ -3,12 +3,14 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
 import { parsePipeline } from '@sigil/schema';
-import { Option } from 'effect';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Either, Option } from 'effect';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { AtomicFileWriter, AtomicWriteFailure } from './atomic-file.js';
 import {
     createWorkflowStore,
     isWorkflowIdentityError,
+    isWorkflowPersistenceError,
     type WorkflowStore,
 } from './workflow-store.js';
 import { isWorkflowTopologyError } from './workflow-topology-error.js';
@@ -161,6 +163,66 @@ describe('WorkflowStore', () => {
         expect(raw.positions).toEqual(samplePositions);
         expect(raw.workflowId).toBe('wf-1');
         expect(raw.nodes).toHaveLength(2);
+    });
+
+    it('returns a typed failure without reporting a created Workflow after a write failure', () => {
+        const writeFailure: AtomicWriteFailure = {
+            kind: 'persistence',
+            operation: 'write',
+            phase: 'write',
+            path: join(dir, 'wf-1.json'),
+            message: 'disk full',
+        };
+        const writer: AtomicFileWriter = {
+            write: vi.fn(() => Either.left(writeFailure)),
+        };
+        const failingStore = createWorkflowStore(dir, {}, { fileWriter: writer });
+
+        let error: unknown;
+        try {
+            failingStore.create('My Workflow', samplePipeline, samplePositions);
+        } catch (caught) {
+            error = caught;
+        }
+
+        expect(isWorkflowPersistenceError(error)).toBe(true);
+        if (isWorkflowPersistenceError(error)) {
+            expect(error.operation).toBe('create');
+            expect(error.workflowId).toBe('wf-1');
+            expect(error.diagnostic.phase).toBe('write');
+        }
+        expect(failingStore.list()).toEqual([]);
+        expect(writer.write).toHaveBeenCalledOnce();
+    });
+
+    it('keeps the previous Workflow visible when replacement fails during save', () => {
+        const summary = store.create('Original', samplePipeline, samplePositions);
+        const replacementFailure: AtomicWriteFailure = {
+            kind: 'persistence',
+            operation: 'write',
+            phase: 'replace',
+            path: join(dir, `${summary.id}.json`),
+            message: 'replacement denied',
+        };
+        const writer: AtomicFileWriter = {
+            write: vi.fn(() => Either.left(replacementFailure)),
+        };
+        const failingStore = createWorkflowStore(dir, {}, { fileWriter: writer });
+
+        let error: unknown;
+        try {
+            failingStore.save(summary.id, 'Updated', samplePipeline, {});
+        } catch (caught) {
+            error = caught;
+        }
+
+        expect(isWorkflowPersistenceError(error)).toBe(true);
+        expect(failingStore.getSummary(summary.id)).toMatchObject(
+            Option.some({ id: summary.id, name: 'Original' }),
+        );
+        expect(JSON.parse(readFileSync(join(dir, `${summary.id}.json`), 'utf8')).name).toBe(
+            'Original',
+        );
     });
 
     it('uses pipeline.workflowId as the authoritative Workflow id', () => {

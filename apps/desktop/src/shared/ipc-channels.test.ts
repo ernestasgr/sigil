@@ -85,6 +85,53 @@ describe('EngineMessageSchema', () => {
         const result = EngineMessageSchema.safeParse(message);
         expect(result.success).toBe(false);
     });
+
+    it('preserves structured persistence failures in result messages', () => {
+        const result = EngineMessageSchema.safeParse({
+            type: EngineChannel.SavePropertiesResult,
+            correlationId: 'corr-persistence',
+            ok: false,
+            error: 'replacement denied',
+            diagnostic: {
+                kind: 'persistence',
+                operation: 'write',
+                phase: 'replace',
+                path: 'C:/sigil.properties.json',
+                message: 'replacement denied',
+            },
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data).toMatchObject({
+                ok: false,
+                diagnostic: { phase: 'replace' },
+            });
+        }
+    });
+
+    it('does not strip a Workflow toggle persistence failure as a success response', () => {
+        const result = EngineMessageSchema.safeParse({
+            type: EngineChannel.ToggleWorkflowResult,
+            correlationId: 'corr-toggle',
+            summary: null,
+            error: 'Could not toggle Workflow "wf-1"',
+            diagnostics: [
+                {
+                    kind: 'persistence',
+                    operation: 'write',
+                    phase: 'replace',
+                    path: 'C:/workflows/wf-1.json',
+                    message: 'replacement denied',
+                },
+            ],
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect('error' in result.data).toBe(true);
+        }
+    });
 });
 
 describe('EngineWorkflowsListSchema', () => {

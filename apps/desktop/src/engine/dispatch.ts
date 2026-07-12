@@ -21,6 +21,7 @@ import {
     type EngineUpdateWorkflow,
     type WorkerInbound,
 } from '../shared/ipc-channels.js';
+import { formatPersistenceDiagnostic } from '../shared/persistence.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import type { Engine } from './engine.js';
 import { updatePluginPermissions } from './node-plugin-loader.js';
@@ -28,6 +29,7 @@ import { readPropertiesFile, writePropertiesFile } from './properties-loader.js'
 import type { WorkflowActivator } from './workflow-activator.js';
 import type { WorkflowLifecycle } from './workflow-lifecycle.js';
 import type { WorkflowStore } from './workflow-store.js';
+import { isWorkflowPersistenceError } from './workflow-store.js';
 import { isWorkflowTopologyError } from './workflow-topology-error.js';
 
 export interface DispatchSubsystems {
@@ -79,13 +81,35 @@ function handleFireManualTrigger(
 }
 
 function handleToggleWorkflow(message: EngineToggleWorkflow, subsystems: DispatchSubsystems): void {
-    if (subsystems.lifecycle) {
-        const before = subsystems.store.getSummary(message.id);
-        const toggled = subsystems.lifecycle.toggle(message.id);
+    try {
+        if (subsystems.lifecycle) {
+            const before = subsystems.store.getSummary(message.id);
+            const toggled = subsystems.lifecycle.toggle(message.id);
+            if (Option.isSome(before) && Option.isSome(toggled)) {
+                subsystems.log(
+                    `"${before.value.name}" ${toggled.value.enabled ? 'enabled' : 'disabled'}`,
+                );
+            }
+            subsystems.broadcastWorkflowsList();
+            subsystems.postMessage({
+                type: EngineChannel.ToggleWorkflowResult,
+                correlationId: message.correlationId,
+                summary: Option.getOrElse(() => null)(toggled),
+            });
+            return;
+        }
+
+        const before = subsystems.store.get(message.id);
+        const toggled = subsystems.store.toggle(message.id);
         if (Option.isSome(before) && Option.isSome(toggled)) {
             subsystems.log(
                 `"${before.value.name}" ${toggled.value.enabled ? 'enabled' : 'disabled'}`,
             );
+            if (toggled.value.enabled) {
+                subsystems.activator.activate(message.id);
+            } else {
+                subsystems.activator.deactivate(message.id);
+            }
         }
         subsystems.broadcastWorkflowsList();
         subsystems.postMessage({
@@ -93,56 +117,72 @@ function handleToggleWorkflow(message: EngineToggleWorkflow, subsystems: Dispatc
             correlationId: message.correlationId,
             summary: Option.getOrElse(() => null)(toggled),
         });
-        return;
+    } catch (error) {
+        if (!isWorkflowPersistenceError(error)) throw error;
+        subsystems.log(formatPersistenceDiagnostic(error.diagnostic));
+        subsystems.postMessage({
+            type: EngineChannel.ToggleWorkflowResult,
+            correlationId: message.correlationId,
+            summary: null,
+            error: error.message,
+            diagnostics: error.diagnostics,
+        });
     }
-
-    const before = subsystems.store.get(message.id);
-    const toggled = subsystems.store.toggle(message.id);
-    if (Option.isSome(before) && Option.isSome(toggled)) {
-        subsystems.log(`"${before.value.name}" ${toggled.value.enabled ? 'enabled' : 'disabled'}`);
-        if (toggled.value.enabled) {
-            subsystems.activator.activate(message.id);
-        } else {
-            subsystems.activator.deactivate(message.id);
-        }
-    }
-    subsystems.broadcastWorkflowsList();
-    subsystems.postMessage({
-        type: EngineChannel.ToggleWorkflowResult,
-        correlationId: message.correlationId,
-        summary: Option.getOrElse(() => null)(toggled),
-    });
 }
 
 function handleRetryWorkflow(message: EngineRetryWorkflow, subsystems: DispatchSubsystems): void {
-    const summary = subsystems.lifecycle
-        ? subsystems.lifecycle.retry(message.id)
-        : Option.none<ReturnType<WorkflowStore['save']>>();
-    if (Option.isSome(summary)) {
-        subsystems.log(`Retrying workflow "${summary.value.name}" (${summary.value.id})`);
+    try {
+        const summary = subsystems.lifecycle
+            ? subsystems.lifecycle.retry(message.id)
+            : Option.none<ReturnType<WorkflowStore['save']>>();
+        if (Option.isSome(summary)) {
+            subsystems.log(`Retrying workflow "${summary.value.name}" (${summary.value.id})`);
+        }
+        subsystems.broadcastWorkflowsList();
+        subsystems.postMessage({
+            type: EngineChannel.RetryWorkflowResult,
+            correlationId: message.correlationId,
+            summary: Option.getOrElse(() => null)(summary),
+        });
+    } catch (error) {
+        if (!isWorkflowPersistenceError(error)) throw error;
+        subsystems.log(formatPersistenceDiagnostic(error.diagnostic));
+        subsystems.postMessage({
+            type: EngineChannel.RetryWorkflowResult,
+            correlationId: message.correlationId,
+            summary: null,
+            error: error.message,
+            diagnostics: error.diagnostics,
+        });
     }
-    subsystems.broadcastWorkflowsList();
-    subsystems.postMessage({
-        type: EngineChannel.RetryWorkflowResult,
-        correlationId: message.correlationId,
-        summary: Option.getOrElse(() => null)(summary),
-    });
 }
 
 function handleCreateWorkflow(message: EngineCreateWorkflow, subsystems: DispatchSubsystems): void {
     let summary: ReturnType<WorkflowStore['create']>;
     try {
         summary = subsystems.store.create(message.name, message.pipeline, message.positions);
-    } catch (err) {
-        if (!isWorkflowTopologyError(err)) throw err;
-        subsystems.log(`Could not create workflow "${message.name}": ${err.message}`);
-        subsystems.postMessage({
-            type: EngineChannel.CreateWorkflowResult,
-            correlationId: message.correlationId,
-            error: err.message,
-            diagnostics: err.diagnostics,
-        });
-        return;
+    } catch (error) {
+        if (isWorkflowTopologyError(error)) {
+            subsystems.log(`Could not create workflow "${message.name}": ${error.message}`);
+            subsystems.postMessage({
+                type: EngineChannel.CreateWorkflowResult,
+                correlationId: message.correlationId,
+                error: error.message,
+                diagnostics: error.diagnostics,
+            });
+            return;
+        }
+        if (isWorkflowPersistenceError(error)) {
+            subsystems.log(formatPersistenceDiagnostic(error.diagnostic));
+            subsystems.postMessage({
+                type: EngineChannel.CreateWorkflowResult,
+                correlationId: message.correlationId,
+                error: error.message,
+                diagnostics: error.diagnostics,
+            });
+            return;
+        }
+        throw error;
     }
     subsystems.log(`Created workflow "${message.name}" (${summary.id})`);
     subsystems.broadcastWorkflowsList();
@@ -170,16 +210,28 @@ async function handleUpdateWorkflow(
                   ),
               )
             : subsystems.store.save(message.id, message.name, message.pipeline, message.positions);
-    } catch (err) {
-        if (!isWorkflowTopologyError(err)) throw err;
-        subsystems.log(`Could not update workflow "${message.name}": ${err.message}`);
-        subsystems.postMessage({
-            type: EngineChannel.UpdateWorkflowResult,
-            correlationId: message.correlationId,
-            error: err.message,
-            diagnostics: err.diagnostics,
-        });
-        return;
+    } catch (error) {
+        if (isWorkflowTopologyError(error)) {
+            subsystems.log(`Could not update workflow "${message.name}": ${error.message}`);
+            subsystems.postMessage({
+                type: EngineChannel.UpdateWorkflowResult,
+                correlationId: message.correlationId,
+                error: error.message,
+                diagnostics: error.diagnostics,
+            });
+            return;
+        }
+        if (isWorkflowPersistenceError(error)) {
+            subsystems.log(formatPersistenceDiagnostic(error.diagnostic));
+            subsystems.postMessage({
+                type: EngineChannel.UpdateWorkflowResult,
+                correlationId: message.correlationId,
+                error: error.message,
+                diagnostics: error.diagnostics,
+            });
+            return;
+        }
+        throw error;
     }
     if (existed) {
         if (!subsystems.lifecycle) subsystems.activator.deactivate(message.id);
@@ -204,24 +256,36 @@ async function handleDeleteWorkflow(
     message: EngineDeleteWorkflow,
     subsystems: DispatchSubsystems,
 ): Promise<void> {
-    if (subsystems.lifecycle) {
-        subsystems.lifecycle.disable(message.id);
-    } else {
-        subsystems.activator.deactivate(message.id);
+    try {
+        if (subsystems.lifecycle) {
+            subsystems.lifecycle.disable(message.id);
+        } else {
+            subsystems.activator.deactivate(message.id);
+        }
+        if (subsystems.activator.hasInFlightRuns?.(message.id)) {
+            await subsystems.activator.waitForRuns(message.id);
+        }
+        const removed = subsystems.store.remove(message.id);
+        if (removed) {
+            subsystems.log(`Deleted workflow (${message.id})`);
+        }
+        subsystems.broadcastWorkflowsList();
+        subsystems.postMessage({
+            type: EngineChannel.DeleteWorkflowResult,
+            correlationId: message.correlationId,
+            success: removed,
+        });
+    } catch (error) {
+        if (!isWorkflowPersistenceError(error)) throw error;
+        subsystems.log(formatPersistenceDiagnostic(error.diagnostic));
+        subsystems.postMessage({
+            type: EngineChannel.DeleteWorkflowResult,
+            correlationId: message.correlationId,
+            success: false,
+            error: error.message,
+            diagnostic: error.diagnostic,
+        });
     }
-    if (subsystems.activator.hasInFlightRuns?.(message.id)) {
-        await subsystems.activator.waitForRuns(message.id);
-    }
-    const removed = subsystems.store.remove(message.id);
-    if (removed) {
-        subsystems.log(`Deleted workflow (${message.id})`);
-    }
-    subsystems.broadcastWorkflowsList();
-    subsystems.postMessage({
-        type: EngineChannel.DeleteWorkflowResult,
-        correlationId: message.correlationId,
-        success: removed,
-    });
 }
 
 async function handleShutdown(
@@ -284,7 +348,19 @@ function handleSetPermissionOverride(
     message: EngineSetPermissionOverride,
     subsystems: DispatchSubsystems,
 ): void {
-    subsystems.engine.permissionOverrides.set(message.pluginId, message.overrides);
+    const result = subsystems.engine.permissionOverrides.set(message.pluginId, message.overrides);
+    if (Either.isLeft(result)) {
+        const detail = formatPersistenceDiagnostic(result.left);
+        subsystems.log(`Failed to save permission override: ${detail}`);
+        subsystems.postMessage({
+            type: EngineChannel.SetPermissionOverrideResult,
+            correlationId: message.correlationId,
+            ok: false,
+            error: detail,
+            diagnostic: result.left,
+        });
+        return;
+    }
     updatePluginPermissions(message.pluginId, message.overrides);
     subsystems.postMessage({
         type: EngineChannel.SetPermissionOverrideResult,
@@ -295,7 +371,12 @@ function handleSetPermissionOverride(
 
 function handleReadProperties(message: EngineReadProperties, subsystems: DispatchSubsystems): void {
     const current = readPropertiesFile(subsystems.propertiesPath).pipe(
-        Effect.catchAll(() => Effect.succeed({})),
+        Effect.catchAll((error) => {
+            if (error.phase === 'parse') {
+                subsystems.log(`Properties file diagnostic: ${formatPersistenceDiagnostic(error)}`);
+            }
+            return Effect.succeed({});
+        }),
         Effect.runSync,
     );
     const properties = isRecord(current) ? current : {};
@@ -309,12 +390,21 @@ function handleReadProperties(message: EngineReadProperties, subsystems: Dispatc
 function handleSaveProperties(message: EngineSaveProperties, subsystems: DispatchSubsystems): void {
     const result = writePropertiesFile(subsystems.propertiesPath, message.properties);
     if (Either.isLeft(result)) {
-        subsystems.log(`Failed to save properties: ${result.left}`);
+        const detail = formatPersistenceDiagnostic(result.left);
+        subsystems.log(`Failed to save properties: ${detail}`);
+        subsystems.postMessage({
+            type: EngineChannel.SavePropertiesResult,
+            correlationId: message.correlationId,
+            ok: false,
+            error: detail,
+            diagnostic: result.left,
+        });
+        return;
     }
     subsystems.postMessage({
         type: EngineChannel.SavePropertiesResult,
         correlationId: message.correlationId,
-        ok: Either.isRight(result),
+        ok: true,
     });
 }
 

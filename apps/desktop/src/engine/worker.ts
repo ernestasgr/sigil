@@ -11,6 +11,7 @@ import {
     type WorkerInbound,
     WorkerInboundSchema,
 } from '../shared/ipc-channels.js';
+import { formatPersistenceDiagnostic, type PersistenceDiagnostic } from '../shared/persistence.js';
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
 import { createEngine } from './engine.js';
 import { readPropertiesFile } from './properties-loader.js';
@@ -35,9 +36,13 @@ const propertiesPath = existsSync(cwdPropertiesPath) ? cwdPropertiesPath : userD
 
 const overridesPath = join(userDataPath ?? '', 'permission-overrides.json');
 
+let propertiesDiagnostic: PersistenceDiagnostic | undefined;
 const engine = createEngine({
     properties: readPropertiesFile(propertiesPath).pipe(
-        Effect.catchAll(() => Effect.succeed({})),
+        Effect.catchAll((error) => {
+            propertiesDiagnostic = error;
+            return Effect.succeed({});
+        }),
         Effect.runSync,
     ),
     defaultDatabasePath: join(userDataPath ?? '', 'sigil.db'),
@@ -46,6 +51,14 @@ const engine = createEngine({
 
 function log(message: string): void {
     engine.bus.next({ name: 'engine.diagnostic', payload: { message } });
+}
+
+if (propertiesDiagnostic?.phase === 'parse') {
+    log(`Properties file diagnostic: ${formatPersistenceDiagnostic(propertiesDiagnostic)}`);
+}
+
+for (const diagnostic of engine.permissionOverrides.diagnostics()) {
+    log(`Permission override file diagnostic: ${formatPersistenceDiagnostic(diagnostic)}`);
 }
 
 engine.bus.subscribe((event) => {

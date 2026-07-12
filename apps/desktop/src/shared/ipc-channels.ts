@@ -2,9 +2,35 @@ import { CompiledPipelineSchema } from '@sigil/schema';
 import { CapabilitySchema, ManifestSchema } from '@sigil/schema/manifest';
 import { TopologyDiagnosticSchema } from '@sigil/schema/topology';
 import { z } from 'zod';
+import { PersistenceDiagnosticSchema } from './persistence.js';
 import { WorkflowIdSchema, WorkflowSummarySchema } from './workflow.js';
 
+export type { PersistenceDiagnostic } from './persistence.js';
+export { PersistenceDiagnosticSchema } from './persistence.js';
 export { WorkflowIdSchema } from './workflow.js';
+
+const WorkflowWriteDiagnosticSchema = z.union([
+    TopologyDiagnosticSchema,
+    PersistenceDiagnosticSchema,
+]);
+export type WorkflowWriteDiagnostic = z.infer<typeof WorkflowWriteDiagnosticSchema>;
+
+export const WorkflowWriteOutcomeSchema = z.union([
+    z
+        .object({
+            ok: z.literal(true),
+            summary: WorkflowSummarySchema,
+        })
+        .readonly(),
+    z
+        .object({
+            ok: z.literal(false),
+            error: z.string(),
+            diagnostics: z.array(WorkflowWriteDiagnosticSchema).readonly(),
+        })
+        .readonly(),
+]);
+export type WorkflowWriteOutcome = z.infer<typeof WorkflowWriteOutcomeSchema>;
 
 const NodePositionSchema = z.object({ x: z.number(), y: z.number() }).readonly();
 export const NodePositionRecordSchema = z.record(z.string(), NodePositionSchema).readonly();
@@ -106,11 +132,22 @@ export const EngineToggleWorkflowSchema = z.object({
 });
 export type EngineToggleWorkflow = z.infer<typeof EngineToggleWorkflowSchema>;
 
-export const EngineToggleWorkflowResultSchema = z.object({
+const EngineToggleWorkflowSuccessSchema = z.object({
     type: z.literal(EngineChannel.ToggleWorkflowResult),
     correlationId: z.string(),
     summary: WorkflowSummarySchema.nullable(),
 });
+const EngineToggleWorkflowFailureSchema = z.object({
+    type: z.literal(EngineChannel.ToggleWorkflowResult),
+    correlationId: z.string(),
+    summary: z.null(),
+    error: z.string(),
+    diagnostics: z.array(PersistenceDiagnosticSchema).readonly(),
+});
+export const EngineToggleWorkflowResultSchema = z.union([
+    EngineToggleWorkflowFailureSchema,
+    EngineToggleWorkflowSuccessSchema,
+]);
 export type EngineToggleWorkflowResult = z.infer<typeof EngineToggleWorkflowResultSchema>;
 
 export const EngineRetryWorkflowSchema = z.object({
@@ -120,11 +157,22 @@ export const EngineRetryWorkflowSchema = z.object({
 });
 export type EngineRetryWorkflow = z.infer<typeof EngineRetryWorkflowSchema>;
 
-export const EngineRetryWorkflowResultSchema = z.object({
+const EngineRetryWorkflowSuccessSchema = z.object({
     type: z.literal(EngineChannel.RetryWorkflowResult),
     correlationId: z.string(),
     summary: WorkflowSummarySchema.nullable(),
 });
+const EngineRetryWorkflowFailureSchema = z.object({
+    type: z.literal(EngineChannel.RetryWorkflowResult),
+    correlationId: z.string(),
+    summary: z.null(),
+    error: z.string(),
+    diagnostics: z.array(PersistenceDiagnosticSchema).readonly(),
+});
+export const EngineRetryWorkflowResultSchema = z.union([
+    EngineRetryWorkflowFailureSchema,
+    EngineRetryWorkflowSuccessSchema,
+]);
 export type EngineRetryWorkflowResult = z.infer<typeof EngineRetryWorkflowResultSchema>;
 
 export const EngineCreateWorkflowSchema = z.object({
@@ -145,7 +193,7 @@ const EngineCreateWorkflowFailureSchema = z.object({
     type: z.literal(EngineChannel.CreateWorkflowResult),
     correlationId: z.string(),
     error: z.string(),
-    diagnostics: z.array(TopologyDiagnosticSchema).readonly(),
+    diagnostics: z.array(WorkflowWriteDiagnosticSchema).readonly(),
 });
 export const EngineCreateWorkflowResultSchema = z.union([
     EngineCreateWorkflowSuccessSchema,
@@ -182,7 +230,7 @@ const EngineUpdateWorkflowFailureSchema = z.object({
     type: z.literal(EngineChannel.UpdateWorkflowResult),
     correlationId: z.string(),
     error: z.string(),
-    diagnostics: z.array(TopologyDiagnosticSchema).readonly(),
+    diagnostics: z.array(WorkflowWriteDiagnosticSchema).readonly(),
 });
 export const EngineUpdateWorkflowResultSchema = z.union([
     EngineUpdateWorkflowSuccessSchema,
@@ -197,11 +245,28 @@ export const EngineDeleteWorkflowSchema = z.object({
 });
 export type EngineDeleteWorkflow = z.infer<typeof EngineDeleteWorkflowSchema>;
 
-export const EngineDeleteWorkflowResultSchema = z.object({
+const EngineDeleteWorkflowSuccessSchema = z.object({
     type: z.literal(EngineChannel.DeleteWorkflowResult),
     correlationId: z.string(),
-    success: z.boolean(),
+    success: z.literal(true),
 });
+const EngineDeleteWorkflowNotFoundSchema = z.object({
+    type: z.literal(EngineChannel.DeleteWorkflowResult),
+    correlationId: z.string(),
+    success: z.literal(false),
+});
+const EngineDeleteWorkflowFailureSchema = z.object({
+    type: z.literal(EngineChannel.DeleteWorkflowResult),
+    correlationId: z.string(),
+    success: z.literal(false),
+    error: z.string(),
+    diagnostic: PersistenceDiagnosticSchema,
+});
+export const EngineDeleteWorkflowResultSchema = z.union([
+    EngineDeleteWorkflowFailureSchema,
+    EngineDeleteWorkflowSuccessSchema,
+    EngineDeleteWorkflowNotFoundSchema,
+]);
 export type EngineDeleteWorkflowResult = z.infer<typeof EngineDeleteWorkflowResultSchema>;
 
 export const EngineGetWorkflowSchema = z.object({
@@ -262,11 +327,22 @@ export const EngineSetPermissionOverrideSchema = z.object({
 });
 export type EngineSetPermissionOverride = z.infer<typeof EngineSetPermissionOverrideSchema>;
 
-export const EngineSetPermissionOverrideResultSchema = z.object({
+const EngineSetPermissionOverrideSuccessSchema = z.object({
     type: z.literal(EngineChannel.SetPermissionOverrideResult),
     correlationId: z.string(),
-    ok: z.boolean(),
+    ok: z.literal(true),
 });
+const EngineSetPermissionOverrideFailureSchema = z.object({
+    type: z.literal(EngineChannel.SetPermissionOverrideResult),
+    correlationId: z.string(),
+    ok: z.literal(false),
+    error: z.string(),
+    diagnostic: PersistenceDiagnosticSchema,
+});
+export const EngineSetPermissionOverrideResultSchema = z.union([
+    EngineSetPermissionOverrideSuccessSchema,
+    EngineSetPermissionOverrideFailureSchema,
+]);
 export type EngineSetPermissionOverrideResult = z.infer<
     typeof EngineSetPermissionOverrideResultSchema
 >;
@@ -291,11 +367,22 @@ export const EngineSavePropertiesSchema = z.object({
 });
 export type EngineSaveProperties = z.infer<typeof EngineSavePropertiesSchema>;
 
-export const EngineSavePropertiesResultSchema = z.object({
+const EngineSavePropertiesSuccessSchema = z.object({
     type: z.literal(EngineChannel.SavePropertiesResult),
     correlationId: z.string(),
-    ok: z.boolean(),
+    ok: z.literal(true),
 });
+const EngineSavePropertiesFailureSchema = z.object({
+    type: z.literal(EngineChannel.SavePropertiesResult),
+    correlationId: z.string(),
+    ok: z.literal(false),
+    error: z.string(),
+    diagnostic: PersistenceDiagnosticSchema,
+});
+export const EngineSavePropertiesResultSchema = z.union([
+    EngineSavePropertiesSuccessSchema,
+    EngineSavePropertiesFailureSchema,
+]);
 export type EngineSavePropertiesResult = z.infer<typeof EngineSavePropertiesResultSchema>;
 
 export const EngineFireManualTriggerSchema = z.object({
