@@ -135,6 +135,19 @@ describe('run telemetry', () => {
                 },
             });
 
+        telemetry
+            .forNode({ nodeId: 'node-1', nodeType: 'plugin-node', pluginId: 'plugin-1' })
+            .bus.next({
+                name: 'engine.diagnostic',
+                payload: {
+                    message: 'Worker dropped diagnostic after shutdown',
+                    kind: 'worker',
+                    source: 'worker',
+                    pluginId: 'plugin-1',
+                    outcome: 'dropped',
+                },
+            });
+
         expect(events[0]?.telemetry).toMatchObject({
             kind: 'diagnostic',
             severity: 'error',
@@ -143,6 +156,15 @@ describe('run telemetry', () => {
             nodeId: 'node-1',
             pluginId: 'plugin-1',
             outcome: 'failed',
+        });
+        expect(events[1]?.telemetry).toMatchObject({
+            kind: 'diagnostic',
+            severity: 'warn',
+            workflowId: 'workflow-1',
+            runId: 'run-1',
+            nodeId: 'node-1',
+            pluginId: 'plugin-1',
+            outcome: 'dropped',
         });
     });
 });

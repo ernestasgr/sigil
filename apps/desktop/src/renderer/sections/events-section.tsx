@@ -37,7 +37,6 @@ function parseFilterView(value: string): FilterState['view'] {
 }
 
 export function EventsSection(): ReactElement {
-    const busEvents = useAppStore((state) => state.busEvents);
     const telemetryIndex = useAppStore((state) => state.telemetryIndex);
     const workflows = useAppStore((state) => state.workflows);
     const [filter, setFilter] = useState<FilterState>({
@@ -263,7 +262,7 @@ export function EventsSection(): ReactElement {
                 <div className="border-gilt/40 border">
                     {reversed.length === 0 ? (
                         <p className="font-manuscript text-veil px-4 py-8 text-center text-sm italic">
-                            {busEvents.length === 0
+                            {telemetryIndex.entries.length === 0
                                 ? 'No events yet. Enable a workflow or fire a test event to see Bus traffic appear in real time.'
                                 : 'No events match the current filter.'}
                         </p>
