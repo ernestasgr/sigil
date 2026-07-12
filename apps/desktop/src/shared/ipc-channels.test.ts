@@ -6,20 +6,24 @@ import {
     EngineChannel,
     EngineCreateWorkflowSchema,
     EngineDeleteWorkflowSchema,
-    EngineMessageSchema,
     type EnginePing,
     type EnginePong,
     EngineReadySchema,
     type EngineToggleWorkflow,
+    EngineToMainMessageSchema,
     EngineUpdateWorkflowSchema,
     EngineWorkflowsListSchema,
+    MainToEngineMessageSchema,
     WorkerInboundSchema,
     WorkflowIdSchema,
 } from './ipc-channels.js';
 
 describe('WorkerInboundSchema', () => {
     it('accepts a well-formed ping message', () => {
-        const message: unknown = { id: 'test-1', type: EngineChannel.Ping };
+        const message: unknown = {
+            correlationId: 'corr-test-1',
+            type: EngineChannel.Ping,
+        };
         const result = WorkerInboundSchema.safeParse(message);
         expect(result.success).toBe(true);
     });
@@ -30,7 +34,7 @@ describe('WorkerInboundSchema', () => {
         expect(result.success).toBe(false);
     });
 
-    it('rejects a ping message missing the id field', () => {
+    it('rejects a ping message missing the correlation id field', () => {
         const message = { type: EngineChannel.Ping };
         const result = WorkerInboundSchema.safeParse(message);
         expect(result.success).toBe(false);
@@ -48,20 +52,23 @@ describe('WorkerInboundSchema', () => {
     });
 });
 
-describe('EngineMessageSchema', () => {
+describe('EngineToMainMessageSchema', () => {
     it('accepts a well-formed ping message', () => {
-        const message: EnginePing = { id: 'test-1', type: EngineChannel.Ping };
-        const result = EngineMessageSchema.safeParse(message);
+        const message: EnginePing = {
+            correlationId: 'corr-test-1',
+            type: EngineChannel.Ping,
+        };
+        const result = MainToEngineMessageSchema.safeParse(message);
         expect(result.success).toBe(true);
     });
 
     it('accepts a well-formed pong message', () => {
         const message: EnginePong = {
-            id: 'test-1',
+            correlationId: 'corr-test-1',
             type: EngineChannel.Pong,
             receivedAt: Date.now(),
         };
-        const result = EngineMessageSchema.safeParse(message);
+        const result = EngineToMainMessageSchema.safeParse(message);
         expect(result.success).toBe(true);
     });
 
@@ -71,24 +78,24 @@ describe('EngineMessageSchema', () => {
             correlationId: 'corr-1',
             id: 'wf-1',
         };
-        const result = EngineMessageSchema.safeParse(message);
+        const result = MainToEngineMessageSchema.safeParse(message);
         expect(result.success).toBe(true);
     });
 
     it('rejects a toggle-workflow message with a missing correlationId', () => {
         const message = { type: EngineChannel.ToggleWorkflow, id: 'wf-1' };
-        const result = EngineMessageSchema.safeParse(message);
+        const result = MainToEngineMessageSchema.safeParse(message);
         expect(result.success).toBe(false);
     });
 
     it('rejects an unknown type', () => {
         const message = { type: 'engine:does-not-exist' };
-        const result = EngineMessageSchema.safeParse(message);
+        const result = EngineToMainMessageSchema.safeParse(message);
         expect(result.success).toBe(false);
     });
 
     it('preserves structured persistence failures in result messages', () => {
-        const result = EngineMessageSchema.safeParse({
+        const result = EngineToMainMessageSchema.safeParse({
             type: EngineChannel.SavePropertiesResult,
             correlationId: 'corr-persistence',
             ok: false,
@@ -112,7 +119,7 @@ describe('EngineMessageSchema', () => {
     });
 
     it('does not strip a Workflow toggle persistence failure as a success response', () => {
-        const result = EngineMessageSchema.safeParse({
+        const result = EngineToMainMessageSchema.safeParse({
             type: EngineChannel.ToggleWorkflowResult,
             correlationId: 'corr-toggle',
             summary: null,
@@ -138,7 +145,7 @@ describe('EngineMessageSchema', () => {
         EngineChannel.ToggleWorkflowResult,
         EngineChannel.RetryWorkflowResult,
     ])('rejects a %s success response with unknown fields', (type) => {
-        const result = EngineMessageSchema.safeParse({
+        const result = EngineToMainMessageSchema.safeParse({
             type,
             correlationId: 'corr-action-extra',
             summary: null,
@@ -152,7 +159,7 @@ describe('EngineMessageSchema', () => {
         EngineChannel.ToggleWorkflowResult,
         EngineChannel.RetryWorkflowResult,
     ])('rejects a %s failure when its diagnostics are invalid', (type) => {
-        const result = EngineMessageSchema.safeParse({
+        const result = EngineToMainMessageSchema.safeParse({
             type,
             correlationId: 'corr-action-invalid',
             summary: null,
@@ -164,7 +171,7 @@ describe('EngineMessageSchema', () => {
     });
 
     it('does not let an invalid delete failure fall through to not-found', () => {
-        const result = EngineMessageSchema.safeParse({
+        const result = EngineToMainMessageSchema.safeParse({
             type: EngineChannel.DeleteWorkflowResult,
             correlationId: 'corr-delete-invalid',
             success: false,
@@ -176,7 +183,7 @@ describe('EngineMessageSchema', () => {
     });
 
     it('rejects a delete success response with unknown fields', () => {
-        const result = EngineMessageSchema.safeParse({
+        const result = EngineToMainMessageSchema.safeParse({
             type: EngineChannel.DeleteWorkflowResult,
             correlationId: 'corr-delete-extra',
             success: false,
@@ -378,16 +385,20 @@ describe('Workflow command identity schemas', () => {
     });
 });
 
-describe('EngineMessageSchema composition with EngineReadySchema', () => {
-    it('engine:ready is NOT accepted by EngineMessageSchema', () => {
-        const result = EngineMessageSchema.safeParse({ type: 'engine:ready' });
+describe('EngineToMainMessageSchema composition with EngineReadySchema', () => {
+    it('engine:ready is NOT accepted by EngineToMainMessageSchema', () => {
+        const result = EngineToMainMessageSchema.safeParse({ type: 'engine:ready' });
         expect(result.success).toBe(false);
     });
 
-    it('a union of EngineMessageSchema and EngineReadySchema accepts both', () => {
-        const combined = z.union([EngineMessageSchema, EngineReadySchema]);
-        const ping: EnginePing = { id: 'test-1', type: EngineChannel.Ping };
-        expect(combined.safeParse(ping).success).toBe(true);
+    it('a union of EngineToMainMessageSchema and EngineReadySchema accepts both', () => {
+        const combined = z.union([EngineToMainMessageSchema, EngineReadySchema]);
+        const pong: EnginePong = {
+            correlationId: 'corr-test-1',
+            type: EngineChannel.Pong,
+            receivedAt: Date.now(),
+        };
+        expect(combined.safeParse(pong).success).toBe(true);
         expect(combined.safeParse({ type: 'engine:ready' }).success).toBe(true);
         expect(combined.safeParse({ type: 'does-not-exist' }).success).toBe(false);
     });

@@ -5,22 +5,24 @@ import { Worker } from 'node:worker_threads';
 import type { CompiledPipeline } from '@sigil/schema';
 import type { Capability } from '@sigil/schema/manifest';
 import { app } from 'electron';
-import { z } from 'zod';
-import type { WorkflowStateEntry } from '../shared/ipc-channels.js';
 import {
-    type EngineBusEventPayload,
-    EngineChannel,
-    type EngineGetWorkflowResult,
-    type EngineMessage,
-    EngineMessageSchema,
-    type EnginePong,
-    EngineReadySchema,
-    type PersistenceDiagnostic,
-    type WorkflowActionOutcome,
-    type WorkflowDeleteOutcome,
-    type WorkflowWriteDiagnostic,
-    type WorkflowWriteOutcome,
+    type CommandExecutionOutcome,
+    EngineCommandContracts,
+    type EngineCommandName,
+    type EngineRequestPayload,
+    type EngineResponse,
+} from '../shared/command-contracts.js';
+import type {
+    EngineBusEventPayload,
+    EngineGetWorkflowResult,
+    EnginePong,
+    EngineToMainMessage,
+    WorkflowActionOutcome,
+    WorkflowDeleteOutcome,
+    WorkflowStateEntry,
+    WorkflowWriteOutcome,
 } from '../shared/ipc-channels.js';
+import { EngineChannel, EngineToMainMessageOrReadySchema } from '../shared/ipc-channels.js';
 import type { PersistenceWriteOutcome } from '../shared/persistence.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
 import { redactTelemetryText } from '../shared/telemetry-safety.js';
@@ -30,8 +32,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export type EngineHandle = {
     readonly ping: (timeoutMs?: number) => Promise<EnginePong>;
-    readonly fireTestEvent: () => void;
-    readonly fireManualTrigger: (pipeline: CompiledPipeline) => void;
+    readonly fireTestEvent: () => Promise<CommandExecutionOutcome>;
+    readonly fireManualTrigger: (pipeline: CompiledPipeline) => Promise<CommandExecutionOutcome>;
     readonly toggleWorkflow: (id: string) => Promise<WorkflowActionOutcome>;
     readonly retryWorkflow: (id: string) => Promise<WorkflowActionOutcome>;
     readonly createWorkflow: (
@@ -75,7 +77,14 @@ export type EngineHandle = {
     readonly onBusEvent: (handler: (event: EngineBusEventPayload) => void) => () => void;
 };
 
+type ResponseParseResult =
+    | { readonly success: true; readonly data: unknown }
+    | { readonly success: false; readonly message: string };
+
 type PendingEntry = {
+    readonly command: EngineCommandName;
+    readonly responseType: string;
+    readonly parseResponse: (value: unknown) => ResponseParseResult;
     readonly resolve: (value: unknown) => void;
     readonly reject: (err: Error) => void;
     readonly timer: NodeJS.Timeout;
@@ -89,14 +98,13 @@ export type RpcClientProps = {
 };
 
 export type RpcClient = {
-    readonly rpc: <Res>(
-        channel: string,
-        payload: Record<string, unknown>,
-        timeoutMs: number,
-        idField?: 'correlationId' | 'id',
-    ) => Promise<Res>;
+    readonly request: <C extends EngineCommandName>(
+        command: C,
+        payload: EngineRequestPayload<C>,
+        timeoutMs?: number,
+    ) => Promise<EngineResponse<C>>;
     readonly rejectAll: (reason: string) => void;
-    readonly dispatch: (message: EngineMessage) => void;
+    readonly dispatch: (message: EngineToMainMessage) => void;
 };
 
 function workerDiagnosticEvent(message: string): EngineBusEventPayload {
@@ -120,105 +128,128 @@ function workerDiagnosticEvent(message: string): EngineBusEventPayload {
     };
 }
 
-type WorkflowWriteResponse = {
-    readonly summary?: WorkflowSummary;
-    readonly error?: string;
-    readonly diagnostics?: readonly WorkflowWriteDiagnostic[];
-};
-
-type WorkflowActionResponse = {
-    readonly summary: WorkflowSummary | null;
-    readonly error?: string;
-    readonly diagnostics?: readonly PersistenceDiagnostic[];
-};
-
-type WorkflowDeleteResponse = {
-    readonly success: boolean;
-    readonly error?: string;
-    readonly diagnostic?: PersistenceDiagnostic;
-};
-
-function toWorkflowWriteOutcome(response: WorkflowWriteResponse): WorkflowWriteOutcome {
-    if (response.summary) return { ok: true, summary: response.summary };
+function toWorkflowWriteOutcome(
+    response: EngineResponse<'createWorkflow'> | EngineResponse<'updateWorkflow'>,
+): WorkflowWriteOutcome {
+    if ('summary' in response) return { ok: true, summary: response.summary };
     return {
         ok: false,
-        error: response.error ?? 'Engine returned no workflow summary.',
-        diagnostics: response.diagnostics ?? [],
+        error: response.error,
+        diagnostics: response.diagnostics,
     };
 }
 
-function toWorkflowActionOutcome(response: WorkflowActionResponse): WorkflowActionOutcome {
-    if (response.error) {
+function toWorkflowActionOutcome(
+    response: EngineResponse<'toggleWorkflow'> | EngineResponse<'retryWorkflow'>,
+): WorkflowActionOutcome {
+    if ('error' in response) {
         return {
             ok: false,
             error: response.error,
-            diagnostics: response.diagnostics ?? [],
+            diagnostics: response.diagnostics,
         };
     }
     return { ok: true, summary: response.summary };
 }
 
-function toWorkflowDeleteOutcome(response: WorkflowDeleteResponse): WorkflowDeleteOutcome {
-    if (response.error) {
+function toWorkflowDeleteOutcome(
+    response: EngineResponse<'deleteWorkflow'>,
+): WorkflowDeleteOutcome {
+    if ('error' in response) {
         return {
             ok: false,
             success: false,
             error: response.error,
-            diagnostics: response.diagnostic ? [response.diagnostic] : [],
+            diagnostics: [response.diagnostic],
         };
     }
     return { ok: true, success: response.success };
+}
+
+function toExecutionOutcome(
+    response: EngineResponse<'fireTestEvent'> | EngineResponse<'fireManualTrigger'>,
+): CommandExecutionOutcome {
+    return response.ok ? { ok: true } : { ok: false, error: response.error };
+}
+
+function responseParseResult(command: EngineCommandName, value: unknown): ResponseParseResult {
+    const parsed = EngineCommandContracts[command].responseSchema.safeParse(value);
+    if (parsed.success) return { success: true, data: parsed.data };
+    return {
+        success: false,
+        message: parsed.error.issues
+            .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+            .join('; '),
+    };
 }
 
 export function createRpcClient(props: RpcClientProps): RpcClient {
     const { postMessage, logHandlers, workflowsListHandlers, busEventHandlers } = props;
     const pending = new Map<string, PendingEntry>();
 
-    function rpc<Res>(
-        channel: string,
-        payload: Record<string, unknown>,
-        timeoutMs: number,
-        idField: 'correlationId' | 'id' = 'correlationId',
-    ): Promise<Res> {
-        const id = randomUUID();
-        return new Promise<Res>((resolve, reject) => {
+    function request<C extends EngineCommandName>(
+        command: C,
+        payload: EngineRequestPayload<C>,
+        timeoutMs: number = EngineCommandContracts[command].timeoutMs,
+    ): Promise<EngineResponse<C>> {
+        const correlationId = randomUUID();
+        const contract = EngineCommandContracts[command];
+        const parsedRequest = contract.requestSchema.safeParse(
+            Object.assign({}, payload, {
+                correlationId,
+                type: contract.command,
+            }),
+        );
+        if (!parsedRequest.success) {
+            throw new Error(
+                `Invalid ${command} request: ${parsedRequest.error.issues
+                    .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+                    .join('; ')}`,
+            );
+        }
+
+        return new Promise<EngineResponse<C>>((resolve, reject) => {
             const timer = setTimeout(() => {
-                pending.delete(id);
-                reject(new Error(`${channel} timed out after ${timeoutMs}ms`));
+                pending.delete(correlationId);
+                reject(new Error(`${command} timed out after ${timeoutMs}ms`));
             }, timeoutMs);
-            pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
-            postMessage({ ...payload, [idField]: id, type: channel });
+            pending.set(correlationId, {
+                command,
+                responseType: contract.responseType,
+                parseResponse: (value) => responseParseResult(command, value),
+                resolve: (value) => resolve(value as EngineResponse<C>),
+                reject,
+                timer,
+            });
+            postMessage(parsedRequest.data);
         });
     }
 
-    function rejectAll(reason: string) {
-        for (const [, entry] of pending) {
+    function rejectAll(reason: string): void {
+        for (const entry of pending.values()) {
             clearTimeout(entry.timer);
             entry.reject(new Error(reason));
         }
         pending.clear();
     }
 
-    function resolvePending(correlationId: string, message: EngineMessage): void {
-        const entry = pending.get(correlationId);
-        if (entry) {
-            pending.delete(correlationId);
-            clearTimeout(entry.timer);
-            entry.resolve(message);
+    function resolvePending(message: EngineToMainMessage): void {
+        if (!('correlationId' in message)) return;
+        const entry = pending.get(message.correlationId);
+        if (!entry || message.type !== entry.responseType) return;
+
+        pending.delete(message.correlationId);
+        clearTimeout(entry.timer);
+        const parsed = entry.parseResponse(message);
+        if (!parsed.success) {
+            entry.reject(new Error(`Invalid ${entry.command} response: ${parsed.message}`));
+            return;
         }
+        entry.resolve(parsed.data);
     }
 
-    function dispatch(message: EngineMessage): void {
+    function dispatch(message: EngineToMainMessage): void {
         switch (message.type) {
-            case EngineChannel.Pong: {
-                const entry = pending.get(message.id);
-                if (entry) {
-                    pending.delete(message.id);
-                    clearTimeout(entry.timer);
-                    entry.resolve(message);
-                }
-                break;
-            }
             case EngineChannel.Log:
                 for (const handler of [...logHandlers]) handler(message.line);
                 break;
@@ -228,45 +259,29 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
             case EngineChannel.BusEvent:
                 for (const handler of [...busEventHandlers]) handler(message.event);
                 break;
-            case EngineChannel.GetWorkflowResult:
+            case EngineChannel.Pong:
+            case EngineChannel.FireTestEventResult:
+            case EngineChannel.ToggleWorkflowResult:
+            case EngineChannel.RetryWorkflowResult:
             case EngineChannel.CreateWorkflowResult:
             case EngineChannel.UpdateWorkflowResult:
             case EngineChannel.DeleteWorkflowResult:
-            case EngineChannel.ToggleWorkflowResult:
-            case EngineChannel.RetryWorkflowResult:
+            case EngineChannel.GetWorkflowResult:
             case EngineChannel.ListPluginsResult:
             case EngineChannel.SetPermissionOverrideResult:
             case EngineChannel.ReadPropertiesResult:
             case EngineChannel.SavePropertiesResult:
+            case EngineChannel.FireManualTriggerResult:
             case EngineChannel.ReadWorkflowStateResult:
             case EngineChannel.SetWorkflowStateKeyResult:
             case EngineChannel.DeleteWorkflowStateKeyResult:
             case EngineChannel.ShutdownResult:
-                resolvePending(message.correlationId, message);
-                break;
-            case EngineChannel.Ping:
-            case EngineChannel.FireTestEvent:
-            case EngineChannel.FireManualTrigger:
-            case EngineChannel.ToggleWorkflow:
-            case EngineChannel.RetryWorkflow:
-            case EngineChannel.CreateWorkflow:
-            case EngineChannel.UpdateWorkflow:
-            case EngineChannel.DeleteWorkflow:
-            case EngineChannel.GetWorkflow:
-            case EngineChannel.ListPlugins:
-            case EngineChannel.SetPermissionOverride:
-            case EngineChannel.ReadProperties:
-            case EngineChannel.SaveProperties:
-            case EngineChannel.ReadWorkflowState:
-            case EngineChannel.SetWorkflowStateKey:
-            case EngineChannel.DeleteWorkflowStateKey:
-            case EngineChannel.Shutdown:
-                console.warn(`[engine] unexpected message from worker: ${message.type}`);
+                resolvePending(message);
                 break;
         }
     }
 
-    return { rpc, rejectAll, dispatch };
+    return { request, rejectAll, dispatch };
 }
 
 export function spawnEngine(): EngineHandle {
@@ -297,10 +312,8 @@ export function spawnEngine(): EngineHandle {
         busEventHandlers,
     });
 
-    const engineMessageOrReadySchema = z.union([EngineMessageSchema, EngineReadySchema]);
-
     worker.on('message', (raw: unknown) => {
-        const parsed = engineMessageOrReadySchema.safeParse(raw);
+        const parsed = EngineToMainMessageOrReadySchema.safeParse(raw);
         if (!parsed.success) {
             console.error(
                 '[engine] invalid message envelope:',
@@ -334,24 +347,20 @@ export function spawnEngine(): EngineHandle {
     });
 
     return {
-        ping(timeoutMs = 5000): Promise<EnginePong> {
-            return client.rpc<EnginePong>(EngineChannel.Ping, {}, timeoutMs, 'id');
+        ping(timeoutMs = EngineCommandContracts.ping.timeoutMs): Promise<EnginePong> {
+            return client.request('ping', {}, timeoutMs);
         },
-        fireTestEvent(): void {
-            worker.postMessage({ type: EngineChannel.FireTestEvent });
+        fireTestEvent(): Promise<CommandExecutionOutcome> {
+            return client.request('fireTestEvent', {}).then(toExecutionOutcome);
         },
-        fireManualTrigger(pipeline: CompiledPipeline): void {
-            worker.postMessage({ type: EngineChannel.FireManualTrigger, pipeline });
+        fireManualTrigger(pipeline: CompiledPipeline): Promise<CommandExecutionOutcome> {
+            return client.request('fireManualTrigger', { pipeline }).then(toExecutionOutcome);
         },
         toggleWorkflow(id: string): Promise<WorkflowActionOutcome> {
-            return client
-                .rpc<WorkflowActionResponse>(EngineChannel.ToggleWorkflow, { id }, 5000)
-                .then(toWorkflowActionOutcome);
+            return client.request('toggleWorkflow', { id }).then(toWorkflowActionOutcome);
         },
         retryWorkflow(id: string): Promise<WorkflowActionOutcome> {
-            return client
-                .rpc<WorkflowActionResponse>(EngineChannel.RetryWorkflow, { id }, 5000)
-                .then(toWorkflowActionOutcome);
+            return client.request('retryWorkflow', { id }).then(toWorkflowActionOutcome);
         },
         createWorkflow(
             name: string,
@@ -359,11 +368,7 @@ export function spawnEngine(): EngineHandle {
             positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
         ): Promise<WorkflowWriteOutcome> {
             return client
-                .rpc<WorkflowWriteResponse>(
-                    EngineChannel.CreateWorkflow,
-                    { name, pipeline, positions },
-                    5000,
-                )
+                .request('createWorkflow', { name, pipeline, positions })
                 .then(toWorkflowWriteOutcome);
         },
         updateWorkflow(
@@ -373,113 +378,62 @@ export function spawnEngine(): EngineHandle {
             positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
         ): Promise<WorkflowWriteOutcome> {
             return client
-                .rpc<WorkflowWriteResponse>(
-                    EngineChannel.UpdateWorkflow,
-                    { id, name, pipeline, positions },
-                    5000,
-                )
+                .request('updateWorkflow', { id, name, pipeline, positions })
                 .then(toWorkflowWriteOutcome);
         },
         deleteWorkflow(id: string): Promise<WorkflowDeleteOutcome> {
-            return client
-                .rpc<WorkflowDeleteResponse>(EngineChannel.DeleteWorkflow, { id }, 5000)
-                .then(toWorkflowDeleteOutcome);
+            return client.request('deleteWorkflow', { id }).then(toWorkflowDeleteOutcome);
         },
-        getWorkflow(id: string, timeoutMs = 5000): Promise<EngineGetWorkflowResult> {
-            return client.rpc<EngineGetWorkflowResult>(
-                EngineChannel.GetWorkflow,
-                { id },
-                timeoutMs,
-            );
+        getWorkflow(
+            id: string,
+            timeoutMs = EngineCommandContracts.getWorkflow.timeoutMs,
+        ): Promise<EngineGetWorkflowResult> {
+            return client.request('getWorkflow', { id }, timeoutMs);
         },
-        listPlugins(timeoutMs = 5000): Promise<readonly PluginInfo[]> {
+        listPlugins(
+            timeoutMs = EngineCommandContracts.listPlugins.timeoutMs,
+        ): Promise<readonly PluginInfo[]> {
             return client
-                .rpc<{ plugins: readonly PluginInfo[] }>(EngineChannel.ListPlugins, {}, timeoutMs)
-                .then((r) => r.plugins);
+                .request('listPlugins', {}, timeoutMs)
+                .then((response) => response.plugins);
         },
         setPermissionOverride(
             pluginId: string,
             overrides: readonly Capability[],
         ): Promise<PersistenceWriteOutcome> {
-            return client
-                .rpc<{
-                    ok: boolean;
-                    error?: string;
-                    diagnostic?: PersistenceDiagnostic;
-                }>(EngineChannel.SetPermissionOverride, { pluginId, overrides }, 5000)
-                .then(({ ok, error, diagnostic }) =>
-                    ok
-                        ? { ok: true }
-                        : {
-                              ok: false,
-                              error: error ?? 'Permission override persistence failed.',
-                              diagnostic: diagnostic ?? {
-                                  kind: 'persistence',
-                                  operation: 'write',
-                                  phase: 'write',
-                                  path: 'permission-overrides.json',
-                                  message: 'Permission override persistence failed.',
-                              },
-                          },
-                );
+            return client.request('setPermissionOverride', { pluginId, overrides });
         },
-        readProperties(timeoutMs = 5000): Promise<Record<string, unknown>> {
+        readProperties(
+            timeoutMs = EngineCommandContracts.readProperties.timeoutMs,
+        ): Promise<Record<string, unknown>> {
             return client
-                .rpc<{
-                    properties: Record<string, unknown>;
-                }>(EngineChannel.ReadProperties, {}, timeoutMs)
-                .then((r) => r.properties);
+                .request('readProperties', {}, timeoutMs)
+                .then((response) => response.properties);
         },
         saveProperties(properties: Record<string, unknown>): Promise<PersistenceWriteOutcome> {
-            return client
-                .rpc<{
-                    ok: boolean;
-                    error?: string;
-                    diagnostic?: PersistenceDiagnostic;
-                }>(EngineChannel.SaveProperties, { properties }, 5000)
-                .then(({ ok, error, diagnostic }) =>
-                    ok
-                        ? { ok: true }
-                        : {
-                              ok: false,
-                              error: error ?? 'Properties persistence failed.',
-                              diagnostic: diagnostic ?? {
-                                  kind: 'persistence',
-                                  operation: 'write',
-                                  phase: 'write',
-                                  path: 'sigil.properties.json',
-                                  message: 'Properties persistence failed.',
-                              },
-                          },
-                );
+            return client.request('saveProperties', { properties });
         },
         readWorkflowState(
             workflowId: string,
-            timeoutMs = 5000,
+            timeoutMs = EngineCommandContracts.readWorkflowState.timeoutMs,
         ): Promise<readonly WorkflowStateEntry[]> {
             return client
-                .rpc<{
-                    entries: readonly WorkflowStateEntry[];
-                }>(EngineChannel.ReadWorkflowState, { workflowId }, timeoutMs)
-                .then((r) => r.entries);
+                .request('readWorkflowState', { workflowId }, timeoutMs)
+                .then((response) => response.entries);
         },
         setWorkflowStateKey(workflowId: string, key: string, value: string): Promise<boolean> {
             return client
-                .rpc<{
-                    ok: boolean;
-                }>(EngineChannel.SetWorkflowStateKey, { workflowId, key, value }, 5000)
-                .then((r) => r.ok);
+                .request('setWorkflowStateKey', { workflowId, key, value })
+                .then((response) => response.ok);
         },
         deleteWorkflowStateKey(workflowId: string, key: string): Promise<boolean> {
             return client
-                .rpc<{
-                    ok: boolean;
-                }>(EngineChannel.DeleteWorkflowStateKey, { workflowId, key }, 5000)
-                .then((r) => r.ok);
+                .request('deleteWorkflowStateKey', { workflowId, key })
+                .then((response) => response.ok);
         },
         terminate(): Promise<number> {
             return client
-                .rpc<{ readonly ok: boolean }>(EngineChannel.Shutdown, {}, 30_000)
+                .request('shutdown', {})
                 .catch(() => undefined)
                 .then(() => worker.terminate());
         },

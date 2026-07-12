@@ -5,7 +5,6 @@ import {
     EngineChannel,
     type EngineGetWorkflowResult,
     type EngineLog,
-    type EngineMessage,
     type EnginePong,
     type EngineToggleWorkflowResult,
     type EngineWorkflowsList,
@@ -41,12 +40,12 @@ describe('rpc', () => {
         const { props, sent } = buildProps();
         const client = createRpcClient(props);
 
-        client.rpc<undefined>(EngineChannel.ToggleWorkflow, { id: 'wf-1' }, 5000);
+        client.request('toggleWorkflow', { id: 'wf-1' }, 5000);
 
         expect(sent).toHaveLength(1);
         const msg = sent[0] as Record<string, unknown>;
         expect(msg).toMatchObject({
-            type: EngineChannel.ToggleWorkflow,
+            type: 'engine:toggle-workflow',
             id: 'wf-1',
         });
         expect(msg).toHaveProperty('correlationId');
@@ -57,16 +56,12 @@ describe('rpc', () => {
         const { props, sent } = buildProps();
         const client = createRpcClient(props);
 
-        const promise = client.rpc<EngineToggleWorkflowResult>(
-            EngineChannel.ToggleWorkflow,
-            { id: 'wf-1' },
-            5000,
-        );
+        const promise = client.request('toggleWorkflow', { id: 'wf-1' }, 5000);
 
         const correlationId = (sent[0] as Record<string, string>).correlationId;
 
         const response: EngineToggleWorkflowResult = {
-            type: EngineChannel.ToggleWorkflowResult,
+            type: 'engine:toggle-workflow-result',
             correlationId,
             summary: {
                 id: 'wf-1',
@@ -90,11 +85,7 @@ describe('rpc', () => {
         const { props } = buildProps();
         const client = createRpcClient(props);
 
-        const promise = client.rpc<EngineToggleWorkflowResult>(
-            EngineChannel.ToggleWorkflow,
-            { id: 'wf-1' },
-            5000,
-        );
+        const promise = client.request('toggleWorkflow', { id: 'wf-1' }, 5000);
 
         const nonMatching: EngineGetWorkflowResult = {
             type: EngineChannel.GetWorkflowResult,
@@ -111,11 +102,32 @@ describe('rpc', () => {
         expect(raced).toBe('still-pending');
     });
 
+    it('does not resolve a pending command when the response discriminator is wrong', async () => {
+        const { props, sent } = buildProps();
+        const client = createRpcClient(props);
+
+        const promise = client.request('toggleWorkflow', { id: 'wf-1' }, 5000);
+        const correlationId = (sent[0] as Record<string, string>).correlationId;
+        const wrongResponse: EngineGetWorkflowResult = {
+            type: EngineChannel.GetWorkflowResult,
+            correlationId,
+            found: false,
+            error: 'Not found',
+        };
+        client.dispatch(wrongResponse);
+
+        const raced = await Promise.race([
+            promise.then(() => 'resolved'),
+            Promise.resolve('still-pending'),
+        ]);
+        expect(raced).toBe('still-pending');
+    });
+
     it('rejects the promise on timeout', async () => {
         const { props } = buildProps();
         const client = createRpcClient(props);
 
-        const promise = client.rpc<EnginePong>(EngineChannel.Ping, {}, 1000);
+        const promise = client.request('ping', {}, 1000);
 
         vi.advanceTimersByTime(1000);
 
@@ -126,21 +138,21 @@ describe('rpc', () => {
         const { props, sent } = buildProps();
         const client = createRpcClient(props);
 
-        const promise = client.rpc<EnginePong>(EngineChannel.Ping, {}, 1000);
+        const promise = client.request('ping', {}, 1000);
         vi.advanceTimersByTime(1000);
         await expect(promise).rejects.toThrow();
 
         const id = (sent[0] as Record<string, string>).correlationId;
         const lateResponse: EnginePong = {
-            id,
-            type: EngineChannel.Pong,
+            correlationId: id,
+            type: 'engine:pong',
             receivedAt: Date.now(),
         };
         client.dispatch(lateResponse);
     });
 });
 
-describe('ping (uses id field instead of correlationId)', () => {
+describe('ping correlation', () => {
     beforeEach(() => {
         vi.useFakeTimers();
     });
@@ -153,12 +165,12 @@ describe('ping (uses id field instead of correlationId)', () => {
         const { props, sent } = buildProps();
         const client = createRpcClient(props);
 
-        const promise = client.rpc<EnginePong>(EngineChannel.Ping, {}, 5000, 'id');
-        const pingId = (sent[0] as Record<string, string>).id;
+        const promise = client.request('ping', {}, 5000);
+        const pingId = (sent[0] as Record<string, string>).correlationId;
 
         const pong: EnginePong = {
-            id: pingId,
-            type: EngineChannel.Pong,
+            correlationId: pingId,
+            type: 'engine:pong',
             receivedAt: Date.now(),
         };
         client.dispatch(pong);
@@ -172,7 +184,7 @@ describe('ping (uses id field instead of correlationId)', () => {
         const { props } = buildProps();
         const client = createRpcClient(props);
 
-        const promise = client.rpc<EnginePong>(EngineChannel.Ping, {}, 100, 'id');
+        const promise = client.request('ping', {}, 100);
         vi.advanceTimersByTime(100);
         await expect(promise).rejects.toThrow('timed out');
     });
@@ -191,12 +203,8 @@ describe('rejectAll', () => {
         const { props } = buildProps();
         const client = createRpcClient(props);
 
-        const promise1 = client.rpc<EnginePong>(EngineChannel.Ping, {}, 5000, 'id');
-        const promise2 = client.rpc<EngineToggleWorkflowResult>(
-            EngineChannel.ToggleWorkflow,
-            { id: 'wf-1' },
-            5000,
-        );
+        const promise1 = client.request('ping', {}, 5000);
+        const promise2 = client.request('toggleWorkflow', { id: 'wf-1' }, 5000);
 
         client.rejectAll('worker terminated');
 
@@ -208,7 +216,7 @@ describe('rejectAll', () => {
         const { props } = buildProps();
         const client = createRpcClient(props);
 
-        const promise = client.rpc<EnginePong>(EngineChannel.Ping, {}, 5000, 'id');
+        const promise = client.request('ping', {}, 5000);
         client.rejectAll('cleanup');
         await expect(promise).rejects.toThrow('cleanup');
         vi.advanceTimersByTime(5000);
@@ -222,7 +230,7 @@ describe('dispatch', () => {
         const handler = vi.fn();
         props.logHandlers.add(handler);
 
-        const log: EngineLog = { type: EngineChannel.Log, line: 'hello' };
+        const log: EngineLog = { type: 'engine:log', line: 'hello' };
         client.dispatch(log);
 
         expect(handler).toHaveBeenCalledWith('hello');
@@ -241,7 +249,7 @@ describe('dispatch', () => {
             activation: { kind: 'active' } as const,
         };
         const list: EngineWorkflowsList = {
-            type: EngineChannel.WorkflowsList,
+            type: 'engine:workflows-list',
             workflows: [wf],
         };
         client.dispatch(list);
@@ -256,7 +264,7 @@ describe('dispatch', () => {
         props.busEventHandlers.add(handler);
 
         const bus: EngineBusEvent = {
-            type: EngineChannel.BusEvent,
+            type: 'engine:bus-event',
             event: {
                 name: 'log.output',
                 payload: { message: 'hello' },
@@ -280,15 +288,16 @@ describe('dispatch', () => {
         expect(handler).toHaveBeenCalledWith(bus.event);
     });
 
-    it('does not throw on unexpected request-type messages from worker', () => {
+    it('does not throw on an unsolicited response from worker', () => {
         const { props } = buildProps();
         const client = createRpcClient(props);
 
-        const ping: EngineMessage = {
-            id: 'ignored',
-            type: EngineChannel.Ping,
-        } as EngineMessage;
+        const pong: EnginePong = {
+            correlationId: 'ignored',
+            type: 'engine:pong',
+            receivedAt: Date.now(),
+        };
 
-        expect(() => client.dispatch(ping)).not.toThrow();
+        expect(() => client.dispatch(pong)).not.toThrow();
     });
 });

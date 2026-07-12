@@ -143,36 +143,56 @@ describe('dispatch', () => {
     it('routes Ping to handlePing which posts a Pong', () => {
         const { subsystems, postMessage } = createFakeSubsystems();
 
-        const message: EnginePing = { id: 'test-1', type: EngineChannel.Ping };
+        const message: EnginePing = {
+            correlationId: 'corr-ping-1',
+            type: EngineChannel.Ping,
+        };
         dispatch(message, subsystems);
 
         expect(postMessage).toHaveBeenCalledTimes(1);
         const call = postMessage.mock.calls[0][0] as Record<string, unknown>;
-        expect(call).toMatchObject({ type: EngineChannel.Pong, id: 'test-1' });
+        expect(call).toMatchObject({
+            type: EngineChannel.Pong,
+            correlationId: 'corr-ping-1',
+        });
         expect(typeof (call as { receivedAt: number }).receivedAt).toBe('number');
     });
 
-    it('routes FireTestEvent to handleFireTestEvent which calls engine.execute with the sample pipeline', () => {
+    it('routes FireTestEvent to handleFireTestEvent and acknowledges success', async () => {
         const { subsystems, engine } = createFakeSubsystems();
 
-        dispatch({ type: EngineChannel.FireTestEvent }, subsystems);
+        await dispatch(
+            { type: EngineChannel.FireTestEvent, correlationId: 'corr-test-event' },
+            subsystems,
+        );
 
         expect(engine.execute).toHaveBeenCalledTimes(1);
         expect(engine.execute).toHaveBeenCalledWith(sampleManualTriggerToLog);
+        expect(subsystems.postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.FireTestEventResult,
+            correlationId: 'corr-test-event',
+            ok: true,
+        });
     });
 
-    it('routes FireManualTrigger to handleFireManualTrigger which calls engine.execute with the given pipeline', () => {
+    it('routes FireManualTrigger to handleFireManualTrigger and acknowledges success', async () => {
         const { subsystems, engine } = createFakeSubsystems();
         const pipeline = { id: 'p-1' } as CompiledPipeline;
 
         const message: EngineFireManualTrigger = {
+            correlationId: 'corr-manual-trigger',
             type: EngineChannel.FireManualTrigger,
             pipeline,
         };
-        dispatch(message, subsystems);
+        await dispatch(message, subsystems);
 
         expect(engine.execute).toHaveBeenCalledTimes(1);
         expect(engine.execute).toHaveBeenCalledWith(pipeline);
+        expect(subsystems.postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.FireManualTriggerResult,
+            correlationId: 'corr-manual-trigger',
+            ok: true,
+        });
     });
 
     it('routes ToggleWorkflow and calls store.get, store.toggle, activator, broadcast, and posts result', () => {
@@ -771,13 +791,22 @@ describe('dispatch', () => {
         const { subsystems, postMessage, engine } = createFakeSubsystems();
         engine.execute.mockRejectedValue(new Error('test error'));
 
-        dispatch({ type: EngineChannel.FireTestEvent }, subsystems);
+        await dispatch(
+            { type: EngineChannel.FireTestEvent, correlationId: 'corr-test-error' },
+            subsystems,
+        );
 
         await vi.waitFor(() => {
             expect(postMessage).toHaveBeenCalledWith({
                 type: EngineChannel.Log,
                 line: '[error] engine.execute failed: test error',
             });
+        });
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.FireTestEventResult,
+            correlationId: 'corr-test-error',
+            ok: false,
+            error: 'test error',
         });
     });
 
@@ -786,13 +815,26 @@ describe('dispatch', () => {
         engine.execute.mockRejectedValue(new Error('manual trigger error'));
         const pipeline = { id: 'p-1' } as CompiledPipeline;
 
-        dispatch({ type: EngineChannel.FireManualTrigger, pipeline }, subsystems);
+        await dispatch(
+            {
+                type: EngineChannel.FireManualTrigger,
+                correlationId: 'corr-manual-error',
+                pipeline,
+            },
+            subsystems,
+        );
 
         await vi.waitFor(() => {
             expect(postMessage).toHaveBeenCalledWith({
                 type: EngineChannel.Log,
                 line: '[error] manual trigger execution failed: manual trigger error',
             });
+        });
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.FireManualTriggerResult,
+            correlationId: 'corr-manual-error',
+            ok: false,
+            error: 'manual trigger error',
         });
     });
 });
