@@ -34,6 +34,9 @@ assignment-style redaction. Domain payloads remain available to Engine Event
 consumers for their existing contracts, but adapters and the Renderer use the
 telemetry summary for display.
 
-The Renderer retains at most 500 Bus Events and uses the Engine timestamp when
-indexing them. No remote metrics dependency or durable telemetry store is
+The Renderer retains at most 500 Bus Events in its telemetry index, evicting
+the oldest entry first. The index exposes Workflow and run-scoped views over
+that same bounded buffer, and uses the Engine timestamp when indexing them;
+renderer receipt time is only a fallback for legacy events without an Engine
+timestamp. No remote metrics dependency or durable telemetry store is
 introduced.
