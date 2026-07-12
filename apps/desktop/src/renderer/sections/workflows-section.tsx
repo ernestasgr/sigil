@@ -47,6 +47,7 @@ export function WorkflowsSection(): ReactElement {
     const setEditingWorkflowId = useAppStore((state) => state.setEditingWorkflowId);
     const workflows = useAppStore((state) => state.workflows);
     const [loading, setLoading] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
     const sigil = useSigil();
 
     useEffect(() => {
@@ -58,6 +59,7 @@ export function WorkflowsSection(): ReactElement {
 
     const handleCreate = useCallback(() => {
         useBuilderStore.getState().clear();
+        setSaveError(null);
         setEditingWorkflowId(null);
         setWorkflowView('builder');
     }, [setWorkflowView, setEditingWorkflowId]);
@@ -71,6 +73,7 @@ export function WorkflowsSection(): ReactElement {
                     useBuilderStore
                         .getState()
                         .loadPipeline(result.pipeline, result.name, result.positions);
+                    setSaveError(null);
                     setEditingWorkflowId(id);
                     setWorkflowView('builder');
                 }
@@ -85,6 +88,7 @@ export function WorkflowsSection(): ReactElement {
 
     const handleSave = useCallback(
         async (name: string) => {
+            setSaveError(null);
             const result = useBuilderStore.getState().compile();
             if (!result.ok) return;
             const pipeline: CompiledPipeline = result.value;
@@ -95,18 +99,21 @@ export function WorkflowsSection(): ReactElement {
                     : await sigil.createWorkflow(name, pipeline, positions);
                 if (!outcome.ok) {
                     console.error('Failed to save workflow:', outcome.error, outcome.diagnostics);
+                    setSaveError(outcome.error);
                     return;
                 }
                 setWorkflowView('list');
                 setEditingWorkflowId(null);
             } catch (err) {
                 console.error('Failed to save workflow:', err);
+                setSaveError(err instanceof Error ? err.message : String(err));
             }
         },
         [editingWorkflowId, setWorkflowView, setEditingWorkflowId, sigil],
     );
 
     const handleCancel = useCallback(() => {
+        setSaveError(null);
         setWorkflowView('list');
         setEditingWorkflowId(null);
     }, [setWorkflowView, setEditingWorkflowId]);
@@ -114,7 +121,10 @@ export function WorkflowsSection(): ReactElement {
     const handleToggle = useCallback(
         async (id: string) => {
             try {
-                await sigil.toggleWorkflow(id);
+                const outcome = await sigil.toggleWorkflow(id);
+                if (!outcome.ok) {
+                    console.error('Failed to toggle workflow:', outcome.error, outcome.diagnostics);
+                }
             } catch (err) {
                 console.error('Failed to toggle workflow:', err);
             }
@@ -125,7 +135,10 @@ export function WorkflowsSection(): ReactElement {
     const handleRetry = useCallback(
         async (id: string) => {
             try {
-                await sigil.retryWorkflow(id);
+                const outcome = await sigil.retryWorkflow(id);
+                if (!outcome.ok) {
+                    console.error('Failed to retry workflow:', outcome.error, outcome.diagnostics);
+                }
             } catch (err) {
                 console.error('Failed to retry workflow:', err);
             }
@@ -136,7 +149,10 @@ export function WorkflowsSection(): ReactElement {
     const handleDelete = useCallback(
         async (id: string) => {
             try {
-                await sigil.deleteWorkflow(id);
+                const outcome = await sigil.deleteWorkflow(id);
+                if (!outcome.ok) {
+                    console.error('Failed to delete workflow:', outcome.error, outcome.diagnostics);
+                }
             } catch (err) {
                 console.error('Failed to delete workflow:', err);
             }
@@ -145,7 +161,9 @@ export function WorkflowsSection(): ReactElement {
     );
 
     if (workflowView === 'builder') {
-        return <WorkflowBuilder onSave={handleSave} onCancel={handleCancel} />;
+        return (
+            <WorkflowBuilder onSave={handleSave} onCancel={handleCancel} saveError={saveError} />
+        );
     }
 
     return (

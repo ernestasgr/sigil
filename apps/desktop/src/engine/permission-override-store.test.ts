@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Either } from 'effect';
@@ -118,6 +118,23 @@ describe('createPermissionOverrideStore', () => {
                 operation: 'read',
                 phase: 'parse',
                 path,
+            }),
+        ]);
+    });
+
+    it('surfaces persisted file read failures as open diagnostics', () => {
+        const path = join(tempDir, 'permission-overrides.json');
+        mkdirSync(path);
+
+        const store = createPermissionOverrideStore(path);
+
+        expect(store.diagnostics()).toEqual([
+            expect.objectContaining({
+                kind: 'persistence',
+                operation: 'read',
+                phase: 'open',
+                path,
+                code: 'EISDIR',
             }),
         ]);
     });

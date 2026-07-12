@@ -447,6 +447,18 @@ function writeWorkflowFile(
     return writer.write(storagePath, contents, { createDirectory: true });
 }
 
+function writeWorkflowOrThrow(
+    operation: WorkflowPersistenceOperation,
+    dir: string,
+    stored: StoredWorkflow,
+    writer: AtomicFileWriter,
+): void {
+    const writeResult = writeWorkflowFile(dir, stored, writer);
+    if (Either.isLeft(writeResult)) {
+        throw createWorkflowPersistenceError(operation, stored.id, writeResult.left);
+    }
+}
+
 function isValidWorkflowRecord(record: WorkflowRecord): record is ValidWorkflowRecord {
     return 'executable' in record;
 }
@@ -540,10 +552,7 @@ export function createWorkflowStore(
                 diagnostics: [],
                 storagePath,
             };
-            const writeResult = writeWorkflowFile(storageDir, stored, writer);
-            if (Either.isLeft(writeResult)) {
-                throw createWorkflowPersistenceError('create', workflowId, writeResult.left);
-            }
+            writeWorkflowOrThrow('create', storageDir, stored, writer);
             workflows.set(stored.id, stored);
             return toSummary(stored);
         },
@@ -596,10 +605,7 @@ export function createWorkflowStore(
                       diagnostics: [],
                       storagePath,
                   };
-            const writeResult = writeWorkflowFile(storageDir, stored, writer);
-            if (Either.isLeft(writeResult)) {
-                throw createWorkflowPersistenceError('save', workflowId, writeResult.left);
-            }
+            writeWorkflowOrThrow('save', storageDir, stored, writer);
             workflows.set(workflowId, stored);
             return toSummary(stored);
         },
@@ -625,10 +631,7 @@ export function createWorkflowStore(
                 enabled,
                 activation: enabled ? stored.activation : { kind: 'disabled' },
             };
-            const writeResult = writeWorkflowFile(storageDir, updated, writer);
-            if (Either.isLeft(writeResult)) {
-                throw createWorkflowPersistenceError('set_enabled', workflowId, writeResult.left);
-            }
+            writeWorkflowOrThrow('set_enabled', storageDir, updated, writer);
             workflows.set(workflowId, updated);
             return Option.some(toSummary(updated));
         },
@@ -637,14 +640,7 @@ export function createWorkflowStore(
             const stored = workflows.get(workflowId);
             if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
             const updated: ValidWorkflowRecord = { ...stored, activation };
-            const writeResult = writeWorkflowFile(storageDir, updated, writer);
-            if (Either.isLeft(writeResult)) {
-                throw createWorkflowPersistenceError(
-                    'set_activation',
-                    workflowId,
-                    writeResult.left,
-                );
-            }
+            writeWorkflowOrThrow('set_activation', storageDir, updated, writer);
             workflows.set(workflowId, updated);
             return Option.some(toSummary(updated));
         },
@@ -658,10 +654,7 @@ export function createWorkflowStore(
                 enabled,
                 activation: enabled ? stored.activation : { kind: 'disabled' },
             };
-            const writeResult = writeWorkflowFile(storageDir, updated, writer);
-            if (Either.isLeft(writeResult)) {
-                throw createWorkflowPersistenceError('toggle', workflowId, writeResult.left);
-            }
+            writeWorkflowOrThrow('toggle', storageDir, updated, writer);
             workflows.set(workflowId, updated);
             return Option.some(toSummary(updated));
         },

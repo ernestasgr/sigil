@@ -34,6 +34,17 @@ describe('readPropertiesFile', () => {
         const filePath = join(tempDir, 'missing.properties.json');
 
         expect(() => Effect.runSync(readPropertiesFile(filePath))).toThrow();
+
+        const result = Effect.runSync(Effect.either(readPropertiesFile(filePath)));
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left).toMatchObject({
+                operation: 'read',
+                phase: 'open',
+                path: filePath,
+                code: 'ENOENT',
+            });
+        }
     });
 
     it('returns an error when the file contains invalid JSON', () => {

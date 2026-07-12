@@ -2,7 +2,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
-import type { PersistenceDiagnostic } from '../shared/persistence.js';
+import {
+    type PersistenceDiagnostic,
+    type PersistencePhase,
+    persistenceErrorCode,
+} from '../shared/persistence.js';
 import {
     type AtomicFileWriter,
     type AtomicWriteResult,
@@ -18,13 +22,20 @@ export interface PermissionOverrideStore {
     readonly diagnostics: () => readonly PersistenceDiagnostic[];
 }
 
-function diagnostic(path: string, message: string): PersistenceDiagnostic {
+function diagnostic(
+    path: string,
+    phase: PersistencePhase,
+    message: string,
+    error?: unknown,
+): PersistenceDiagnostic {
+    const code = error === undefined ? undefined : persistenceErrorCode(error);
     return {
         kind: 'persistence',
         operation: 'read',
-        phase: 'parse',
+        phase,
         path,
         message,
+        ...(code ? { code } : {}),
     };
 }
 
@@ -35,18 +46,35 @@ function loadOverrides(
     const map = new Map<string, readonly Capability[]>();
     if (Option.isNone(path) || !existsSync(path.value)) return map;
 
-    let raw: unknown;
+    let content: string;
     try {
-        raw = JSON.parse(readFileSync(path.value, 'utf-8'));
+        content = readFileSync(path.value, 'utf-8');
     } catch (error) {
         diagnostics.push(
-            diagnostic(path.value, error instanceof Error ? error.message : String(error)),
+            diagnostic(
+                path.value,
+                'open',
+                error instanceof Error ? error.message : String(error),
+                error,
+            ),
+        );
+        return map;
+    }
+
+    let raw: unknown;
+    try {
+        raw = JSON.parse(content);
+    } catch (error) {
+        diagnostics.push(
+            diagnostic(path.value, 'parse', error instanceof Error ? error.message : String(error)),
         );
         return map;
     }
 
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-        diagnostics.push(diagnostic(path.value, 'Permission overrides must be a JSON object.'));
+        diagnostics.push(
+            diagnostic(path.value, 'parse', 'Permission overrides must be a JSON object.'),
+        );
         return map;
     }
 
@@ -58,6 +86,7 @@ function loadOverrides(
             diagnostics.push(
                 diagnostic(
                     path.value,
+                    'parse',
                     `Permission overrides for plugin "${id}" are malformed: ${parsed.error.issues[0]?.message ?? 'expected an array of capabilities.'}`,
                 ),
             );

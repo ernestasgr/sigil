@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { Effect, Either } from 'effect';
-import type { PersistenceDiagnostic, PersistencePhase } from '../shared/persistence.js';
+import {
+    type PersistenceDiagnostic,
+    type PersistencePhase,
+    persistenceErrorCode,
+} from '../shared/persistence.js';
 import {
     type AtomicFileWriter,
     type AtomicWriteResult,
@@ -15,12 +19,14 @@ function readFailure(
     phase: PersistencePhase,
     error: unknown,
 ): PersistenceDiagnostic {
+    const code = persistenceErrorCode(error);
     return {
         kind: 'persistence',
         operation: 'read',
         phase,
         path: filePath,
         message: error instanceof Error ? error.message : String(error),
+        ...(code ? { code } : {}),
     };
 }
 

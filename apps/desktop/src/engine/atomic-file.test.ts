@@ -1,4 +1,4 @@
-import { dirname, resolve } from 'node:path';
+import { dirname, win32 } from 'node:path';
 import { Either } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -12,6 +12,7 @@ function fakeFileSystem(overrides: Partial<AtomicFileSystem> = {}): AtomicFileSy
         flush: vi.fn(),
         close: vi.fn(),
         replace: vi.fn(),
+        syncDirectory: vi.fn(),
         remove: vi.fn(),
         ...overrides,
     };
@@ -30,9 +31,10 @@ describe('createAtomicFileWriter', () => {
         expect(fileSystem.makeDirectory).toHaveBeenCalledWith('C:/work');
         const temporaryPath = vi.mocked(fileSystem.open).mock.calls[0]?.[0];
         expect(temporaryPath).toBeDefined();
-        expect(dirname(temporaryPath ?? '')).toBe(dirname(resolve('C:/work/properties.json')));
+        expect(win32.normalize(dirname(temporaryPath ?? ''))).toBe(win32.normalize('C:/work'));
         expect(temporaryPath).not.toBe('C:/work/properties.json');
         expect(fileSystem.replace).toHaveBeenCalledWith(temporaryPath, 'C:/work/properties.json');
+        expect(fileSystem.syncDirectory).toHaveBeenCalledWith('C:/work');
         expect(fileSystem.remove).not.toHaveBeenCalled();
     });
 
@@ -76,6 +78,25 @@ describe('createAtomicFileWriter', () => {
             expect(result.left.phase).toBe('replace');
             expect(result.left.message).toBe('replacement denied');
         }
+        expect(fileSystem.remove).toHaveBeenCalled();
+    });
+
+    it('returns a directory flush failure after replacement without reporting success', () => {
+        const fileSystem = fakeFileSystem({
+            syncDirectory: vi.fn(() => {
+                throw new Error('directory flush denied');
+            }),
+        });
+        const writer = createAtomicFileWriter(fileSystem);
+
+        const result = writer.write('C:/work/properties.json', '{}');
+
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left.phase).toBe('directory_flush');
+            expect(result.left.message).toBe('directory flush denied');
+        }
+        expect(fileSystem.replace).toHaveBeenCalled();
         expect(fileSystem.remove).toHaveBeenCalled();
     });
 });

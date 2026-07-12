@@ -15,9 +15,14 @@ import { NodePalette } from './palette/node-palette.js';
 export interface WorkflowBuilderProps {
     readonly onSave: (name: string) => void;
     readonly onCancel: () => void;
+    readonly saveError?: string | null;
 }
 
-export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): ReactElement {
+export function WorkflowBuilder({
+    onSave,
+    onCancel,
+    saveError = null,
+}: WorkflowBuilderProps): ReactElement {
     const pipelineName = useBuilderStore((state) => state.pipelineName);
     const setPipelineName = useBuilderStore((state) => state.setPipelineName);
     const meta = useBuilderStore((state) => state.meta);
@@ -66,7 +71,7 @@ export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): Rea
                             <CornerFlourish corner="br" />
                         </div>
                     ) : null}
-                    <ValidationBar onSave={onSave} />
+                    <ValidationBar onSave={onSave} saveError={saveError} />
                 </div>
                 <aside className="sigil-ornamental-frame relative w-80 shrink-0 overflow-hidden">
                     <PropertiesPanel />
@@ -80,6 +85,7 @@ export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): Rea
 
 interface ValidationBarProps {
     readonly onSave: (name: string) => void;
+    readonly saveError: string | null;
 }
 
 function diagnosticTargetLabel(diagnostic: TopologyDiagnostic): string {
@@ -95,7 +101,7 @@ function diagnosticTargetLabel(diagnostic: TopologyDiagnostic): string {
     }
 }
 
-function ValidationBar({ onSave }: ValidationBarProps): ReactElement {
+function ValidationBar({ onSave, saveError }: ValidationBarProps): ReactElement {
     const nodes = useBuilderStore((state) => state.nodes);
     const edges = useBuilderStore((state) => state.edges);
     const meta = useBuilderStore((state) => state.meta);
@@ -177,6 +183,14 @@ function ValidationBar({ onSave }: ValidationBarProps): ReactElement {
                             </li>
                         ))}
                     </ul>
+                ) : null}
+                {saveError ? (
+                    <p
+                        role="alert"
+                        className="text-old-blood mt-1 break-words font-data text-[10px]"
+                    >
+                        {saveError}
+                    </p>
                 ) : null}
             </div>
             <div className="flex items-center gap-2">

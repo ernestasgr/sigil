@@ -32,6 +32,45 @@ export const WorkflowWriteOutcomeSchema = z.union([
 ]);
 export type WorkflowWriteOutcome = z.infer<typeof WorkflowWriteOutcomeSchema>;
 
+export const WorkflowActionOutcomeSchema = z.union([
+    z
+        .object({
+            ok: z.literal(true),
+            summary: WorkflowSummarySchema.nullable(),
+        })
+        .strict()
+        .readonly(),
+    z
+        .object({
+            ok: z.literal(false),
+            error: z.string(),
+            diagnostics: z.array(PersistenceDiagnosticSchema).readonly(),
+        })
+        .strict()
+        .readonly(),
+]);
+export type WorkflowActionOutcome = z.infer<typeof WorkflowActionOutcomeSchema>;
+
+export const WorkflowDeleteOutcomeSchema = z.union([
+    z
+        .object({
+            ok: z.literal(true),
+            success: z.boolean(),
+        })
+        .strict()
+        .readonly(),
+    z
+        .object({
+            ok: z.literal(false),
+            success: z.literal(false),
+            error: z.string(),
+            diagnostics: z.array(PersistenceDiagnosticSchema).readonly(),
+        })
+        .strict()
+        .readonly(),
+]);
+export type WorkflowDeleteOutcome = z.infer<typeof WorkflowDeleteOutcomeSchema>;
+
 const NodePositionSchema = z.object({ x: z.number(), y: z.number() }).readonly();
 export const NodePositionRecordSchema = z.record(z.string(), NodePositionSchema).readonly();
 
@@ -132,18 +171,22 @@ export const EngineToggleWorkflowSchema = z.object({
 });
 export type EngineToggleWorkflow = z.infer<typeof EngineToggleWorkflowSchema>;
 
-const EngineToggleWorkflowSuccessSchema = z.object({
-    type: z.literal(EngineChannel.ToggleWorkflowResult),
-    correlationId: z.string(),
-    summary: WorkflowSummarySchema.nullable(),
-});
-const EngineToggleWorkflowFailureSchema = z.object({
-    type: z.literal(EngineChannel.ToggleWorkflowResult),
-    correlationId: z.string(),
-    summary: z.null(),
-    error: z.string(),
-    diagnostics: z.array(PersistenceDiagnosticSchema).readonly(),
-});
+const EngineToggleWorkflowSuccessSchema = z
+    .object({
+        type: z.literal(EngineChannel.ToggleWorkflowResult),
+        correlationId: z.string(),
+        summary: WorkflowSummarySchema.nullable(),
+    })
+    .strict();
+const EngineToggleWorkflowFailureSchema = z
+    .object({
+        type: z.literal(EngineChannel.ToggleWorkflowResult),
+        correlationId: z.string(),
+        summary: z.null(),
+        error: z.string(),
+        diagnostics: z.array(PersistenceDiagnosticSchema).readonly(),
+    })
+    .strict();
 export const EngineToggleWorkflowResultSchema = z.union([
     EngineToggleWorkflowFailureSchema,
     EngineToggleWorkflowSuccessSchema,
@@ -157,18 +200,22 @@ export const EngineRetryWorkflowSchema = z.object({
 });
 export type EngineRetryWorkflow = z.infer<typeof EngineRetryWorkflowSchema>;
 
-const EngineRetryWorkflowSuccessSchema = z.object({
-    type: z.literal(EngineChannel.RetryWorkflowResult),
-    correlationId: z.string(),
-    summary: WorkflowSummarySchema.nullable(),
-});
-const EngineRetryWorkflowFailureSchema = z.object({
-    type: z.literal(EngineChannel.RetryWorkflowResult),
-    correlationId: z.string(),
-    summary: z.null(),
-    error: z.string(),
-    diagnostics: z.array(PersistenceDiagnosticSchema).readonly(),
-});
+const EngineRetryWorkflowSuccessSchema = z
+    .object({
+        type: z.literal(EngineChannel.RetryWorkflowResult),
+        correlationId: z.string(),
+        summary: WorkflowSummarySchema.nullable(),
+    })
+    .strict();
+const EngineRetryWorkflowFailureSchema = z
+    .object({
+        type: z.literal(EngineChannel.RetryWorkflowResult),
+        correlationId: z.string(),
+        summary: z.null(),
+        error: z.string(),
+        diagnostics: z.array(PersistenceDiagnosticSchema).readonly(),
+    })
+    .strict();
 export const EngineRetryWorkflowResultSchema = z.union([
     EngineRetryWorkflowFailureSchema,
     EngineRetryWorkflowSuccessSchema,
@@ -245,23 +292,29 @@ export const EngineDeleteWorkflowSchema = z.object({
 });
 export type EngineDeleteWorkflow = z.infer<typeof EngineDeleteWorkflowSchema>;
 
-const EngineDeleteWorkflowSuccessSchema = z.object({
-    type: z.literal(EngineChannel.DeleteWorkflowResult),
-    correlationId: z.string(),
-    success: z.literal(true),
-});
-const EngineDeleteWorkflowNotFoundSchema = z.object({
-    type: z.literal(EngineChannel.DeleteWorkflowResult),
-    correlationId: z.string(),
-    success: z.literal(false),
-});
-const EngineDeleteWorkflowFailureSchema = z.object({
-    type: z.literal(EngineChannel.DeleteWorkflowResult),
-    correlationId: z.string(),
-    success: z.literal(false),
-    error: z.string(),
-    diagnostic: PersistenceDiagnosticSchema,
-});
+const EngineDeleteWorkflowSuccessSchema = z
+    .object({
+        type: z.literal(EngineChannel.DeleteWorkflowResult),
+        correlationId: z.string(),
+        success: z.literal(true),
+    })
+    .strict();
+const EngineDeleteWorkflowNotFoundSchema = z
+    .object({
+        type: z.literal(EngineChannel.DeleteWorkflowResult),
+        correlationId: z.string(),
+        success: z.literal(false),
+    })
+    .strict();
+const EngineDeleteWorkflowFailureSchema = z
+    .object({
+        type: z.literal(EngineChannel.DeleteWorkflowResult),
+        correlationId: z.string(),
+        success: z.literal(false),
+        error: z.string(),
+        diagnostic: PersistenceDiagnosticSchema,
+    })
+    .strict();
 export const EngineDeleteWorkflowResultSchema = z.union([
     EngineDeleteWorkflowFailureSchema,
     EngineDeleteWorkflowSuccessSchema,

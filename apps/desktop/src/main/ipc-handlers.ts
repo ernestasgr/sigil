@@ -3,7 +3,6 @@ import { basename, dirname, extname } from 'node:path';
 import { CompiledPipelineSchema } from '@sigil/schema';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import { CapabilitySchema } from '@sigil/schema/manifest';
-import { Option } from 'effect';
 import type { BrowserWindow } from 'electron';
 import { dialog } from 'electron';
 import { z } from 'zod';
@@ -12,6 +11,8 @@ import {
     type EnginePong,
     NodePositionRecordSchema,
     RendererChannel,
+    type WorkflowActionOutcome,
+    type WorkflowDeleteOutcome,
     WorkflowIdSchema,
     type WorkflowWriteOutcome,
 } from '../shared/ipc-channels.js';
@@ -20,7 +21,6 @@ import {
     type PersistenceWriteOutcome,
 } from '../shared/persistence.js';
 import type { PluginInfo } from '../shared/plugin-info.js';
-import type { WorkflowSummary } from '../shared/workflow.js';
 import type { EngineHandle } from './engine-client.js';
 import { ipcHandle } from './ipc-handle.js';
 
@@ -76,6 +76,23 @@ function workflowFailure(error: unknown): WorkflowWriteOutcome {
     };
 }
 
+function workflowActionFailure(error: unknown): WorkflowActionOutcome {
+    return {
+        ok: false,
+        error: errorMessage(error),
+        diagnostics: [],
+    };
+}
+
+function workflowDeleteFailure(error: unknown): WorkflowDeleteOutcome {
+    return {
+        ok: false,
+        success: false,
+        error: errorMessage(error),
+        diagnostics: [],
+    };
+}
+
 const UpdateWorkflowArgsSchema = z
     .tuple([WorkflowIdSchema, z.string(), CompiledPipelineSchema, NodePositionRecordSchema])
     .superRefine(([workflowId, , pipeline], ctx) => {
@@ -116,20 +133,30 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
     ipcHandle(
         RendererChannel.ToggleWorkflow,
         WorkflowIdSchema,
-        async (id): Promise<WorkflowSummary | null> => {
+        async (id): Promise<WorkflowActionOutcome> => {
             const engine = h.getEngine();
-            if (!engine) throw new Error('Engine not ready');
-            return Option.getOrNull(await engine.toggleWorkflow(id));
+            if (!engine) return workflowActionFailure(new Error('Engine not ready'));
+            try {
+                return await engine.toggleWorkflow(id);
+            } catch (err) {
+                console.error('[main] toggleWorkflow failed:', err);
+                return workflowActionFailure(err);
+            }
         },
     );
 
     ipcHandle(
         RendererChannel.RetryWorkflow,
         WorkflowIdSchema,
-        async (id): Promise<WorkflowSummary | null> => {
+        async (id): Promise<WorkflowActionOutcome> => {
             const engine = h.getEngine();
-            if (!engine) throw new Error('Engine not ready');
-            return Option.getOrNull(await engine.retryWorkflow(id));
+            if (!engine) return workflowActionFailure(new Error('Engine not ready'));
+            try {
+                return await engine.retryWorkflow(id);
+            } catch (err) {
+                console.error('[main] retryWorkflow failed:', err);
+                return workflowActionFailure(err);
+            }
         },
     );
 
@@ -163,11 +190,20 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(RendererChannel.DeleteWorkflow, WorkflowIdSchema, async (id): Promise<boolean> => {
-        const engine = h.getEngine();
-        if (!engine) throw new Error('Engine not ready');
-        return await engine.deleteWorkflow(id);
-    });
+    ipcHandle(
+        RendererChannel.DeleteWorkflow,
+        WorkflowIdSchema,
+        async (id): Promise<WorkflowDeleteOutcome> => {
+            const engine = h.getEngine();
+            if (!engine) return workflowDeleteFailure(new Error('Engine not ready'));
+            try {
+                return await engine.deleteWorkflow(id);
+            } catch (err) {
+                console.error('[main] deleteWorkflow failed:', err);
+                return workflowDeleteFailure(err);
+            }
+        },
+    );
 
     ipcHandle(
         RendererChannel.GetWorkflow,

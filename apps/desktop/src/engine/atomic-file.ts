@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { Either } from 'effect';
-import type { PersistenceDiagnostic } from '../shared/persistence.js';
+import type { PersistenceDiagnostic, PersistencePhase } from '../shared/persistence.js';
 
 export type AtomicFileDescriptor = number;
 
@@ -22,17 +22,14 @@ export interface AtomicFileSystem {
     readonly flush: (fileDescriptor: AtomicFileDescriptor) => void;
     readonly close: (fileDescriptor: AtomicFileDescriptor) => void;
     readonly replace: (temporaryPath: string, targetPath: string) => void;
+    readonly syncDirectory: (path: string) => void;
     readonly remove: (path: string) => void;
 }
 
-export type AtomicWritePhase =
-    | 'directory'
-    | 'open'
-    | 'serialize'
-    | 'write'
-    | 'flush'
-    | 'close'
-    | 'replace';
+export type AtomicWritePhase = Extract<
+    PersistencePhase,
+    'directory' | 'open' | 'serialize' | 'write' | 'flush' | 'directory_flush' | 'close' | 'replace'
+>;
 
 export type AtomicWriteFailure = PersistenceDiagnostic & {
     readonly operation: 'write';
@@ -65,6 +62,18 @@ export const nodeAtomicFileSystem: AtomicFileSystem = {
     },
     replace: (temporaryPath, targetPath) => {
         renameSync(temporaryPath, targetPath);
+    },
+    syncDirectory: (path) => {
+        if (process.platform === 'win32') {
+            // Windows does not support fsync on directory handles.
+            return;
+        }
+        const fileDescriptor = openSync(path, fsConstants.O_RDONLY);
+        try {
+            fsyncSync(fileDescriptor);
+        } finally {
+            closeSync(fileDescriptor);
+        }
     },
     remove: (path) => {
         unlinkSync(path);
@@ -130,6 +139,9 @@ export function createAtomicFileWriter(
 
                 phase = 'replace';
                 fileSystem.replace(temporaryPath, targetPath);
+
+                phase = 'directory_flush';
+                fileSystem.syncDirectory(targetDirectory);
                 return Either.right(undefined);
             } catch (error) {
                 if (fileDescriptor !== undefined) {
