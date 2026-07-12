@@ -9,7 +9,10 @@ import {
     PluginBusEventPayloadSchema,
     safeParsePayload,
     validateBusEventPayload,
+    WorkflowCancelledPayloadSchema,
+    WorkflowDroppedPayloadSchema,
     WorkflowErrorPayloadSchema,
+    WorkflowQueuedPayloadSchema,
     WorkflowRunPayloadSchema,
 } from './event-payload-schemas.js';
 
@@ -101,6 +104,48 @@ describe('EventPayloadSchemaRegistry', () => {
         ['workflow.started', {}],
         ['workflow.completed', { pipelineId: 42 }],
         ['workflow.error', { pipelineId: 'p1' }],
+        [
+            'workflow.queued',
+            {
+                pipelineId: 'p1',
+                workflowId: 'wf1',
+                runId: 'run1',
+                policy: { concurrency: 1, queueLimit: 16, overflow: 'drop-newest' },
+            },
+        ],
+        [
+            'workflow.queued',
+            {
+                pipelineId: 'p1',
+                workflowId: 'wf1',
+                runId: 'run1',
+                queueSize: 1,
+            },
+        ],
+        [
+            'workflow.queued',
+            {
+                pipelineId: 'p1',
+                workflowId: 'wf1',
+                runId: 'run1',
+                queueSize: 1,
+                policy: { concurrency: 1, queueLimit: 16, overflow: 'drop-oldest' },
+            },
+        ],
+        [
+            'workflow.dropped',
+            {
+                pipelineId: 'p1',
+                workflowId: 'wf1',
+                runId: 'run1',
+                queueSize: 16,
+                policy: { concurrency: 1, queueLimit: 16, overflow: 'drop-newest' },
+            },
+        ],
+        [
+            'workflow.cancelled',
+            { pipelineId: 'p1', workflowId: 'wf1', runId: 'run1', phase: 'running' },
+        ],
         ['manual.trigger.fired', { path: '' }],
         ['log.output', {}],
         ['notification.show', { title: 123 }],
@@ -160,6 +205,73 @@ describe('WorkflowErrorPayloadSchema', () => {
         const result = WorkflowErrorPayloadSchema.safeParse({
             pipelineId: 'p1',
             nodeId: 'log',
+        });
+        expect(result.success).toBe(false);
+    });
+});
+
+describe('WorkflowQueuedPayloadSchema', () => {
+    const validPayload = {
+        pipelineId: 'p1',
+        workflowId: 'wf1',
+        runId: 'run1',
+        queueSize: 1,
+        policy: { concurrency: 1, queueLimit: 16, overflow: 'drop-newest' },
+    };
+
+    it('rejects a missing queueSize', () => {
+        const payload: Record<string, unknown> = { ...validPayload };
+        delete payload.queueSize;
+        expect(WorkflowQueuedPayloadSchema.safeParse(payload).success).toBe(false);
+    });
+
+    it('rejects a missing policy', () => {
+        const payload: Record<string, unknown> = { ...validPayload };
+        delete payload.policy;
+        expect(WorkflowQueuedPayloadSchema.safeParse(payload).success).toBe(false);
+    });
+
+    it('rejects an invalid policy overflow value', () => {
+        const payload = {
+            ...validPayload,
+            policy: { ...validPayload.policy, overflow: 'drop-oldest' },
+        };
+        expect(WorkflowQueuedPayloadSchema.safeParse(payload).success).toBe(false);
+    });
+});
+
+describe('WorkflowDroppedPayloadSchema', () => {
+    const validPayload = {
+        pipelineId: 'p1',
+        workflowId: 'wf1',
+        runId: 'run1',
+        queueSize: 16,
+        policy: { concurrency: 1, queueLimit: 16, overflow: 'drop-newest' },
+        reason: 'queue_full',
+    };
+
+    it('rejects a missing reason', () => {
+        const payload: Record<string, unknown> = { ...validPayload };
+        delete payload.reason;
+        expect(WorkflowDroppedPayloadSchema.safeParse(payload).success).toBe(false);
+    });
+
+    it('rejects an invalid policy overflow value', () => {
+        const payload = {
+            ...validPayload,
+            policy: { ...validPayload.policy, overflow: 'drop-oldest' },
+        };
+        expect(WorkflowDroppedPayloadSchema.safeParse(payload).success).toBe(false);
+    });
+});
+
+describe('WorkflowCancelledPayloadSchema', () => {
+    it('rejects a missing reason', () => {
+        const result = WorkflowCancelledPayloadSchema.safeParse({
+            pipelineId: 'p1',
+            workflowId: 'wf1',
+            runId: 'run1',
+            phase: 'running',
         });
         expect(result.success).toBe(false);
     });

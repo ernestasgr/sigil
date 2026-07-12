@@ -29,8 +29,11 @@ stop promptly, while an adapter that cannot cancel is allowed to finish and is
 reported as cancelled before the supervisor becomes idle.
 
 Update and delete wait for the old activation's supervisor to become idle
-before saving a replacement or removing the stored Workflow. Shutdown uses the
-same drain point before closing Engine resources.
+before saving a replacement or removing the stored Workflow. Shutdown cancels
+active runs through `stopRuns(...)/supervisor.cancel(reason)` and then waits for
+the supervisor's `waitForIdle()` synchronization point before closing Engine
+resources. It does not drain admitted work; it shares only the idle wait with
+drain().
 
 The Pipeline executor reports explicit `succeeded`, `failed`, and `cancelled`
 outcomes. A failed run is completed with a failed outcome, not presented as a

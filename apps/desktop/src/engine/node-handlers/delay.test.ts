@@ -46,6 +46,6 @@ describe('delay handler', () => {
 
         expect(result.activePort).toBe('out');
         expect(result.outputCtx).toBe(ctx);
-        expect(sleep).toHaveBeenCalledWith(50);
+        expect(sleep).toHaveBeenCalledWith(50, undefined);
     });
 });

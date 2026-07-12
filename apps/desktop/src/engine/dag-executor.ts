@@ -90,7 +90,7 @@ function reportNodeError(
     });
     return {
         pipelineId: pipeline.id,
-        workflowId: pipeline.workflowId,
+        workflowId: runPayload.workflowId ?? pipeline.workflowId,
         ...(runPayload.runId ? { runId: runPayload.runId } : {}),
         outcome: 'failed',
         message,
@@ -112,7 +112,7 @@ function executionResult(
 ): WorkflowExecutionResult {
     return {
         pipelineId: pipeline.id,
-        workflowId: pipeline.workflowId,
+        workflowId: runPayload.workflowId ?? pipeline.workflowId,
         ...(runPayload.runId ? { runId: runPayload.runId } : {}),
         outcome,
         ...(message ? { message } : {}),

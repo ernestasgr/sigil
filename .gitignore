@@ -42,6 +42,6 @@ lessons
 MISSION.md
 NOTES.md
 RESOURCES.md
-assets
-learning-records
-reference
+/assets/
+/learning-records/
+/reference/

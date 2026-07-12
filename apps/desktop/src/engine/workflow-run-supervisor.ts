@@ -71,23 +71,10 @@ export type WorkflowRunLifecycleEvent =
           readonly outcome: WorkflowRunExecutionResult;
       };
 
-export type WorkflowRunAdmission =
-    | {
-          readonly kind: 'started';
-          readonly run: WorkflowRunIdentity;
-          readonly queueSize: number;
-      }
-    | {
-          readonly kind: 'queued';
-          readonly run: WorkflowRunIdentity;
-          readonly queueSize: number;
-      }
-    | {
-          readonly kind: 'dropped';
-          readonly run: WorkflowRunIdentity;
-          readonly queueSize: number;
-          readonly reason: 'queue_full' | 'not_accepting';
-      };
+export type WorkflowRunAdmission = Extract<
+    WorkflowRunLifecycleEvent,
+    { readonly kind: 'started' | 'queued' | 'dropped' }
+>;
 
 export interface WorkflowRunSupervisorOptions {
     readonly workflowId: string;
@@ -153,6 +140,19 @@ function cancellationReason(signal: AbortSignal, fallback: string): string {
     return fallback;
 }
 
+function cancelledOutcome(
+    signal: AbortSignal,
+    result?: WorkflowRunExecutionResult,
+): WorkflowRunExecutionResult {
+    return {
+        outcome: 'cancelled',
+        message:
+            result?.outcome === 'cancelled' && result.message !== undefined
+                ? result.message
+                : cancellationReason(signal, 'Workflow run cancelled.'),
+    };
+}
+
 function toIdentity(run: WorkflowRun): WorkflowRunIdentity {
     return {
         runId: run.runId,
@@ -201,12 +201,7 @@ export function createWorkflowRunSupervisor(
         if (!pending) return;
         active.delete(run.runId);
 
-        const outcome = run.signal.aborted
-            ? {
-                  outcome: 'cancelled' as const,
-                  message: cancellationReason(run.signal, 'Workflow run cancelled.'),
-              }
-            : result;
+        const outcome = run.signal.aborted ? cancelledOutcome(run.signal, result) : result;
         emit({
             kind: 'finished',
             run: toIdentity(run),
@@ -226,36 +221,33 @@ export function createWorkflowRunSupervisor(
         try {
             execution = options.execute(pending.run);
         } catch (error) {
+            const result = { outcome: 'failed' as const, message: errorMessage(error) };
             finish(
                 pending.run,
-                pending.run.signal.aborted
-                    ? {
-                          outcome: 'cancelled',
-                          message: cancellationReason(
-                              pending.run.signal,
-                              'Workflow run cancelled.',
-                          ),
-                      }
-                    : { outcome: 'failed', message: errorMessage(error) },
+                pending.run.signal.aborted ? cancelledOutcome(pending.run.signal, result) : result,
             );
             return;
         }
 
         void Promise.resolve(execution).then(
-            (result) => finish(pending.run, normalizeExecutionResult(result)),
-            (error: unknown) =>
+            (result) => {
+                const normalized = normalizeExecutionResult(result);
                 finish(
                     pending.run,
                     pending.run.signal.aborted
-                        ? {
-                              outcome: 'cancelled',
-                              message: cancellationReason(
-                                  pending.run.signal,
-                                  'Workflow run cancelled.',
-                              ),
-                          }
-                        : { outcome: 'failed', message: errorMessage(error) },
-                ),
+                        ? cancelledOutcome(pending.run.signal, normalized)
+                        : normalized,
+                );
+            },
+            (error: unknown) => {
+                const result = { outcome: 'failed' as const, message: errorMessage(error) };
+                finish(
+                    pending.run,
+                    pending.run.signal.aborted
+                        ? cancelledOutcome(pending.run.signal, result)
+                        : result,
+                );
+            },
         );
     }
 
@@ -336,6 +328,7 @@ export function createWorkflowRunSupervisor(
         }
 
         for (const pending of active.values()) {
+            if (pending.controller.signal.aborted) continue;
             emit({
                 kind: 'cancelled',
                 run: toIdentity(pending.run),
@@ -343,7 +336,7 @@ export function createWorkflowRunSupervisor(
                 phase: 'running',
                 reason,
             });
-            if (!pending.controller.signal.aborted) pending.controller.abort(reason);
+            pending.controller.abort(reason);
         }
 
         resolveIdleWaiters();
