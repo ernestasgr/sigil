@@ -56,13 +56,26 @@ export type WorkflowDraftSaveCommand = (
     request: WorkflowDraftSaveRequest,
 ) => Promise<WorkflowDraftSaveResult>;
 
+export type WorkflowDraftSaveAttemptId = string & {
+    readonly __brand: 'WorkflowDraftSaveAttemptId';
+};
+
 export type WorkflowDraftSaveState =
     | { readonly status: 'idle' }
-    | { readonly status: 'pending'; readonly revision: number }
-    | { readonly status: 'success'; readonly revision: number }
+    | {
+          readonly status: 'pending';
+          readonly revision: number;
+          readonly attemptId: WorkflowDraftSaveAttemptId;
+      }
+    | {
+          readonly status: 'success';
+          readonly revision: number;
+          readonly attemptId: WorkflowDraftSaveAttemptId;
+      }
     | {
           readonly status: 'failure';
           readonly revision: number;
+          readonly attemptId: WorkflowDraftSaveAttemptId;
           readonly error: string;
           readonly diagnostics: readonly WorkflowDraftDiagnostic[];
       };
@@ -156,6 +169,10 @@ function cloneSnapshot(snapshot: WorkflowDraftSnapshot): WorkflowDraftSnapshot {
         meta: { ...snapshot.meta, name: snapshot.pipelineName },
         pipelineName: snapshot.pipelineName,
     });
+}
+
+function createWorkflowDraftSaveAttemptId(): WorkflowDraftSaveAttemptId {
+    return crypto.randomUUID() as WorkflowDraftSaveAttemptId;
 }
 
 function saveStateAfterEdit(saveState: WorkflowDraftSaveState): WorkflowDraftSaveState {
@@ -343,7 +360,11 @@ export function markWorkflowDraftSaved(draft: WorkflowDraft): WorkflowDraft {
     return {
         ...draft,
         baseline: cloneSnapshot(draft.current),
-        saveState: { status: 'success', revision: draft.revision },
+        saveState: {
+            status: 'success',
+            revision: draft.revision,
+            attemptId: createWorkflowDraftSaveAttemptId(),
+        },
     };
 }
 
@@ -368,33 +389,46 @@ export function beginWorkflowDraftSave(draft: WorkflowDraft): WorkflowDraft {
     if (isWorkflowDraftSavePending(draft)) return draft;
     return {
         ...draft,
-        saveState: { status: 'pending', revision: draft.revision },
+        saveState: {
+            status: 'pending',
+            revision: draft.revision,
+            attemptId: createWorkflowDraftSaveAttemptId(),
+        },
     };
 }
 
-export function completeWorkflowDraftSave(draft: WorkflowDraft): WorkflowDraft {
-    if (draft.saveState.status !== 'pending') return draft;
+export function completeWorkflowDraftSave(
+    draft: WorkflowDraft,
+    attemptId: WorkflowDraftSaveAttemptId,
+): WorkflowDraft {
+    if (draft.saveState.status !== 'pending' || draft.saveState.attemptId !== attemptId) {
+        return draft;
+    }
 
     const revision = draft.saveState.revision;
     return {
         ...draft,
         baseline: draft.revision === revision ? cloneSnapshot(draft.current) : draft.baseline,
-        saveState: { status: 'success', revision },
+        saveState: { status: 'success', revision, attemptId },
     };
 }
 
 export function rejectWorkflowDraftSave(
     draft: WorkflowDraft,
+    attemptId: WorkflowDraftSaveAttemptId,
     error: string,
     diagnostics: readonly WorkflowDraftDiagnostic[],
 ): WorkflowDraft {
-    if (draft.saveState.status !== 'pending') return draft;
+    if (draft.saveState.status !== 'pending' || draft.saveState.attemptId !== attemptId) {
+        return draft;
+    }
 
     return {
         ...draft,
         saveState: {
             status: 'failure',
             revision: draft.saveState.revision,
+            attemptId,
             error,
             diagnostics: [...diagnostics],
         },
@@ -411,6 +445,7 @@ export function recordWorkflowDraftSaveFailure(
         saveState: {
             status: 'failure',
             revision: draft.revision,
+            attemptId: createWorkflowDraftSaveAttemptId(),
             error,
             diagnostics: [...diagnostics],
         },

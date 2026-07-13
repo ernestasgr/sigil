@@ -331,6 +331,11 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
             const pending = beginWorkflowDraftSave(state.draft);
             set(() => projectDraft(pending));
 
+            if (pending.saveState.status !== 'pending') {
+                return pendingSaveFailure();
+            }
+            const attemptId = pending.saveState.attemptId;
+
             const request = {
                 name,
                 pipeline: result.value,
@@ -343,9 +348,10 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
                 set((current) => ({
                     ...projectDraft(
                         outcome.ok
-                            ? completeWorkflowDraftSave(current.draft)
+                            ? completeWorkflowDraftSave(current.draft, attemptId)
                             : rejectWorkflowDraftSave(
                                   current.draft,
+                                  attemptId,
                                   outcome.error,
                                   outcome.diagnostics,
                               ),
@@ -361,7 +367,9 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
                     'Retry the save after checking the command or IPC error.',
                 );
                 set((current) => ({
-                    ...projectDraft(rejectWorkflowDraftSave(current.draft, message, [diagnostic])),
+                    ...projectDraft(
+                        rejectWorkflowDraftSave(current.draft, attemptId, message, [diagnostic]),
+                    ),
                 }));
                 return { ok: false, error: message, diagnostics: [diagnostic] };
             }

@@ -85,7 +85,7 @@ export function WorkflowsSection(): ReactElement {
 
     const handleSave = useCallback(
         async (name: string): Promise<void> => {
-            const outcome = await useBuilderStore
+            const savePromise = useBuilderStore
                 .getState()
                 .save(
                     name,
@@ -110,7 +110,19 @@ export function WorkflowsSection(): ReactElement {
                         };
                     },
                 );
-            if (!outcome.ok) return;
+            const saveState = useBuilderStore.getState().saveState;
+            const attemptId = saveState.status === 'pending' ? saveState.attemptId : null;
+            const outcome = await savePromise;
+            const currentState = useBuilderStore.getState();
+            if (
+                !outcome.ok ||
+                attemptId === null ||
+                currentState.saveState.status !== 'success' ||
+                currentState.saveState.attemptId !== attemptId ||
+                currentState.dirty
+            ) {
+                return;
+            }
             setWorkflowView('list');
             setEditingWorkflowId(null);
         },
