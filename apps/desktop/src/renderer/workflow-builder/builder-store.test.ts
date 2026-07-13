@@ -341,6 +341,38 @@ describe('useBuilderStore', () => {
         expect(useBuilderStore.getState().dirty).toBe(false);
     });
 
+    it('keeps React Flow dimensions and edge selection in the controlled state', () => {
+        const source = useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
+        const target = useBuilderStore.getState().addNode('log', { x: 100, y: 0 });
+        useBuilderStore
+            .getState()
+            .connect({ source, target, sourceHandle: 'out', targetHandle: null });
+        useBuilderStore.getState().markSaved();
+        const revision = useBuilderStore.getState().revision;
+        const edgeId = useBuilderStore.getState().edges[0]?.id;
+        expect(edgeId).toBeDefined();
+        if (!edgeId) return;
+
+        useBuilderStore.getState().onNodesChange([
+            { id: source, type: 'dimensions', dimensions: { width: 208, height: 105 } },
+        ]);
+        useBuilderStore
+            .getState()
+            .onEdgesChange([{ id: edgeId, type: 'select', selected: true }]);
+
+        const state = useBuilderStore.getState();
+        expect(state.nodes.find((node) => node.id === source)?.measured).toEqual({
+            width: 208,
+            height: 105,
+        });
+        expect(state.edges.find((edge) => edge.id === edgeId)?.selected).toBe(true);
+        expect(state.revision).toBe(revision);
+        expect(state.dirty).toBe(false);
+
+        useBuilderStore.getState().onEdgesChange([{ id: edgeId, type: 'remove' }]);
+        expect(useBuilderStore.getState().edges).toHaveLength(0);
+    });
+
     it('loads a saved baseline including positions and tracks later node movement', () => {
         const pipeline: CompiledPipeline = {
             id: 'pipeline-loaded',

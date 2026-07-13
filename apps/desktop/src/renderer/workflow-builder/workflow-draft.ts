@@ -154,8 +154,35 @@ function stableValue(value: unknown): unknown {
     );
 }
 
+const REACT_FLOW_RUNTIME_NODE_FIELDS = new Set([
+    'selected',
+    'dragging',
+    'measured',
+    'resizing',
+    'width',
+    'height',
+]);
+
+function snapshotForComparison(snapshot: WorkflowDraftSnapshot): unknown {
+    return {
+        ...snapshot,
+        nodes: snapshot.nodes.map((node) =>
+            Object.fromEntries(
+                Object.entries(node).filter(
+                    ([key]) => !REACT_FLOW_RUNTIME_NODE_FIELDS.has(key),
+                ),
+            ),
+        ),
+        edges: snapshot.edges.map((edge) =>
+            Object.fromEntries(
+                Object.entries(edge).filter(([key]) => key !== 'selected'),
+            ),
+        ),
+    };
+}
+
 function snapshotKey(snapshot: WorkflowDraftSnapshot): string {
-    return JSON.stringify(stableValue(snapshot));
+    return JSON.stringify(stableValue(snapshotForComparison(snapshot)));
 }
 
 function snapshotsEqual(left: WorkflowDraftSnapshot, right: WorkflowDraftSnapshot): boolean {
@@ -241,12 +268,9 @@ function applyCommand(
             };
         }
         case 'nodes-change': {
-            const contentChanges = command.changes.filter(
-                (change) => change.type !== 'select' && change.type !== 'dimensions',
-            );
-            if (emptyChangeList(contentChanges)) return snapshot;
+            if (emptyChangeList(command.changes)) return snapshot;
 
-            const nodes = applyNodeChanges([...contentChanges], [...snapshot.nodes]);
+            const nodes = applyNodeChanges([...command.changes], [...snapshot.nodes]);
             const removedIds = new Set(
                 command.changes
                     .filter(
@@ -266,11 +290,10 @@ function applyCommand(
             };
         }
         case 'edges-change': {
-            const contentChanges = command.changes.filter((change) => change.type !== 'select');
-            if (emptyChangeList(contentChanges)) return snapshot;
+            if (emptyChangeList(command.changes)) return snapshot;
             return {
                 ...snapshot,
-                edges: applyEdgeChanges([...contentChanges], [...snapshot.edges]),
+                edges: applyEdgeChanges([...command.changes], [...snapshot.edges]),
             };
         }
         case 'set-pipeline-name':
@@ -312,8 +335,13 @@ export function applyWorkflowDraftCommand(
     draft: WorkflowDraft,
     command: WorkflowDraftCommand,
 ): WorkflowDraft {
-    const next = cloneSnapshot(applyCommand(draft.current, command));
-    if (snapshotsEqual(next, draft.current)) return draft;
+    const applied = applyCommand(draft.current, command);
+    if (applied === draft.current) return draft;
+
+    const next = cloneSnapshot(applied);
+    if (snapshotsEqual(next, draft.current)) {
+        return { ...draft, current: next };
+    }
 
     return {
         current: next,

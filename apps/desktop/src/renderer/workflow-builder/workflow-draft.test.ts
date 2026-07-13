@@ -100,6 +100,45 @@ describe('WorkflowDraft', () => {
         expect(draft.current.nodes.map((node) => node.id)).toEqual(['log-2']);
     });
 
+    it('keeps React Flow node measurements in live state without making the draft dirty', () => {
+        let draft = createWorkflowDraft({
+            ...emptySnapshot(),
+            nodes: [logNode('log-1')],
+        });
+
+        draft = applyWorkflowDraftCommand(draft, {
+            kind: 'nodes-change',
+            changes: [
+                {
+                    id: 'log-1',
+                    type: 'dimensions',
+                    dimensions: { width: 208, height: 105 },
+                },
+            ],
+        });
+
+        expect(draft.current.nodes[0]?.measured).toEqual({ width: 208, height: 105 });
+        expect(draft.revision).toBe(0);
+        expect(isWorkflowDraftDirty(draft)).toBe(false);
+    });
+
+    it('keeps React Flow edge selection in live state without making the draft dirty', () => {
+        let draft = createWorkflowDraft({
+            ...emptySnapshot(),
+            nodes: [logNode('source'), logNode('target')],
+            edges: [{ id: 'edge-1', source: 'source', target: 'target' }],
+        });
+
+        draft = applyWorkflowDraftCommand(draft, {
+            kind: 'edges-change',
+            changes: [{ id: 'edge-1', type: 'select', selected: true }],
+        });
+
+        expect(draft.current.edges[0]?.selected).toBe(true);
+        expect(draft.revision).toBe(0);
+        expect(isWorkflowDraftDirty(draft)).toBe(false);
+    });
+
     it('guards async saves, preserves failures for retry, and resets the baseline on success', () => {
         let draft = createWorkflowDraft(emptySnapshot());
         draft = applyWorkflowDraftCommand(draft, {
