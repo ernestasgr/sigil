@@ -215,6 +215,55 @@ describe('validateWorkflowTopology', () => {
         }
     });
 
+    it('reports structured Switch match diagnostics at the offending case field', () => {
+        const result = validateWorkflowTopology(
+            pipeline(
+                [
+                    trigger('trigger'),
+                    {
+                        id: 'switch',
+                        type: 'switch',
+                        config: {
+                            target: 'payload',
+                            field: 'ext',
+                            cases: [
+                                { id: 'pdf', value: 'pdf' },
+                                { id: 'duplicate', value: 'PDF' },
+                                { id: 'empty', value: '' },
+                                { id: 'reserved', value: 'default' },
+                                { id: 'invalid', value: 'line\nbreak' },
+                            ],
+                        },
+                    },
+                ],
+                [edge('trigger-switch', 'trigger', 'switch')],
+            ),
+        );
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(diagnosticCodes(result)).toEqual(
+                expect.arrayContaining([
+                    'duplicate_match_value',
+                    'empty_match_value',
+                    'reserved_match_value',
+                    'invalid_match_value',
+                ]),
+            );
+            expect(result.diagnostics).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        code: 'duplicate_match_value',
+                        nodeId: 'switch',
+                        caseId: 'duplicate',
+                        fieldPath: 'config.cases[1].value',
+                        repairHint: expect.any(String),
+                    }),
+                ]),
+            );
+        }
+    });
+
     it('allows a plugin Node to declare trigger and output-port capabilities', () => {
         const plugin: PipelineNode = {
             id: 'plugin-trigger',

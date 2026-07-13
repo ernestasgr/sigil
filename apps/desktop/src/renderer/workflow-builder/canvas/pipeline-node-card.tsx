@@ -1,4 +1,4 @@
-import { outputPortsForNode } from '@sigil/schema/nodes';
+import { outputPortLabelForNode, outputPortsForNode } from '@sigil/schema/nodes';
 import { Handle, type NodeProps, Position } from '@xyflow/react';
 import type { ReactElement } from 'react';
 
@@ -45,7 +45,7 @@ export function PipelineNodeCard({ id, data, selected }: NodeProps<BuilderRFNode
                         key={port}
                         className="relative flex items-center justify-end pr-2 text-[10px] font-data text-veil"
                     >
-                        <span>{port}</span>
+                        <span>{outputPortLabelForNode({ id, ...spec }, port)}</span>
                         <Handle
                             id={port}
                             type="source"

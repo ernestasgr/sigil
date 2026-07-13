@@ -24,7 +24,14 @@ import type { ReactElement } from 'react';
 
 import { Button } from '../../components/ui/button.js';
 import { useSigil } from '../../lib/use-sigil.js';
-import { Checkbox, NumberInput, SelectInput, StringList, TextInput } from './form-fields.js';
+import {
+    Checkbox,
+    NumberInput,
+    SelectInput,
+    StringList,
+    SwitchCaseList,
+    TextInput,
+} from './form-fields.js';
 
 type FieldValueKind = 'string' | 'number' | 'boolean';
 
@@ -375,7 +382,7 @@ export function SwitchConfigForm({
                     onChange={(field) => onChange({ ...config, field })}
                 />
             ) : null}
-            <StringList
+            <SwitchCaseList
                 label="Cases"
                 values={config.cases}
                 placeholder="pdf"

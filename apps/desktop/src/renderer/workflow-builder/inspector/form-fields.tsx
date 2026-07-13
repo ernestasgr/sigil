@@ -1,3 +1,4 @@
+import type { SwitchCase } from '@sigil/schema/nodes/switch';
 import type { ChangeEvent, ReactElement, ReactNode } from 'react';
 
 import { cn } from '../../lib/utils.js';
@@ -169,6 +170,63 @@ export function StringList({
                     type="button"
                     className="border-gilt/50 text-gilt px-3 py-1.5 text-left font-ui text-xs tracking-widest uppercase hover:bg-gilt/10"
                     onClick={() => onChange([...values, ''])}
+                >
+                    + Add
+                </button>
+            </div>
+        </Field>
+    );
+}
+
+interface SwitchCaseListProps {
+    readonly label: string;
+    readonly values: readonly SwitchCase[];
+    readonly onChange: (values: SwitchCase[]) => void;
+    readonly placeholder?: string;
+}
+
+export function SwitchCaseList({
+    label,
+    values,
+    onChange,
+    placeholder,
+}: SwitchCaseListProps): ReactElement {
+    return (
+        <Field label={label}>
+            <div className="flex flex-col gap-1.5">
+                {values.map((switchCase, index) => (
+                    <div key={switchCase.id} className="flex items-center gap-1.5">
+                        <input
+                            type="text"
+                            className={cn(INPUT_CLASS, 'font-data')}
+                            value={switchCase.value}
+                            placeholder={placeholder}
+                            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                                onChange(
+                                    values.map((entry) =>
+                                        entry.id === switchCase.id
+                                            ? { ...entry, value: event.target.value }
+                                            : entry,
+                                    ),
+                                )
+                            }
+                        />
+                        <button
+                            type="button"
+                            className="border-old-blood text-old-blood px-2 py-2 text-xs hover:bg-old-blood/10"
+                            aria-label={`Remove ${label} entry ${index + 1}`}
+                            onClick={() =>
+                                onChange(values.filter((entry) => entry.id !== switchCase.id))
+                            }
+                        >
+                            ×
+                        </button>
+                    </div>
+                ))}
+                <button
+                    type="button"
+                    className="border-gilt/50 text-gilt px-3 py-1.5 text-left font-ui text-xs tracking-widest uppercase hover:bg-gilt/10"
+                    onClick={() => onChange([...values, { id: crypto.randomUUID(), value: '' }])}
                 >
                     + Add
                 </button>

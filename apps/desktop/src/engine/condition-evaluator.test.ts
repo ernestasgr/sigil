@@ -18,6 +18,10 @@ const ctx: WorkflowContext = {
     vars: { kind: 'invoice', count: 5, flagged: 'true', empty: '' },
 };
 
+function switchCases(...values: readonly string[]): SwitchConfig['cases'] {
+    return values.map((value, index) => ({ id: `case-${index + 1}`, value }));
+}
+
 describe('coerceForComparison', () => {
     it('coerces a numeric string to a number', () => {
         expect(coerceForComparison('5', 'number')).toEqual(Either.right(5));
@@ -263,22 +267,34 @@ describe('evaluateCondition — event name context', () => {
 
 describe('matchSwitchCase', () => {
     it('routes to the matching case port on a payload string field', () => {
-        const config: SwitchConfig = { target: 'payload', field: 'ext', cases: ['pdf', 'png'] };
-        expect(matchSwitchCase(config, ctx)).toBe('pdf');
+        const config: SwitchConfig = {
+            target: 'payload',
+            field: 'ext',
+            cases: switchCases('pdf', 'png'),
+        };
+        expect(matchSwitchCase(config, ctx)).toBe('case-1');
     });
 
     it('falls back to default when no case matches', () => {
-        const config: SwitchConfig = { target: 'payload', field: 'ext', cases: ['jpg', 'png'] };
+        const config: SwitchConfig = {
+            target: 'payload',
+            field: 'ext',
+            cases: switchCases('jpg', 'png'),
+        };
         expect(matchSwitchCase(config, ctx)).toBe('default');
     });
 
     it('matches payload string fields case-insensitively', () => {
-        const config: SwitchConfig = { target: 'payload', field: 'ext', cases: ['pdf'] };
-        expect(matchSwitchCase(config, ctx)).toBe('pdf');
+        const config: SwitchConfig = {
+            target: 'payload',
+            field: 'ext',
+            cases: switchCases('pdf'),
+        };
+        expect(matchSwitchCase(config, ctx)).toBe('case-1');
     });
 
     it('routes to default on an unknown payload field', () => {
-        const config: SwitchConfig = { target: 'payload', field: 'bogus', cases: ['x'] };
+        const config: SwitchConfig = { target: 'payload', field: 'bogus', cases: switchCases('x') };
         expect(matchSwitchCase(config, ctx)).toBe('default');
     });
 
@@ -286,44 +302,59 @@ describe('matchSwitchCase', () => {
         const config: SwitchConfig = {
             target: 'payload',
             field: 'size',
-            cases: ['1024', '2048576'],
+            cases: switchCases('1024', '2048576'),
         };
-        expect(matchSwitchCase(config, ctx)).toBe('2048576');
+        expect(matchSwitchCase(config, ctx)).toBe('case-2');
     });
 
     it('falls back to default when a size case is non-numeric', () => {
-        const config: SwitchConfig = { target: 'payload', field: 'size', cases: ['large'] };
+        const config: SwitchConfig = {
+            target: 'payload',
+            field: 'size',
+            cases: switchCases('large'),
+        };
         expect(matchSwitchCase(config, ctx)).toBe('default');
     });
 
     it('matches a numeric vars value via numeric comparison', () => {
-        const config: SwitchConfig = { target: 'vars', field: 'count', cases: ['5', '10'] };
-        expect(matchSwitchCase(config, ctx)).toBe('5');
+        const config: SwitchConfig = {
+            target: 'vars',
+            field: 'count',
+            cases: switchCases('5', '10'),
+        };
+        expect(matchSwitchCase(config, ctx)).toBe('case-1');
     });
 
     it('matches vars strings case-insensitively', () => {
-        const config: SwitchConfig = { target: 'vars', field: 'kind', cases: ['Invoice'] };
-        expect(matchSwitchCase(config, ctx)).toBe('Invoice');
+        const config: SwitchConfig = {
+            target: 'vars',
+            field: 'kind',
+            cases: switchCases('Invoice'),
+        };
+        expect(matchSwitchCase(config, ctx)).toBe('case-1');
     });
 
     it('routes a missing vars field to default', () => {
-        const config: SwitchConfig = { target: 'vars', field: 'missing', cases: ['x'] };
+        const config: SwitchConfig = { target: 'vars', field: 'missing', cases: switchCases('x') };
         expect(matchSwitchCase(config, ctx)).toBe('default');
     });
 
     it('routes a null vars field to default', () => {
         const withNull: WorkflowContext = { ...ctx, vars: { ...ctx.vars, kind: null } };
-        const config: SwitchConfig = { target: 'vars', field: 'kind', cases: ['null'] };
+        const config: SwitchConfig = { target: 'vars', field: 'kind', cases: switchCases('null') };
         expect(matchSwitchCase(config, withNull)).toBe('default');
     });
 
     it('routes to the matching case on the event name', () => {
-        const config: SwitchConfig = { target: 'event', cases: ['file.created', 'file.deleted'] };
-        expect(matchSwitchCase(config, ctx)).toBe('file.created');
+        const config: SwitchConfig = {
+            target: 'event',
+            cases: switchCases('file.created', 'file.deleted'),
+        };
+        expect(matchSwitchCase(config, ctx)).toBe('case-1');
     });
 
     it('falls back to default when no event name case matches', () => {
-        const config: SwitchConfig = { target: 'event', cases: ['file.modified'] };
+        const config: SwitchConfig = { target: 'event', cases: switchCases('file.modified') };
         expect(matchSwitchCase(config, ctx)).toBe('default');
     });
 });

@@ -4,6 +4,7 @@ import { FileEventPayloadSchema } from './file-event-payload.js';
 import { PipelineNodeSchema } from './nodes/index.js';
 import { CompiledPipelineSchema, parsePipeline } from './pipeline.js';
 import { sampleManualTriggerToLog } from './samples.js';
+import { validateWorkflowTopology } from './topology.js';
 import { WorkflowContextSchema } from './workflow-context.js';
 
 describe('FileEventPayloadSchema', () => {
@@ -291,7 +292,7 @@ describe('CompiledPipelineSchema', () => {
         expect(result.ok).toBe(false);
     });
 
-    it('rejects a switch with duplicate case values', () => {
+    it('accepts editable duplicate values at the schema seam and reports them at topology validation', () => {
         const invalid = {
             id: 'p',
             workflowId: 'w',
@@ -306,9 +307,17 @@ describe('CompiledPipelineSchema', () => {
             edges: [],
         };
         const result = parsePipeline(invalid);
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-            expect(result.error).toMatch(/unique/);
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            const topology = validateWorkflowTopology(result.value);
+            expect(topology.ok).toBe(false);
+            if (!topology.ok) {
+                expect(topology.diagnostics).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({ code: 'duplicate_match_value' }),
+                    ]),
+                );
+            }
         }
     });
 });
