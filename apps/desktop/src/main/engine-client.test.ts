@@ -81,6 +81,28 @@ describe('rpc', () => {
         });
     });
 
+    it('ignores a duplicate response after the pending call has settled', async () => {
+        const { props, sent } = buildProps();
+        const client = createRpcClient(props);
+        const settled = vi.fn();
+
+        const promise = client.request('ping', {}, 5000);
+        const correlationId = (sent[0] as Record<string, string>).correlationId;
+        const pong: EnginePong = {
+            correlationId,
+            type: EngineChannel.Pong,
+            receivedAt: Date.now(),
+        };
+        const observed = promise.then(settled);
+
+        client.dispatch(pong);
+        await observed;
+        client.dispatch(pong);
+        await Promise.resolve();
+
+        expect(settled).toHaveBeenCalledTimes(1);
+    });
+
     it('ignores non-matching messages (different correlationId)', async () => {
         const { props } = buildProps();
         const client = createRpcClient(props);
@@ -148,7 +170,7 @@ describe('rpc', () => {
             type: 'engine:pong',
             receivedAt: Date.now(),
         };
-        client.dispatch(lateResponse);
+        expect(() => client.dispatch(lateResponse)).not.toThrow();
     });
 });
 
@@ -221,9 +243,32 @@ describe('rejectAll', () => {
         await expect(promise).rejects.toThrow('cleanup');
         vi.advanceTimersByTime(5000);
     });
+
+    it('settles each pending call once when worker failure and exit are both reported', async () => {
+        const { props } = buildProps();
+        const client = createRpcClient(props);
+        const rejected = vi.fn();
+
+        const first = client.request('ping', {}, 5000).catch(rejected);
+        const second = client.request('toggleWorkflow', { id: 'wf-1' }, 5000).catch(rejected);
+
+        client.rejectAll('engine worker error');
+        client.rejectAll('engine worker exited with code 1');
+
+        await Promise.all([first, second]);
+        expect(rejected).toHaveBeenCalledTimes(2);
+    });
 });
 
 describe('dispatch', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     it('forwards Log messages to logHandlers', () => {
         const { props } = buildProps();
         const client = createRpcClient(props);
@@ -299,6 +344,25 @@ describe('dispatch', () => {
         };
 
         expect(() => client.dispatch(pong)).not.toThrow();
+    });
+
+    it('rejects and diagnoses a malformed response for the pending command', async () => {
+        const { props, sent } = buildProps();
+        const client = createRpcClient(props);
+        const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        const pending = client.request('ping', {}, 1000);
+        const correlationId = (sent[0] as Record<string, string>).correlationId;
+
+        client.dispatch({
+            type: EngineChannel.Pong,
+            correlationId,
+        });
+
+        vi.advanceTimersByTime(1000);
+        await expect(pending).rejects.toThrow('Invalid ping response');
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('invalid message envelope'));
+        error.mockRestore();
     });
 
     it('rejects a wrong-direction request at the Engine receive site', async () => {

@@ -3,7 +3,9 @@ import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { app } from 'electron';
+import { z } from 'zod';
 import {
+    CorrelationIdSchema,
     EngineCommandContracts,
     type EngineCommandName,
     type EngineCommandResponse,
@@ -106,8 +108,17 @@ const engineResponseTypes: ReadonlySet<string> = new Set(
     Object.values(EngineCommandContracts).map((contract) => contract.responseType),
 );
 
+const EngineResponseEnvelopeSchema = z.object({
+    type: z.string(),
+    correlationId: CorrelationIdSchema,
+});
+
 function isEngineCommandResponse(message: EngineToMainMessage): message is EngineCommandResponse {
     return engineResponseTypes.has(message.type);
+}
+
+function assertNever(value: never): never {
+    throw new Error(`Unhandled Engine message: ${JSON.stringify(value)}`);
 }
 
 void ({
@@ -232,6 +243,19 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
     const { postMessage, logHandlers, workflowsListHandlers, busEventHandlers } = props;
     const pending = new Map<string, PendingEntry>();
 
+    function takePending(correlationId: string): PendingEntry | undefined {
+        const entry = pending.get(correlationId);
+        if (!entry) return undefined;
+        pending.delete(correlationId);
+        clearTimeout(entry.timer);
+        return entry;
+    }
+
+    function settlePending(correlationId: string, settle: (entry: PendingEntry) => void): void {
+        const entry = takePending(correlationId);
+        if (entry) settle(entry);
+    }
+
     function request<C extends EngineCommandName>(
         command: C,
         payload: EngineRequestPayload<C>,
@@ -255,8 +279,9 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
 
         return new Promise<EngineResponse<C>>((resolve, reject) => {
             const timer = setTimeout(() => {
-                pending.delete(correlationId);
-                reject(new Error(`${command} timed out after ${timeoutMs}ms`));
+                settlePending(correlationId, (entry) => {
+                    entry.reject(new Error(`${command} timed out after ${timeoutMs}ms`));
+                });
             }, timeoutMs);
             pending.set(correlationId, {
                 command,
@@ -271,11 +296,11 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
     }
 
     function rejectAll(reason: string): void {
-        for (const entry of pending.values()) {
-            clearTimeout(entry.timer);
-            entry.reject(new Error(reason));
+        for (const correlationId of [...pending.keys()]) {
+            settlePending(correlationId, (entry) => {
+                entry.reject(new Error(reason));
+            });
         }
-        pending.clear();
     }
 
     function resolvePending(message: EngineToMainMessage): void {
@@ -283,14 +308,28 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
         const entry = pending.get(message.correlationId);
         if (!entry || message.type !== entry.responseType) return;
 
-        pending.delete(message.correlationId);
-        clearTimeout(entry.timer);
         const parsed = entry.parseResponse(message);
-        if (!parsed.success) {
-            entry.reject(new Error(`Invalid ${entry.command} response: ${parsed.message}`));
-            return;
-        }
-        entry.resolve(parsed.data);
+        settlePending(message.correlationId, (settledEntry) => {
+            if (!parsed.success) {
+                settledEntry.reject(
+                    new Error(`Invalid ${settledEntry.command} response: ${parsed.message}`),
+                );
+                return;
+            }
+            settledEntry.resolve(parsed.data);
+        });
+    }
+
+    function rejectMalformedResponse(raw: unknown, detail: string): void {
+        const envelope = EngineResponseEnvelopeSchema.safeParse(raw);
+        if (!envelope.success) return;
+
+        const entry = pending.get(envelope.data.correlationId);
+        if (!entry || envelope.data.type !== entry.responseType) return;
+
+        settlePending(envelope.data.correlationId, (settledEntry) => {
+            settledEntry.reject(new Error(`Invalid ${settledEntry.command} response: ${detail}`));
+        });
     }
 
     function dispatch(raw: unknown): void {
@@ -300,6 +339,7 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
                 .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
                 .join('; ');
             console.error(`[engine] invalid message envelope: ${detail}`);
+            rejectMalformedResponse(raw, detail);
             return;
         }
         const message = parsed.data;
@@ -318,6 +358,7 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
                     resolvePending(message);
                     return;
                 }
+                assertNever(message);
         }
     }
 
@@ -354,20 +395,12 @@ export function spawnEngine(): EngineHandle {
 
     worker.on('message', (raw: unknown) => {
         const parsed = EngineToMainMessageOrReadySchema.safeParse(raw);
-        if (!parsed.success) {
-            console.error(
-                '[engine] invalid message envelope:',
-                parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
-            );
-            return;
-        }
-        const message = parsed.data;
-        if (message.type === 'engine:ready') {
+        if (parsed.success && parsed.data.type === 'engine:ready') {
             ready = true;
             for (const handler of readyHandlers) handler();
             return;
         }
-        client.dispatch(message);
+        client.dispatch(raw);
     });
 
     worker.on('error', (err) => {
