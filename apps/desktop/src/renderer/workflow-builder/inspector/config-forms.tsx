@@ -98,10 +98,10 @@ export function FileWatcherConfigForm({
                 checked={config.recursive}
                 onChange={(recursive) => onChange({ ...config, recursive })}
             />
-            <div className="flex flex-col gap-1.5">
-                <span className="font-ui text-veil-foreground text-[11px] tracking-widest uppercase">
+            <fieldset className="flex flex-col gap-1.5">
+                <legend className="font-ui text-veil-foreground text-[11px] tracking-widest uppercase">
                     Events
-                </span>
+                </legend>
                 {EVENT_NAME_OPTIONS.map((option) => (
                     <Checkbox
                         key={option.value}
@@ -115,7 +115,7 @@ export function FileWatcherConfigForm({
                         }}
                     />
                 ))}
-            </div>
+            </fieldset>
             <StringList
                 label="Ignore patterns"
                 values={ignorePatterns}

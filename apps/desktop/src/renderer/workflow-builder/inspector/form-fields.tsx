@@ -3,6 +3,12 @@ import type { ChangeEvent, ReactElement, ReactNode } from 'react';
 import { useEffect, useId, useState } from 'react';
 
 import { cn } from '../../lib/utils.js';
+import {
+    getNumberInputBlurDraft,
+    getNumberInputChange,
+    getNumberInputId,
+    getNumberInputValidation,
+} from './number-input.js';
 
 interface FieldProps {
     readonly label: string;
@@ -77,11 +83,10 @@ interface NumberInputProps {
 
 export function NumberInput({ label, value, onChange, min, id }: NumberInputProps): ReactElement {
     const generatedId = useId();
-    const inputId = id ?? generatedId;
+    const inputId = getNumberInputId(id, generatedId);
     const [draftValue, setDraftValue] = useState(() => String(value));
     const [isFocused, setIsFocused] = useState(false);
-    const parsedValue = Number(draftValue);
-    const invalid = isFocused && (draftValue.trim().length === 0 || !Number.isFinite(parsedValue));
+    const validation = getNumberInputValidation(draftValue, isFocused, inputId);
 
     useEffect(() => {
         if (!isFocused) setDraftValue(String(value));
@@ -96,28 +101,31 @@ export function NumberInput({ label, value, onChange, min, id }: NumberInputProp
                 className={INPUT_CLASS}
                 value={draftValue}
                 min={min}
-                aria-invalid={invalid || undefined}
-                aria-describedby={invalid ? `${inputId}-hint` : undefined}
+                aria-invalid={validation.invalid || undefined}
+                aria-describedby={validation.describedBy}
                 onFocus={() => setIsFocused(true)}
                 onChange={(event: ChangeEvent<HTMLInputElement>) => {
                     const rawValue = event.target.value;
-                    const nextValue = Number(rawValue);
-                    setDraftValue(rawValue);
-                    if (rawValue.trim().length > 0 && Number.isFinite(nextValue)) {
-                        onChange(nextValue);
-                    }
+                    const next = getNumberInputChange(rawValue);
+                    setDraftValue(next.draftValue);
+                    if (next.value !== null) onChange(next.value);
                 }}
                 onBlur={() => {
                     setIsFocused(false);
-                    if (invalid) setDraftValue(String(value));
+                    const nextDraft = getNumberInputBlurDraft(
+                        draftValue,
+                        value,
+                        validation.invalid,
+                    );
+                    if (nextDraft !== draftValue) setDraftValue(nextDraft);
                 }}
             />
-            {invalid ? (
+            {validation.errorMessage ? (
                 <span
                     id={`${inputId}-hint`}
                     className="font-data text-old-blood-foreground text-[10px]"
                 >
-                    Enter a finite number.
+                    {validation.errorMessage}
                 </span>
             ) : null}
         </Field>
