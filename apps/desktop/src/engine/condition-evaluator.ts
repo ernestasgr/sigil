@@ -157,6 +157,7 @@ function matchStringCase(cases: readonly SwitchCase[], raw: unknown): string {
 function matchNumberCase(cases: readonly SwitchCase[], raw: number): string {
     return (
         cases.find((switchCase) => {
+            if (switchCase.value.trim() === '') return false;
             const caseNum = Number(switchCase.value);
             return !Number.isNaN(caseNum) && caseNum === raw;
         })?.id ?? 'default'

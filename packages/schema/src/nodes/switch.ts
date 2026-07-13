@@ -28,33 +28,6 @@ const FieldSwitchSchema = z.object({
     cases: SwitchCasesSchema,
 });
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isStringArray(value: unknown): value is readonly string[] {
-    return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
-}
-
-function legacyCaseId(value: string, index: number): string {
-    // Legacy Edges used the match value as their sourcePort. Reusing a valid
-    // value as the migrated identity keeps those Edges connected after load.
-    if (value.length > 0 && value !== SWITCH_DEFAULT_PORT) return value;
-    return `legacy-case-${index + 1}`;
-}
-
-function normalizeLegacySwitchCases(input: unknown): unknown {
-    if (!isRecord(input) || !isStringArray(input.cases)) return input;
-
-    return {
-        ...input,
-        cases: input.cases.map((value, index) => ({
-            id: legacyCaseId(value, index),
-            value,
-        })),
-    };
-}
-
 const SwitchConfigShapeSchema = z.union([EventNameSwitchSchema, FieldSwitchSchema]);
 
 /**
@@ -62,7 +35,7 @@ const SwitchConfigShapeSchema = z.union([EventNameSwitchSchema, FieldSwitchSchem
  * hold an empty/intermediate value while the author is typing; topology
  * validation reports whether the current draft is saveable.
  */
-export const SwitchConfigSchema = z.preprocess(normalizeLegacySwitchCases, SwitchConfigShapeSchema);
+export const SwitchConfigSchema = SwitchConfigShapeSchema;
 
 export type SwitchConfig = z.infer<typeof SwitchConfigSchema>;
 

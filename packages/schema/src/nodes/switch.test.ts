@@ -16,18 +16,6 @@ describe('Switch descriptor', () => {
         }
     });
 
-    it('normalizes legacy value-based cases while preserving their historical port identity', () => {
-        const parsed = SwitchConfigSchema.safeParse({
-            target: 'event',
-            cases: ['file.created'],
-        });
-
-        expect(parsed.success).toBe(true);
-        if (parsed.success) {
-            expect(parsed.data.cases).toEqual([{ id: 'file.created', value: 'file.created' }]);
-        }
-    });
-
     it('keeps invalid draft values representable for structured topology diagnostics', () => {
         const parsed = SwitchConfigSchema.safeParse({
             target: 'event',
