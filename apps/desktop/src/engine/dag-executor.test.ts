@@ -200,7 +200,14 @@ describe('dag-executor', () => {
                     {
                         id: 'sw',
                         type: 'switch',
-                        config: { target: 'payload', field: 'ext', cases: [...cases] },
+                        config: {
+                            target: 'payload',
+                            field: 'ext',
+                            cases: cases.map((value, index) => ({
+                                id: `case-${index + 1}`,
+                                value,
+                            })),
+                        },
                     },
                     log('pdf-log', 'routed to PDF'),
                     log('png-log', 'routed to PNG'),
@@ -213,7 +220,7 @@ describe('dag-executor', () => {
                             `sw-to-${caseLabel}`,
                             'sw',
                             index === 0 ? 'pdf-log' : 'png-log',
-                            caseLabel,
+                            `case-${index + 1}`,
                         ),
                     ),
                     edge('sw-to-default', 'sw', 'default-log', 'default'),

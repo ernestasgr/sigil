@@ -1,5 +1,5 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
-import type { SwitchConfig } from '@sigil/schema/nodes/switch';
+import type { SwitchCase, SwitchConfig } from '@sigil/schema/nodes/switch';
 import type { BooleanOperator, NumberOperator, StringOperator } from '@sigil/schema/operators';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Either, Match } from 'effect';
@@ -148,22 +148,22 @@ export function evaluateCondition(condition: PipelineCondition, ctx: WorkflowCon
     );
 }
 
-function matchStringCase(cases: readonly string[], raw: unknown): string {
+function matchStringCase(cases: readonly SwitchCase[], raw: unknown): string {
     if (raw === undefined || raw === null) return 'default';
     const fieldStr = String(raw).toLowerCase();
-    return cases.find((c) => c.toLowerCase() === fieldStr) ?? 'default';
+    return cases.find((switchCase) => switchCase.value.toLowerCase() === fieldStr)?.id ?? 'default';
 }
 
-function matchNumberCase(cases: readonly string[], raw: number): string {
+function matchNumberCase(cases: readonly SwitchCase[], raw: number): string {
     return (
-        cases.find((c) => {
-            const caseNum = Number(c);
+        cases.find((switchCase) => {
+            const caseNum = Number(switchCase.value);
             return !Number.isNaN(caseNum) && caseNum === raw;
-        }) ?? 'default'
+        })?.id ?? 'default'
     );
 }
 
-function matchFieldCase(cases: readonly string[], raw: unknown): string {
+function matchFieldCase(cases: readonly SwitchCase[], raw: unknown): string {
     if (typeof raw === 'number') return matchNumberCase(cases, raw);
     return matchStringCase(cases, raw);
 }

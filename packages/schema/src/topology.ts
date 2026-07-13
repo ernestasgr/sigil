@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { isPluginNode, outputPortsForNode, type PipelineNode } from './nodes/index.js';
+import {
+    isPluginNode,
+    outputPortsForNode,
+    type PipelineNode,
+    SWITCH_DIAGNOSTIC_CODES,
+    validateSwitchConfig,
+} from './nodes/index.js';
 import type { CompiledPipeline } from './pipeline.js';
 
 const TOPOLOGY_DIAGNOSTIC_CODES = [
@@ -19,6 +25,7 @@ const TOPOLOGY_DIAGNOSTIC_CODES = [
     'duplicate_node_id',
     'duplicate_edge_id',
     'unsupported_node_handler',
+    ...SWITCH_DIAGNOSTIC_CODES,
 ] as const;
 
 export const TopologyDiagnosticSeveritySchema = z.enum(['error', 'warning']);
@@ -40,7 +47,10 @@ export const TopologyDiagnosticSchema = z
         target: TopologyDiagnosticTargetSchema,
         nodeId: z.string().min(1).optional(),
         edgeId: z.string().min(1).optional(),
+        caseId: z.string().min(1).optional(),
+        fieldPath: z.string().min(1).optional(),
         message: z.string().min(1),
+        repairHint: z.string().min(1).optional(),
     })
     .readonly();
 
@@ -135,7 +145,9 @@ function appendUnique(diagnostics: TopologyDiagnostic[], diagnostic: TopologyDia
             existing.code === diagnostic.code &&
             existing.target.kind === diagnostic.target.kind &&
             existing.nodeId === diagnostic.nodeId &&
-            existing.edgeId === diagnostic.edgeId,
+            existing.edgeId === diagnostic.edgeId &&
+            existing.caseId === diagnostic.caseId &&
+            existing.fieldPath === diagnostic.fieldPath,
     );
     if (!duplicate) diagnostics.push(diagnostic);
 }
@@ -216,6 +228,28 @@ export function validateWorkflowTopology(
         nodeById.set(node.id, node);
     }
 
+    const nodes = [...nodeById.values()];
+    for (const node of nodes) {
+        if (isPluginNode(node) || node.type !== 'switch') continue;
+
+        for (const diagnostic of validateSwitchConfig(node.config)) {
+            const fieldPath =
+                diagnostic.code === 'duplicate_case_id' || diagnostic.code === 'reserved_case_id'
+                    ? `config.cases[${diagnostic.caseIndex}].id`
+                    : `config.cases[${diagnostic.caseIndex}].value`;
+            appendUnique(diagnostics, {
+                severity: 'error',
+                code: diagnostic.code,
+                target: { kind: 'node', nodeId: node.id },
+                nodeId: node.id,
+                caseId: diagnostic.caseId,
+                fieldPath,
+                message: diagnostic.message,
+                repairHint: diagnostic.repairHint,
+            });
+        }
+    }
+
     const incoming = new Map<string, string[]>();
     const outgoing = new Map<string, string[]>();
     for (const node of nodeById.values()) {
@@ -268,7 +302,6 @@ export function validateWorkflowTopology(
         outgoing.get(sourceNode.id)?.push(targetNode.id);
     }
 
-    const nodes = [...nodeById.values()];
     if (options.isNodeSupported) {
         for (const node of nodes) {
             if (!options.isNodeSupported(node)) {
@@ -440,5 +473,11 @@ export function validateWorkflowTopology(
 }
 
 export function formatTopologyDiagnostics(diagnostics: readonly TopologyDiagnostic[]): string {
-    return diagnostics.map((diagnostic) => `[${diagnostic.code}] ${diagnostic.message}`).join('\n');
+    return diagnostics
+        .map((diagnostic) => {
+            const field = diagnostic.fieldPath ? ` (${diagnostic.fieldPath})` : '';
+            const repair = diagnostic.repairHint ? ` Repair: ${diagnostic.repairHint}` : '';
+            return `[${diagnostic.code}]${field} ${diagnostic.message}${repair}`;
+        })
+        .join('\n');
 }

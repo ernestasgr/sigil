@@ -100,9 +100,10 @@ describe('useBuilderStore', () => {
     it('updateSpec replaces the config and prunes edges whose port is no longer valid', () => {
         const sw = useBuilderStore.getState().addNode('switch', { x: 0, y: 0 });
         const log = useBuilderStore.getState().addNode('log', { x: 100, y: 0 });
+        const caseId = 'case-1';
         useBuilderStore
             .getState()
-            .connect({ source: sw, target: log, sourceHandle: 'pdf', targetHandle: null });
+            .connect({ source: sw, target: log, sourceHandle: caseId, targetHandle: null });
         useBuilderStore.getState().connect({
             source: sw,
             target: log,
@@ -113,16 +114,52 @@ describe('useBuilderStore', () => {
 
         useBuilderStore.getState().updateSpec(sw, {
             type: 'switch',
-            config: { target: 'event', cases: ['png'] },
+            config: { target: 'event', cases: [{ id: 'case-png', value: 'png' }] },
         });
 
         const state = useBuilderStore.getState();
         expect(state.nodes[0].data.type).toBe('switch');
         if (state.nodes[0].data.type === 'switch') {
-            expect(state.nodes[0].data.config.cases).toEqual(['png']);
+            expect(state.nodes[0].data.config.cases).toEqual([{ id: 'case-png', value: 'png' }]);
         }
         const ports = state.edges.map((e) => e.sourceHandle);
         expect(ports).toEqual(['default']);
+    });
+
+    it('keeps a connected Edge while a Switch case value is edited through an empty intermediate state', () => {
+        const sw = useBuilderStore.getState().addNode('switch', { x: 0, y: 0 });
+        const log = useBuilderStore.getState().addNode('log', { x: 100, y: 0 });
+        const caseId = 'case-1';
+        useBuilderStore
+            .getState()
+            .connect({ source: sw, target: log, sourceHandle: caseId, targetHandle: null });
+
+        useBuilderStore.getState().updateSpec(sw, {
+            type: 'switch',
+            config: { target: 'event', cases: [{ id: caseId, value: 'p' }] },
+        });
+        useBuilderStore.getState().updateSpec(sw, {
+            type: 'switch',
+            config: { target: 'event', cases: [{ id: caseId, value: '' }] },
+        });
+
+        expect(useBuilderStore.getState().edges).toEqual([
+            expect.objectContaining({ source: sw, target: log, sourceHandle: caseId }),
+        ]);
+
+        const result = useBuilderStore.getState().compile();
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.diagnostics).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        code: 'empty_match_value',
+                        nodeId: sw,
+                        fieldPath: 'config.cases[0].value',
+                    }),
+                ]),
+            );
+        }
     });
 
     it('compile returns a valid pipeline for a single default Trigger Node', () => {

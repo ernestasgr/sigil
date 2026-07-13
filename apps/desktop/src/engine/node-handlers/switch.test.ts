@@ -20,7 +20,13 @@ const ctx: WorkflowContext = {
 const switchNode: PipelineNode = {
     id: 'sw',
     type: 'switch',
-    config: { target: 'event', cases: ['file.created', 'file.deleted'] },
+    config: {
+        target: 'event',
+        cases: [
+            { id: 'case-created', value: 'file.created' },
+            { id: 'case-deleted', value: 'file.deleted' },
+        ],
+    },
 };
 
 function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
@@ -38,13 +44,13 @@ function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
 
 describe('switch handler', () => {
     it('returns the active port from matchSwitchCase', async () => {
-        const matchSwitchCase = vi.fn().mockReturnValue('file.created');
+        const matchSwitchCase = vi.fn().mockReturnValue('case-created');
         const deps = { ...buildDeps(), matchSwitchCase };
 
         const { switchHandler } = await import('./switch.js');
         const result = await switchHandler.execute({ node: switchNode, ctx }, deps);
 
-        expect(result.activePort).toBe('file.created');
+        expect(result.activePort).toBe('case-created');
         expect(result.outputCtx).toBe(ctx);
         expect(matchSwitchCase).toHaveBeenCalledWith(switchNode.config, ctx);
     });

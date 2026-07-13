@@ -8,7 +8,7 @@ import { ManualTriggerDescriptor } from './manual-trigger.js';
 import { NotificationDescriptor } from './notification.js';
 import { StateGetDescriptor } from './state-get.js';
 import { StateSetDescriptor } from './state-set.js';
-import { SwitchDescriptor } from './switch.js';
+import { SwitchDescriptor, switchPortLabel } from './switch.js';
 import type { NodeDescriptor } from './types.js';
 
 export type { DelayConfig } from './delay.js';
@@ -20,7 +20,14 @@ export type { ManualTriggerConfig } from './manual-trigger.js';
 export type { NotificationConfig } from './notification.js';
 export type { StateGetConfig } from './state-get.js';
 export type { StateSetConfig } from './state-set.js';
-export type { SwitchConfig } from './switch.js';
+export type { SwitchCase, SwitchConfig, SwitchDiagnostic, SwitchDiagnosticCode } from './switch.js';
+export {
+    SWITCH_DEFAULT_PORT,
+    SWITCH_DIAGNOSTIC_CODES,
+    SwitchCaseSchema,
+    switchPortLabel,
+    validateSwitchConfig,
+} from './switch.js';
 export type { NodeDescriptor, UnknownNodeDescriptor } from './types.js';
 
 // ─── Registry ───────────────────────────────────────────────────
@@ -168,6 +175,27 @@ export function outputPortsForNode(node: PipelineNode): readonly string[] {
             return nodeDescriptors['state-get'].getOutputPorts(node.config);
         case 'state-set':
             return nodeDescriptors['state-set'].getOutputPorts(node.config);
+        default:
+            return assertNever(node);
+    }
+}
+
+export function outputPortLabelForNode(node: PipelineNode, port: string): string {
+    if (isPluginNode(node)) return port;
+
+    switch (node.type) {
+        case 'file-watcher':
+        case 'manual-trigger':
+        case 'if-else':
+        case 'file-manager':
+        case 'notification':
+        case 'log':
+        case 'delay':
+        case 'state-get':
+        case 'state-set':
+            return port;
+        case 'switch':
+            return switchPortLabel(node.config, port);
         default:
             return assertNever(node);
     }

@@ -65,7 +65,10 @@ const validCalls = [
     },
     {
         operation: 'matchSwitchCase',
-        args: [{ target: 'event', cases: ['file.created'] }, workflowContext],
+        args: [
+            { target: 'event', cases: [{ id: 'case-created', value: 'file.created' }] },
+            workflowContext,
+        ],
     },
     { operation: 'state.get', args: ['key'] },
     { operation: 'state.set', args: ['key', 'value'] },

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
 import { parsePipeline } from '@sigil/schema';
+import { isPluginNode } from '@sigil/schema/nodes';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -269,6 +270,145 @@ describe('WorkflowStore', () => {
         expect(Option.getOrThrow(result).name).toBe('My Workflow');
         expect(Option.getOrThrow(result).pipeline).toEqual(samplePipeline);
         expect(Option.getOrThrow(result).positions).toEqual(samplePositions);
+    });
+
+    it('preserves Switch case identities when a persisted match value is edited and saved', () => {
+        const switchPipeline: CompiledPipeline = {
+            id: 'pipeline-switch',
+            workflowId: 'wf-switch',
+            schemaVersion: 1,
+            nodes: [
+                {
+                    id: 'trigger',
+                    type: 'manual-trigger',
+                    config: {
+                        eventName: 'file.created',
+                        payload: { path: '/x', name: 'x', ext: 'pdf', size: 1, dir: '/x' },
+                    },
+                },
+                {
+                    id: 'switch',
+                    type: 'switch',
+                    config: {
+                        target: 'payload',
+                        field: 'ext',
+                        cases: [{ id: 'case-pdf', value: 'pdf' }],
+                    },
+                },
+                { id: 'log', type: 'log', config: { message: 'matched' } },
+            ],
+            edges: [
+                { id: 'trigger-switch', source: 'trigger', target: 'switch', sourcePort: 'out' },
+                {
+                    id: 'switch-log',
+                    source: 'switch',
+                    target: 'log',
+                    sourcePort: 'case-pdf',
+                },
+            ],
+        };
+
+        store.create('Switch Workflow', switchPipeline, {});
+        const editedPipeline: CompiledPipeline = {
+            ...switchPipeline,
+            nodes: switchPipeline.nodes.map((node) =>
+                !isPluginNode(node) && node.type === 'switch'
+                    ? {
+                          ...node,
+                          config: {
+                              ...node.config,
+                              cases: [{ id: 'case-pdf', value: 'portable-document' }],
+                          },
+                      }
+                    : node,
+            ),
+        };
+
+        store.save('wf-switch', 'Switch Workflow', editedPipeline, {});
+
+        const loaded = store.get('wf-switch');
+        expect(Option.isSome(loaded)).toBe(true);
+        if (Option.isSome(loaded)) {
+            const switchNode = loaded.value.pipeline.nodes.find((node) => node.id === 'switch');
+            expect(switchNode).toMatchObject({
+                config: {
+                    cases: [{ id: 'case-pdf', value: 'portable-document' }],
+                },
+            });
+            expect(loaded.value.pipeline.edges[1]?.sourcePort).toBe('case-pdf');
+        }
+
+        const persisted = JSON.parse(readFileSync(join(dir, 'wf-switch.json'), 'utf8'));
+        expect(persisted.edges[1].sourcePort).toBe('case-pdf');
+        expect(persisted.nodes[1].config.cases[0]).toEqual({
+            id: 'case-pdf',
+            value: 'portable-document',
+        });
+    });
+
+    it('migrates legacy value-based Switch ports without dropping their connected Edge', () => {
+        writeFileSync(
+            join(dir, 'wf-legacy-switch.json'),
+            JSON.stringify({
+                id: 'wf-legacy-switch',
+                name: 'Legacy Switch Workflow',
+                nodes: [
+                    {
+                        id: 'trigger',
+                        type: 'manual-trigger',
+                        config: {
+                            eventName: 'file.created',
+                            payload: { path: '/x', name: 'x', ext: 'pdf', size: 1, dir: '/x' },
+                        },
+                    },
+                    {
+                        id: 'switch',
+                        type: 'switch',
+                        config: { target: 'payload', field: 'ext', cases: ['pdf'] },
+                    },
+                    { id: 'log', type: 'log', config: { message: 'matched' } },
+                ],
+                edges: [
+                    {
+                        id: 'trigger-switch',
+                        source: 'trigger',
+                        target: 'switch',
+                        sourcePort: 'out',
+                    },
+                    { id: 'switch-log', source: 'switch', target: 'log', sourcePort: 'pdf' },
+                ],
+            }),
+        );
+
+        store = createWorkflowStore(dir);
+        const loaded = store.get('wf-legacy-switch');
+        expect(Option.isSome(loaded)).toBe(true);
+        if (!Option.isSome(loaded)) return;
+
+        expect(loaded.value.pipeline.edges[1]?.sourcePort).toBe('pdf');
+        const editedPipeline: CompiledPipeline = {
+            ...loaded.value.pipeline,
+            nodes: loaded.value.pipeline.nodes.map((node) =>
+                !isPluginNode(node) && node.type === 'switch'
+                    ? {
+                          ...node,
+                          config: {
+                              ...node.config,
+                              cases: [{ id: 'pdf', value: 'portable-document' }],
+                          },
+                      }
+                    : node,
+            ),
+        };
+
+        store.save('wf-legacy-switch', 'Legacy Switch Workflow', editedPipeline, {});
+
+        const persisted = JSON.parse(readFileSync(join(dir, 'wf-legacy-switch.json'), 'utf8'));
+        expect(persisted.edges[1].sourcePort).toBe('pdf');
+        expect(persisted.nodes[1].config.cases[0]).toEqual({
+            id: 'pdf',
+            value: 'portable-document',
+        });
     });
 
     it('returns None for get() on a non-existent workflow', () => {
