@@ -102,6 +102,7 @@ export function WorkflowsSection(): ReactElement {
                     setSaveError(outcome.error);
                     return;
                 }
+                useBuilderStore.getState().markSaved();
                 setWorkflowView('list');
                 setEditingWorkflowId(null);
             } catch (err) {

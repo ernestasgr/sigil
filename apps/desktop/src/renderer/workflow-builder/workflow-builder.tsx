@@ -26,12 +26,22 @@ export function WorkflowBuilder({
     const pipelineName = useBuilderStore((state) => state.pipelineName);
     const setPipelineName = useBuilderStore((state) => state.setPipelineName);
     const meta = useBuilderStore((state) => state.meta);
+    const dirty = useBuilderStore((state) => state.dirty);
+    const canUndo = useBuilderStore((state) => state.canUndo);
+    const canRedo = useBuilderStore((state) => state.canRedo);
+    const undo = useBuilderStore((state) => state.undo);
+    const redo = useBuilderStore((state) => state.redo);
     const [showInspector, setShowInspector] = useState(false);
+
+    const handleCancel = () => {
+        if (dirty && !window.confirm('Discard unsaved Workflow changes?')) return;
+        onCancel();
+    };
 
     return (
         <div className="flex h-full flex-col bg-obsidian-ink p-2">
             <div className="border-gilt/40 mb-2 flex items-center gap-3 border px-4 py-2">
-                <Button size="sm" variant="ghost" onClick={onCancel}>
+                <Button size="sm" variant="ghost" onClick={handleCancel}>
                     ← Back
                 </Button>
                 <input
@@ -42,6 +52,35 @@ export function WorkflowBuilder({
                     aria-label="Workflow name"
                     className="font-ui flex-1 bg-transparent text-parchment outline-none placeholder:text-veil"
                 />
+                <span
+                    role="status"
+                    aria-live="polite"
+                    className={
+                        dirty ? 'font-ui text-xs text-gilt' : 'font-ui text-xs text-verdigris'
+                    }
+                >
+                    {dirty ? 'Unsaved' : 'Saved'}
+                </span>
+                <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={!canUndo}
+                    onClick={undo}
+                    aria-label="Undo last Workflow edit"
+                    title="Undo last edit"
+                >
+                    Undo
+                </Button>
+                <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={!canRedo}
+                    onClick={redo}
+                    aria-label="Redo last Workflow edit"
+                    title="Redo last edit"
+                >
+                    Redo
+                </Button>
                 <button
                     type="button"
                     onClick={() => setShowInspector((prev) => !prev)}

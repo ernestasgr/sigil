@@ -2,12 +2,22 @@ import type { ReactElement } from 'react';
 
 import { cn } from '../lib/utils.js';
 import { SECTIONS } from '../sections.js';
-import { useAppStore } from '../store/app-store.js';
+import { type Section, useAppStore } from '../store/app-store.js';
+import { useBuilderStore } from '../workflow-builder/builder-store.js';
 import { WorkflowStatus } from './workflow-status.js';
 
 export function Nav(): ReactElement {
     const activeSection = useAppStore((state) => state.activeSection);
+    const workflowView = useAppStore((state) => state.workflowView);
     const navigate = useAppStore((state) => state.navigate);
+    const dirty = useBuilderStore((state) => state.dirty);
+
+    const handleNavigate = (section: Section): void => {
+        const leavingBuilder =
+            activeSection === 'workflows' && workflowView === 'builder' && section !== 'workflows';
+        if (leavingBuilder && dirty && !window.confirm('Discard unsaved Workflow changes?')) return;
+        navigate(section);
+    };
 
     return (
         <nav className="border-gilt/40 flex w-60 flex-col border-r">
@@ -19,7 +29,7 @@ export function Nav(): ReactElement {
                     <li key={section.id}>
                         <button
                             type="button"
-                            onClick={() => navigate(section.id)}
+                            onClick={() => handleNavigate(section.id)}
                             className={cn(
                                 'border-l-2 font-ui text-sm tracking-widest uppercase transition-colors w-full px-6 py-3 text-left',
                                 activeSection === section.id
