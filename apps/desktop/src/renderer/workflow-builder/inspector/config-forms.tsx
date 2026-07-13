@@ -25,6 +25,13 @@ import type { ReactElement } from 'react';
 import { Button } from '../../components/ui/button.js';
 import { useSigil } from '../../lib/use-sigil.js';
 import {
+    EVENT_CATALOG,
+    EVENT_NAME_OPTIONS,
+    eventNameSuggestions,
+    payloadFieldSuggestions,
+} from '../event-catalog.js';
+import { updateFieldCondition } from './condition-authoring.js';
+import {
     Checkbox,
     NumberInput,
     SelectInput,
@@ -35,14 +42,8 @@ import {
 
 type FieldValueKind = 'string' | 'number' | 'boolean';
 
-const EVENT_NAME_OPTIONS: {
-    readonly value: ManualTriggerConfig['eventName'];
-    readonly label: string;
-}[] = [
-    { value: 'file.created', label: 'file.created' },
-    { value: 'file.modified', label: 'file.modified' },
-    { value: 'file.deleted', label: 'file.deleted' },
-];
+const EVENT_NAME_SUGGESTIONS = eventNameSuggestions();
+const PAYLOAD_FIELD_SUGGESTIONS = payloadFieldSuggestions();
 
 const TARGET_OPTIONS: { readonly value: 'event' | 'payload' | 'vars'; readonly label: string }[] = [
     { value: 'event', label: 'Event name' },
@@ -229,7 +230,8 @@ function ConditionForm({
                     <TextInput
                         label="Value"
                         value={condition.value}
-                        placeholder="file.created"
+                        placeholder="event.name"
+                        suggestions={EVENT_NAME_SUGGESTIONS}
                         onChange={(value) => onChange({ ...condition, value })}
                     />
                 </>
@@ -289,7 +291,10 @@ function FieldConditionFields({
                 label="Field"
                 value={condition.field}
                 placeholder="ext"
-                onChange={(field) => onChange({ ...condition, field })}
+                suggestions={condition.target === 'payload' ? PAYLOAD_FIELD_SUGGESTIONS : undefined}
+                onChange={(field) =>
+                    onChange(updateFieldCondition(condition, field, EVENT_CATALOG))
+                }
             />
             <SelectInput
                 label="Value type"
@@ -379,6 +384,9 @@ export function SwitchConfigForm({
                     label="Field"
                     value={config.field}
                     placeholder="ext"
+                    suggestions={
+                        config.target === 'payload' ? PAYLOAD_FIELD_SUGGESTIONS : undefined
+                    }
                     onChange={(field) => onChange({ ...config, field })}
                 />
             ) : null}
@@ -386,6 +394,7 @@ export function SwitchConfigForm({
                 label="Cases"
                 values={config.cases}
                 placeholder="pdf"
+                suggestions={config.target === 'event' ? EVENT_NAME_SUGGESTIONS : undefined}
                 onChange={(cases) => onChange({ ...config, cases })}
             />
         </>

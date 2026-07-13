@@ -16,6 +16,12 @@ interface FieldProps {
     readonly children: ReactNode;
 }
 
+export interface InputSuggestion {
+    readonly value: string;
+    readonly label?: string;
+    readonly description?: string;
+}
+
 export function Field({ label, htmlFor, children }: FieldProps): ReactElement {
     return (
         <div className="flex flex-col gap-1">
@@ -42,6 +48,7 @@ interface TextInputProps {
     readonly id?: string;
     readonly invalid?: boolean;
     readonly descriptionId?: string;
+    readonly suggestions?: readonly InputSuggestion[];
 }
 
 export function TextInput({
@@ -53,9 +60,11 @@ export function TextInput({
     id,
     invalid,
     descriptionId,
+    suggestions,
 }: TextInputProps): ReactElement {
     const generatedId = useId();
     const inputId = id ?? generatedId;
+    const suggestionListId = `${inputId}-suggestions`;
     return (
         <Field label={label} htmlFor={inputId}>
             <input
@@ -65,10 +74,23 @@ export function TextInput({
                 className={cn(INPUT_CLASS, mono && 'font-data')}
                 value={value}
                 placeholder={placeholder}
+                list={suggestions && suggestions.length > 0 ? suggestionListId : undefined}
                 aria-invalid={invalid || undefined}
                 aria-describedby={descriptionId}
                 onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
             />
+            {suggestions && suggestions.length > 0 ? (
+                <datalist id={suggestionListId}>
+                    {suggestions.map((suggestion) => (
+                        <option
+                            key={suggestion.value}
+                            value={suggestion.value}
+                            label={suggestion.label}
+                            title={suggestion.description}
+                        />
+                    ))}
+                </datalist>
+            ) : null}
         </Field>
     );
 }
@@ -269,6 +291,7 @@ interface SwitchCaseListProps {
     readonly values: readonly SwitchCase[];
     readonly onChange: (values: SwitchCase[]) => void;
     readonly placeholder?: string;
+    readonly suggestions?: readonly InputSuggestion[];
 }
 
 export function SwitchCaseList({
@@ -276,6 +299,7 @@ export function SwitchCaseList({
     values,
     onChange,
     placeholder,
+    suggestions,
 }: SwitchCaseListProps): ReactElement {
     const listId = useId();
     return (
@@ -298,6 +322,7 @@ export function SwitchCaseList({
                                 className={cn(INPUT_CLASS, 'font-data')}
                                 value={switchCase.value}
                                 placeholder={placeholder}
+                                list={suggestions && suggestions.length > 0 ? listId : undefined}
                                 aria-label={`${label} entry ${index + 1}`}
                                 onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                     onChange(
@@ -331,6 +356,18 @@ export function SwitchCaseList({
                     + Add
                 </button>
             </div>
+            {suggestions && suggestions.length > 0 ? (
+                <datalist id={listId}>
+                    {suggestions.map((suggestion) => (
+                        <option
+                            key={suggestion.value}
+                            value={suggestion.value}
+                            label={suggestion.label}
+                            title={suggestion.description}
+                        />
+                    ))}
+                </datalist>
+            ) : null}
         </fieldset>
     );
 }
