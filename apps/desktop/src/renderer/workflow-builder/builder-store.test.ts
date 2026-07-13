@@ -1,7 +1,8 @@
 import type { CompiledPipeline } from '@sigil/schema';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useBuilderStore } from './builder-store.js';
+import type { WorkflowDraftDiagnostic, WorkflowDraftSaveResult } from './workflow-draft.js';
 
 describe('useBuilderStore', () => {
     beforeEach(() => {
@@ -183,6 +184,35 @@ describe('useBuilderStore', () => {
         }
     });
 
+    it('exposes structured validation diagnostics with Node and field context', () => {
+        const sw = useBuilderStore.getState().addNode('switch', { x: 0, y: 0 });
+        useBuilderStore.getState().updateSpec(sw, {
+            type: 'switch',
+            config: {
+                target: 'event',
+                cases: [
+                    { id: 'case-a', value: 'pdf' },
+                    { id: 'case-b', value: 'pdf' },
+                ],
+            },
+        });
+
+        const validation = useBuilderStore.getState().validation;
+        expect(validation.status).toBe('invalid');
+        if (validation.status === 'invalid') {
+            expect(validation.diagnostics).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        code: 'duplicate_match_value',
+                        target: { kind: 'node', nodeId: sw },
+                        fieldPath: 'config.cases[1].value',
+                        repairHint: expect.any(String),
+                    }),
+                ]),
+            );
+        }
+    });
+
     it('onNodesChange with a remove change drops the node, its edges, and clears selection', () => {
         const a = useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
         const b = useBuilderStore.getState().addNode('log', { x: 100, y: 0 });
@@ -350,5 +380,130 @@ describe('useBuilderStore', () => {
         expect(state.nodes).toEqual([]);
         expect(state.edges).toEqual([]);
         expect(state.selectedNodeId).toBeNull();
+    });
+
+    it('submits one async save command at a time and resets the baseline after success', async () => {
+        useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
+        useBuilderStore.getState().setPipelineName('Draft Workflow');
+
+        let resolvePending: ((result: WorkflowDraftSaveResult) => void) | undefined;
+        const pendingResult = new Promise<WorkflowDraftSaveResult>((resolve) => {
+            resolvePending = resolve;
+        });
+        const command = vi.fn(async () => pendingResult);
+
+        const firstSave = useBuilderStore.getState().save('Draft Workflow', command);
+
+        expect(useBuilderStore.getState().saveState.status).toBe('pending');
+        expect(command).toHaveBeenCalledTimes(1);
+        expect(command).toHaveBeenCalledWith(
+            expect.objectContaining({
+                name: 'Draft Workflow',
+                revision: 2,
+                pipeline: expect.objectContaining({ workflowId: expect.any(String) }),
+            }),
+        );
+
+        const duplicateSave = useBuilderStore.getState().save('Draft Workflow', command);
+        await expect(duplicateSave).resolves.toEqual(
+            expect.objectContaining({ ok: false, error: expect.stringMatching(/pending/i) }),
+        );
+        expect(command).toHaveBeenCalledTimes(1);
+
+        resolvePending?.({ ok: true });
+        await expect(firstSave).resolves.toEqual({ ok: true });
+
+        expect(useBuilderStore.getState().saveState).toEqual({
+            status: 'success',
+            revision: 2,
+        });
+        expect(useBuilderStore.getState().dirty).toBe(false);
+    });
+
+    it('keeps structured command diagnostics visible and retries a failed save', async () => {
+        useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
+        useBuilderStore.getState().setPipelineName('Retry Workflow');
+
+        const diagnostic: WorkflowDraftDiagnostic = {
+            severity: 'error',
+            code: 'invalid_pipeline',
+            target: { kind: 'node', nodeId: 'trigger' },
+            nodeId: 'trigger',
+            fieldPath: 'config.eventName',
+            message: 'The Trigger event is invalid.',
+            repairHint: 'Choose a supported event name.',
+        };
+        const firstCommand = vi.fn(
+            async (): Promise<WorkflowDraftSaveResult> => ({
+                ok: false,
+                error: 'The Workflow file could not be replaced.',
+                diagnostics: [diagnostic],
+            }),
+        );
+
+        await expect(
+            useBuilderStore.getState().save('Retry Workflow', firstCommand),
+        ).resolves.toEqual(
+            expect.objectContaining({
+                ok: false,
+                diagnostics: [diagnostic],
+            }),
+        );
+        expect(useBuilderStore.getState().saveState).toEqual({
+            status: 'failure',
+            revision: 2,
+            error: 'The Workflow file could not be replaced.',
+            diagnostics: [diagnostic],
+        });
+        expect(useBuilderStore.getState().dirty).toBe(true);
+
+        const retryCommand = vi.fn(async (): Promise<WorkflowDraftSaveResult> => ({ ok: true }));
+        await expect(
+            useBuilderStore.getState().save('Retry Workflow', retryCommand),
+        ).resolves.toEqual({ ok: true });
+
+        expect(retryCommand).toHaveBeenCalledTimes(1);
+        expect(useBuilderStore.getState().saveState).toEqual({
+            status: 'success',
+            revision: 2,
+        });
+        expect(useBuilderStore.getState().dirty).toBe(false);
+    });
+
+    it('turns a thrown IPC command failure into a visible retryable save state', async () => {
+        useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
+        useBuilderStore.getState().setPipelineName('IPC Failure Workflow');
+
+        const command = vi.fn(async (): Promise<WorkflowDraftSaveResult> => {
+            throw new Error('Renderer IPC unavailable');
+        });
+
+        await expect(
+            useBuilderStore.getState().save('IPC Failure Workflow', command),
+        ).resolves.toEqual(
+            expect.objectContaining({
+                ok: false,
+                error: 'Renderer IPC unavailable',
+                diagnostics: [
+                    expect.objectContaining({
+                        kind: 'command',
+                        operation: 'save',
+                        code: 'save_command_failed',
+                    }),
+                ],
+            }),
+        );
+        const saveState = useBuilderStore.getState().saveState;
+        expect(saveState.status).toBe('failure');
+        if (saveState.status === 'failure') {
+            expect(saveState.error).toBe('Renderer IPC unavailable');
+            expect(saveState.diagnostics).toEqual([
+                expect.objectContaining({
+                    kind: 'command',
+                    operation: 'save',
+                    code: 'save_command_failed',
+                }),
+            ]);
+        }
     });
 });

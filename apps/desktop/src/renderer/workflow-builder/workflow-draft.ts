@@ -1,4 +1,6 @@
+import type { CompiledPipeline } from '@sigil/schema';
 import { outputPortsForNode } from '@sigil/schema/nodes';
+import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import {
     addEdge,
     applyEdgeChanges,
@@ -10,6 +12,7 @@ import {
     type NodeChange,
 } from '@xyflow/react';
 
+import type { WorkflowWriteDiagnostic } from '../../shared/ipc-channels.js';
 import type { PipelineMeta } from './compile.js';
 import type { NodeSpec } from './node-registry.js';
 
@@ -23,12 +26,69 @@ export interface WorkflowDraftSnapshot {
     readonly pipelineName: string;
 }
 
+export interface WorkflowDraftSaveRequest {
+    readonly name: string;
+    readonly pipeline: CompiledPipeline;
+    readonly positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>;
+    readonly revision: number;
+}
+
+export interface WorkflowDraftCommandDiagnostic {
+    readonly kind: 'command';
+    readonly operation: 'save' | 'export';
+    readonly code: string;
+    readonly target: { readonly kind: 'pipeline' };
+    readonly message: string;
+    readonly repairHint?: string;
+}
+
+export type WorkflowDraftDiagnostic = WorkflowWriteDiagnostic | WorkflowDraftCommandDiagnostic;
+
+export type WorkflowDraftSaveResult =
+    | { readonly ok: true }
+    | {
+          readonly ok: false;
+          readonly error: string;
+          readonly diagnostics: readonly WorkflowDraftDiagnostic[];
+      };
+
+export type WorkflowDraftSaveCommand = (
+    request: WorkflowDraftSaveRequest,
+) => Promise<WorkflowDraftSaveResult>;
+
+export type WorkflowDraftSaveState =
+    | { readonly status: 'idle' }
+    | { readonly status: 'pending'; readonly revision: number }
+    | { readonly status: 'success'; readonly revision: number }
+    | {
+          readonly status: 'failure';
+          readonly revision: number;
+          readonly error: string;
+          readonly diagnostics: readonly WorkflowDraftDiagnostic[];
+      };
+
+export type WorkflowDraftValidationState =
+    | {
+          readonly status: 'unvalidated';
+          readonly diagnostics: readonly TopologyDiagnostic[];
+      }
+    | {
+          readonly status: 'valid';
+          readonly diagnostics: readonly TopologyDiagnostic[];
+      }
+    | {
+          readonly status: 'invalid';
+          readonly diagnostics: readonly TopologyDiagnostic[];
+      };
+
 export interface WorkflowDraft {
     readonly current: WorkflowDraftSnapshot;
     readonly baseline: WorkflowDraftSnapshot;
     readonly revision: number;
     readonly undoStack: readonly WorkflowDraftSnapshot[];
     readonly redoStack: readonly WorkflowDraftSnapshot[];
+    readonly saveState: WorkflowDraftSaveState;
+    readonly validation: WorkflowDraftValidationState;
 }
 
 export type WorkflowDraftCommand =
@@ -96,6 +156,14 @@ function cloneSnapshot(snapshot: WorkflowDraftSnapshot): WorkflowDraftSnapshot {
         meta: { ...snapshot.meta, name: snapshot.pipelineName },
         pipelineName: snapshot.pipelineName,
     });
+}
+
+function saveStateAfterEdit(saveState: WorkflowDraftSaveState): WorkflowDraftSaveState {
+    return saveState.status === 'pending' ? saveState : { status: 'idle' };
+}
+
+function validationAfterEdit(): WorkflowDraftValidationState {
+    return { status: 'unvalidated', diagnostics: [] };
 }
 
 function emptyChangeList<T>(changes: readonly T[]): boolean {
@@ -214,6 +282,8 @@ export function createWorkflowDraft(snapshot: WorkflowDraftSnapshot): WorkflowDr
         revision: 0,
         undoStack: [],
         redoStack: [],
+        saveState: { status: 'idle' },
+        validation: validationAfterEdit(),
     };
 }
 
@@ -234,6 +304,8 @@ export function applyWorkflowDraftCommand(
         revision: draft.revision + 1,
         undoStack: [...draft.undoStack, cloneSnapshot(draft.current)],
         redoStack: [],
+        saveState: saveStateAfterEdit(draft.saveState),
+        validation: validationAfterEdit(),
     };
 }
 
@@ -247,6 +319,8 @@ export function undoWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
         revision: draft.revision + 1,
         undoStack: draft.undoStack.slice(0, -1),
         redoStack: [...draft.redoStack, cloneSnapshot(draft.current)],
+        saveState: saveStateAfterEdit(draft.saveState),
+        validation: validationAfterEdit(),
     };
 }
 
@@ -260,6 +334,8 @@ export function redoWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
         revision: draft.revision + 1,
         undoStack: [...draft.undoStack, cloneSnapshot(draft.current)],
         redoStack: draft.redoStack.slice(0, -1),
+        saveState: saveStateAfterEdit(draft.saveState),
+        validation: validationAfterEdit(),
     };
 }
 
@@ -267,6 +343,93 @@ export function markWorkflowDraftSaved(draft: WorkflowDraft): WorkflowDraft {
     return {
         ...draft,
         baseline: cloneSnapshot(draft.current),
+        saveState: { status: 'success', revision: draft.revision },
+    };
+}
+
+export function recordWorkflowDraftValidation(
+    draft: WorkflowDraft,
+    result: { readonly ok: boolean; readonly diagnostics: readonly TopologyDiagnostic[] },
+): WorkflowDraft {
+    return {
+        ...draft,
+        validation: {
+            status: result.ok ? 'valid' : 'invalid',
+            diagnostics: [...result.diagnostics],
+        },
+    };
+}
+
+export function isWorkflowDraftSavePending(draft: WorkflowDraft): boolean {
+    return draft.saveState.status === 'pending';
+}
+
+export function beginWorkflowDraftSave(draft: WorkflowDraft): WorkflowDraft {
+    if (isWorkflowDraftSavePending(draft)) return draft;
+    return {
+        ...draft,
+        saveState: { status: 'pending', revision: draft.revision },
+    };
+}
+
+export function completeWorkflowDraftSave(draft: WorkflowDraft): WorkflowDraft {
+    if (draft.saveState.status !== 'pending') return draft;
+
+    const revision = draft.saveState.revision;
+    return {
+        ...draft,
+        baseline: draft.revision === revision ? cloneSnapshot(draft.current) : draft.baseline,
+        saveState: { status: 'success', revision },
+    };
+}
+
+export function rejectWorkflowDraftSave(
+    draft: WorkflowDraft,
+    error: string,
+    diagnostics: readonly WorkflowDraftDiagnostic[],
+): WorkflowDraft {
+    if (draft.saveState.status !== 'pending') return draft;
+
+    return {
+        ...draft,
+        saveState: {
+            status: 'failure',
+            revision: draft.saveState.revision,
+            error,
+            diagnostics: [...diagnostics],
+        },
+    };
+}
+
+export function recordWorkflowDraftSaveFailure(
+    draft: WorkflowDraft,
+    error: string,
+    diagnostics: readonly WorkflowDraftDiagnostic[],
+): WorkflowDraft {
+    return {
+        ...draft,
+        saveState: {
+            status: 'failure',
+            revision: draft.revision,
+            error,
+            diagnostics: [...diagnostics],
+        },
+    };
+}
+
+export function createWorkflowDraftCommandDiagnostic(
+    operation: WorkflowDraftCommandDiagnostic['operation'],
+    code: string,
+    message: string,
+    repairHint?: string,
+): WorkflowDraftCommandDiagnostic {
+    return {
+        kind: 'command',
+        operation,
+        code,
+        target: { kind: 'pipeline' },
+        message,
+        ...(repairHint ? { repairHint } : {}),
     };
 }
 

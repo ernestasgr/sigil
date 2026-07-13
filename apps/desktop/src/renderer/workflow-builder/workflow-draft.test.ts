@@ -3,13 +3,18 @@ import { describe, expect, it } from 'vitest';
 import { defaultNodeSpec } from './node-registry.js';
 import {
     applyWorkflowDraftCommand,
+    beginWorkflowDraftSave,
     canRedoWorkflowDraft,
     canUndoWorkflowDraft,
+    completeWorkflowDraftSave,
     createWorkflowDraft,
     isWorkflowDraftDirty,
+    isWorkflowDraftSavePending,
     markWorkflowDraftSaved,
     redoWorkflowDraft,
+    rejectWorkflowDraftSave,
     undoWorkflowDraft,
+    type WorkflowDraftDiagnostic,
     type WorkflowDraftSnapshot,
 } from './workflow-draft.js';
 
@@ -93,5 +98,39 @@ describe('WorkflowDraft', () => {
 
         expect(canRedoWorkflowDraft(draft)).toBe(false);
         expect(draft.current.nodes.map((node) => node.id)).toEqual(['log-2']);
+    });
+
+    it('guards async saves, preserves failures for retry, and resets the baseline on success', () => {
+        let draft = createWorkflowDraft(emptySnapshot());
+        draft = applyWorkflowDraftCommand(draft, {
+            kind: 'add-node',
+            node: logNode('log-1'),
+        });
+
+        const pending = beginWorkflowDraftSave(draft);
+        expect(isWorkflowDraftSavePending(pending)).toBe(true);
+        expect(beginWorkflowDraftSave(pending)).toBe(pending);
+
+        const diagnostic: WorkflowDraftDiagnostic = {
+            severity: 'error',
+            code: 'invalid_pipeline',
+            target: { kind: 'pipeline' },
+            message: 'The Workflow file could not be replaced.',
+        };
+        const failed = rejectWorkflowDraftSave(pending, 'Could not save Workflow.', [diagnostic]);
+
+        expect(failed.saveState).toEqual({
+            status: 'failure',
+            revision: pending.revision,
+            error: 'Could not save Workflow.',
+            diagnostics: [diagnostic],
+        });
+        expect(isWorkflowDraftDirty(failed)).toBe(true);
+
+        const retry = beginWorkflowDraftSave(failed);
+        const saved = completeWorkflowDraftSave(retry);
+
+        expect(saved.saveState).toEqual({ status: 'success', revision: retry.revision });
+        expect(isWorkflowDraftDirty(saved)).toBe(false);
     });
 });
