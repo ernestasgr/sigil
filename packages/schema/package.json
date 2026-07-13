@@ -19,6 +19,10 @@
             "types": "./dist/file-event-payload.d.ts",
             "import": "./dist/file-event-payload.js"
         },
+        "./event-catalog": {
+            "types": "./dist/event-catalog.d.ts",
+            "import": "./dist/event-catalog.js"
+        },
         "./workflow-context": {
             "types": "./dist/workflow-context.d.ts",
             "import": "./dist/workflow-context.js"
