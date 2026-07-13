@@ -86,8 +86,7 @@ export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): Rea
                 <button
                     type="button"
                     onClick={() => setShowInspector((prev) => !prev)}
-                    aria-pressed={showInspector}
-                    aria-controls="workflow-variable-inspector"
+                    aria-expanded={showInspector}
                     className={`font-ui text-[10px] tracking-[0.2em] uppercase transition-colors ${
                         showInspector ? 'text-gilt' : 'text-veil-foreground hover:text-parchment'
                     }`}
@@ -255,13 +254,7 @@ function ValidationBar({ onSave, saveState }: ValidationBarProps): ReactElement 
 
     return (
         <div className="border-gilt/40 flex items-center justify-between gap-4 border-t px-5 py-3">
-            <div
-                className="min-w-0 flex-1"
-                role={result.ok ? 'status' : 'alert'}
-                aria-live={result.ok ? 'polite' : 'assertive'}
-                aria-atomic="true"
-                aria-busy={savePending}
-            >
+            <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                     <span
                         className={cn(
