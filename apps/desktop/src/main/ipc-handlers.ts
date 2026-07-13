@@ -3,7 +3,6 @@ import { basename, dirname, extname } from 'node:path';
 import type { BrowserWindow } from 'electron';
 import { dialog } from 'electron';
 import {
-    type CommandExecutionOutcome,
     RendererCommandContracts,
     type RendererCommandName,
     type RendererRequest,
@@ -14,7 +13,7 @@ import {
     type PersistenceWriteOutcome,
 } from '../shared/persistence.js';
 import type { EngineHandle } from './engine-client.js';
-import { ipcHandle } from './ipc-handle.js';
+import { ipcHandleCommand } from './ipc-handle.js';
 
 export interface IpcHandlerContext {
     readonly getEngine: () => EngineHandle | null;
@@ -60,7 +59,11 @@ function persistenceFailure(error: unknown, fallbackPath: string): PersistenceWr
     };
 }
 
-function workflowFailure(error: unknown): RendererResponse<'createWorkflow'> {
+type WorkflowFailure = Extract<RendererResponse<'createWorkflow'>, { readonly ok: false }>;
+type WorkflowActionFailure = Extract<RendererResponse<'toggleWorkflow'>, { readonly ok: false }>;
+type ExecutionFailure = Extract<RendererResponse<'fireTestEvent'>, { readonly ok: false }>;
+
+function workflowFailure(error: unknown): WorkflowFailure {
     return {
         ok: false,
         error: errorMessage(error),
@@ -68,7 +71,7 @@ function workflowFailure(error: unknown): RendererResponse<'createWorkflow'> {
     };
 }
 
-function workflowActionFailure(error: unknown): RendererResponse<'toggleWorkflow'> {
+function workflowActionFailure(error: unknown): WorkflowActionFailure {
     return {
         ok: false,
         error: errorMessage(error),
@@ -85,7 +88,7 @@ function workflowDeleteFailure(error: unknown): RendererResponse<'deleteWorkflow
     };
 }
 
-function executionFailure(error: unknown): CommandExecutionOutcome {
+function executionFailure(error: unknown): ExecutionFailure {
     return { ok: false, error: errorMessage(error) };
 }
 
@@ -93,13 +96,12 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
     const h = ctx;
     const renderer = RendererCommandContracts;
 
-    ipcHandle(renderer.rendererReady.channel, renderer.rendererReady.requestSchema, async () => {
+    ipcHandleCommand<'rendererReady'>(renderer.rendererReady, async () => {
         h.onRendererReady();
     });
 
-    ipcHandle(
-        renderer.pingEngine.channel,
-        renderer.pingEngine.requestSchema,
+    ipcHandleCommand<'pingEngine'>(
+        renderer.pingEngine,
         async (): Promise<RendererResponse<'pingEngine'>> => {
             const engine = h.getEngine();
             if (!engine) return null;
@@ -112,9 +114,8 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.fireTestEvent.channel,
-        renderer.fireTestEvent.requestSchema,
+    ipcHandleCommand<'fireTestEvent'>(
+        renderer.fireTestEvent,
         async (): Promise<RendererResponse<'fireTestEvent'>> => {
             const engine = h.getEngine();
             if (!engine) return executionFailure(new Error('Engine not ready'));
@@ -127,16 +128,15 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.toggleWorkflow.channel,
-        renderer.toggleWorkflow.requestSchema,
+    ipcHandleCommand<'toggleWorkflow'>(
+        renderer.toggleWorkflow,
         async (
             id: RendererRequest<'toggleWorkflow'>,
         ): Promise<RendererResponse<'toggleWorkflow'>> => {
             const engine = h.getEngine();
             if (!engine) return workflowActionFailure(new Error('Engine not ready'));
             try {
-                return await engine.toggleWorkflow(id);
+                return await engine.toggleWorkflow({ id });
             } catch (err) {
                 console.error('[main] toggleWorkflow failed:', err);
                 return workflowActionFailure(err);
@@ -144,16 +144,15 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.retryWorkflow.channel,
-        renderer.retryWorkflow.requestSchema,
+    ipcHandleCommand<'retryWorkflow'>(
+        renderer.retryWorkflow,
         async (
             id: RendererRequest<'retryWorkflow'>,
         ): Promise<RendererResponse<'retryWorkflow'>> => {
             const engine = h.getEngine();
             if (!engine) return workflowActionFailure(new Error('Engine not ready'));
             try {
-                return await engine.retryWorkflow(id);
+                return await engine.retryWorkflow({ id });
             } catch (err) {
                 console.error('[main] retryWorkflow failed:', err);
                 return workflowActionFailure(err);
@@ -161,16 +160,15 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.createWorkflow.channel,
-        renderer.createWorkflow.requestSchema,
+    ipcHandleCommand<'createWorkflow'>(
+        renderer.createWorkflow,
         async ([name, pipeline, positions]: RendererRequest<'createWorkflow'>): Promise<
             RendererResponse<'createWorkflow'>
         > => {
             const engine = h.getEngine();
             if (!engine) return workflowFailure(new Error('Engine not ready'));
             try {
-                return await engine.createWorkflow(name, pipeline, positions);
+                return await engine.createWorkflow({ name, pipeline, positions });
             } catch (err) {
                 console.error('[main] createWorkflow failed:', err);
                 return workflowFailure(err);
@@ -178,16 +176,15 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.updateWorkflow.channel,
-        renderer.updateWorkflow.requestSchema,
+    ipcHandleCommand<'updateWorkflow'>(
+        renderer.updateWorkflow,
         async ([id, name, pipeline, positions]: RendererRequest<'updateWorkflow'>): Promise<
             RendererResponse<'updateWorkflow'>
         > => {
             const engine = h.getEngine();
             if (!engine) return workflowFailure(new Error('Engine not ready'));
             try {
-                return await engine.updateWorkflow(id, name, pipeline, positions);
+                return await engine.updateWorkflow({ id, name, pipeline, positions });
             } catch (err) {
                 console.error('[main] updateWorkflow failed:', err);
                 return workflowFailure(err);
@@ -195,16 +192,15 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.deleteWorkflow.channel,
-        renderer.deleteWorkflow.requestSchema,
+    ipcHandleCommand<'deleteWorkflow'>(
+        renderer.deleteWorkflow,
         async (
             id: RendererRequest<'deleteWorkflow'>,
         ): Promise<RendererResponse<'deleteWorkflow'>> => {
             const engine = h.getEngine();
             if (!engine) return workflowDeleteFailure(new Error('Engine not ready'));
             try {
-                return await engine.deleteWorkflow(id);
+                return await engine.deleteWorkflow({ id });
             } catch (err) {
                 console.error('[main] deleteWorkflow failed:', err);
                 return workflowDeleteFailure(err);
@@ -212,22 +208,13 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.getWorkflow.channel,
-        renderer.getWorkflow.requestSchema,
+    ipcHandleCommand<'getWorkflow'>(
+        renderer.getWorkflow,
         async (id: RendererRequest<'getWorkflow'>): Promise<RendererResponse<'getWorkflow'>> => {
             const engine = h.getEngine();
             if (!engine) return null;
             try {
-                const result = await engine.getWorkflow(id);
-                if (result.found) {
-                    return {
-                        name: result.name,
-                        pipeline: result.pipeline,
-                        positions: result.positions,
-                    };
-                }
-                return null;
+                return await engine.getWorkflow(id);
             } catch (err) {
                 console.error('[main] getWorkflow failed:', err);
                 return null;
@@ -235,9 +222,8 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.listPlugins.channel,
-        renderer.listPlugins.requestSchema,
+    ipcHandleCommand<'listPlugins'>(
+        renderer.listPlugins,
         async (): Promise<RendererResponse<'listPlugins'>> => {
             const engine = h.getEngine();
             if (!engine) return [];
@@ -250,16 +236,15 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.setPermissionOverride.channel,
-        renderer.setPermissionOverride.requestSchema,
+    ipcHandleCommand<'setPermissionOverride'>(
+        renderer.setPermissionOverride,
         async ([pluginId, overrides]: RendererRequest<'setPermissionOverride'>): Promise<
             RendererResponse<'setPermissionOverride'>
         > => {
             const engine = h.getEngine();
             if (!engine) return persistenceFailure(new Error('Engine not ready'), 'engine');
             try {
-                return await engine.setPermissionOverride(pluginId, overrides);
+                return await engine.setPermissionOverride({ pluginId, overrides });
             } catch (err) {
                 console.error('[main] setPermissionOverride failed:', err);
                 return persistenceFailure(err, 'permission-overrides.json');
@@ -267,9 +252,8 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.readProperties.channel,
-        renderer.readProperties.requestSchema,
+    ipcHandleCommand<'readProperties'>(
+        renderer.readProperties,
         async (): Promise<RendererResponse<'readProperties'>> => {
             const engine = h.getEngine();
             if (!engine) return {};
@@ -282,16 +266,15 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.saveProperties.channel,
-        renderer.saveProperties.requestSchema,
+    ipcHandleCommand<'saveProperties'>(
+        renderer.saveProperties,
         async (
             properties: RendererRequest<'saveProperties'>,
         ): Promise<RendererResponse<'saveProperties'>> => {
             const engine = h.getEngine();
             if (!engine) return persistenceFailure(new Error('Engine not ready'), 'engine');
             try {
-                return await engine.saveProperties(properties);
+                return await engine.saveProperties({ properties });
             } catch (err) {
                 console.error('[main] saveProperties failed:', err);
                 return persistenceFailure(err, 'sigil.properties.json');
@@ -299,9 +282,8 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.openFileDialog.channel,
-        renderer.openFileDialog.requestSchema,
+    ipcHandleCommand<'openFileDialog'>(
+        renderer.openFileDialog,
         async (): Promise<RendererResponse<'openFileDialog'>> => {
             const mainWindow = h.getMainWindow();
             if (!mainWindow) return null;
@@ -327,16 +309,15 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.fireManualTrigger.channel,
-        renderer.fireManualTrigger.requestSchema,
+    ipcHandleCommand<'fireManualTrigger'>(
+        renderer.fireManualTrigger,
         async (
             pipeline: RendererRequest<'fireManualTrigger'>,
         ): Promise<RendererResponse<'fireManualTrigger'>> => {
             const engine = h.getEngine();
             if (!engine) return executionFailure(new Error('Engine not ready'));
             try {
-                return await engine.fireManualTrigger(pipeline);
+                return await engine.fireManualTrigger({ pipeline });
             } catch (err) {
                 console.error('[main] fireManualTrigger failed:', err);
                 return executionFailure(err);
@@ -344,9 +325,8 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.readWorkflowState.channel,
-        renderer.readWorkflowState.requestSchema,
+    ipcHandleCommand<'readWorkflowState'>(
+        renderer.readWorkflowState,
         async (
             workflowId: RendererRequest<'readWorkflowState'>,
         ): Promise<RendererResponse<'readWorkflowState'>> => {
@@ -361,16 +341,15 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.setWorkflowStateKey.channel,
-        renderer.setWorkflowStateKey.requestSchema,
+    ipcHandleCommand<'setWorkflowStateKey'>(
+        renderer.setWorkflowStateKey,
         async ([workflowId, key, value]: RendererRequest<'setWorkflowStateKey'>): Promise<
             RendererResponse<'setWorkflowStateKey'>
         > => {
             const engine = h.getEngine();
             if (!engine) return false;
             try {
-                return await engine.setWorkflowStateKey(workflowId, key, value);
+                return await engine.setWorkflowStateKey({ workflowId, key, value });
             } catch (err) {
                 console.error('[main] setWorkflowStateKey failed:', err);
                 return false;
@@ -378,16 +357,15 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    ipcHandle(
-        renderer.deleteWorkflowStateKey.channel,
-        renderer.deleteWorkflowStateKey.requestSchema,
+    ipcHandleCommand<'deleteWorkflowStateKey'>(
+        renderer.deleteWorkflowStateKey,
         async ([workflowId, key]: RendererRequest<'deleteWorkflowStateKey'>): Promise<
             RendererResponse<'deleteWorkflowStateKey'>
         > => {
             const engine = h.getEngine();
             if (!engine) return false;
             try {
-                return await engine.deleteWorkflowStateKey(workflowId, key);
+                return await engine.deleteWorkflowStateKey({ workflowId, key });
             } catch (err) {
                 console.error('[main] deleteWorkflowStateKey failed:', err);
                 return false;
@@ -395,26 +373,24 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         },
     );
 
-    type InvokeChannel = (typeof RendererCommandContracts)[RendererCommandName]['channel'];
-
     void ({
-        [renderer.rendererReady.channel]: true,
-        [renderer.pingEngine.channel]: true,
-        [renderer.fireTestEvent.channel]: true,
-        [renderer.toggleWorkflow.channel]: true,
-        [renderer.retryWorkflow.channel]: true,
-        [renderer.createWorkflow.channel]: true,
-        [renderer.updateWorkflow.channel]: true,
-        [renderer.deleteWorkflow.channel]: true,
-        [renderer.getWorkflow.channel]: true,
-        [renderer.listPlugins.channel]: true,
-        [renderer.setPermissionOverride.channel]: true,
-        [renderer.readProperties.channel]: true,
-        [renderer.saveProperties.channel]: true,
-        [renderer.openFileDialog.channel]: true,
-        [renderer.fireManualTrigger.channel]: true,
-        [renderer.readWorkflowState.channel]: true,
-        [renderer.setWorkflowStateKey.channel]: true,
-        [renderer.deleteWorkflowStateKey.channel]: true,
-    } satisfies Record<InvokeChannel, true>);
+        rendererReady: true,
+        pingEngine: true,
+        fireTestEvent: true,
+        toggleWorkflow: true,
+        retryWorkflow: true,
+        createWorkflow: true,
+        updateWorkflow: true,
+        deleteWorkflow: true,
+        getWorkflow: true,
+        listPlugins: true,
+        setPermissionOverride: true,
+        readProperties: true,
+        saveProperties: true,
+        openFileDialog: true,
+        fireManualTrigger: true,
+        readWorkflowState: true,
+        setWorkflowStateKey: true,
+        deleteWorkflowStateKey: true,
+    } satisfies Record<RendererCommandName, true>);
 }

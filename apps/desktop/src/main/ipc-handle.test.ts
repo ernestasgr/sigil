@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { ipcHandle } from './ipc-handle.js';
+import { RendererCommandContracts, type RendererResponse } from '../shared/command-contracts.js';
+import { ipcHandle, ipcHandleCommand } from './ipc-handle.js';
 
 const mockHandle = vi.hoisted(() => vi.fn());
 vi.mock('electron', () => ({
@@ -118,5 +119,21 @@ describe('ipcHandle', () => {
 
         expect(handler).toHaveBeenCalledWith(undefined);
         expect(result).toBe('noop');
+    });
+
+    it('registers a renderer command with contract-derived request and response validation', async () => {
+        const handler = vi.fn(
+            async (): Promise<RendererResponse<'fireTestEvent'>> => ({
+                ok: false,
+                error: 'execution failed',
+            }),
+        );
+        ipcHandleCommand<'fireTestEvent'>(RendererCommandContracts.fireTestEvent, handler);
+
+        const [, wrapped] = mockHandle.mock.lastCall as [string, (...args: unknown[]) => unknown];
+        const result = await wrapped({});
+
+        expect(handler).toHaveBeenCalledWith(undefined);
+        expect(result).toEqual({ ok: false, error: 'execution failed' });
     });
 });

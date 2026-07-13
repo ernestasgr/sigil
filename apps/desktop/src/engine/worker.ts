@@ -4,12 +4,14 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { Effect, Match } from 'effect';
 import { z } from 'zod';
 import {
+    type EngineCommandRequest,
+    MainToEngineMessageSchema,
+} from '../shared/command-contracts.js';
+import {
     type EngineBusEvent,
     EngineChannel,
     type EngineLog,
     type EngineWorkflowsList,
-    type MainToEngineMessage,
-    MainToEngineMessageSchema,
 } from '../shared/ipc-channels.js';
 import {
     formatPersistenceDiagnostic,
@@ -206,7 +208,7 @@ function reportDispatchError(err: unknown): void {
     });
 }
 
-function enqueueDispatch(message: MainToEngineMessage): void {
+function enqueueDispatch(message: EngineCommandRequest): void {
     if (shutdownQueued) return;
     if (message.type === EngineChannel.Shutdown) shutdownQueued = true;
 

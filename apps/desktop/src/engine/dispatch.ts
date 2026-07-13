@@ -1,27 +1,12 @@
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import { Effect, Either, Match, Option } from 'effect';
-import {
-    EngineChannel,
-    type EngineCreateWorkflow,
-    type EngineDeleteWorkflow,
-    type EngineDeleteWorkflowStateKey,
-    type EngineFireManualTrigger,
-    type EngineFireTestEvent,
-    type EngineGetWorkflow,
-    type EngineListPlugins,
-    type EnginePing,
-    type EnginePong,
-    type EngineReadProperties,
-    type EngineReadWorkflowState,
-    type EngineRetryWorkflow,
-    type EngineSaveProperties,
-    type EngineSetPermissionOverride,
-    type EngineSetWorkflowStateKey,
-    type EngineShutdown,
-    type EngineToggleWorkflow,
-    type EngineUpdateWorkflow,
-    type MainToEngineMessage,
-} from '../shared/ipc-channels.js';
+import type {
+    EngineCommandName,
+    EngineCommandRequest,
+    EngineRequest,
+    EngineResponse,
+} from '../shared/command-contracts.js';
+import { EngineChannel } from '../shared/ipc-channels.js';
 import {
     formatPersistenceDiagnostic,
     isExpectedMissingFileDiagnostic,
@@ -53,26 +38,40 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function handlePing(message: EnginePing, subsystems: DispatchSubsystems): void {
-    const pong: EnginePong = {
+function postCommandResponse<C extends EngineCommandName>(
+    _command: C,
+    response: EngineResponse<C>,
+    subsystems: DispatchSubsystems,
+): void {
+    // The response type is selected from the same command key as the request;
+    // runtime validation belongs at the worker receive and Engine-client receive sites.
+    subsystems.postMessage(response);
+}
+
+function handlePing(message: EngineRequest<'ping'>, subsystems: DispatchSubsystems): void {
+    const pong: EngineResponse<'ping'> = {
         correlationId: message.correlationId,
         type: EngineChannel.Pong,
         receivedAt: Date.now(),
     };
-    subsystems.postMessage(pong);
+    postCommandResponse('ping', pong, subsystems);
 }
 
 async function handleFireTestEvent(
-    message: EngineFireTestEvent,
+    message: EngineRequest<'fireTestEvent'>,
     subsystems: DispatchSubsystems,
 ): Promise<void> {
     try {
         await subsystems.engine.execute(sampleManualTriggerToLog);
-        subsystems.postMessage({
-            type: EngineChannel.FireTestEventResult,
-            correlationId: message.correlationId,
-            ok: true,
-        });
+        postCommandResponse(
+            'fireTestEvent',
+            {
+                type: EngineChannel.FireTestEventResult,
+                correlationId: message.correlationId,
+                ok: true,
+            },
+            subsystems,
+        );
     } catch (err: unknown) {
         const detail = err instanceof Error ? err.message : String(err);
         subsystems.log(`[error] engine.execute failed: ${detail}`, {
@@ -84,26 +83,34 @@ async function handleFireTestEvent(
             type: EngineChannel.Log,
             line: `[error] engine.execute failed: ${detail}`,
         });
-        subsystems.postMessage({
-            type: EngineChannel.FireTestEventResult,
-            correlationId: message.correlationId,
-            ok: false,
-            error: detail,
-        });
+        postCommandResponse(
+            'fireTestEvent',
+            {
+                type: EngineChannel.FireTestEventResult,
+                correlationId: message.correlationId,
+                ok: false,
+                error: detail,
+            },
+            subsystems,
+        );
     }
 }
 
 async function handleFireManualTrigger(
-    message: EngineFireManualTrigger,
+    message: EngineRequest<'fireManualTrigger'>,
     subsystems: DispatchSubsystems,
 ): Promise<void> {
     try {
         await subsystems.engine.execute(message.pipeline);
-        subsystems.postMessage({
-            type: EngineChannel.FireManualTriggerResult,
-            correlationId: message.correlationId,
-            ok: true,
-        });
+        postCommandResponse(
+            'fireManualTrigger',
+            {
+                type: EngineChannel.FireManualTriggerResult,
+                correlationId: message.correlationId,
+                ok: true,
+            },
+            subsystems,
+        );
     } catch (err: unknown) {
         const detail = err instanceof Error ? err.message : String(err);
         subsystems.log(`[error] manual trigger execution failed: ${detail}`, {
@@ -115,16 +122,23 @@ async function handleFireManualTrigger(
             type: EngineChannel.Log,
             line: `[error] manual trigger execution failed: ${detail}`,
         });
-        subsystems.postMessage({
-            type: EngineChannel.FireManualTriggerResult,
-            correlationId: message.correlationId,
-            ok: false,
-            error: detail,
-        });
+        postCommandResponse(
+            'fireManualTrigger',
+            {
+                type: EngineChannel.FireManualTriggerResult,
+                correlationId: message.correlationId,
+                ok: false,
+                error: detail,
+            },
+            subsystems,
+        );
     }
 }
 
-function handleToggleWorkflow(message: EngineToggleWorkflow, subsystems: DispatchSubsystems): void {
+function handleToggleWorkflow(
+    message: EngineRequest<'toggleWorkflow'>,
+    subsystems: DispatchSubsystems,
+): void {
     try {
         if (subsystems.lifecycle) {
             const before = subsystems.store.getSummary(message.id);
@@ -135,11 +149,15 @@ function handleToggleWorkflow(message: EngineToggleWorkflow, subsystems: Dispatc
                 );
             }
             subsystems.broadcastWorkflowsList();
-            subsystems.postMessage({
-                type: EngineChannel.ToggleWorkflowResult,
-                correlationId: message.correlationId,
-                summary: Option.getOrElse(() => null)(toggled),
-            });
+            postCommandResponse(
+                'toggleWorkflow',
+                {
+                    type: EngineChannel.ToggleWorkflowResult,
+                    correlationId: message.correlationId,
+                    summary: Option.getOrElse(() => null)(toggled),
+                },
+                subsystems,
+            );
             return;
         }
 
@@ -156,25 +174,36 @@ function handleToggleWorkflow(message: EngineToggleWorkflow, subsystems: Dispatc
             }
         }
         subsystems.broadcastWorkflowsList();
-        subsystems.postMessage({
-            type: EngineChannel.ToggleWorkflowResult,
-            correlationId: message.correlationId,
-            summary: Option.getOrElse(() => null)(toggled),
-        });
+        postCommandResponse(
+            'toggleWorkflow',
+            {
+                type: EngineChannel.ToggleWorkflowResult,
+                correlationId: message.correlationId,
+                summary: Option.getOrElse(() => null)(toggled),
+            },
+            subsystems,
+        );
     } catch (error) {
         if (!isWorkflowPersistenceError(error)) throw error;
         subsystems.log(formatPersistenceDiagnostic(error.diagnostic));
-        subsystems.postMessage({
-            type: EngineChannel.ToggleWorkflowResult,
-            correlationId: message.correlationId,
-            summary: null,
-            error: error.message,
-            diagnostics: error.diagnostics,
-        });
+        postCommandResponse(
+            'toggleWorkflow',
+            {
+                type: EngineChannel.ToggleWorkflowResult,
+                correlationId: message.correlationId,
+                summary: null,
+                error: error.message,
+                diagnostics: error.diagnostics,
+            },
+            subsystems,
+        );
     }
 }
 
-function handleRetryWorkflow(message: EngineRetryWorkflow, subsystems: DispatchSubsystems): void {
+function handleRetryWorkflow(
+    message: EngineRequest<'retryWorkflow'>,
+    subsystems: DispatchSubsystems,
+): void {
     try {
         const summary = subsystems.lifecycle
             ? subsystems.lifecycle.retry(message.id)
@@ -183,62 +212,85 @@ function handleRetryWorkflow(message: EngineRetryWorkflow, subsystems: DispatchS
             subsystems.log(`Retrying workflow "${summary.value.name}" (${summary.value.id})`);
         }
         subsystems.broadcastWorkflowsList();
-        subsystems.postMessage({
-            type: EngineChannel.RetryWorkflowResult,
-            correlationId: message.correlationId,
-            summary: Option.getOrElse(() => null)(summary),
-        });
+        postCommandResponse(
+            'retryWorkflow',
+            {
+                type: EngineChannel.RetryWorkflowResult,
+                correlationId: message.correlationId,
+                summary: Option.getOrElse(() => null)(summary),
+            },
+            subsystems,
+        );
     } catch (error) {
         if (!isWorkflowPersistenceError(error)) throw error;
         subsystems.log(formatPersistenceDiagnostic(error.diagnostic));
-        subsystems.postMessage({
-            type: EngineChannel.RetryWorkflowResult,
-            correlationId: message.correlationId,
-            summary: null,
-            error: error.message,
-            diagnostics: error.diagnostics,
-        });
+        postCommandResponse(
+            'retryWorkflow',
+            {
+                type: EngineChannel.RetryWorkflowResult,
+                correlationId: message.correlationId,
+                summary: null,
+                error: error.message,
+                diagnostics: error.diagnostics,
+            },
+            subsystems,
+        );
     }
 }
 
-function handleCreateWorkflow(message: EngineCreateWorkflow, subsystems: DispatchSubsystems): void {
+function handleCreateWorkflow(
+    message: EngineRequest<'createWorkflow'>,
+    subsystems: DispatchSubsystems,
+): void {
     let summary: ReturnType<WorkflowStore['create']>;
     try {
         summary = subsystems.store.create(message.name, message.pipeline, message.positions);
     } catch (error) {
         if (isWorkflowTopologyError(error)) {
             subsystems.log(`Could not create workflow "${message.name}": ${error.message}`);
-            subsystems.postMessage({
-                type: EngineChannel.CreateWorkflowResult,
-                correlationId: message.correlationId,
-                error: error.message,
-                diagnostics: error.diagnostics,
-            });
+            postCommandResponse(
+                'createWorkflow',
+                {
+                    type: EngineChannel.CreateWorkflowResult,
+                    correlationId: message.correlationId,
+                    error: error.message,
+                    diagnostics: error.diagnostics,
+                },
+                subsystems,
+            );
             return;
         }
         if (isWorkflowPersistenceError(error)) {
             subsystems.log(formatPersistenceDiagnostic(error.diagnostic));
-            subsystems.postMessage({
-                type: EngineChannel.CreateWorkflowResult,
-                correlationId: message.correlationId,
-                error: error.message,
-                diagnostics: error.diagnostics,
-            });
+            postCommandResponse(
+                'createWorkflow',
+                {
+                    type: EngineChannel.CreateWorkflowResult,
+                    correlationId: message.correlationId,
+                    error: error.message,
+                    diagnostics: error.diagnostics,
+                },
+                subsystems,
+            );
             return;
         }
         throw error;
     }
     subsystems.log(`Created workflow "${message.name}" (${summary.id})`);
     subsystems.broadcastWorkflowsList();
-    subsystems.postMessage({
-        type: EngineChannel.CreateWorkflowResult,
-        correlationId: message.correlationId,
-        summary,
-    });
+    postCommandResponse(
+        'createWorkflow',
+        {
+            type: EngineChannel.CreateWorkflowResult,
+            correlationId: message.correlationId,
+            summary,
+        },
+        subsystems,
+    );
 }
 
 async function handleUpdateWorkflow(
-    message: EngineUpdateWorkflow,
+    message: EngineRequest<'updateWorkflow'>,
     subsystems: DispatchSubsystems,
 ): Promise<void> {
     const existed = Option.isSome(subsystems.store.get(message.id));
@@ -257,22 +309,30 @@ async function handleUpdateWorkflow(
     } catch (error) {
         if (isWorkflowTopologyError(error)) {
             subsystems.log(`Could not update workflow "${message.name}": ${error.message}`);
-            subsystems.postMessage({
-                type: EngineChannel.UpdateWorkflowResult,
-                correlationId: message.correlationId,
-                error: error.message,
-                diagnostics: error.diagnostics,
-            });
+            postCommandResponse(
+                'updateWorkflow',
+                {
+                    type: EngineChannel.UpdateWorkflowResult,
+                    correlationId: message.correlationId,
+                    error: error.message,
+                    diagnostics: error.diagnostics,
+                },
+                subsystems,
+            );
             return;
         }
         if (isWorkflowPersistenceError(error)) {
             subsystems.log(formatPersistenceDiagnostic(error.diagnostic));
-            subsystems.postMessage({
-                type: EngineChannel.UpdateWorkflowResult,
-                correlationId: message.correlationId,
-                error: error.message,
-                diagnostics: error.diagnostics,
-            });
+            postCommandResponse(
+                'updateWorkflow',
+                {
+                    type: EngineChannel.UpdateWorkflowResult,
+                    correlationId: message.correlationId,
+                    error: error.message,
+                    diagnostics: error.diagnostics,
+                },
+                subsystems,
+            );
             return;
         }
         throw error;
@@ -289,15 +349,19 @@ async function handleUpdateWorkflow(
         );
     }
     subsystems.broadcastWorkflowsList();
-    subsystems.postMessage({
-        type: EngineChannel.UpdateWorkflowResult,
-        correlationId: message.correlationId,
-        summary,
-    });
+    postCommandResponse(
+        'updateWorkflow',
+        {
+            type: EngineChannel.UpdateWorkflowResult,
+            correlationId: message.correlationId,
+            summary,
+        },
+        subsystems,
+    );
 }
 
 async function handleDeleteWorkflow(
-    message: EngineDeleteWorkflow,
+    message: EngineRequest<'deleteWorkflow'>,
     subsystems: DispatchSubsystems,
 ): Promise<void> {
     try {
@@ -315,26 +379,46 @@ async function handleDeleteWorkflow(
             subsystems.log(`Deleted workflow (${message.id})`);
         }
         subsystems.broadcastWorkflowsList();
-        subsystems.postMessage({
-            type: EngineChannel.DeleteWorkflowResult,
-            correlationId: message.correlationId,
-            success: removed,
-        });
+        if (removed) {
+            postCommandResponse(
+                'deleteWorkflow',
+                {
+                    type: EngineChannel.DeleteWorkflowResult,
+                    correlationId: message.correlationId,
+                    success: true,
+                },
+                subsystems,
+            );
+        } else {
+            postCommandResponse(
+                'deleteWorkflow',
+                {
+                    type: EngineChannel.DeleteWorkflowResult,
+                    correlationId: message.correlationId,
+                    success: false,
+                },
+                subsystems,
+            );
+        }
     } catch (error) {
         if (!isWorkflowPersistenceError(error)) throw error;
         subsystems.log(formatPersistenceDiagnostic(error.diagnostic));
-        subsystems.postMessage({
-            type: EngineChannel.DeleteWorkflowResult,
-            correlationId: message.correlationId,
-            success: false,
-            error: error.message,
-            diagnostic: error.diagnostic,
-        });
+        postCommandResponse(
+            'deleteWorkflow',
+            {
+                type: EngineChannel.DeleteWorkflowResult,
+                correlationId: message.correlationId,
+                success: false,
+                error: error.message,
+                diagnostic: error.diagnostic,
+            },
+            subsystems,
+        );
     }
 }
 
 async function handleShutdown(
-    message: EngineShutdown,
+    message: EngineRequest<'shutdown'>,
     subsystems: DispatchSubsystems,
 ): Promise<void> {
     let ok = true;
@@ -346,35 +430,53 @@ async function handleShutdown(
             `[error] engine shutdown failed: ${err instanceof Error ? err.message : String(err)}`,
         );
     }
-    subsystems.postMessage({
-        type: EngineChannel.ShutdownResult,
-        correlationId: message.correlationId,
-        ok,
-    });
+    postCommandResponse(
+        'shutdown',
+        {
+            type: EngineChannel.ShutdownResult,
+            correlationId: message.correlationId,
+            ok,
+        },
+        subsystems,
+    );
 }
 
-function handleGetWorkflow(message: EngineGetWorkflow, subsystems: DispatchSubsystems): void {
+function handleGetWorkflow(
+    message: EngineRequest<'getWorkflow'>,
+    subsystems: DispatchSubsystems,
+): void {
     const data = subsystems.store.get(message.id);
     if (Option.isSome(data)) {
-        subsystems.postMessage({
-            type: EngineChannel.GetWorkflowResult,
-            correlationId: message.correlationId,
-            found: true,
-            name: data.value.name,
-            pipeline: data.value.pipeline,
-            positions: data.value.positions,
-        });
+        postCommandResponse(
+            'getWorkflow',
+            {
+                type: EngineChannel.GetWorkflowResult,
+                correlationId: message.correlationId,
+                found: true,
+                name: data.value.name,
+                pipeline: data.value.pipeline,
+                positions: data.value.positions,
+            },
+            subsystems,
+        );
     } else {
-        subsystems.postMessage({
-            type: EngineChannel.GetWorkflowResult,
-            correlationId: message.correlationId,
-            found: false,
-            error: `Workflow not found: ${message.id}`,
-        });
+        postCommandResponse(
+            'getWorkflow',
+            {
+                type: EngineChannel.GetWorkflowResult,
+                correlationId: message.correlationId,
+                found: false,
+                error: `Workflow not found: ${message.id}`,
+            },
+            subsystems,
+        );
     }
 }
 
-function handleListPlugins(message: EngineListPlugins, subsystems: DispatchSubsystems): void {
+function handleListPlugins(
+    message: EngineRequest<'listPlugins'>,
+    subsystems: DispatchSubsystems,
+): void {
     const manifests = subsystems.engine.registry.all();
     const plugins: readonly PluginInfo[] = manifests.map((manifest) => ({
         manifest,
@@ -382,39 +484,54 @@ function handleListPlugins(message: EngineListPlugins, subsystems: DispatchSubsy
             ? subsystems.engine.permissionOverrides.get(manifest.id)
             : manifest.permissions,
     }));
-    subsystems.postMessage({
-        type: EngineChannel.ListPluginsResult,
-        correlationId: message.correlationId,
-        plugins,
-    });
+    postCommandResponse(
+        'listPlugins',
+        {
+            type: EngineChannel.ListPluginsResult,
+            correlationId: message.correlationId,
+            plugins,
+        },
+        subsystems,
+    );
 }
 
 function handleSetPermissionOverride(
-    message: EngineSetPermissionOverride,
+    message: EngineRequest<'setPermissionOverride'>,
     subsystems: DispatchSubsystems,
 ): void {
     const result = subsystems.engine.permissionOverrides.set(message.pluginId, message.overrides);
     if (Either.isLeft(result)) {
         const detail = formatPersistenceDiagnostic(result.left);
         subsystems.log(`Failed to save permission override: ${detail}`);
-        subsystems.postMessage({
-            type: EngineChannel.SetPermissionOverrideResult,
-            correlationId: message.correlationId,
-            ok: false,
-            error: detail,
-            diagnostic: result.left,
-        });
+        postCommandResponse(
+            'setPermissionOverride',
+            {
+                type: EngineChannel.SetPermissionOverrideResult,
+                correlationId: message.correlationId,
+                ok: false,
+                error: detail,
+                diagnostic: result.left,
+            },
+            subsystems,
+        );
         return;
     }
     updatePluginPermissions(message.pluginId, message.overrides);
-    subsystems.postMessage({
-        type: EngineChannel.SetPermissionOverrideResult,
-        correlationId: message.correlationId,
-        ok: true,
-    });
+    postCommandResponse(
+        'setPermissionOverride',
+        {
+            type: EngineChannel.SetPermissionOverrideResult,
+            correlationId: message.correlationId,
+            ok: true,
+        },
+        subsystems,
+    );
 }
 
-function handleReadProperties(message: EngineReadProperties, subsystems: DispatchSubsystems): void {
+function handleReadProperties(
+    message: EngineRequest<'readProperties'>,
+    subsystems: DispatchSubsystems,
+): void {
     const current = readPropertiesFile(subsystems.propertiesPath).pipe(
         Effect.catchAll((error) => {
             if (!isExpectedMissingFileDiagnostic(error)) {
@@ -425,72 +542,99 @@ function handleReadProperties(message: EngineReadProperties, subsystems: Dispatc
         Effect.runSync,
     );
     const properties = isRecord(current) ? current : {};
-    subsystems.postMessage({
-        type: EngineChannel.ReadPropertiesResult,
-        correlationId: message.correlationId,
-        properties,
-    });
+    postCommandResponse(
+        'readProperties',
+        {
+            type: EngineChannel.ReadPropertiesResult,
+            correlationId: message.correlationId,
+            properties,
+        },
+        subsystems,
+    );
 }
 
-function handleSaveProperties(message: EngineSaveProperties, subsystems: DispatchSubsystems): void {
+function handleSaveProperties(
+    message: EngineRequest<'saveProperties'>,
+    subsystems: DispatchSubsystems,
+): void {
     const result = writePropertiesFile(subsystems.propertiesPath, message.properties);
     if (Either.isLeft(result)) {
         const detail = formatPersistenceDiagnostic(result.left);
         subsystems.log(`Failed to save properties: ${detail}`);
-        subsystems.postMessage({
-            type: EngineChannel.SavePropertiesResult,
-            correlationId: message.correlationId,
-            ok: false,
-            error: detail,
-            diagnostic: result.left,
-        });
+        postCommandResponse(
+            'saveProperties',
+            {
+                type: EngineChannel.SavePropertiesResult,
+                correlationId: message.correlationId,
+                ok: false,
+                error: detail,
+                diagnostic: result.left,
+            },
+            subsystems,
+        );
         return;
     }
-    subsystems.postMessage({
-        type: EngineChannel.SavePropertiesResult,
-        correlationId: message.correlationId,
-        ok: true,
-    });
+    postCommandResponse(
+        'saveProperties',
+        {
+            type: EngineChannel.SavePropertiesResult,
+            correlationId: message.correlationId,
+            ok: true,
+        },
+        subsystems,
+    );
 }
 
 function handleReadWorkflowState(
-    message: EngineReadWorkflowState,
+    message: EngineRequest<'readWorkflowState'>,
     subsystems: DispatchSubsystems,
 ): void {
     const entries = subsystems.engine.workflowStateStore.listKeys(message.workflowId);
-    subsystems.postMessage({
-        type: EngineChannel.ReadWorkflowStateResult,
-        correlationId: message.correlationId,
-        entries,
-    });
+    postCommandResponse(
+        'readWorkflowState',
+        {
+            type: EngineChannel.ReadWorkflowStateResult,
+            correlationId: message.correlationId,
+            entries,
+        },
+        subsystems,
+    );
 }
 
 function handleSetWorkflowStateKey(
-    message: EngineSetWorkflowStateKey,
+    message: EngineRequest<'setWorkflowStateKey'>,
     subsystems: DispatchSubsystems,
 ): void {
     subsystems.engine.workflowStateStore.setKey(message.workflowId, message.key, message.value);
-    subsystems.postMessage({
-        type: EngineChannel.SetWorkflowStateKeyResult,
-        correlationId: message.correlationId,
-        ok: true,
-    });
+    postCommandResponse(
+        'setWorkflowStateKey',
+        {
+            type: EngineChannel.SetWorkflowStateKeyResult,
+            correlationId: message.correlationId,
+            ok: true,
+        },
+        subsystems,
+    );
 }
 
 function handleDeleteWorkflowStateKey(
-    message: EngineDeleteWorkflowStateKey,
+    message: EngineRequest<'deleteWorkflowStateKey'>,
     subsystems: DispatchSubsystems,
 ): void {
     subsystems.engine.workflowStateStore.deleteKey(message.workflowId, message.key);
-    subsystems.postMessage({
-        type: EngineChannel.DeleteWorkflowStateKeyResult,
-        correlationId: message.correlationId,
-        ok: true,
-    });
+    postCommandResponse(
+        'deleteWorkflowStateKey',
+        {
+            type: EngineChannel.DeleteWorkflowStateKeyResult,
+            correlationId: message.correlationId,
+            ok: true,
+        },
+        subsystems,
+    );
 }
 
 export function dispatch(
-    message: MainToEngineMessage,
+    message: EngineCommandRequest,
     subsystems: DispatchSubsystems,
 ): void | Promise<void> {
     return Match.value(message).pipe(
