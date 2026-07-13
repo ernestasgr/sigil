@@ -24,6 +24,7 @@ const DEFAULT_EDGE_OPTIONS = {
 export function WorkflowCanvas(): ReactElement {
     const nodes = useBuilderStore((state) => state.nodes);
     const edges = useBuilderStore((state) => state.edges);
+    const selectedNodeId = useBuilderStore((state) => state.selectedNodeId);
     const onNodesChange = useBuilderStore((state) => state.onNodesChange);
     const onEdgesChange = useBuilderStore((state) => state.onEdgesChange);
     const connect = useBuilderStore((state) => state.connect);
@@ -55,7 +56,7 @@ export function WorkflowCanvas(): ReactElement {
             aria-label="Workflow canvas"
         >
             <ReactFlow
-                nodes={[...nodes]}
+                nodes={nodes.map((node) => ({ ...node, selected: node.id === selectedNodeId }))}
                 edges={[...edges]}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}

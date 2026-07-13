@@ -1,3 +1,4 @@
+import type { CompiledPipeline } from '@sigil/schema';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useBuilderStore } from './builder-store.js';
@@ -209,6 +210,132 @@ describe('useBuilderStore', () => {
         useBuilderStore.getState().onEdgesChange([{ id: edgeId, type: 'remove' }]);
 
         expect(useBuilderStore.getState().edges).toHaveLength(0);
+    });
+
+    it('reports dirty state against the current baseline and resets it after saving', () => {
+        const state = useBuilderStore.getState();
+
+        expect(state.revision).toBe(0);
+        expect(state.dirty).toBe(false);
+        expect(state.canLeave()).toBe(true);
+
+        state.addNode('log', { x: 0, y: 0 });
+
+        expect(useBuilderStore.getState().dirty).toBe(true);
+        expect(useBuilderStore.getState().canLeave()).toBe(false);
+
+        useBuilderStore.getState().markSaved();
+
+        expect(useBuilderStore.getState().dirty).toBe(false);
+        expect(useBuilderStore.getState().isDirty).toBe(false);
+        expect(useBuilderStore.getState().canLeave()).toBe(true);
+        expect(useBuilderStore.getState().canUndo).toBe(true);
+
+        useBuilderStore.getState().setPipelineName('Renamed');
+        expect(useBuilderStore.getState().dirty).toBe(true);
+        useBuilderStore.getState().setPipelineName('');
+        expect(useBuilderStore.getState().dirty).toBe(false);
+    });
+
+    it('undoes and redoes node, edge, configuration, and position edits', () => {
+        const trigger = useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
+        const log = useBuilderStore.getState().addNode('log', { x: 100, y: 0 });
+        useBuilderStore
+            .getState()
+            .connect({ source: trigger, target: log, sourceHandle: 'out', targetHandle: null });
+
+        useBuilderStore.getState().updateSpec(log, {
+            type: 'log',
+            config: { message: 'reversible edit' },
+        });
+        useBuilderStore
+            .getState()
+            .onNodesChange([{ id: log, type: 'position', position: { x: 200, y: 20 } }]);
+
+        expect(useBuilderStore.getState().nodes.find((node) => node.id === log)?.position).toEqual({
+            x: 200,
+            y: 20,
+        });
+        expect(useBuilderStore.getState().canUndo).toBe(true);
+
+        useBuilderStore.getState().undo();
+        expect(useBuilderStore.getState().nodes.find((node) => node.id === log)?.position).toEqual({
+            x: 100,
+            y: 0,
+        });
+
+        useBuilderStore.getState().undo();
+        expect(
+            useBuilderStore.getState().nodes.find((node) => node.id === log)?.data.config,
+        ).toEqual({
+            message: 'Log message',
+        });
+
+        useBuilderStore.getState().redo();
+        expect(
+            useBuilderStore.getState().nodes.find((node) => node.id === log)?.data.config,
+        ).toEqual({
+            message: 'reversible edit',
+        });
+        useBuilderStore.getState().redo();
+        expect(useBuilderStore.getState().nodes.find((node) => node.id === log)?.position).toEqual({
+            x: 200,
+            y: 20,
+        });
+
+        const edgeId = useBuilderStore.getState().edges[0]?.id;
+        expect(edgeId).toBeDefined();
+        if (!edgeId) return;
+
+        useBuilderStore.getState().removeEdge(edgeId);
+        expect(useBuilderStore.getState().edges).toHaveLength(0);
+        useBuilderStore.getState().undo();
+        expect(useBuilderStore.getState().edges.map((edge) => edge.id)).toEqual([edgeId]);
+
+        useBuilderStore.getState().removeNode(trigger);
+        expect(useBuilderStore.getState().nodes.map((node) => node.id)).toEqual([log]);
+        useBuilderStore.getState().undo();
+        expect(useBuilderStore.getState().nodes.map((node) => node.id)).toEqual([trigger, log]);
+        expect(useBuilderStore.getState().edges.map((edge) => edge.id)).toEqual([edgeId]);
+    });
+
+    it('does not create a dirty revision for selection-only changes', () => {
+        const id = useBuilderStore.getState().addNode('log', { x: 0, y: 0 });
+        useBuilderStore.getState().markSaved();
+        const revision = useBuilderStore.getState().revision;
+
+        useBuilderStore.getState().onNodesChange([{ id, type: 'select', selected: true }]);
+
+        expect(useBuilderStore.getState().selectedNodeId).toBe(id);
+        expect(useBuilderStore.getState().revision).toBe(revision);
+        expect(useBuilderStore.getState().dirty).toBe(false);
+    });
+
+    it('loads a saved baseline including positions and tracks later node movement', () => {
+        const pipeline: CompiledPipeline = {
+            id: 'pipeline-loaded',
+            workflowId: 'workflow-loaded',
+            schemaVersion: 1,
+            nodes: [{ id: 'log', type: 'log', config: { message: 'Loaded' } }],
+            edges: [],
+        };
+
+        useBuilderStore
+            .getState()
+            .loadPipeline(pipeline, 'Loaded Workflow', { log: { x: 40, y: 60 } });
+
+        expect(useBuilderStore.getState().dirty).toBe(false);
+        expect(useBuilderStore.getState().revision).toBe(0);
+        expect(useBuilderStore.getState().nodes[0]?.position).toEqual({ x: 40, y: 60 });
+
+        useBuilderStore
+            .getState()
+            .onNodesChange([{ id: 'log', type: 'position', position: { x: 80, y: 100 } }]);
+
+        expect(useBuilderStore.getState().dirty).toBe(true);
+        useBuilderStore.getState().undo();
+        expect(useBuilderStore.getState().dirty).toBe(false);
+        expect(useBuilderStore.getState().nodes[0]?.position).toEqual({ x: 40, y: 60 });
     });
 
     it('clear resets the graph to empty', () => {
