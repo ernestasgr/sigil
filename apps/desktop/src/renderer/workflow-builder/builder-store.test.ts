@@ -394,7 +394,10 @@ describe('useBuilderStore', () => {
 
         const firstSave = useBuilderStore.getState().save('Draft Workflow', command);
 
-        expect(useBuilderStore.getState().saveState.status).toBe('pending');
+        const pendingState = useBuilderStore.getState().saveState;
+        expect(pendingState.status).toBe('pending');
+        if (pendingState.status !== 'pending') throw new Error('Expected a pending save.');
+        const firstAttemptId = pendingState.attemptId;
         expect(command).toHaveBeenCalledTimes(1);
         expect(command).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -416,6 +419,121 @@ describe('useBuilderStore', () => {
         expect(useBuilderStore.getState().saveState).toEqual({
             status: 'success',
             revision: 2,
+            attemptId: firstAttemptId,
+        });
+        expect(useBuilderStore.getState().dirty).toBe(false);
+    });
+
+    it('ignores an older save after the draft is cleared', async () => {
+        useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
+        useBuilderStore.getState().setPipelineName('Cleared Workflow');
+
+        let resolvePending: ((result: WorkflowDraftSaveResult) => void) | undefined;
+        const pendingResult = new Promise<WorkflowDraftSaveResult>((resolve) => {
+            resolvePending = resolve;
+        });
+        const oldSave = useBuilderStore.getState().save(
+            'Cleared Workflow',
+            vi.fn(async () => pendingResult),
+        );
+
+        useBuilderStore.getState().clear();
+        resolvePending?.({ ok: true });
+        await oldSave;
+
+        expect(useBuilderStore.getState().saveState).toEqual({ status: 'idle' });
+        expect(useBuilderStore.getState().nodes).toEqual([]);
+        expect(useBuilderStore.getState().dirty).toBe(false);
+    });
+
+    it('ignores an older save after a different pipeline is loaded', async () => {
+        useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
+        useBuilderStore.getState().setPipelineName('Replaced Workflow');
+
+        let resolvePending: ((result: WorkflowDraftSaveResult) => void) | undefined;
+        const pendingResult = new Promise<WorkflowDraftSaveResult>((resolve) => {
+            resolvePending = resolve;
+        });
+        const oldSave = useBuilderStore.getState().save(
+            'Replaced Workflow',
+            vi.fn(async () => pendingResult),
+        );
+
+        const loadedPipeline: CompiledPipeline = {
+            id: 'pipeline-new',
+            workflowId: 'workflow-new',
+            schemaVersion: 1,
+            nodes: [
+                {
+                    id: 'loaded-trigger',
+                    type: 'manual-trigger',
+                    config: {
+                        eventName: 'file.created',
+                        payload: { path: '/', name: 'file', ext: 'txt', size: 0, dir: '/' },
+                    },
+                },
+            ],
+            edges: [],
+        };
+        useBuilderStore.getState().loadPipeline(loadedPipeline, 'Loaded Workflow');
+
+        resolvePending?.({ ok: false, error: 'Stale save', diagnostics: [] });
+        await oldSave;
+
+        expect(useBuilderStore.getState().nodes.map((node) => node.id)).toEqual(['loaded-trigger']);
+        expect(useBuilderStore.getState().pipelineName).toBe('Loaded Workflow');
+        expect(useBuilderStore.getState().saveState).toEqual({ status: 'idle' });
+        expect(useBuilderStore.getState().dirty).toBe(false);
+    });
+
+    it('does not let an older save settle a newer save attempt', async () => {
+        useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
+        useBuilderStore.getState().setPipelineName('Old Workflow');
+
+        let resolveOld: ((result: WorkflowDraftSaveResult) => void) | undefined;
+        const oldResult = new Promise<WorkflowDraftSaveResult>((resolve) => {
+            resolveOld = resolve;
+        });
+        const oldSave = useBuilderStore.getState().save(
+            'Old Workflow',
+            vi.fn(async () => oldResult),
+        );
+        const oldPending = useBuilderStore.getState().saveState;
+        if (oldPending.status !== 'pending')
+            throw new Error('Expected the old save to be pending.');
+
+        useBuilderStore.getState().clear();
+        useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
+        useBuilderStore.getState().setPipelineName('New Workflow');
+
+        let resolveNew: ((result: WorkflowDraftSaveResult) => void) | undefined;
+        const newResult = new Promise<WorkflowDraftSaveResult>((resolve) => {
+            resolveNew = resolve;
+        });
+        const newSave = useBuilderStore.getState().save(
+            'New Workflow',
+            vi.fn(async () => newResult),
+        );
+        const newPending = useBuilderStore.getState().saveState;
+        if (newPending.status !== 'pending')
+            throw new Error('Expected the new save to be pending.');
+        expect(newPending.attemptId).not.toBe(oldPending.attemptId);
+
+        resolveOld?.({ ok: true });
+        await oldSave;
+
+        expect(useBuilderStore.getState().saveState).toEqual({
+            status: 'pending',
+            revision: newPending.revision,
+            attemptId: newPending.attemptId,
+        });
+
+        resolveNew?.({ ok: true });
+        await newSave;
+        expect(useBuilderStore.getState().saveState).toEqual({
+            status: 'success',
+            revision: newPending.revision,
+            attemptId: newPending.attemptId,
         });
         expect(useBuilderStore.getState().dirty).toBe(false);
     });
@@ -452,6 +570,7 @@ describe('useBuilderStore', () => {
         expect(useBuilderStore.getState().saveState).toEqual({
             status: 'failure',
             revision: 2,
+            attemptId: expect.any(String),
             error: 'The Workflow file could not be replaced.',
             diagnostics: [diagnostic],
         });
@@ -463,10 +582,13 @@ describe('useBuilderStore', () => {
         ).resolves.toEqual({ ok: true });
 
         expect(retryCommand).toHaveBeenCalledTimes(1);
-        expect(useBuilderStore.getState().saveState).toEqual({
-            status: 'success',
-            revision: 2,
-        });
+        expect(useBuilderStore.getState().saveState).toEqual(
+            expect.objectContaining({
+                status: 'success',
+                revision: 2,
+                attemptId: expect.any(String),
+            }),
+        );
         expect(useBuilderStore.getState().dirty).toBe(false);
     });
 

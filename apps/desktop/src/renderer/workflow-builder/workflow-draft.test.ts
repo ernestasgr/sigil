@@ -110,6 +110,8 @@ describe('WorkflowDraft', () => {
         const pending = beginWorkflowDraftSave(draft);
         expect(isWorkflowDraftSavePending(pending)).toBe(true);
         expect(beginWorkflowDraftSave(pending)).toBe(pending);
+        if (pending.saveState.status !== 'pending') throw new Error('Expected a pending save.');
+        const pendingAttemptId = pending.saveState.attemptId;
 
         const diagnostic: WorkflowDraftDiagnostic = {
             severity: 'error',
@@ -117,20 +119,51 @@ describe('WorkflowDraft', () => {
             target: { kind: 'pipeline' },
             message: 'The Workflow file could not be replaced.',
         };
-        const failed = rejectWorkflowDraftSave(pending, 'Could not save Workflow.', [diagnostic]);
+        const failed = rejectWorkflowDraftSave(
+            pending,
+            pendingAttemptId,
+            'Could not save Workflow.',
+            [diagnostic],
+        );
 
         expect(failed.saveState).toEqual({
             status: 'failure',
             revision: pending.revision,
+            attemptId: pendingAttemptId,
             error: 'Could not save Workflow.',
             diagnostics: [diagnostic],
         });
         expect(isWorkflowDraftDirty(failed)).toBe(true);
 
         const retry = beginWorkflowDraftSave(failed);
-        const saved = completeWorkflowDraftSave(retry);
+        if (retry.saveState.status !== 'pending')
+            throw new Error('Expected a retry to be pending.');
+        const saved = completeWorkflowDraftSave(retry, retry.saveState.attemptId);
 
-        expect(saved.saveState).toEqual({ status: 'success', revision: retry.revision });
+        expect(saved.saveState).toEqual({
+            status: 'success',
+            revision: retry.revision,
+            attemptId: retry.saveState.attemptId,
+        });
         expect(isWorkflowDraftDirty(saved)).toBe(false);
+    });
+
+    it('ignores completion and rejection from a different save attempt', () => {
+        let draft = createWorkflowDraft(emptySnapshot());
+        draft = applyWorkflowDraftCommand(draft, {
+            kind: 'add-node',
+            node: logNode('log-1'),
+        });
+
+        const pending = beginWorkflowDraftSave(draft);
+        const otherPending = beginWorkflowDraftSave(createWorkflowDraft(emptySnapshot()));
+        if (pending.saveState.status !== 'pending' || otherPending.saveState.status !== 'pending') {
+            throw new Error('Expected both saves to be pending.');
+        }
+
+        expect(completeWorkflowDraftSave(pending, otherPending.saveState.attemptId)).toBe(pending);
+        expect(
+            rejectWorkflowDraftSave(pending, otherPending.saveState.attemptId, 'Stale', []),
+        ).toBe(pending);
     });
 });
