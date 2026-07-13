@@ -99,7 +99,7 @@ export function FileWatcherConfigForm({
                 onChange={(recursive) => onChange({ ...config, recursive })}
             />
             <div className="flex flex-col gap-1.5">
-                <span className="font-ui text-[11px] tracking-widest text-veil uppercase">
+                <span className="font-ui text-veil-foreground text-[11px] tracking-widest uppercase">
                     Events
                 </span>
                 {EVENT_NAME_OPTIONS.map((option) => (

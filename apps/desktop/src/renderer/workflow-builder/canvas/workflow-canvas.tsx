@@ -54,7 +54,12 @@ export function WorkflowCanvas(): ReactElement {
             onDrop={onDrop}
             onDragOver={onDragOver}
             aria-label="Workflow canvas"
+            aria-describedby="workflow-canvas-help"
         >
+            <p id="workflow-canvas-help" className="sr-only">
+                Select a Node with Enter or Space. Connect Nodes by dragging from an output port to
+                an input port, or use the Node Library to add Nodes without dragging.
+            </p>
             <ReactFlow
                 nodes={nodes.map((node) => ({ ...node, selected: node.id === selectedNodeId }))}
                 edges={[...edges]}

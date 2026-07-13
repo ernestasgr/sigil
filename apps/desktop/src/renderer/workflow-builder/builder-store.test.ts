@@ -41,6 +41,22 @@ describe('useBuilderStore', () => {
         expect(nodeA.data.config).toEqual(nodeB.data.config);
     });
 
+    it('adds a palette Node with a readable position and selects it', () => {
+        const firstId = useBuilderStore.getState().addNodeFromPalette('manual-trigger');
+        const secondId = useBuilderStore.getState().addNodeFromPalette('log');
+
+        const state = useBuilderStore.getState();
+        expect(state.selectedNodeId).toBe(secondId);
+        expect(state.nodes.find((node) => node.id === firstId)?.position).toEqual({
+            x: 40,
+            y: 40,
+        });
+        expect(state.nodes.find((node) => node.id === secondId)?.position).toEqual({
+            x: 320,
+            y: 40,
+        });
+    });
+
     it('connect adds an edge carrying the source port from sourceHandle', () => {
         const source = useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
         const target = useBuilderStore.getState().addNode('log', { x: 100, y: 0 });
@@ -353,12 +369,12 @@ describe('useBuilderStore', () => {
         expect(edgeId).toBeDefined();
         if (!edgeId) return;
 
-        useBuilderStore.getState().onNodesChange([
-            { id: source, type: 'dimensions', dimensions: { width: 208, height: 105 } },
-        ]);
         useBuilderStore
             .getState()
-            .onEdgesChange([{ id: edgeId, type: 'select', selected: true }]);
+            .onNodesChange([
+                { id: source, type: 'dimensions', dimensions: { width: 208, height: 105 } },
+            ]);
+        useBuilderStore.getState().onEdgesChange([{ id: edgeId, type: 'select', selected: true }]);
 
         const state = useBuilderStore.getState();
         expect(state.nodes.find((node) => node.id === source)?.measured).toEqual({
@@ -398,6 +414,32 @@ describe('useBuilderStore', () => {
         useBuilderStore.getState().undo();
         expect(useBuilderStore.getState().dirty).toBe(false);
         expect(useBuilderStore.getState().nodes[0]?.position).toEqual({ x: 40, y: 60 });
+    });
+
+    it('fills missing loaded positions with a deterministic topology layout', () => {
+        const pipeline: CompiledPipeline = {
+            id: 'pipeline-layout',
+            workflowId: 'workflow-layout',
+            schemaVersion: 1,
+            nodes: [
+                {
+                    id: 'trigger',
+                    type: 'manual-trigger',
+                    config: {
+                        eventName: 'file.created',
+                        payload: { path: '/', name: 'file', ext: 'txt', size: 0, dir: '/' },
+                    },
+                },
+                { id: 'log', type: 'log', config: { message: 'Loaded' } },
+            ],
+            edges: [{ id: 'edge-1', source: 'trigger', target: 'log', sourcePort: 'out' }],
+        };
+
+        useBuilderStore.getState().loadPipeline(pipeline, 'Layout Workflow');
+
+        const nodes = useBuilderStore.getState().nodes;
+        expect(nodes.find((node) => node.id === 'trigger')?.position).toEqual({ x: 40, y: 40 });
+        expect(nodes.find((node) => node.id === 'log')?.position.x).toBeGreaterThan(40);
     });
 
     it('clear resets the graph to empty', () => {

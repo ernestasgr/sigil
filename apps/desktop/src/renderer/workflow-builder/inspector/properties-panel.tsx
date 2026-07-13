@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import { type ReactElement, useEffect, useRef } from 'react';
 import { Button } from '../../components/ui/button.js';
 import { useSigil } from '../../lib/use-sigil.js';
 import { cn } from '../../lib/utils.js';
@@ -111,19 +111,33 @@ export function PropertiesPanel(): ReactElement {
     const updateSpec = useBuilderStore((state) => state.updateSpec);
     const removeNode = useBuilderStore((state) => state.removeNode);
     const sigil = useSigil();
+    const panelRef = useRef<HTMLElement>(null);
 
     const node = selectedNodeId ? nodes.find((entry) => entry.id === selectedNodeId) : undefined;
+    const selectedNodeIdForFocus = node?.id;
+
+    useEffect(() => {
+        if (selectedNodeIdForFocus === undefined) return;
+        panelRef.current?.querySelector<HTMLElement>('[data-inspector-control="true"]')?.focus();
+    }, [selectedNodeIdForFocus]);
 
     if (!node) {
         return (
-            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-                <span className="font-display text-gilt text-xs tracking-[0.3em] uppercase">
+            <section
+                ref={panelRef}
+                aria-labelledby="workflow-inspector-title"
+                className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center"
+            >
+                <h2
+                    id="workflow-inspector-title"
+                    className="font-display text-gilt text-xs tracking-[0.3em] uppercase"
+                >
                     Inspector
-                </span>
-                <p className="font-manuscript text-veil text-sm italic">
+                </h2>
+                <p className="font-manuscript text-veil-foreground text-sm italic">
                     Select a node on the canvas to inscribe its properties.
                 </p>
-            </div>
+            </section>
         );
     }
 
@@ -131,7 +145,11 @@ export function PropertiesPanel(): ReactElement {
     const def = nodeTypeDef(spec.type);
 
     return (
-        <div className="flex h-full flex-col">
+        <section
+            ref={panelRef}
+            aria-labelledby="workflow-inspector-title"
+            className="flex h-full flex-col"
+        >
             <header className="border-gilt/40 border-b px-5 py-4">
                 <span
                     className={cn(
@@ -141,13 +159,22 @@ export function PropertiesPanel(): ReactElement {
                 >
                     {def.category}
                 </span>
-                <h2 className="font-display text-gilt text-sm tracking-[0.25em] uppercase">
+                <h2
+                    id="workflow-inspector-title"
+                    className="font-display text-gilt text-sm tracking-[0.25em] uppercase"
+                >
                     {def.label}
                 </h2>
-                <p className="font-manuscript text-veil mt-1 text-xs italic">{def.description}</p>
+                <p className="font-manuscript text-veil-foreground mt-1 text-xs italic">
+                    {def.description}
+                </p>
             </header>
             <div className="flex flex-col gap-4 overflow-auto p-5">
-                <NodeConfigForm spec={spec} onChange={(next) => updateSpec(node.id, next)} />
+                <NodeConfigForm
+                    key={node.id}
+                    spec={spec}
+                    onChange={(next) => updateSpec(node.id, next)}
+                />
             </div>
             <footer className="border-gilt/40 flex items-center gap-2 border-t p-5">
                 {spec.type === 'manual-trigger' ? (
@@ -170,6 +197,6 @@ export function PropertiesPanel(): ReactElement {
                     Delete node
                 </Button>
             </footer>
-        </div>
+        </section>
     );
 }

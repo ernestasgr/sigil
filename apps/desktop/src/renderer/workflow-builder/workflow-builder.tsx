@@ -46,16 +46,19 @@ export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): Rea
                     ← Back
                 </Button>
                 <input
+                    id="workflow-name"
                     type="text"
                     value={pipelineName}
                     onChange={(e) => setPipelineName(e.target.value)}
                     placeholder="Workflow name..."
                     aria-label="Workflow name"
-                    className="font-ui flex-1 bg-transparent text-parchment outline-none placeholder:text-veil"
+                    className="font-ui flex-1 bg-transparent text-parchment outline-none placeholder:text-veil-foreground focus-visible:outline-2 focus-visible:outline-gilt focus-visible:outline-offset-2"
                 />
                 <span
                     role="status"
                     aria-live="polite"
+                    aria-atomic="true"
+                    aria-label="Workflow save status"
                     className={saveStatusClass(saveState, dirty)}
                 >
                     {saveStatusLabel(saveState, dirty)}
@@ -83,8 +86,10 @@ export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): Rea
                 <button
                     type="button"
                     onClick={() => setShowInspector((prev) => !prev)}
+                    aria-pressed={showInspector}
+                    aria-controls="workflow-variable-inspector"
                     className={`font-ui text-[10px] tracking-[0.2em] uppercase transition-colors ${
-                        showInspector ? 'text-gilt' : 'text-veil hover:text-parchment'
+                        showInspector ? 'text-gilt' : 'text-veil-foreground hover:text-parchment'
                     }`}
                 >
                     {showInspector ? 'Hide Inspector' : 'Inspector'}
@@ -103,7 +108,10 @@ export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): Rea
                         </ReactFlowProvider>
                     </div>
                     {showInspector ? (
-                        <div className="sigil-ornamental-frame relative mt-2 h-48 shrink-0 overflow-hidden">
+                        <div
+                            id="workflow-variable-inspector"
+                            className="sigil-ornamental-frame relative mt-2 h-48 shrink-0 overflow-hidden"
+                        >
                             <VariableInspector workflowId={meta.workflowId} />
                             <CornerFlourish corner="tl" />
                             <CornerFlourish corner="br" />
@@ -196,9 +204,9 @@ function saveStatusLabel(saveState: WorkflowDraftSaveState, dirty: boolean): str
 }
 
 function saveStatusClass(saveState: WorkflowDraftSaveState, dirty: boolean): string {
-    if (saveState.status === 'failure') return 'font-ui text-xs text-old-blood';
+    if (saveState.status === 'failure') return 'font-ui text-xs text-old-blood-foreground';
     if (saveState.status === 'pending') return 'font-ui text-xs text-gilt';
-    return dirty ? 'font-ui text-xs text-gilt' : 'font-ui text-xs text-verdigris';
+    return dirty ? 'font-ui text-xs text-gilt' : 'font-ui text-xs text-verdigris-foreground';
 }
 
 function assertNever(value: never): never {
@@ -247,7 +255,13 @@ function ValidationBar({ onSave, saveState }: ValidationBarProps): ReactElement 
 
     return (
         <div className="border-gilt/40 flex items-center justify-between gap-4 border-t px-5 py-3">
-            <div className="min-w-0 flex-1" role="status" aria-live="polite">
+            <div
+                className="min-w-0 flex-1"
+                role={result.ok ? 'status' : 'alert'}
+                aria-live={result.ok ? 'polite' : 'assertive'}
+                aria-atomic="true"
+                aria-busy={savePending}
+            >
                 <div className="flex items-center gap-2">
                     <span
                         className={cn(
@@ -265,8 +279,8 @@ function ValidationBar({ onSave, saveState }: ValidationBarProps): ReactElement 
                             result.ok
                                 ? warningCount > 0
                                     ? 'text-gilt'
-                                    : 'text-verdigris'
-                                : 'text-old-blood',
+                                    : 'text-verdigris-foreground'
+                                : 'text-old-blood-foreground',
                         )}
                     >
                         {result.ok
@@ -286,7 +300,7 @@ function ValidationBar({ onSave, saveState }: ValidationBarProps): ReactElement 
                                 <span
                                     className={
                                         diagnostic.severity === 'error'
-                                            ? 'text-old-blood'
+                                            ? 'text-old-blood-foreground'
                                             : 'text-gilt'
                                     }
                                 >
@@ -296,7 +310,7 @@ function ValidationBar({ onSave, saveState }: ValidationBarProps): ReactElement 
                                     {diagnosticTargetLabel(diagnostic)}
                                     {diagnostic.fieldPath ? ` · ${diagnostic.fieldPath}` : ''}
                                 </span>{' '}
-                                <span className="text-veil">{diagnostic.message}</span>
+                                <span className="text-veil-foreground">{diagnostic.message}</span>
                                 {diagnostic.repairHint ? (
                                     <span className="text-gilt">
                                         {' '}
@@ -311,13 +325,13 @@ function ValidationBar({ onSave, saveState }: ValidationBarProps): ReactElement 
                     <p className="text-gilt mt-1 font-data text-[10px]">Saving Workflow…</p>
                 ) : null}
                 {saveState.status === 'success' && !dirty ? (
-                    <p className="text-verdigris mt-1 font-data text-[10px]">
+                    <p className="text-verdigris-foreground mt-1 font-data text-[10px]">
                         Workflow saved successfully.
                     </p>
                 ) : null}
                 {saveState.status === 'failure' ? (
                     <div role="alert" className="mt-1">
-                        <p className="text-old-blood break-words font-data text-[10px]">
+                        <p className="text-old-blood-foreground break-words font-data text-[10px]">
                             {saveState.error}
                         </p>
                         {saveState.diagnostics.length > 0 ? (
@@ -330,7 +344,9 @@ function ValidationBar({ onSave, saveState }: ValidationBarProps): ReactElement 
                                                 ? ` · ${saveDiagnosticContextLabel(diagnostic)}`
                                                 : ''}
                                         </span>{' '}
-                                        <span className="text-veil">{diagnostic.message}</span>
+                                        <span className="text-veil-foreground">
+                                            {diagnostic.message}
+                                        </span>
                                         {saveDiagnosticRepairHint(diagnostic) ? (
                                             <span className="text-gilt">
                                                 {' '}
@@ -346,13 +362,16 @@ function ValidationBar({ onSave, saveState }: ValidationBarProps): ReactElement 
                 {exportError ? (
                     <p
                         role="alert"
-                        className="text-old-blood mt-1 break-words font-data text-[10px]"
+                        className="text-old-blood-foreground mt-1 break-words font-data text-[10px]"
                     >
                         {exportError}
                     </p>
                 ) : null}
             </div>
             <div className="flex items-center gap-2">
+                <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                    {copied ? 'Workflow JSON copied to the clipboard.' : ''}
+                </span>
                 <Button
                     size="sm"
                     variant="default"
