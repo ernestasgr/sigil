@@ -11,24 +11,25 @@ import { CornerFlourish } from './corner-flourish.js';
 import { PropertiesPanel } from './inspector/properties-panel.js';
 import { VariableInspector } from './inspector/variable-inspector.js';
 import { NodePalette } from './palette/node-palette.js';
+import type {
+    WorkflowDraftCommandDiagnostic,
+    WorkflowDraftDiagnostic,
+    WorkflowDraftSaveState,
+} from './workflow-draft.js';
 
 export interface WorkflowBuilderProps {
-    readonly onSave: (name: string) => void;
+    readonly onSave: (name: string) => Promise<void>;
     readonly onCancel: () => void;
-    readonly saveError?: string | null;
 }
 
-export function WorkflowBuilder({
-    onSave,
-    onCancel,
-    saveError = null,
-}: WorkflowBuilderProps): ReactElement {
+export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): ReactElement {
     const pipelineName = useBuilderStore((state) => state.pipelineName);
     const setPipelineName = useBuilderStore((state) => state.setPipelineName);
     const meta = useBuilderStore((state) => state.meta);
     const dirty = useBuilderStore((state) => state.dirty);
     const canUndo = useBuilderStore((state) => state.canUndo);
     const canRedo = useBuilderStore((state) => state.canRedo);
+    const saveState = useBuilderStore((state) => state.saveState);
     const undo = useBuilderStore((state) => state.undo);
     const redo = useBuilderStore((state) => state.redo);
     const [showInspector, setShowInspector] = useState(false);
@@ -55,11 +56,9 @@ export function WorkflowBuilder({
                 <span
                     role="status"
                     aria-live="polite"
-                    className={
-                        dirty ? 'font-ui text-xs text-gilt' : 'font-ui text-xs text-verdigris'
-                    }
+                    className={saveStatusClass(saveState, dirty)}
                 >
-                    {dirty ? 'Unsaved' : 'Saved'}
+                    {saveStatusLabel(saveState, dirty)}
                 </span>
                 <Button
                     size="sm"
@@ -110,7 +109,7 @@ export function WorkflowBuilder({
                             <CornerFlourish corner="br" />
                         </div>
                     ) : null}
-                    <ValidationBar onSave={onSave} saveError={saveError} />
+                    <ValidationBar onSave={onSave} saveState={saveState} />
                 </div>
                 <aside className="sigil-ornamental-frame relative w-80 shrink-0 overflow-hidden">
                     <PropertiesPanel />
@@ -123,8 +122,8 @@ export function WorkflowBuilder({
 }
 
 interface ValidationBarProps {
-    readonly onSave: (name: string) => void;
-    readonly saveError: string | null;
+    readonly onSave: (name: string) => Promise<void>;
+    readonly saveState: WorkflowDraftSaveState;
 }
 
 function diagnosticTargetLabel(diagnostic: TopologyDiagnostic): string {
@@ -140,33 +139,111 @@ function diagnosticTargetLabel(diagnostic: TopologyDiagnostic): string {
     }
 }
 
-function ValidationBar({ onSave, saveError }: ValidationBarProps): ReactElement {
+type CommandDiagnostic = Extract<WorkflowDraftDiagnostic, WorkflowDraftCommandDiagnostic>;
+type PersistenceDiagnostic = Extract<WorkflowDraftDiagnostic, { readonly kind: 'persistence' }>;
+
+function isCommandDiagnostic(diagnostic: WorkflowDraftDiagnostic): diagnostic is CommandDiagnostic {
+    return 'kind' in diagnostic && diagnostic.kind === 'command';
+}
+
+function isPersistenceDiagnostic(
+    diagnostic: WorkflowDraftDiagnostic,
+): diagnostic is PersistenceDiagnostic {
+    return 'kind' in diagnostic && diagnostic.kind === 'persistence';
+}
+
+function isTopologyDiagnostic(
+    diagnostic: WorkflowDraftDiagnostic,
+): diagnostic is TopologyDiagnostic {
+    return !('kind' in diagnostic);
+}
+
+function saveDiagnosticTargetLabel(diagnostic: WorkflowDraftDiagnostic): string {
+    if (isCommandDiagnostic(diagnostic)) return `${diagnostic.operation} command`;
+    if (isPersistenceDiagnostic(diagnostic)) return `Persistence ${diagnostic.phase}`;
+    return diagnosticTargetLabel(diagnostic);
+}
+
+function saveDiagnosticContextLabel(diagnostic: WorkflowDraftDiagnostic): string | null {
+    if (!isTopologyDiagnostic(diagnostic)) return null;
+    return diagnostic.fieldPath ?? null;
+}
+
+function saveDiagnosticRepairHint(diagnostic: WorkflowDraftDiagnostic): string | null {
+    if (isPersistenceDiagnostic(diagnostic)) return null;
+    return diagnostic.repairHint ?? null;
+}
+
+function saveDiagnosticKey(diagnostic: WorkflowDraftDiagnostic): string {
+    return `${diagnostic.code}-${saveDiagnosticTargetLabel(diagnostic)}-${
+        saveDiagnosticContextLabel(diagnostic) ?? ''
+    }-${diagnostic.message}`;
+}
+
+function saveStatusLabel(saveState: WorkflowDraftSaveState, dirty: boolean): string {
+    switch (saveState.status) {
+        case 'idle':
+            return dirty ? 'Unsaved' : 'Saved';
+        case 'pending':
+            return 'Saving…';
+        case 'success':
+            return dirty ? 'Unsaved changes' : 'Saved';
+        case 'failure':
+            return 'Save failed';
+        default:
+            return assertNever(saveState);
+    }
+}
+
+function saveStatusClass(saveState: WorkflowDraftSaveState, dirty: boolean): string {
+    if (saveState.status === 'failure') return 'font-ui text-xs text-old-blood';
+    if (saveState.status === 'pending') return 'font-ui text-xs text-gilt';
+    return dirty ? 'font-ui text-xs text-gilt' : 'font-ui text-xs text-verdigris';
+}
+
+function assertNever(value: never): never {
+    throw new Error(`Unhandled Workflow Builder state: ${JSON.stringify(value)}`);
+}
+
+function ValidationBar({ onSave, saveState }: ValidationBarProps): ReactElement {
     const nodes = useBuilderStore((state) => state.nodes);
     const edges = useBuilderStore((state) => state.edges);
     const meta = useBuilderStore((state) => state.meta);
     const pipelineName = useBuilderStore((state) => state.pipelineName);
+    const dirty = useBuilderStore((state) => state.dirty);
+    const validation = useBuilderStore((state) => state.validation);
     const result = useMemo(() => compileGraph(nodes, edges, meta), [nodes, edges, meta]);
-    const diagnostics = result.diagnostics;
+    const diagnostics = validation.diagnostics;
     const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === 'error').length;
     const warningCount = diagnostics.filter(
         (diagnostic) => diagnostic.severity === 'warning',
     ).length;
     const [copied, setCopied] = useState(false);
+    const [exportError, setExportError] = useState<string | null>(null);
 
-    const onExport = async () => {
+    const onExport = async (): Promise<void> => {
         if (!result.ok) return;
+        setExportError(null);
         try {
             await navigator.clipboard.writeText(JSON.stringify(result.value, null, 2));
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
-        } catch {
-            // Clipboard write failed — don't show copied state
+        } catch (error) {
+            setCopied(false);
+            setExportError(
+                `Could not copy the Workflow JSON: ${
+                    error instanceof Error ? error.message : String(error)
+                }`,
+            );
         }
     };
 
-    const handleSave = () => {
-        onSave(pipelineName);
+    const handleSave = (): void => {
+        void onSave(pipelineName);
     };
+
+    const savePending = saveState.status === 'pending';
+    const saveFailed = saveState.status === 'failure';
 
     return (
         <div className="border-gilt/40 flex items-center justify-between gap-4 border-t px-5 py-3">
@@ -217,18 +294,61 @@ function ValidationBar({ onSave, saveError }: ValidationBarProps): ReactElement 
                                 </span>{' '}
                                 <span className="text-parchment">
                                     {diagnosticTargetLabel(diagnostic)}
+                                    {diagnostic.fieldPath ? ` · ${diagnostic.fieldPath}` : ''}
                                 </span>{' '}
                                 <span className="text-veil">{diagnostic.message}</span>
+                                {diagnostic.repairHint ? (
+                                    <span className="text-gilt">
+                                        {' '}
+                                        Repair: {diagnostic.repairHint}
+                                    </span>
+                                ) : null}
                             </li>
                         ))}
                     </ul>
                 ) : null}
-                {saveError ? (
+                {saveState.status === 'pending' ? (
+                    <p className="text-gilt mt-1 font-data text-[10px]">Saving Workflow…</p>
+                ) : null}
+                {saveState.status === 'success' && !dirty ? (
+                    <p className="text-verdigris mt-1 font-data text-[10px]">
+                        Workflow saved successfully.
+                    </p>
+                ) : null}
+                {saveState.status === 'failure' ? (
+                    <div role="alert" className="mt-1">
+                        <p className="text-old-blood break-words font-data text-[10px]">
+                            {saveState.error}
+                        </p>
+                        {saveState.diagnostics.length > 0 ? (
+                            <ul className="mt-1 space-y-1 pl-4 font-data text-[10px]">
+                                {saveState.diagnostics.map((diagnostic) => (
+                                    <li key={saveDiagnosticKey(diagnostic)} className="break-words">
+                                        <span className="text-parchment">
+                                            {saveDiagnosticTargetLabel(diagnostic)}
+                                            {saveDiagnosticContextLabel(diagnostic)
+                                                ? ` · ${saveDiagnosticContextLabel(diagnostic)}`
+                                                : ''}
+                                        </span>{' '}
+                                        <span className="text-veil">{diagnostic.message}</span>
+                                        {saveDiagnosticRepairHint(diagnostic) ? (
+                                            <span className="text-gilt">
+                                                {' '}
+                                                Repair: {saveDiagnosticRepairHint(diagnostic)}
+                                            </span>
+                                        ) : null}
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : null}
+                    </div>
+                ) : null}
+                {exportError ? (
                     <p
                         role="alert"
                         className="text-old-blood mt-1 break-words font-data text-[10px]"
                     >
-                        {saveError}
+                        {exportError}
                     </p>
                 ) : null}
             </div>
@@ -236,10 +356,10 @@ function ValidationBar({ onSave, saveError }: ValidationBarProps): ReactElement 
                 <Button
                     size="sm"
                     variant="default"
-                    disabled={!result.ok || !pipelineName.trim()}
+                    disabled={!result.ok || !pipelineName.trim() || savePending}
                     onClick={handleSave}
                 >
-                    Save
+                    {savePending ? 'Saving…' : saveFailed ? 'Retry Save' : 'Save'}
                 </Button>
                 <Button
                     size="sm"

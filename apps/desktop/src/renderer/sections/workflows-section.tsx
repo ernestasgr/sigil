@@ -1,4 +1,3 @@
-import type { CompiledPipeline } from '@sigil/schema';
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import { type ReactElement, useCallback, useEffect, useState } from 'react';
 
@@ -9,6 +8,7 @@ import { useSigil } from '../lib/use-sigil.js';
 import { useAppStore } from '../store/app-store.js';
 import { useBuilderStore } from '../workflow-builder/builder-store.js';
 import { WorkflowBuilder } from '../workflow-builder/workflow-builder.js';
+import type { WorkflowDraftSaveResult } from '../workflow-builder/workflow-draft.js';
 
 function diagnosticTargetLabel(diagnostic: TopologyDiagnostic): string {
     switch (diagnostic.target.kind) {
@@ -47,7 +47,6 @@ export function WorkflowsSection(): ReactElement {
     const setEditingWorkflowId = useAppStore((state) => state.setEditingWorkflowId);
     const workflows = useAppStore((state) => state.workflows);
     const [loading, setLoading] = useState(false);
-    const [saveError, setSaveError] = useState<string | null>(null);
     const sigil = useSigil();
 
     useEffect(() => {
@@ -59,7 +58,6 @@ export function WorkflowsSection(): ReactElement {
 
     const handleCreate = useCallback(() => {
         useBuilderStore.getState().clear();
-        setSaveError(null);
         setEditingWorkflowId(null);
         setWorkflowView('builder');
     }, [setWorkflowView, setEditingWorkflowId]);
@@ -73,7 +71,6 @@ export function WorkflowsSection(): ReactElement {
                     useBuilderStore
                         .getState()
                         .loadPipeline(result.pipeline, result.name, result.positions);
-                    setSaveError(null);
                     setEditingWorkflowId(id);
                     setWorkflowView('builder');
                 }
@@ -87,34 +84,40 @@ export function WorkflowsSection(): ReactElement {
     );
 
     const handleSave = useCallback(
-        async (name: string) => {
-            setSaveError(null);
-            const result = useBuilderStore.getState().compile();
-            if (!result.ok) return;
-            const pipeline: CompiledPipeline = result.value;
-            const positions = useBuilderStore.getState().getPositions();
-            try {
-                const outcome = editingWorkflowId
-                    ? await sigil.updateWorkflow(editingWorkflowId, name, pipeline, positions)
-                    : await sigil.createWorkflow(name, pipeline, positions);
-                if (!outcome.ok) {
-                    console.error('Failed to save workflow:', outcome.error, outcome.diagnostics);
-                    setSaveError(outcome.error);
-                    return;
-                }
-                useBuilderStore.getState().markSaved();
-                setWorkflowView('list');
-                setEditingWorkflowId(null);
-            } catch (err) {
-                console.error('Failed to save workflow:', err);
-                setSaveError(err instanceof Error ? err.message : String(err));
-            }
+        async (name: string): Promise<void> => {
+            const outcome = await useBuilderStore
+                .getState()
+                .save(
+                    name,
+                    async ({
+                        name: saveName,
+                        pipeline,
+                        positions,
+                    }): Promise<WorkflowDraftSaveResult> => {
+                        const writeOutcome = editingWorkflowId
+                            ? await sigil.updateWorkflow(
+                                  editingWorkflowId,
+                                  saveName,
+                                  pipeline,
+                                  positions,
+                              )
+                            : await sigil.createWorkflow(saveName, pipeline, positions);
+                        if (writeOutcome.ok) return { ok: true };
+                        return {
+                            ok: false,
+                            error: writeOutcome.error,
+                            diagnostics: writeOutcome.diagnostics,
+                        };
+                    },
+                );
+            if (!outcome.ok) return;
+            setWorkflowView('list');
+            setEditingWorkflowId(null);
         },
         [editingWorkflowId, setWorkflowView, setEditingWorkflowId, sigil],
     );
 
     const handleCancel = useCallback(() => {
-        setSaveError(null);
         setWorkflowView('list');
         setEditingWorkflowId(null);
     }, [setWorkflowView, setEditingWorkflowId]);
@@ -162,9 +165,7 @@ export function WorkflowsSection(): ReactElement {
     );
 
     if (workflowView === 'builder') {
-        return (
-            <WorkflowBuilder onSave={handleSave} onCancel={handleCancel} saveError={saveError} />
-        );
+        return <WorkflowBuilder onSave={handleSave} onCancel={handleCancel} />;
     }
 
     return (

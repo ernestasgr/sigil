@@ -8,19 +8,30 @@ import { compileGraph } from './compile.js';
 import { defaultNodeSpec, type NodeSpec } from './node-registry.js';
 import {
     applyWorkflowDraftCommand,
+    beginWorkflowDraftSave,
     canLeaveWorkflowDraft,
     canRedoWorkflowDraft,
     canUndoWorkflowDraft,
+    completeWorkflowDraftSave,
     createWorkflowDraft,
+    createWorkflowDraftCommandDiagnostic,
     isWorkflowDraftDirty,
+    isWorkflowDraftSavePending,
     markWorkflowDraftSaved,
+    recordWorkflowDraftSaveFailure,
+    recordWorkflowDraftValidation,
     redoWorkflowDraft,
+    rejectWorkflowDraftSave,
     undoWorkflowDraft,
     WORKFLOW_DRAFT_NODE_TYPE,
     type WorkflowDraft,
     type WorkflowDraftCommand,
     type WorkflowDraftNode,
+    type WorkflowDraftSaveCommand,
+    type WorkflowDraftSaveResult,
+    type WorkflowDraftSaveState,
     type WorkflowDraftSnapshot,
+    type WorkflowDraftValidationState,
 } from './workflow-draft.js';
 
 export type BuilderRFNode = WorkflowDraftNode;
@@ -38,6 +49,8 @@ export interface BuilderState {
     readonly isDirty: boolean;
     readonly canUndo: boolean;
     readonly canRedo: boolean;
+    readonly saveState: WorkflowDraftSaveState;
+    readonly validation: WorkflowDraftValidationState;
     readonly addNode: (type: NodeType, position: XYPosition) => string;
     readonly updateSpec: (nodeId: string, spec: NodeSpec) => void;
     readonly removeNode: (nodeId: string) => void;
@@ -49,6 +62,10 @@ export interface BuilderState {
     readonly undo: () => void;
     readonly redo: () => void;
     readonly markSaved: () => void;
+    readonly save: (
+        name: string,
+        command: WorkflowDraftSaveCommand,
+    ) => Promise<WorkflowDraftSaveResult>;
     readonly canLeave: () => boolean;
     readonly compile: () => CompileResult;
     readonly getPositions: () => Readonly<
@@ -74,6 +91,8 @@ interface DraftProjection {
     readonly isDirty: boolean;
     readonly canUndo: boolean;
     readonly canRedo: boolean;
+    readonly saveState: WorkflowDraftSaveState;
+    readonly validation: WorkflowDraftValidationState;
 }
 
 function freshMeta(): PipelineMeta {
@@ -85,18 +104,43 @@ function emptySnapshot(): WorkflowDraftSnapshot {
 }
 
 function projectDraft(draft: WorkflowDraft): DraftProjection {
-    const dirty = isWorkflowDraftDirty(draft);
-    return {
+    const validatedDraft = recordWorkflowDraftValidation(
         draft,
-        nodes: draft.current.nodes,
-        edges: draft.current.edges,
-        meta: draft.current.meta,
-        pipelineName: draft.current.pipelineName,
-        revision: draft.revision,
+        compileGraph(draft.current.nodes, draft.current.edges, draft.current.meta),
+    );
+    const dirty = isWorkflowDraftDirty(validatedDraft);
+    return {
+        draft: validatedDraft,
+        nodes: validatedDraft.current.nodes,
+        edges: validatedDraft.current.edges,
+        meta: validatedDraft.current.meta,
+        pipelineName: validatedDraft.current.pipelineName,
+        revision: validatedDraft.revision,
         dirty,
         isDirty: dirty,
-        canUndo: canUndoWorkflowDraft(draft),
-        canRedo: canRedoWorkflowDraft(draft),
+        canUndo: canUndoWorkflowDraft(validatedDraft),
+        canRedo: canRedoWorkflowDraft(validatedDraft),
+        saveState: validatedDraft.saveState,
+        validation: validatedDraft.validation,
+    };
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+function pendingSaveFailure(): WorkflowDraftSaveResult {
+    return {
+        ok: false,
+        error: 'A Workflow save is already pending.',
+        diagnostics: [
+            createWorkflowDraftCommandDiagnostic(
+                'save',
+                'save_pending',
+                'A Workflow save is already in progress.',
+                'Wait for the pending save to finish before submitting again.',
+            ),
+        ],
     };
 }
 
@@ -260,6 +304,67 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
 
         markSaved: () => {
             set((state) => projectDraft(markWorkflowDraftSaved(state.draft)));
+        },
+
+        save: async (name, command): Promise<WorkflowDraftSaveResult> => {
+            const state = get();
+            if (isWorkflowDraftSavePending(state.draft)) return pendingSaveFailure();
+
+            const result = state.compile();
+            if (!result.ok) {
+                set((current) => ({
+                    ...projectDraft(
+                        recordWorkflowDraftSaveFailure(
+                            current.draft,
+                            result.error,
+                            result.diagnostics,
+                        ),
+                    ),
+                }));
+                return {
+                    ok: false,
+                    error: result.error,
+                    diagnostics: result.diagnostics,
+                };
+            }
+
+            const pending = beginWorkflowDraftSave(state.draft);
+            set(() => projectDraft(pending));
+
+            const request = {
+                name,
+                pipeline: result.value,
+                positions: state.getPositions(),
+                revision: pending.revision,
+            };
+
+            try {
+                const outcome = await command(request);
+                set((current) => ({
+                    ...projectDraft(
+                        outcome.ok
+                            ? completeWorkflowDraftSave(current.draft)
+                            : rejectWorkflowDraftSave(
+                                  current.draft,
+                                  outcome.error,
+                                  outcome.diagnostics,
+                              ),
+                    ),
+                }));
+                return outcome;
+            } catch (error) {
+                const message = errorMessage(error);
+                const diagnostic = createWorkflowDraftCommandDiagnostic(
+                    'save',
+                    'save_command_failed',
+                    message,
+                    'Retry the save after checking the command or IPC error.',
+                );
+                set((current) => ({
+                    ...projectDraft(rejectWorkflowDraftSave(current.draft, message, [diagnostic])),
+                }));
+                return { ok: false, error: message, diagnostics: [diagnostic] };
+            }
         },
 
         canLeave: () => canLeaveWorkflowDraft(get().draft),
