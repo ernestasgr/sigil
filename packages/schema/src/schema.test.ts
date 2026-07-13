@@ -234,7 +234,14 @@ describe('CompiledPipelineSchema', () => {
                 {
                     id: 'sw',
                     type: 'switch',
-                    config: { target: 'payload', field: 'ext', cases: ['pdf', 'png'] },
+                    config: {
+                        target: 'payload',
+                        field: 'ext',
+                        cases: [
+                            { id: 'pdf', value: 'pdf' },
+                            { id: 'png', value: 'png' },
+                        ],
+                    },
                 },
                 { id: 'log', type: 'log', config: { message: 'x' } },
             ],
@@ -301,7 +308,14 @@ describe('CompiledPipelineSchema', () => {
                 {
                     id: 'sw',
                     type: 'switch',
-                    config: { target: 'payload', field: 'ext', cases: ['pdf', 'pdf'] },
+                    config: {
+                        target: 'payload',
+                        field: 'ext',
+                        cases: [
+                            { id: 'case-pdf-1', value: 'pdf' },
+                            { id: 'case-pdf-2', value: 'pdf' },
+                        ],
+                    },
                 },
             ],
             edges: [],

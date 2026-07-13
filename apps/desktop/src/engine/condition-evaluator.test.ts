@@ -307,6 +307,19 @@ describe('matchSwitchCase', () => {
         expect(matchSwitchCase(config, ctx)).toBe('case-2');
     });
 
+    it('does not match blank numeric cases to zero', () => {
+        const withZero: WorkflowContext = {
+            ...ctx,
+            payload: { ...ctx.payload, size: 0 },
+        };
+        const config: SwitchConfig = {
+            target: 'payload',
+            field: 'size',
+            cases: switchCases('', '  '),
+        };
+        expect(matchSwitchCase(config, withZero)).toBe('default');
+    });
+
     it('falls back to default when a size case is non-numeric', () => {
         const config: SwitchConfig = {
             target: 'payload',
