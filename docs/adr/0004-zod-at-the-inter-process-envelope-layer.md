@@ -23,7 +23,7 @@ Each `worker.on('message')`, `port.on('message')`, or `ipcMain.handle` receive s
 | Site                                   | Behaviour                                                                                                                        |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `worker.ts` (Engine worker)            | Emits a `log.output` bus event and drops the message. Replaces the previous `assertNever` crash.                                 |
-| `engine-client.ts` (Main process)      | Logs a `console.error` and drops the message. Replaces the previous silent-drop. The receive schema accepts only `EngineToMainMessage`. |
+| `engine-client.ts` (Main process)      | Logs a `console.error` and drops the message. Replaces the previous silent-drop. The receive schema (`EngineToMainMessageOrReadySchema`) accepts `EngineToMainMessage` or the `engine:ready` message. |
 | `plugin-loader.ts` (Engine)            | Responds to the plugin worker with a `PluginRpcResponse` carrying `error: 'invalid_message'`. Does not reach `handleRpcRequest`. |
 | `plugin-worker.ts` (Plugin worker)     | Rejects the pending RPC promise (or logs if no matching requestId). Replaces the previous silent-ignore.                         |
 | `main/index.ts` (`ToggleWorkflow` IPC) | Uses `WorkflowIdSchema.safeParse` instead of a manual `typeof` guard.                                                            |
