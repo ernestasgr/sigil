@@ -25,6 +25,7 @@ import {
     EngineReadPropertiesSchema,
     EngineReadWorkflowStateResultSchema,
     EngineReadWorkflowStateSchema,
+    EngineReadySchema,
     EngineRetryWorkflowResultSchema,
     EngineRetryWorkflowSchema,
     EngineSavePropertiesResultSchema,
@@ -37,6 +38,7 @@ import {
     EngineShutdownSchema,
     EngineToggleWorkflowResultSchema,
     EngineToggleWorkflowSchema,
+    EngineToMainMessageOrReadySchema,
     EngineToMainMessageSchema,
     EngineUpdateWorkflowResultSchema,
     EngineUpdateWorkflowSchema,
@@ -264,7 +266,8 @@ const engineCommands = {
 
 export const EngineCommandContracts = engineCommands;
 export type EngineCommandName = keyof typeof EngineCommandContracts;
-export type EngineCommandContract = (typeof EngineCommandContracts)[EngineCommandName];
+export type EngineCommandContract<C extends EngineCommandName = EngineCommandName> =
+    (typeof EngineCommandContracts)[C];
 export type EngineRequest<C extends EngineCommandName> = z.output<
     (typeof EngineCommandContracts)[C]['requestSchema']
 >;
@@ -275,6 +278,14 @@ export type EngineRequestPayload<C extends EngineCommandName> = Omit<
     EngineRequest<C>,
     'type' | 'correlationId'
 >;
+export type EngineCommandRequest = {
+    [C in EngineCommandName]: EngineRequest<C>;
+}[EngineCommandName];
+export type EngineCommandResponse = {
+    [C in EngineCommandName]: EngineResponse<C>;
+}[EngineCommandName];
+
+export { EngineReadySchema, EngineToMainMessageOrReadySchema };
 
 const rendererCommands = {
     rendererReady: {
@@ -399,13 +410,26 @@ const rendererCommands = {
 
 export const RendererCommandContracts = rendererCommands;
 export type RendererCommandName = keyof typeof RendererCommandContracts;
-export type RendererCommandContract = (typeof RendererCommandContracts)[RendererCommandName];
+export type RendererCommandContract<C extends RendererCommandName = RendererCommandName> =
+    (typeof RendererCommandContracts)[C];
 export type RendererRequest<C extends RendererCommandName> = z.output<
     (typeof RendererCommandContracts)[C]['requestSchema']
 >;
 export type RendererResponse<C extends RendererCommandName> = z.output<
     (typeof RendererCommandContracts)[C]['responseSchema']
 >;
+export type RendererCommandArguments<C extends RendererCommandName> =
+    RendererRequest<C> extends readonly unknown[]
+        ? RendererRequest<C>
+        : RendererRequest<C> extends undefined
+          ? []
+          : [RendererRequest<C>];
+export type RendererCommandMethod<C extends RendererCommandName> = (
+    ...args: RendererCommandArguments<C>
+) => Promise<RendererResponse<C>>;
+export type RendererCommandMethods = {
+    readonly [C in RendererCommandName]: RendererCommandMethod<C>;
+};
 
 export const CommandContracts = {
     rendererReady: { renderer: rendererCommands.rendererReady },

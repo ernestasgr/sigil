@@ -300,4 +300,25 @@ describe('dispatch', () => {
 
         expect(() => client.dispatch(pong)).not.toThrow();
     });
+
+    it('rejects a wrong-direction request at the Engine receive site', async () => {
+        const { props, sent } = buildProps();
+        const client = createRpcClient(props);
+        const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        const pending = client.request('toggleWorkflow', { id: 'wf-1' });
+        client.dispatch(sent[0]);
+
+        const result = await Promise.race([
+            pending.then(() => 'resolved'),
+            Promise.resolve('still-pending'),
+        ]);
+
+        expect(result).toBe('still-pending');
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('invalid message envelope'));
+
+        client.rejectAll('cleanup');
+        await expect(pending).rejects.toThrow('cleanup');
+        error.mockRestore();
+    });
 });

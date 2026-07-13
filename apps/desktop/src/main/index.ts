@@ -157,7 +157,7 @@ app.whenReady().then(() => {
     subscribeToWorkflowsList();
 
     tray = createTray({
-        onToggleWorkflow: (id) => engine?.toggleWorkflow(id),
+        onToggleWorkflow: (id) => engine?.toggleWorkflow({ id }),
         onOpenApp: () => showAppWindow(),
         onQuit: () => {
             app.quit();

@@ -2,72 +2,67 @@ import { randomUUID } from 'node:crypto';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import type { CompiledPipeline } from '@sigil/schema';
-import type { Capability } from '@sigil/schema/manifest';
 import { app } from 'electron';
 import {
-    type CommandExecutionOutcome,
     EngineCommandContracts,
     type EngineCommandName,
+    type EngineCommandResponse,
     type EngineRequestPayload,
     type EngineResponse,
+    EngineToMainMessageOrReadySchema,
+    EngineToMainMessageSchema,
+    type RendererResponse,
 } from '../shared/command-contracts.js';
-import type {
-    EngineBusEventPayload,
-    EngineGetWorkflowResult,
-    EnginePong,
-    EngineToMainMessage,
-    WorkflowActionOutcome,
-    WorkflowDeleteOutcome,
-    WorkflowStateEntry,
-    WorkflowWriteOutcome,
-} from '../shared/ipc-channels.js';
-import { EngineChannel, EngineToMainMessageOrReadySchema } from '../shared/ipc-channels.js';
-import type { PersistenceWriteOutcome } from '../shared/persistence.js';
-import type { PluginInfo } from '../shared/plugin-info.js';
+import type { EngineBusEventPayload, EngineToMainMessage } from '../shared/ipc-channels.js';
+import { EngineChannel } from '../shared/ipc-channels.js';
 import { redactTelemetryText } from '../shared/telemetry-safety.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export type EngineHandle = {
-    readonly ping: (timeoutMs?: number) => Promise<EnginePong>;
-    readonly fireTestEvent: () => Promise<CommandExecutionOutcome>;
-    readonly fireManualTrigger: (pipeline: CompiledPipeline) => Promise<CommandExecutionOutcome>;
-    readonly toggleWorkflow: (id: string) => Promise<WorkflowActionOutcome>;
-    readonly retryWorkflow: (id: string) => Promise<WorkflowActionOutcome>;
+    readonly ping: (timeoutMs?: number) => Promise<RendererResponse<'pingEngine'>>;
+    readonly fireTestEvent: () => Promise<RendererResponse<'fireTestEvent'>>;
+    readonly fireManualTrigger: (
+        payload: EngineRequestPayload<'fireManualTrigger'>,
+    ) => Promise<RendererResponse<'fireManualTrigger'>>;
+    readonly toggleWorkflow: (
+        payload: EngineRequestPayload<'toggleWorkflow'>,
+    ) => Promise<RendererResponse<'toggleWorkflow'>>;
+    readonly retryWorkflow: (
+        payload: EngineRequestPayload<'retryWorkflow'>,
+    ) => Promise<RendererResponse<'retryWorkflow'>>;
     readonly createWorkflow: (
-        name: string,
-        pipeline: CompiledPipeline,
-        positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
-    ) => Promise<WorkflowWriteOutcome>;
+        payload: EngineRequestPayload<'createWorkflow'>,
+    ) => Promise<RendererResponse<'createWorkflow'>>;
     readonly updateWorkflow: (
-        id: string,
-        name: string,
-        pipeline: CompiledPipeline,
-        positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
-    ) => Promise<WorkflowWriteOutcome>;
-    readonly deleteWorkflow: (id: string) => Promise<WorkflowDeleteOutcome>;
-    readonly getWorkflow: (id: string, timeoutMs?: number) => Promise<EngineGetWorkflowResult>;
-    readonly listPlugins: (timeoutMs?: number) => Promise<readonly PluginInfo[]>;
-    readonly setPermissionOverride: (
-        pluginId: string,
-        overrides: readonly Capability[],
-    ) => Promise<PersistenceWriteOutcome>;
-    readonly readProperties: (timeoutMs?: number) => Promise<Record<string, unknown>>;
-    readonly saveProperties: (
-        properties: Record<string, unknown>,
-    ) => Promise<PersistenceWriteOutcome>;
-    readonly readWorkflowState: (
-        workflowId: string,
+        payload: EngineRequestPayload<'updateWorkflow'>,
+    ) => Promise<RendererResponse<'updateWorkflow'>>;
+    readonly deleteWorkflow: (
+        payload: EngineRequestPayload<'deleteWorkflow'>,
+    ) => Promise<RendererResponse<'deleteWorkflow'>>;
+    readonly getWorkflow: (
+        id: EngineRequestPayload<'getWorkflow'>['id'],
         timeoutMs?: number,
-    ) => Promise<readonly WorkflowStateEntry[]>;
+    ) => Promise<RendererResponse<'getWorkflow'>>;
+    readonly listPlugins: (timeoutMs?: number) => Promise<RendererResponse<'listPlugins'>>;
+    readonly setPermissionOverride: (
+        payload: EngineRequestPayload<'setPermissionOverride'>,
+    ) => Promise<RendererResponse<'setPermissionOverride'>>;
+    readonly readProperties: (timeoutMs?: number) => Promise<RendererResponse<'readProperties'>>;
+    readonly saveProperties: (
+        payload: EngineRequestPayload<'saveProperties'>,
+    ) => Promise<RendererResponse<'saveProperties'>>;
+    readonly readWorkflowState: (
+        workflowId: EngineRequestPayload<'readWorkflowState'>['workflowId'],
+        timeoutMs?: number,
+    ) => Promise<RendererResponse<'readWorkflowState'>>;
     readonly setWorkflowStateKey: (
-        workflowId: string,
-        key: string,
-        value: string,
-    ) => Promise<boolean>;
-    readonly deleteWorkflowStateKey: (workflowId: string, key: string) => Promise<boolean>;
+        payload: EngineRequestPayload<'setWorkflowStateKey'>,
+    ) => Promise<RendererResponse<'setWorkflowStateKey'>>;
+    readonly deleteWorkflowStateKey: (
+        payload: EngineRequestPayload<'deleteWorkflowStateKey'>,
+    ) => Promise<RendererResponse<'deleteWorkflowStateKey'>>;
     readonly terminate: () => Promise<number>;
     readonly onReady: (handler: () => void) => void;
     readonly onLog: (handler: (line: string) => void) => () => void;
@@ -104,8 +99,36 @@ export type RpcClient = {
         timeoutMs?: number,
     ) => Promise<EngineResponse<C>>;
     readonly rejectAll: (reason: string) => void;
-    readonly dispatch: (message: EngineToMainMessage) => void;
+    readonly dispatch: (message: unknown) => void;
 };
+
+const engineResponseTypes: ReadonlySet<string> = new Set(
+    Object.values(EngineCommandContracts).map((contract) => contract.responseType),
+);
+
+function isEngineCommandResponse(message: EngineToMainMessage): message is EngineCommandResponse {
+    return engineResponseTypes.has(message.type);
+}
+
+void ({
+    ping: true,
+    fireTestEvent: true,
+    toggleWorkflow: true,
+    retryWorkflow: true,
+    createWorkflow: true,
+    updateWorkflow: true,
+    deleteWorkflow: true,
+    getWorkflow: true,
+    listPlugins: true,
+    setPermissionOverride: true,
+    readProperties: true,
+    saveProperties: true,
+    fireManualTrigger: true,
+    readWorkflowState: true,
+    setWorkflowStateKey: true,
+    deleteWorkflowStateKey: true,
+    shutdown: true,
+} satisfies Record<EngineCommandName, true>);
 
 function workerDiagnosticEvent(message: string): EngineBusEventPayload {
     const timestamp = Date.now();
@@ -130,7 +153,7 @@ function workerDiagnosticEvent(message: string): EngineBusEventPayload {
 
 function toWorkflowWriteOutcome(
     response: EngineResponse<'createWorkflow'> | EngineResponse<'updateWorkflow'>,
-): WorkflowWriteOutcome {
+): RendererResponse<'createWorkflow'> {
     if ('summary' in response) return { ok: true, summary: response.summary };
     return {
         ok: false,
@@ -141,7 +164,7 @@ function toWorkflowWriteOutcome(
 
 function toWorkflowActionOutcome(
     response: EngineResponse<'toggleWorkflow'> | EngineResponse<'retryWorkflow'>,
-): WorkflowActionOutcome {
+): RendererResponse<'toggleWorkflow'> {
     if ('error' in response) {
         return {
             ok: false,
@@ -154,7 +177,7 @@ function toWorkflowActionOutcome(
 
 function toWorkflowDeleteOutcome(
     response: EngineResponse<'deleteWorkflow'>,
-): WorkflowDeleteOutcome {
+): RendererResponse<'deleteWorkflow'> {
     if ('error' in response) {
         return {
             ok: false,
@@ -168,8 +191,30 @@ function toWorkflowDeleteOutcome(
 
 function toExecutionOutcome(
     response: EngineResponse<'fireTestEvent'> | EngineResponse<'fireManualTrigger'>,
-): CommandExecutionOutcome {
+): RendererResponse<'fireTestEvent'> {
     return response.ok ? { ok: true } : { ok: false, error: response.error };
+}
+
+function toWorkflowGetOutcome(
+    response: EngineResponse<'getWorkflow'>,
+): RendererResponse<'getWorkflow'> {
+    if (!response.found) return null;
+    return {
+        name: response.name,
+        pipeline: response.pipeline,
+        positions: response.positions,
+    };
+}
+
+function toPersistenceWriteOutcome(
+    response: EngineResponse<'setPermissionOverride'> | EngineResponse<'saveProperties'>,
+): RendererResponse<'setPermissionOverride'> {
+    if (response.ok) return { ok: true };
+    return {
+        ok: false,
+        error: response.error,
+        diagnostic: response.diagnostic,
+    };
 }
 
 function responseParseResult(command: EngineCommandName, value: unknown): ResponseParseResult {
@@ -248,7 +293,16 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
         entry.resolve(parsed.data);
     }
 
-    function dispatch(message: EngineToMainMessage): void {
+    function dispatch(raw: unknown): void {
+        const parsed = EngineToMainMessageSchema.safeParse(raw);
+        if (!parsed.success) {
+            const detail = parsed.error.issues
+                .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+                .join('; ');
+            console.error(`[engine] invalid message envelope: ${detail}`);
+            return;
+        }
+        const message = parsed.data;
         switch (message.type) {
             case EngineChannel.Log:
                 for (const handler of [...logHandlers]) handler(message.line);
@@ -259,25 +313,11 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
             case EngineChannel.BusEvent:
                 for (const handler of [...busEventHandlers]) handler(message.event);
                 break;
-            case EngineChannel.Pong:
-            case EngineChannel.FireTestEventResult:
-            case EngineChannel.ToggleWorkflowResult:
-            case EngineChannel.RetryWorkflowResult:
-            case EngineChannel.CreateWorkflowResult:
-            case EngineChannel.UpdateWorkflowResult:
-            case EngineChannel.DeleteWorkflowResult:
-            case EngineChannel.GetWorkflowResult:
-            case EngineChannel.ListPluginsResult:
-            case EngineChannel.SetPermissionOverrideResult:
-            case EngineChannel.ReadPropertiesResult:
-            case EngineChannel.SavePropertiesResult:
-            case EngineChannel.FireManualTriggerResult:
-            case EngineChannel.ReadWorkflowStateResult:
-            case EngineChannel.SetWorkflowStateKeyResult:
-            case EngineChannel.DeleteWorkflowStateKeyResult:
-            case EngineChannel.ShutdownResult:
-                resolvePending(message);
-                break;
+            default:
+                if (isEngineCommandResponse(message)) {
+                    resolvePending(message);
+                    return;
+                }
         }
     }
 
@@ -347,88 +387,92 @@ export function spawnEngine(): EngineHandle {
     });
 
     return {
-        ping(timeoutMs = EngineCommandContracts.ping.timeoutMs): Promise<EnginePong> {
+        ping(
+            timeoutMs = EngineCommandContracts.ping.timeoutMs,
+        ): Promise<RendererResponse<'pingEngine'>> {
             return client.request('ping', {}, timeoutMs);
         },
-        fireTestEvent(): Promise<CommandExecutionOutcome> {
+        fireTestEvent(): Promise<RendererResponse<'fireTestEvent'>> {
             return client.request('fireTestEvent', {}).then(toExecutionOutcome);
         },
-        fireManualTrigger(pipeline: CompiledPipeline): Promise<CommandExecutionOutcome> {
-            return client.request('fireManualTrigger', { pipeline }).then(toExecutionOutcome);
+        fireManualTrigger(
+            payload: EngineRequestPayload<'fireManualTrigger'>,
+        ): Promise<RendererResponse<'fireManualTrigger'>> {
+            return client.request('fireManualTrigger', payload).then(toExecutionOutcome);
         },
-        toggleWorkflow(id: string): Promise<WorkflowActionOutcome> {
-            return client.request('toggleWorkflow', { id }).then(toWorkflowActionOutcome);
+        toggleWorkflow(
+            payload: EngineRequestPayload<'toggleWorkflow'>,
+        ): Promise<RendererResponse<'toggleWorkflow'>> {
+            return client.request('toggleWorkflow', payload).then(toWorkflowActionOutcome);
         },
-        retryWorkflow(id: string): Promise<WorkflowActionOutcome> {
-            return client.request('retryWorkflow', { id }).then(toWorkflowActionOutcome);
+        retryWorkflow(
+            payload: EngineRequestPayload<'retryWorkflow'>,
+        ): Promise<RendererResponse<'retryWorkflow'>> {
+            return client.request('retryWorkflow', payload).then(toWorkflowActionOutcome);
         },
         createWorkflow(
-            name: string,
-            pipeline: CompiledPipeline,
-            positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
-        ): Promise<WorkflowWriteOutcome> {
-            return client
-                .request('createWorkflow', { name, pipeline, positions })
-                .then(toWorkflowWriteOutcome);
+            payload: EngineRequestPayload<'createWorkflow'>,
+        ): Promise<RendererResponse<'createWorkflow'>> {
+            return client.request('createWorkflow', payload).then(toWorkflowWriteOutcome);
         },
         updateWorkflow(
-            id: string,
-            name: string,
-            pipeline: CompiledPipeline,
-            positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
-        ): Promise<WorkflowWriteOutcome> {
-            return client
-                .request('updateWorkflow', { id, name, pipeline, positions })
-                .then(toWorkflowWriteOutcome);
+            payload: EngineRequestPayload<'updateWorkflow'>,
+        ): Promise<RendererResponse<'updateWorkflow'>> {
+            return client.request('updateWorkflow', payload).then(toWorkflowWriteOutcome);
         },
-        deleteWorkflow(id: string): Promise<WorkflowDeleteOutcome> {
-            return client.request('deleteWorkflow', { id }).then(toWorkflowDeleteOutcome);
+        deleteWorkflow(
+            payload: EngineRequestPayload<'deleteWorkflow'>,
+        ): Promise<RendererResponse<'deleteWorkflow'>> {
+            return client.request('deleteWorkflow', payload).then(toWorkflowDeleteOutcome);
         },
         getWorkflow(
-            id: string,
+            id: EngineRequestPayload<'getWorkflow'>['id'],
             timeoutMs = EngineCommandContracts.getWorkflow.timeoutMs,
-        ): Promise<EngineGetWorkflowResult> {
-            return client.request('getWorkflow', { id }, timeoutMs);
+        ): Promise<RendererResponse<'getWorkflow'>> {
+            return client.request('getWorkflow', { id }, timeoutMs).then(toWorkflowGetOutcome);
         },
         listPlugins(
             timeoutMs = EngineCommandContracts.listPlugins.timeoutMs,
-        ): Promise<readonly PluginInfo[]> {
+        ): Promise<RendererResponse<'listPlugins'>> {
             return client
                 .request('listPlugins', {}, timeoutMs)
                 .then((response) => response.plugins);
         },
         setPermissionOverride(
-            pluginId: string,
-            overrides: readonly Capability[],
-        ): Promise<PersistenceWriteOutcome> {
-            return client.request('setPermissionOverride', { pluginId, overrides });
+            payload: EngineRequestPayload<'setPermissionOverride'>,
+        ): Promise<RendererResponse<'setPermissionOverride'>> {
+            return client.request('setPermissionOverride', payload).then(toPersistenceWriteOutcome);
         },
         readProperties(
             timeoutMs = EngineCommandContracts.readProperties.timeoutMs,
-        ): Promise<Record<string, unknown>> {
+        ): Promise<RendererResponse<'readProperties'>> {
             return client
                 .request('readProperties', {}, timeoutMs)
                 .then((response) => response.properties);
         },
-        saveProperties(properties: Record<string, unknown>): Promise<PersistenceWriteOutcome> {
-            return client.request('saveProperties', { properties });
+        saveProperties(
+            payload: EngineRequestPayload<'saveProperties'>,
+        ): Promise<RendererResponse<'saveProperties'>> {
+            return client.request('saveProperties', payload).then(toPersistenceWriteOutcome);
         },
         readWorkflowState(
-            workflowId: string,
+            workflowId: EngineRequestPayload<'readWorkflowState'>['workflowId'],
             timeoutMs = EngineCommandContracts.readWorkflowState.timeoutMs,
-        ): Promise<readonly WorkflowStateEntry[]> {
+        ): Promise<RendererResponse<'readWorkflowState'>> {
             return client
                 .request('readWorkflowState', { workflowId }, timeoutMs)
                 .then((response) => response.entries);
         },
-        setWorkflowStateKey(workflowId: string, key: string, value: string): Promise<boolean> {
-            return client
-                .request('setWorkflowStateKey', { workflowId, key, value })
-                .then((response) => response.ok);
+        setWorkflowStateKey(
+            payload: EngineRequestPayload<'setWorkflowStateKey'>,
+        ): Promise<RendererResponse<'setWorkflowStateKey'>> {
+            return client.request('setWorkflowStateKey', payload).then((response) => response.ok);
         },
-        deleteWorkflowStateKey(workflowId: string, key: string): Promise<boolean> {
+        deleteWorkflowStateKey(
+            payload: EngineRequestPayload<'deleteWorkflowStateKey'>,
+        ): Promise<RendererResponse<'deleteWorkflowStateKey'>> {
             return client
-                .request('deleteWorkflowStateKey', { workflowId, key })
+                .request('deleteWorkflowStateKey', payload)
                 .then((response) => response.ok);
         },
         terminate(): Promise<number> {

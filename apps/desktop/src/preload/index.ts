@@ -1,71 +1,77 @@
 import { contextBridge, type IpcRendererEvent, ipcRenderer } from 'electron';
 import {
+    type RendererCommandArguments,
     RendererCommandContracts,
-    type RendererRequest,
+    type RendererCommandMethods,
+    type RendererCommandName,
     type RendererResponse,
 } from '../shared/command-contracts.js';
 import { type EngineBusEventPayload, RendererChannel } from '../shared/ipc-channels.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 
+type RendererEventMethods = {
+    readonly onEngineLog: (handler: (line: string) => void) => () => void;
+    readonly onWorkflowsList: (
+        handler: (workflows: readonly WorkflowSummary[]) => void,
+    ) => () => void;
+    readonly onBusEvent: (handler: (event: EngineBusEventPayload) => void) => () => void;
+};
+
+async function invokeRendererCommand<C extends RendererCommandName>(
+    command: C,
+    ...args: RendererCommandArguments<C>
+): Promise<RendererResponse<C>> {
+    const contract = RendererCommandContracts[command];
+    const raw: unknown = await ipcRenderer.invoke(contract.channel, ...args);
+    const parsed = contract.responseSchema.safeParse(raw);
+    if (!parsed.success) {
+        const detail = parsed.error.issues
+            .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+            .join('; ');
+        throw new Error(`Invalid response for ${command}: ${detail}`);
+    }
+    // The schema is selected from the same command key as the return type; Zod
+    // cannot preserve that indexed relationship through safeParse's result.
+    return parsed.data as RendererResponse<C>;
+}
+
 const api = {
-    rendererReady: (): Promise<RendererResponse<'rendererReady'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.rendererReady.channel),
-    pingEngine: (): Promise<RendererResponse<'pingEngine'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.pingEngine.channel),
-    fireTestEvent: (): Promise<RendererResponse<'fireTestEvent'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.fireTestEvent.channel),
-    toggleWorkflow: (
-        id: RendererRequest<'toggleWorkflow'>,
-    ): Promise<RendererResponse<'toggleWorkflow'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.toggleWorkflow.channel, id),
-    retryWorkflow: (
-        id: RendererRequest<'retryWorkflow'>,
-    ): Promise<RendererResponse<'retryWorkflow'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.retryWorkflow.channel, id),
-    createWorkflow: (
-        ...args: RendererRequest<'createWorkflow'>
-    ): Promise<RendererResponse<'createWorkflow'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.createWorkflow.channel, ...args),
-    updateWorkflow: (
-        ...args: RendererRequest<'updateWorkflow'>
-    ): Promise<RendererResponse<'updateWorkflow'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.updateWorkflow.channel, ...args),
-    deleteWorkflow: (
-        id: RendererRequest<'deleteWorkflow'>,
-    ): Promise<RendererResponse<'deleteWorkflow'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.deleteWorkflow.channel, id),
-    getWorkflow: (id: RendererRequest<'getWorkflow'>): Promise<RendererResponse<'getWorkflow'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.getWorkflow.channel, id),
-    listPlugins: (): Promise<RendererResponse<'listPlugins'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.listPlugins.channel),
-    setPermissionOverride: (
-        ...args: RendererRequest<'setPermissionOverride'>
-    ): Promise<RendererResponse<'setPermissionOverride'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.setPermissionOverride.channel, ...args),
-    readProperties: (): Promise<RendererResponse<'readProperties'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.readProperties.channel),
-    saveProperties: (
-        properties: RendererRequest<'saveProperties'>,
-    ): Promise<RendererResponse<'saveProperties'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.saveProperties.channel, properties),
-    openFileDialog: (): Promise<RendererResponse<'openFileDialog'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.openFileDialog.channel),
-    fireManualTrigger: (
-        pipeline: RendererRequest<'fireManualTrigger'>,
-    ): Promise<RendererResponse<'fireManualTrigger'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.fireManualTrigger.channel, pipeline),
-    readWorkflowState: (
-        workflowId: RendererRequest<'readWorkflowState'>,
-    ): Promise<RendererResponse<'readWorkflowState'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.readWorkflowState.channel, workflowId),
-    setWorkflowStateKey: (
-        ...args: RendererRequest<'setWorkflowStateKey'>
-    ): Promise<RendererResponse<'setWorkflowStateKey'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.setWorkflowStateKey.channel, ...args),
-    deleteWorkflowStateKey: (
-        ...args: RendererRequest<'deleteWorkflowStateKey'>
-    ): Promise<RendererResponse<'deleteWorkflowStateKey'>> =>
-        ipcRenderer.invoke(RendererCommandContracts.deleteWorkflowStateKey.channel, ...args),
+    rendererReady: (...args: RendererCommandArguments<'rendererReady'>) =>
+        invokeRendererCommand('rendererReady', ...args),
+    pingEngine: (...args: RendererCommandArguments<'pingEngine'>) =>
+        invokeRendererCommand('pingEngine', ...args),
+    fireTestEvent: (...args: RendererCommandArguments<'fireTestEvent'>) =>
+        invokeRendererCommand('fireTestEvent', ...args),
+    toggleWorkflow: (...args: RendererCommandArguments<'toggleWorkflow'>) =>
+        invokeRendererCommand('toggleWorkflow', ...args),
+    retryWorkflow: (...args: RendererCommandArguments<'retryWorkflow'>) =>
+        invokeRendererCommand('retryWorkflow', ...args),
+    createWorkflow: (...args: RendererCommandArguments<'createWorkflow'>) =>
+        invokeRendererCommand('createWorkflow', ...args),
+    updateWorkflow: (...args: RendererCommandArguments<'updateWorkflow'>) =>
+        invokeRendererCommand('updateWorkflow', ...args),
+    deleteWorkflow: (...args: RendererCommandArguments<'deleteWorkflow'>) =>
+        invokeRendererCommand('deleteWorkflow', ...args),
+    getWorkflow: (...args: RendererCommandArguments<'getWorkflow'>) =>
+        invokeRendererCommand('getWorkflow', ...args),
+    listPlugins: (...args: RendererCommandArguments<'listPlugins'>) =>
+        invokeRendererCommand('listPlugins', ...args),
+    setPermissionOverride: (...args: RendererCommandArguments<'setPermissionOverride'>) =>
+        invokeRendererCommand('setPermissionOverride', ...args),
+    readProperties: (...args: RendererCommandArguments<'readProperties'>) =>
+        invokeRendererCommand('readProperties', ...args),
+    saveProperties: (...args: RendererCommandArguments<'saveProperties'>) =>
+        invokeRendererCommand('saveProperties', ...args),
+    openFileDialog: (...args: RendererCommandArguments<'openFileDialog'>) =>
+        invokeRendererCommand('openFileDialog', ...args),
+    fireManualTrigger: (...args: RendererCommandArguments<'fireManualTrigger'>) =>
+        invokeRendererCommand('fireManualTrigger', ...args),
+    readWorkflowState: (...args: RendererCommandArguments<'readWorkflowState'>) =>
+        invokeRendererCommand('readWorkflowState', ...args),
+    setWorkflowStateKey: (...args: RendererCommandArguments<'setWorkflowStateKey'>) =>
+        invokeRendererCommand('setWorkflowStateKey', ...args),
+    deleteWorkflowStateKey: (...args: RendererCommandArguments<'deleteWorkflowStateKey'>) =>
+        invokeRendererCommand('deleteWorkflowStateKey', ...args),
     onEngineLog: (handler: (line: string) => void): (() => void) => {
         const listener = (_event: IpcRendererEvent, line: string): void => handler(line);
         ipcRenderer.on(RendererChannel.EngineLog, listener);
@@ -89,7 +95,7 @@ const api = {
             ipcRenderer.off(RendererChannel.BusEvent, listener);
         };
     },
-};
+} satisfies RendererCommandMethods & RendererEventMethods;
 
 contextBridge.exposeInMainWorld('sigil', api);
 
