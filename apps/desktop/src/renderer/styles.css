@@ -8,6 +8,9 @@
     --color-old-blood: #7a1f2b;
     --color-verdigris: #3e6259;
     --color-veil: #4b4554;
+    --color-verdigris-foreground: #8fc1ad; /* 9.64:1 on Obsidian Ink */
+    --color-veil-foreground: #a69cb6; /* 7.46:1 on Obsidian Ink */
+    --color-old-blood-foreground: #c86f7a; /* 5.57:1 on Obsidian Ink */
 
     --color-trigger: #c9a227;
     --color-logic: #7e8aa0;
@@ -32,6 +35,11 @@ body {
     font-family: var(--font-ui);
     background-color: var(--color-obsidian-ink);
     color: var(--color-parchment);
+}
+
+:where(button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-gilt);
+    outline-offset: 2px;
 }
 
 .sigil-ley-line-field {

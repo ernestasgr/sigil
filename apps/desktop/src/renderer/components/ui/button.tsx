@@ -9,8 +9,9 @@ const buttonVariants = cva(
         variants: {
             variant: {
                 default: 'border-gilt text-gilt hover:bg-gilt/10',
-                destructive: 'border-old-blood text-old-blood hover:bg-old-blood/10',
-                ghost: 'border-transparent text-veil hover:bg-veil/10',
+                destructive:
+                    'border-old-blood-foreground text-old-blood-foreground hover:bg-old-blood/10',
+                ghost: 'border-transparent text-veil-foreground hover:bg-veil/10',
             },
             size: {
                 default: 'px-6 py-2',

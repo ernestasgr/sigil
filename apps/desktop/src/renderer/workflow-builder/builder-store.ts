@@ -5,6 +5,7 @@ import { create } from 'zustand';
 
 import type { CompileResult, PipelineMeta } from './compile.js';
 import { compileGraph } from './compile.js';
+import { nextPaletteNodePosition, resolveWorkflowPositions } from './layout.js';
 import { defaultNodeSpec, type NodeSpec } from './node-registry.js';
 import {
     applyWorkflowDraftCommand,
@@ -52,6 +53,7 @@ export interface BuilderState {
     readonly saveState: WorkflowDraftSaveState;
     readonly validation: WorkflowDraftValidationState;
     readonly addNode: (type: NodeType, position: XYPosition) => string;
+    readonly addNodeFromPalette: (type: NodeType) => string;
     readonly updateSpec: (nodeId: string, spec: NodeSpec) => void;
     readonly removeNode: (nodeId: string) => void;
     readonly connect: (connection: Connection) => void;
@@ -175,11 +177,12 @@ function pipelineSnapshot(
     name: string,
     positions?: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
 ): WorkflowDraftSnapshot {
+    const resolvedPositions = resolveWorkflowPositions(pipeline.nodes, pipeline.edges, positions);
     const nodes: BuilderRFNode[] = pipeline.nodes.map(
         (pipelineNode: PipelineNode): BuilderRFNode => ({
             id: pipelineNode.id,
             type: BUILDER_NODE_TYPE,
-            position: positions?.[pipelineNode.id] ?? { x: 0, y: 0 },
+            position: resolvedPositions[pipelineNode.id] ?? { x: 40, y: 40 },
             data: {
                 type: pipelineNode.type,
                 config: structuredClone(pipelineNode.config),
@@ -209,29 +212,33 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         set((state) => projectDraft(applyWorkflowDraftCommand(state.draft, command)));
     }
 
+    function addNodeAtPosition(type: NodeType, position: XYPosition): string {
+        const id = crypto.randomUUID();
+        const node: BuilderRFNode = {
+            id,
+            type: BUILDER_NODE_TYPE,
+            position,
+            data: defaultNodeSpec(type),
+        };
+        set((state) => ({
+            ...projectDraft(
+                applyWorkflowDraftCommand(state.draft, {
+                    kind: 'add-node',
+                    node,
+                }),
+            ),
+            selectedNodeId: id,
+        }));
+        return id;
+    }
+
     return {
         ...projectDraft(initialDraft),
         selectedNodeId: null,
 
-        addNode: (type, position) => {
-            const id = crypto.randomUUID();
-            const node: BuilderRFNode = {
-                id,
-                type: BUILDER_NODE_TYPE,
-                position,
-                data: defaultNodeSpec(type),
-            };
-            set((state) => ({
-                ...projectDraft(
-                    applyWorkflowDraftCommand(state.draft, {
-                        kind: 'add-node',
-                        node,
-                    }),
-                ),
-                selectedNodeId: id,
-            }));
-            return id;
-        },
+        addNode: addNodeAtPosition,
+
+        addNodeFromPalette: (type) => addNodeAtPosition(type, nextPaletteNodePosition(get().nodes)),
 
         updateSpec: (nodeId, spec) => {
             applyCommand({ kind: 'update-node-spec', nodeId, spec });

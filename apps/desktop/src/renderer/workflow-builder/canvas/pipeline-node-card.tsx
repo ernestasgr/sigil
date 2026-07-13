@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 
 import { cn } from '../../lib/utils.js';
 import type { BuilderRFNode } from '../builder-store.js';
+import { useBuilderStore } from '../builder-store.js';
 import { CornerFlourish } from '../corner-flourish.js';
 import { CATEGORY_TEXT, CATEGORY_TOP_ACCENT, nodeTypeDef } from '../node-registry.js';
 
@@ -14,9 +15,21 @@ export function PipelineNodeCard({ id, data, selected }: NodeProps<BuilderRFNode
     const def = nodeTypeDef(spec.type);
     const ports = outputPortsForNode({ id, ...spec });
     const showInput = def.category !== 'trigger';
+    const selectNode = useBuilderStore((state) => state.selectNode);
 
     return (
+        // biome-ignore lint/a11y/useSemanticElements: React Flow owns the node shell; connection Handles prevent a native button wrapper.
         <div
+            role="button"
+            tabIndex={0}
+            aria-label={`${def.label} Node`}
+            aria-pressed={selected}
+            onClick={() => selectNode(id)}
+            onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                selectNode(id);
+            }}
             className={cn(
                 NODE_BASE_CLASS,
                 CATEGORY_TOP_ACCENT[def.category],
@@ -37,13 +50,13 @@ export function PipelineNodeCard({ id, data, selected }: NodeProps<BuilderRFNode
                     </span>
                 </div>
                 <span className="text-sm tracking-wide text-parchment">{def.label}</span>
-                <span className="font-data text-[10px] text-veil">{spec.type}</span>
+                <span className="font-data text-[10px] text-veil-foreground">{spec.type}</span>
             </header>
             <div className="flex flex-col gap-1 px-4 pb-3">
                 {ports.map((port) => (
                     <div
                         key={port}
-                        className="relative flex items-center justify-end pr-2 text-[10px] font-data text-veil"
+                        className="relative flex items-center justify-end pr-2 font-data text-[10px] text-veil-foreground"
                     >
                         <span>{outputPortLabelForNode({ id, ...spec }, port)}</span>
                         <Handle
