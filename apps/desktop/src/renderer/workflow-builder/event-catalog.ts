@@ -9,6 +9,7 @@ import {
     findEventField,
     getEventPayloadFields,
 } from '@sigil/schema/event-catalog';
+import type { Manifest } from '@sigil/schema/manifest';
 
 export type {
     EventCatalog,
@@ -20,6 +21,8 @@ export type {
 } from '@sigil/schema/event-catalog';
 
 export const EVENT_CATALOG = DEFAULT_EVENT_CATALOG;
+
+export type EventCatalogManifest = Pick<Manifest, 'id' | 'emits'>;
 
 export interface CatalogSuggestion {
     readonly value: string;
@@ -40,6 +43,15 @@ export function createBuilderEventCatalog(
     pluginId?: string,
 ): EventCatalog {
     return createEventCatalog(createPluginEventCatalogEntries(pluginEventNames, pluginId));
+}
+
+export function createBuilderEventCatalogFromManifests(
+    manifests: readonly EventCatalogManifest[],
+): EventCatalog {
+    const entries = manifests.flatMap((manifest) =>
+        createPluginEventCatalogEntries(manifest.emits, manifest.id),
+    );
+    return createEventCatalog(entries);
 }
 
 export function eventNameSuggestions(

@@ -7,21 +7,27 @@ import {
     useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { type DragEvent, type ReactElement, useCallback } from 'react';
+import { type DragEvent, type ReactElement, useCallback, useMemo } from 'react';
 
 import { BUILDER_NODE_TYPE, useBuilderStore } from '../builder-store.js';
 import { NODE_DRAG_MIME } from '../constants.js';
-import { nodeCatalogEntryFromPaletteValue } from '../node-catalog.js';
+import {
+    DEFAULT_NODE_CATALOG,
+    type NodeCatalog,
+    nodeCatalogEntryFromPaletteValue,
+} from '../node-catalog.js';
 import { PipelineNodeCard } from './pipeline-node-card.js';
-
-const NODE_TYPES: NodeTypes = { [BUILDER_NODE_TYPE]: PipelineNodeCard };
 
 const DEFAULT_EDGE_OPTIONS = {
     style: { stroke: '#C9A227', strokeWidth: 1.5 },
     markerEnd: { type: MarkerType.ArrowClosed, color: '#C9A227' },
 } as const;
 
-export function WorkflowCanvas(): ReactElement {
+export function WorkflowCanvas({
+    nodeCatalog = DEFAULT_NODE_CATALOG,
+}: {
+    readonly nodeCatalog?: NodeCatalog;
+}): ReactElement {
     const nodes = useBuilderStore((state) => state.nodes);
     const edges = useBuilderStore((state) => state.edges);
     const selectedNodeId = useBuilderStore((state) => state.selectedNodeId);
@@ -31,18 +37,27 @@ export function WorkflowCanvas(): ReactElement {
     const selectNode = useBuilderStore((state) => state.selectNode);
     const addNode = useBuilderStore((state) => state.addNode);
     const { screenToFlowPosition } = useReactFlow();
+    const nodeTypes = useMemo<NodeTypes>(
+        () => ({
+            [BUILDER_NODE_TYPE]: (props) => (
+                <PipelineNodeCard {...props} nodeCatalog={nodeCatalog} />
+            ),
+        }),
+        [nodeCatalog],
+    );
 
     const onDrop = useCallback(
         (event: DragEvent<HTMLDivElement>) => {
             event.preventDefault();
             const entry = nodeCatalogEntryFromPaletteValue(
                 event.dataTransfer.getData(NODE_DRAG_MIME),
+                nodeCatalog,
             );
             if (!entry) return;
             const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
             addNode(entry, position);
         },
-        [screenToFlowPosition, addNode],
+        [screenToFlowPosition, addNode, nodeCatalog],
     );
 
     const onDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
@@ -70,7 +85,7 @@ export function WorkflowCanvas(): ReactElement {
                 onConnect={connect}
                 onNodeClick={(_event, node) => selectNode(node.id)}
                 onPaneClick={() => selectNode(null)}
-                nodeTypes={NODE_TYPES}
+                nodeTypes={nodeTypes}
                 defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
                 deleteKeyCode={['Backspace', 'Delete']}
                 fitView

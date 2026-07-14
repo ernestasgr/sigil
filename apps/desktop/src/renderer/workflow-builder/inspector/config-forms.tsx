@@ -27,6 +27,7 @@ import { useSigil } from '../../lib/use-sigil.js';
 import {
     EVENT_CATALOG,
     EVENT_NAME_OPTIONS,
+    type EventCatalog,
     eventNameSuggestions,
     payloadFieldSuggestions,
 } from '../event-catalog.js';
@@ -41,9 +42,6 @@ import {
 } from './form-fields.js';
 
 type FieldValueKind = 'string' | 'number' | 'boolean';
-
-const EVENT_NAME_SUGGESTIONS = eventNameSuggestions();
-const PAYLOAD_FIELD_SUGGESTIONS = payloadFieldSuggestions();
 
 const TARGET_OPTIONS: { readonly value: 'event' | 'payload' | 'vars'; readonly label: string }[] = [
     { value: 'event', label: 'Event name' },
@@ -79,6 +77,7 @@ function valueKindForCondition(condition: FieldCondition): FieldValueKind {
 export interface ConfigFormProps<T> {
     readonly config: T;
     readonly onChange: (next: T) => void;
+    readonly eventCatalog?: EventCatalog;
 }
 
 export function FileWatcherConfigForm({
@@ -189,11 +188,13 @@ export function ManualTriggerConfigForm({
 export function IfElseConfigForm({
     config,
     onChange,
+    eventCatalog,
 }: ConfigFormProps<IfElseConfig>): ReactElement {
     return (
         <ConditionForm
             condition={config.condition}
             onChange={(condition) => onChange({ ...config, condition })}
+            eventCatalog={eventCatalog}
         />
     );
 }
@@ -201,10 +202,13 @@ export function IfElseConfigForm({
 function ConditionForm({
     condition,
     onChange,
+    eventCatalog = EVENT_CATALOG,
 }: {
     readonly condition: PipelineCondition;
     readonly onChange: (next: PipelineCondition) => void;
+    readonly eventCatalog?: EventCatalog;
 }): ReactElement {
+    const eventNameSuggestionsForCatalog = eventNameSuggestions(eventCatalog);
     return (
         <>
             <SelectInput
@@ -231,12 +235,16 @@ function ConditionForm({
                         label="Value"
                         value={condition.value}
                         placeholder="event.name"
-                        suggestions={EVENT_NAME_SUGGESTIONS}
+                        suggestions={eventNameSuggestionsForCatalog}
                         onChange={(value) => onChange({ ...condition, value })}
                     />
                 </>
             ) : (
-                <FieldConditionFields condition={condition} onChange={onChange} />
+                <FieldConditionFields
+                    condition={condition}
+                    onChange={onChange}
+                    eventCatalog={eventCatalog}
+                />
             )}
         </>
     );
@@ -280,21 +288,24 @@ function isBooleanField(condition: FieldCondition): condition is BooleanFieldCon
 function FieldConditionFields({
     condition,
     onChange,
+    eventCatalog = EVENT_CATALOG,
 }: {
     readonly condition: FieldCondition;
     readonly onChange: (next: PipelineCondition) => void;
+    readonly eventCatalog?: EventCatalog;
 }): ReactElement {
     const valueKind = valueKindForCondition(condition);
+    const payloadFieldSuggestionsForCatalog = payloadFieldSuggestions(eventCatalog);
     return (
         <>
             <TextInput
                 label="Field"
                 value={condition.field}
                 placeholder="ext"
-                suggestions={condition.target === 'payload' ? PAYLOAD_FIELD_SUGGESTIONS : undefined}
-                onChange={(field) =>
-                    onChange(updateFieldCondition(condition, field, EVENT_CATALOG))
+                suggestions={
+                    condition.target === 'payload' ? payloadFieldSuggestionsForCatalog : undefined
                 }
+                onChange={(field) => onChange(updateFieldCondition(condition, field, eventCatalog))}
             />
             <SelectInput
                 label="Value type"
@@ -360,7 +371,10 @@ function FieldConditionFields({
 export function SwitchConfigForm({
     config,
     onChange,
+    eventCatalog = EVENT_CATALOG,
 }: ConfigFormProps<SwitchConfig>): ReactElement {
+    const eventNameSuggestionsForCatalog = eventNameSuggestions(eventCatalog);
+    const payloadFieldSuggestionsForCatalog = payloadFieldSuggestions(eventCatalog);
     return (
         <>
             <SelectInput
@@ -385,7 +399,7 @@ export function SwitchConfigForm({
                     value={config.field}
                     placeholder="ext"
                     suggestions={
-                        config.target === 'payload' ? PAYLOAD_FIELD_SUGGESTIONS : undefined
+                        config.target === 'payload' ? payloadFieldSuggestionsForCatalog : undefined
                     }
                     onChange={(field) => onChange({ ...config, field })}
                 />
@@ -394,7 +408,7 @@ export function SwitchConfigForm({
                 label="Cases"
                 values={config.cases}
                 placeholder="pdf"
-                suggestions={config.target === 'event' ? EVENT_NAME_SUGGESTIONS : undefined}
+                suggestions={config.target === 'event' ? eventNameSuggestionsForCatalog : undefined}
                 onChange={(cases) => onChange({ ...config, cases })}
             />
         </>

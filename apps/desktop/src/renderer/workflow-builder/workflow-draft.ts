@@ -16,6 +16,7 @@ import { assertNever } from './assert-never.js';
 import type { PipelineMeta } from './compile.js';
 import {
     type BuilderNodeSpec,
+    type NodeCatalog,
     type NodeSpec,
     nodeOutputPorts,
     nodeSpecData,
@@ -218,6 +219,7 @@ function emptyChangeList<T>(changes: readonly T[]): boolean {
 function applyCommand(
     snapshot: WorkflowDraftSnapshot,
     command: WorkflowDraftCommand,
+    nodeCatalog?: NodeCatalog,
 ): WorkflowDraftSnapshot {
     switch (command.kind) {
         case 'add-node': {
@@ -233,7 +235,7 @@ function applyCommand(
             const nodes = snapshot.nodes.map((node) =>
                 node.id === command.nodeId ? { ...node, data: nodeSpecData(command.spec) } : node,
             );
-            const outputPorts = nodeOutputPorts(command.spec);
+            const outputPorts = nodeOutputPorts(command.spec, nodeCatalog);
             const edges =
                 outputPorts === 'dynamic'
                     ? snapshot.edges
@@ -336,8 +338,9 @@ export function replaceWorkflowDraft(snapshot: WorkflowDraftSnapshot): WorkflowD
 export function applyWorkflowDraftCommand(
     draft: WorkflowDraft,
     command: WorkflowDraftCommand,
+    nodeCatalog?: NodeCatalog,
 ): WorkflowDraft {
-    const applied = applyCommand(draft.current, command);
+    const applied = applyCommand(draft.current, command, nodeCatalog);
     if (applied === draft.current) return draft;
 
     const next = cloneSnapshot(applied);

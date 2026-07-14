@@ -3,9 +3,12 @@ import { Button } from '../../components/ui/button.js';
 import { useSigil } from '../../lib/use-sigil.js';
 import { cn } from '../../lib/utils.js';
 import { useBuilderStore } from '../builder-store.js';
+import { EVENT_CATALOG, type EventCatalog } from '../event-catalog.js';
 import {
     CATEGORY_TEXT,
+    DEFAULT_NODE_CATALOG,
     isPluginNodeSpec,
+    type NodeCatalog,
     type NodeSpec,
     nodeSpecWithConfig,
     type PluginNodeSpec,
@@ -40,10 +43,12 @@ function NodeConfigForm({
     spec,
     entry,
     onChange,
+    eventCatalog,
 }: {
     readonly spec: NodeSpec;
     readonly entry: ResolvedNodeCatalogEntry;
     readonly onChange: (next: NodeSpec) => void;
+    readonly eventCatalog: EventCatalog;
 }): ReactElement {
     if (!entry.Form || entry.authoring === 'read-only') {
         if (isPluginNodeSpec(spec)) {
@@ -61,11 +66,18 @@ function NodeConfigForm({
         <Form
             config={spec.config}
             onChange={(config) => onChange(nodeSpecWithConfig(spec, config))}
+            eventCatalog={eventCatalog}
         />
     );
 }
 
-export function PropertiesPanel(): ReactElement {
+export function PropertiesPanel({
+    nodeCatalog = DEFAULT_NODE_CATALOG,
+    eventCatalog = EVENT_CATALOG,
+}: {
+    readonly nodeCatalog?: NodeCatalog;
+    readonly eventCatalog?: EventCatalog;
+}): ReactElement {
     const selectedNodeId = useBuilderStore((state) => state.selectedNodeId);
     const nodes = useBuilderStore((state) => state.nodes);
     const updateSpec = useBuilderStore((state) => state.updateSpec);
@@ -102,7 +114,7 @@ export function PropertiesPanel(): ReactElement {
     }
 
     const spec = node.data;
-    const def = resolveNodeCatalogEntry(spec);
+    const def = resolveNodeCatalogEntry(spec, nodeCatalog);
 
     return (
         <section
@@ -135,6 +147,7 @@ export function PropertiesPanel(): ReactElement {
                     spec={spec}
                     entry={def}
                     onChange={(next) => updateSpec(node.id, next)}
+                    eventCatalog={eventCatalog}
                 />
             </div>
             <footer className="border-gilt/40 flex items-center gap-2 border-t p-5">

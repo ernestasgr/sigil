@@ -8,16 +8,23 @@ import { CornerFlourish } from '../corner-flourish.js';
 import {
     CATEGORY_TEXT,
     CATEGORY_TOP_ACCENT,
+    DEFAULT_NODE_CATALOG,
     isPluginNodeSpec,
+    type NodeCatalog,
     nodeOutputPortLabel,
     resolveNodeCatalogEntry,
 } from '../node-catalog.js';
 
 const NODE_BASE_CLASS = 'relative min-w-52 border border-veil/40 bg-obsidian-ink/95 font-ui';
 
-export function PipelineNodeCard({ id, data, selected }: NodeProps<BuilderRFNode>): ReactElement {
+export function PipelineNodeCard({
+    id,
+    data,
+    selected,
+    nodeCatalog = DEFAULT_NODE_CATALOG,
+}: NodeProps<BuilderRFNode> & { readonly nodeCatalog?: NodeCatalog }): ReactElement {
     const spec = data;
-    const def = resolveNodeCatalogEntry(spec);
+    const def = resolveNodeCatalogEntry(spec, nodeCatalog);
     const visiblePorts = def.outputPorts === 'dynamic' ? [] : def.outputPorts;
     const showInput = def.isTrigger !== true;
     const selectNode = useBuilderStore((state) => state.selectNode);
@@ -66,7 +73,7 @@ export function PipelineNodeCard({ id, data, selected }: NodeProps<BuilderRFNode
                         key={port}
                         className="relative flex items-center justify-end pr-2 font-data text-[10px] text-veil-foreground"
                     >
-                        <span>{nodeOutputPortLabel(spec, port)}</span>
+                        <span>{nodeOutputPortLabel(spec, port, nodeCatalog)}</span>
                         <Handle
                             id={port}
                             type="source"

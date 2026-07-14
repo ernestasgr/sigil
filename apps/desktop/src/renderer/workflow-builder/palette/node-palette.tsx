@@ -7,6 +7,7 @@ import {
     CATEGORIES,
     CATEGORY_TEXT,
     DEFAULT_NODE_CATALOG,
+    type NodeCatalog,
     type NodeCatalogEntry,
     type NodeCategory,
     serializeNodeCatalogEntry,
@@ -16,7 +17,11 @@ function nodeCatalogEntryKey(entry: NodeCatalogEntry): string {
     return `${entry.pluginId ?? 'builtin'}:${entry.type}`;
 }
 
-export function NodePalette(): ReactElement {
+export function NodePalette({
+    catalog = DEFAULT_NODE_CATALOG,
+}: {
+    readonly catalog?: NodeCatalog;
+}): ReactElement {
     const titleId = useId();
     const [announcement, setAnnouncement] = useState('');
     const addNodeFromPalette = useBuilderStore((state) => state.addNodeFromPalette);
@@ -41,6 +46,7 @@ export function NodePalette(): ReactElement {
                     key={category.id}
                     category={category.id}
                     label={category.label}
+                    catalog={catalog}
                     onAdd={addNode}
                 />
             ))}
@@ -51,13 +57,15 @@ export function NodePalette(): ReactElement {
 function PaletteCategory({
     category,
     label,
+    catalog,
     onAdd,
 }: {
     readonly category: NodeCategory;
     readonly label: string;
+    readonly catalog: NodeCatalog;
     readonly onAdd: (entry: NodeCatalogEntry) => void;
 }): ReactElement {
-    const items = DEFAULT_NODE_CATALOG.entries.filter(
+    const items = catalog.entries.filter(
         (entry) =>
             entry.category === category && entry.showInPalette && entry.authoring === 'editable',
     );
