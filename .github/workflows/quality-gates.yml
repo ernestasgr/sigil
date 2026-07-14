@@ -126,6 +126,9 @@ jobs:
             - name: Bootstrap — install workspace dependencies
               run: pnpm install --frozen-lockfile
 
+            - name: Bootstrap — build shared schema package
+              run: pnpm --filter @sigil/schema build
+
             - name: Native gate — setup, preflight, and full desktop test suite
               run: pnpm test:native
 
