@@ -17,7 +17,7 @@
         "lint": "biome check .",
         "lint:fix": "biome check --write .",
         "format": "biome format --write .",
-        "format:check": "biome format --check .",
+        "format:check": "biome check --formatter-enabled=true --linter-enabled=false --assist-enabled=false .",
         "check:fast": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test:fast",
         "test:fast": "pnpm --filter @sigil/schema test && pnpm --filter @sigil/desktop test:renderer",
         "setup:native": "pnpm --filter @sigil/desktop native:setup",
