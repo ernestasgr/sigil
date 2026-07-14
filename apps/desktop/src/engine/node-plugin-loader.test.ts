@@ -1568,8 +1568,8 @@ describe('updatePluginPermissions', () => {
 describe('worker script path resolution', () => {
     it('resolves plugin-worker.js relative to __dirname', () => {
         const jsPath = join(__dirname, 'plugin-worker.js');
-        const tsPath = join(__dirname, 'plugin-node-worker.ts');
-        const resolved = existsSync(jsPath) ? jsPath : tsPath;
+        const bootstrapPath = join(__dirname, 'plugin-node-worker-bootstrap.mjs');
+        const resolved = existsSync(jsPath) ? jsPath : bootstrapPath;
         expect(existsSync(resolved)).toBe(true);
     });
 });
