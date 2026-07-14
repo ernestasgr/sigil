@@ -5,7 +5,7 @@ import { cn } from '../../lib/utils.js';
 import type { BuilderRFNode } from '../builder-store.js';
 import { useBuilderStore } from '../builder-store.js';
 import { CornerFlourish } from '../corner-flourish.js';
-import { nodeOutputPortLabel, nodeOutputPorts, resolveNodeCatalogEntry } from '../node-catalog.js';
+import { nodeOutputPortLabel, resolveNodeCatalogEntry } from '../node-catalog.js';
 import { CATEGORY_TEXT, CATEGORY_TOP_ACCENT, isPluginNodeSpec } from '../node-registry.js';
 
 const NODE_BASE_CLASS = 'relative min-w-52 border border-veil/40 bg-obsidian-ink/95 font-ui';
@@ -13,8 +13,7 @@ const NODE_BASE_CLASS = 'relative min-w-52 border border-veil/40 bg-obsidian-ink
 export function PipelineNodeCard({ id, data, selected }: NodeProps<BuilderRFNode>): ReactElement {
     const spec = data;
     const def = resolveNodeCatalogEntry(spec);
-    const ports = nodeOutputPorts(spec);
-    const visiblePorts = ports === 'dynamic' ? [] : ports;
+    const visiblePorts = def.outputPorts === 'dynamic' ? [] : def.outputPorts;
     const showInput = def.isTrigger !== true;
     const selectNode = useBuilderStore((state) => state.selectNode);
 
@@ -67,7 +66,7 @@ export function PipelineNodeCard({ id, data, selected }: NodeProps<BuilderRFNode
                             id={port}
                             type="source"
                             position={Position.Right}
-                            className="!h-2.5 !w-2.5 !border-gilt !bg-obsidian-ink"
+                            className="h-2.5! w-2.5! border-gilt! bg-obsidian-ink!"
                         />
                     </div>
                 ))}

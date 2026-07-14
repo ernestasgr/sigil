@@ -3,10 +3,11 @@ import { isPluginNode, type NodeType, type PipelineNode } from '@sigil/schema/no
 import type { Connection, Edge, EdgeChange, NodeChange, XYPosition } from '@xyflow/react';
 import { create } from 'zustand';
 
+import { assertNever } from './assert-never.js';
 import type { CompileResult, PipelineMeta } from './compile.js';
 import { compileGraph } from './compile.js';
 import { nextPaletteNodePosition, resolveWorkflowPositions } from './layout.js';
-import { defaultNodeSpec, type NodeSpec } from './node-registry.js';
+import { defaultNodeSpec, type NodeSpec, nodeSpecData } from './node-registry.js';
 import {
     applyWorkflowDraftCommand,
     beginWorkflowDraftSave,
@@ -172,10 +173,6 @@ function reconcileSelectedNode(
         : null;
 }
 
-function assertNever(value: never): never {
-    throw new Error(`Unhandled built-in Node type: ${String(value)}`);
-}
-
 function pipelineNodeToSpec(pipelineNode: PipelineNode): NodeSpec {
     if (isPluginNode(pipelineNode)) {
         return {
@@ -207,7 +204,10 @@ function pipelineNodeToSpec(pipelineNode: PipelineNode): NodeSpec {
         case 'state-set':
             return { type: 'state-set', config: structuredClone(pipelineNode.config) };
         default:
-            return assertNever(pipelineNode);
+            return assertNever(
+                pipelineNode,
+                `Unhandled built-in Node type: ${String(pipelineNode)}`,
+            );
     }
 }
 
@@ -222,7 +222,7 @@ function pipelineSnapshot(
             id: pipelineNode.id,
             type: BUILDER_NODE_TYPE,
             position: resolvedPositions[pipelineNode.id] ?? { x: 40, y: 40 },
-            data: pipelineNodeToSpec(pipelineNode),
+            data: nodeSpecData(pipelineNodeToSpec(pipelineNode)),
         }),
     );
     const edges: Edge[] = pipeline.edges.map((pipelineEdge) => ({

@@ -12,11 +12,12 @@ import {
 } from '@xyflow/react';
 
 import type { WorkflowWriteDiagnostic } from '../../shared/ipc-channels.js';
+import { assertNever } from './assert-never.js';
 import type { PipelineMeta } from './compile.js';
 import { nodeOutputPorts } from './node-catalog.js';
-import type { NodeSpec } from './node-registry.js';
+import { type BuilderNodeSpec, type NodeSpec, nodeSpecData } from './node-registry.js';
 
-export type WorkflowDraftNode = Node<NodeSpec, 'sigil'>;
+export type WorkflowDraftNode = Node<BuilderNodeSpec, 'sigil'>;
 export const WORKFLOW_DRAFT_NODE_TYPE = 'sigil' as const;
 
 export interface WorkflowDraftSnapshot {
@@ -226,9 +227,7 @@ function applyCommand(
             if (!snapshot.nodes.some((node) => node.id === command.nodeId)) return snapshot;
 
             const nodes = snapshot.nodes.map((node) =>
-                node.id === command.nodeId
-                    ? { ...node, data: structuredClone(command.spec) }
-                    : node,
+                node.id === command.nodeId ? { ...node, data: nodeSpecData(command.spec) } : node,
             );
             const outputPorts = nodeOutputPorts(command.spec);
             const edges =
@@ -306,12 +305,11 @@ function applyCommand(
                 pipelineName: command.name,
             };
         default:
-            return assertNever(command);
+            return assertNever(
+                command,
+                `Unhandled Workflow Draft command: ${JSON.stringify(command)}`,
+            );
     }
-}
-
-function assertNever(value: never): never {
-    throw new Error(`Unhandled Workflow Draft command: ${JSON.stringify(value)}`);
 }
 
 export function createWorkflowDraft(snapshot: WorkflowDraftSnapshot): WorkflowDraft {
