@@ -1,8 +1,14 @@
 import type { CompiledPipeline } from '@sigil/schema';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { useBuilderStore } from './builder-store.js';
-import { BUILTIN_PLUGIN_NODE_CATALOG } from './node-catalog.js';
+import {
+    BUILTIN_PLUGIN_NODE_CATALOG,
+    createNodeCatalogFromManifests,
+    createPluginNodeCatalogEntry,
+    DEFAULT_NODE_CATALOG,
+} from './node-catalog.js';
 import type {
     WorkflowDraftDiagnostic,
     WorkflowDraftSaveCommand,
@@ -12,6 +18,7 @@ import type {
 describe('useBuilderStore', () => {
     beforeEach(() => {
         useBuilderStore.getState().clear();
+        useBuilderStore.getState().setNodeCatalog(DEFAULT_NODE_CATALOG);
     });
 
     it('addNode creates a node with a default spec, selects it, and returns its id', () => {
@@ -217,6 +224,37 @@ describe('useBuilderStore', () => {
         if (!result.ok) {
             expect(result.error).toMatch(/message/);
         }
+    });
+
+    it('compiles a Plugin Trigger through the catalog selected from its manifest', () => {
+        const entry = createPluginNodeCatalogEntry({
+            pluginId: 'com.example.timer',
+            type: 'timer-trigger',
+            label: 'Timer Trigger',
+            category: 'trigger',
+            description: 'Starts a Workflow on a timer.',
+            defaultConfig: {},
+            configSchema: z.object({}),
+            isTrigger: true,
+            outputPorts: () => ['out'],
+            Form: () => null,
+        });
+        const catalog = createNodeCatalogFromManifests(
+            [{ id: 'com.example.timer', nodeType: 'timer-trigger' }],
+            [entry],
+        );
+        useBuilderStore.getState().setNodeCatalog(catalog);
+
+        const trigger = useBuilderStore.getState().addNodeFromPalette(entry);
+        const log = useBuilderStore.getState().addNode('log', { x: 320, y: 40 });
+        useBuilderStore
+            .getState()
+            .connect({ source: trigger, target: log, sourceHandle: 'out', targetHandle: null });
+
+        const result = useBuilderStore.getState().compile();
+
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.executable.triggerId).toBe(trigger);
     });
 
     it('exposes structured validation diagnostics with Node and field context', () => {

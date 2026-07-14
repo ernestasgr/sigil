@@ -1,4 +1,4 @@
-import { DEFAULT_EVENT_CATALOG } from '@sigil/schema/event-catalog';
+import { createEventCatalog, DEFAULT_EVENT_CATALOG } from '@sigil/schema/event-catalog';
 import { describe, expect, it } from 'vitest';
 
 import { updateFieldCondition } from './condition-authoring.js';
@@ -41,6 +41,42 @@ describe('condition authoring catalog adapter', () => {
             field: 'pluginValue',
             operator: 'gt',
             value: 5,
+        });
+    });
+
+    it('uses Plugin Event field metadata when changing a payload condition field', () => {
+        const catalog = createEventCatalog([
+            {
+                name: 'plugin.received',
+                source: 'plugin',
+                pluginId: 'com.example.events',
+                fields: [
+                    {
+                        path: 'count',
+                        kind: 'number',
+                        label: 'Count',
+                        description: 'The number of received items.',
+                    },
+                ],
+            },
+        ]);
+
+        expect(
+            updateFieldCondition(
+                {
+                    target: 'payload',
+                    field: 'ext',
+                    operator: 'equals',
+                    value: '',
+                },
+                'count',
+                catalog,
+            ),
+        ).toEqual({
+            target: 'payload',
+            field: 'count',
+            operator: 'equals',
+            value: 0,
         });
     });
 });

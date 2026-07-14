@@ -1,3 +1,4 @@
+import type { Manifest } from '@sigil/schema/manifest';
 import {
     type BuiltinPipelineNode,
     getNodeDescriptor,
@@ -110,6 +111,8 @@ export interface PluginNodeCatalogAdapter<TConfig> {
     readonly Form?: ComponentType<ConfigFormProps<TConfig>>;
 }
 
+export type NodeCatalogManifest = Pick<Manifest, 'id' | 'nodeType'>;
+
 interface BuiltinNodeCatalogAdapter<K extends NodeType, TSchema extends z.ZodType> {
     readonly descriptor: NodeDescriptor<K, TSchema>;
     readonly label: string;
@@ -154,7 +157,7 @@ export function createNodeConfigForm<TSchema extends z.ZodType>(
     Form: ComponentType<ConfigFormProps<z.output<TSchema>>>,
     configSchema: TSchema,
 ): NodeConfigForm {
-    return ({ config, onChange }) => {
+    return ({ config, onChange, eventCatalog }) => {
         const parsed = configSchema.safeParse(config);
         if (!parsed.success) {
             return createElement(
@@ -170,6 +173,7 @@ export function createNodeConfigForm<TSchema extends z.ZodType>(
         return createElement(Form, {
             config: parsed.data,
             onChange: (next: z.output<TSchema>) => onChange(next),
+            eventCatalog,
         });
     };
 }
@@ -358,14 +362,21 @@ export interface NodeCatalog {
     readonly find: (pluginId: string, type: string) => PluginNodeCatalogEntry | undefined;
 }
 
+export interface NodeCatalogOptions {
+    readonly includeBundledPluginEntries?: boolean;
+}
+
 export function createNodeCatalog(
     additionalEntries: readonly PluginNodeCatalogEntry[] = [],
+    options: NodeCatalogOptions = {},
 ): NodeCatalog {
     const builtinEntries = new Map<NodeType, BuiltinNodeCatalogEntry>();
     for (const entry of BUILTIN_NODE_CATALOG) builtinEntries.set(entry.type, entry);
 
     const pluginEntries = new Map<string, PluginNodeCatalogEntry>();
-    for (const entry of [...BUILTIN_PLUGIN_NODE_CATALOG, ...additionalEntries]) {
+    const bundledPluginEntries =
+        options.includeBundledPluginEntries === false ? [] : BUILTIN_PLUGIN_NODE_CATALOG;
+    for (const entry of [...bundledPluginEntries, ...additionalEntries]) {
         const key = pluginKey(entry.pluginId, entry.type);
         if (!pluginEntries.has(key)) pluginEntries.set(key, normalizePluginEntry(entry));
     }
@@ -387,6 +398,18 @@ export function createNodeCatalog(
                 : builtinEntries.get(spec.type),
         find: findPlugin,
     };
+}
+
+export function createNodeCatalogFromManifests(
+    manifests: readonly NodeCatalogManifest[],
+    adapters: readonly PluginNodeCatalogEntry[] = BUILTIN_PLUGIN_NODE_CATALOG,
+): NodeCatalog {
+    const entries = adapters.filter((entry) =>
+        manifests.some(
+            (manifest) => manifest.id === entry.pluginId && manifest.nodeType === entry.type,
+        ),
+    );
+    return createNodeCatalog(entries, { includeBundledPluginEntries: false });
 }
 
 function normalizePluginEntry(entry: PluginNodeCatalogEntry): PluginNodeCatalogEntry {

@@ -7,8 +7,10 @@ import type { CompileResult, PipelineMeta } from './compile.js';
 import { compileGraph } from './compile.js';
 import { nextPaletteNodePosition, resolveWorkflowPositions } from './layout.js';
 import {
+    DEFAULT_NODE_CATALOG,
     defaultNodeSpec,
     defaultNodeSpecForCatalogEntry,
+    type NodeCatalog,
     type NodeCatalogEntry,
     type NodeSpec,
     nodeSpecData,
@@ -59,6 +61,7 @@ export interface BuilderState {
     readonly canRedo: boolean;
     readonly saveState: WorkflowDraftSaveState;
     readonly validation: WorkflowDraftValidationState;
+    readonly nodeCatalog: NodeCatalog;
     readonly addNode: (entry: NodeType | NodeCatalogEntry, position: XYPosition) => string;
     readonly addNodeFromPalette: (entry: NodeType | NodeCatalogEntry) => string;
     readonly updateSpec: (nodeId: string, spec: NodeSpec) => void;
@@ -87,6 +90,7 @@ export interface BuilderState {
         positions?: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
     ) => void;
     readonly setPipelineName: (name: string) => void;
+    readonly setNodeCatalog: (catalog: NodeCatalog) => void;
 }
 
 interface DraftProjection {
@@ -112,10 +116,15 @@ function emptySnapshot(): WorkflowDraftSnapshot {
     return { nodes: [], edges: [], meta: { ...freshMeta(), name: '' }, pipelineName: '' };
 }
 
-function projectDraft(draft: WorkflowDraft): DraftProjection {
+function projectDraft(
+    draft: WorkflowDraft,
+    nodeCatalog: NodeCatalog = DEFAULT_NODE_CATALOG,
+): DraftProjection {
     const validatedDraft = recordWorkflowDraftValidation(
         draft,
-        compileGraph(draft.current.nodes, draft.current.edges, draft.current.meta),
+        compileGraph(draft.current.nodes, draft.current.edges, draft.current.meta, {
+            nodeCatalog,
+        }),
     );
     const dirty = isWorkflowDraftDirty(validatedDraft);
     return {
@@ -212,7 +221,12 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
     const initialDraft = createWorkflowDraft(emptySnapshot());
 
     function applyCommand(command: WorkflowDraftCommand): void {
-        set((state) => projectDraft(applyWorkflowDraftCommand(state.draft, command)));
+        set((state) =>
+            projectDraft(
+                applyWorkflowDraftCommand(state.draft, command, state.nodeCatalog),
+                state.nodeCatalog,
+            ),
+        );
     }
 
     function addNodeAtPosition(entry: NodeType | NodeCatalogEntry, position: XYPosition): string {
@@ -228,10 +242,15 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         };
         set((state) => ({
             ...projectDraft(
-                applyWorkflowDraftCommand(state.draft, {
-                    kind: 'add-node',
-                    node,
-                }),
+                applyWorkflowDraftCommand(
+                    state.draft,
+                    {
+                        kind: 'add-node',
+                        node,
+                    },
+                    state.nodeCatalog,
+                ),
+                state.nodeCatalog,
             ),
             selectedNodeId: id,
         }));
@@ -254,7 +273,12 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         removeNode: (nodeId) => {
             set((state) => ({
                 ...projectDraft(
-                    applyWorkflowDraftCommand(state.draft, { kind: 'remove-node', nodeId }),
+                    applyWorkflowDraftCommand(
+                        state.draft,
+                        { kind: 'remove-node', nodeId },
+                        state.nodeCatalog,
+                    ),
+                    state.nodeCatalog,
                 ),
                 selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
             }));
@@ -274,15 +298,22 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
 
         onNodesChange: (changes) => {
             set((state) => {
-                const nextDraft = applyWorkflowDraftCommand(state.draft, {
-                    kind: 'nodes-change',
-                    changes,
-                });
+                const nextDraft = applyWorkflowDraftCommand(
+                    state.draft,
+                    {
+                        kind: 'nodes-change',
+                        changes,
+                    },
+                    state.nodeCatalog,
+                );
                 const nextSelectedNodeId = reconcileSelectedNode(
                     selectedNodeAfterChanges(state.selectedNodeId, changes),
                     nextDraft.current.nodes,
                 );
-                return { ...projectDraft(nextDraft), selectedNodeId: nextSelectedNodeId };
+                return {
+                    ...projectDraft(nextDraft, state.nodeCatalog),
+                    selectedNodeId: nextSelectedNodeId,
+                };
             });
         },
 
@@ -294,7 +325,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
             set((state) => {
                 const draft = undoWorkflowDraft(state.draft);
                 return {
-                    ...projectDraft(draft),
+                    ...projectDraft(draft, state.nodeCatalog),
                     selectedNodeId: reconcileSelectedNode(
                         state.selectedNodeId,
                         draft.current.nodes,
@@ -307,7 +338,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
             set((state) => {
                 const draft = redoWorkflowDraft(state.draft);
                 return {
-                    ...projectDraft(draft),
+                    ...projectDraft(draft, state.nodeCatalog),
                     selectedNodeId: reconcileSelectedNode(
                         state.selectedNodeId,
                         draft.current.nodes,
@@ -317,7 +348,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         },
 
         markSaved: () => {
-            set((state) => projectDraft(markWorkflowDraftSaved(state.draft)));
+            set((state) => projectDraft(markWorkflowDraftSaved(state.draft), state.nodeCatalog));
         },
 
         save: async (name, command): Promise<WorkflowDraftSaveResult> => {
@@ -333,6 +364,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
                             result.error,
                             result.diagnostics,
                         ),
+                        current.nodeCatalog,
                     ),
                 }));
                 return {
@@ -343,7 +375,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
             }
 
             const pending = beginWorkflowDraftSave(state.draft);
-            set(() => projectDraft(pending));
+            set((current) => projectDraft(pending, current.nodeCatalog));
 
             if (pending.saveState.status !== 'pending') {
                 return pendingSaveFailure();
@@ -369,6 +401,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
                                   outcome.error,
                                   outcome.diagnostics,
                               ),
+                        current.nodeCatalog,
                     ),
                 }));
                 return outcome;
@@ -383,6 +416,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
                 set((current) => ({
                     ...projectDraft(
                         rejectWorkflowDraftSave(current.draft, attemptId, message, [diagnostic]),
+                        current.nodeCatalog,
                     ),
                 }));
                 return { ok: false, error: message, diagnostics: [diagnostic] };
@@ -392,8 +426,8 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         canLeave: () => canLeaveWorkflowDraft(get().draft),
 
         compile: () => {
-            const { nodes, edges, meta } = get();
-            return compileGraph(nodes, edges, meta);
+            const { nodes, edges, meta, nodeCatalog } = get();
+            return compileGraph(nodes, edges, meta, { nodeCatalog });
         },
 
         getPositions: () => {
@@ -406,18 +440,33 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         },
 
         clear: () => {
-            set({ ...projectDraft(createWorkflowDraft(emptySnapshot())), selectedNodeId: null });
+            set((state) => ({
+                ...projectDraft(createWorkflowDraft(emptySnapshot()), state.nodeCatalog),
+                selectedNodeId: null,
+            }));
         },
 
         loadPipeline: (pipeline, name, positions) => {
-            set({
-                ...projectDraft(createWorkflowDraft(pipelineSnapshot(pipeline, name, positions))),
+            set((state) => ({
+                ...projectDraft(
+                    createWorkflowDraft(pipelineSnapshot(pipeline, name, positions)),
+                    state.nodeCatalog,
+                ),
                 selectedNodeId: null,
-            });
+            }));
         },
 
         setPipelineName: (name) => {
             applyCommand({ kind: 'set-pipeline-name', name });
+        },
+
+        nodeCatalog: DEFAULT_NODE_CATALOG,
+
+        setNodeCatalog: (nodeCatalog) => {
+            set((state) => ({
+                ...projectDraft(state.draft, nodeCatalog),
+                nodeCatalog,
+            }));
         },
     };
 });

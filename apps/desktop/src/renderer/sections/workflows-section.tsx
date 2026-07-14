@@ -1,12 +1,21 @@
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
-import { type ReactElement, useCallback, useEffect, useState } from 'react';
+import { type ReactElement, useCallback, useEffect, useMemo, useState } from 'react';
 
+import type { PluginInfo } from '../../shared/plugin-info.js';
 import { type WorkflowSummary, workflowActivationLabel } from '../../shared/workflow.js';
 import { SectionShell } from '../components/section-shell.js';
 import { Button } from '../components/ui/button.js';
 import { useSigil } from '../lib/use-sigil.js';
 import { useAppStore } from '../store/app-store.js';
 import { useBuilderStore } from '../workflow-builder/builder-store.js';
+import {
+    createBuilderEventCatalogFromManifests,
+    EVENT_CATALOG,
+} from '../workflow-builder/event-catalog.js';
+import {
+    createNodeCatalogFromManifests,
+    DEFAULT_NODE_CATALOG,
+} from '../workflow-builder/node-catalog.js';
 import { WorkflowBuilder } from '../workflow-builder/workflow-builder.js';
 import type { WorkflowDraftSaveResult } from '../workflow-builder/workflow-draft.js';
 
@@ -47,7 +56,23 @@ export function WorkflowsSection(): ReactElement {
     const setEditingWorkflowId = useAppStore((state) => state.setEditingWorkflowId);
     const workflows = useAppStore((state) => state.workflows);
     const [loading, setLoading] = useState(false);
+    const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
     const sigil = useSigil();
+
+    const nodeCatalog = useMemo(
+        () =>
+            plugins.length === 0
+                ? DEFAULT_NODE_CATALOG
+                : createNodeCatalogFromManifests(plugins.map((plugin) => plugin.manifest)),
+        [plugins],
+    );
+    const eventCatalog = useMemo(
+        () =>
+            plugins.length === 0
+                ? EVENT_CATALOG
+                : createBuilderEventCatalogFromManifests(plugins.map((plugin) => plugin.manifest)),
+        [plugins],
+    );
 
     useEffect(() => {
         return () => {
@@ -56,11 +81,27 @@ export function WorkflowsSection(): ReactElement {
         };
     }, [setWorkflowView, setEditingWorkflowId]);
 
+    useEffect(() => {
+        let active = true;
+        void sigil
+            .listPlugins()
+            .then((next) => {
+                if (active) setPlugins(next);
+            })
+            .catch(() => {
+                if (active) setPlugins([]);
+            });
+        return () => {
+            active = false;
+        };
+    }, [sigil]);
+
     const handleCreate = useCallback(() => {
+        useBuilderStore.getState().setNodeCatalog(nodeCatalog);
         useBuilderStore.getState().clear();
         setEditingWorkflowId(null);
         setWorkflowView('builder');
-    }, [setWorkflowView, setEditingWorkflowId]);
+    }, [nodeCatalog, setWorkflowView, setEditingWorkflowId]);
 
     const handleEdit = useCallback(
         async (id: string) => {
@@ -68,6 +109,7 @@ export function WorkflowsSection(): ReactElement {
             try {
                 const result = await sigil.getWorkflow(id);
                 if (result) {
+                    useBuilderStore.getState().setNodeCatalog(nodeCatalog);
                     useBuilderStore
                         .getState()
                         .loadPipeline(result.pipeline, result.name, result.positions);
@@ -80,7 +122,7 @@ export function WorkflowsSection(): ReactElement {
                 setLoading(false);
             }
         },
-        [setWorkflowView, setEditingWorkflowId, sigil],
+        [nodeCatalog, setWorkflowView, setEditingWorkflowId, sigil],
     );
 
     const handleSave = useCallback(
@@ -177,7 +219,14 @@ export function WorkflowsSection(): ReactElement {
     );
 
     if (workflowView === 'builder') {
-        return <WorkflowBuilder onSave={handleSave} onCancel={handleCancel} />;
+        return (
+            <WorkflowBuilder
+                onSave={handleSave}
+                onCancel={handleCancel}
+                nodeCatalog={nodeCatalog}
+                eventCatalog={eventCatalog}
+            />
+        );
     }
 
     return (

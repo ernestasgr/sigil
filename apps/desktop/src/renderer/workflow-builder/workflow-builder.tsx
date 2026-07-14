@@ -1,6 +1,6 @@
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import { ReactFlowProvider } from '@xyflow/react';
-import { type ReactElement, useMemo, useState } from 'react';
+import { type ReactElement, useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
 import { cn } from '../lib/utils.js';
@@ -8,8 +8,10 @@ import { useBuilderStore } from './builder-store.js';
 import { WorkflowCanvas } from './canvas/workflow-canvas.js';
 import { compileGraph } from './compile.js';
 import { CornerFlourish } from './corner-flourish.js';
+import { EVENT_CATALOG, type EventCatalog } from './event-catalog.js';
 import { PropertiesPanel } from './inspector/properties-panel.js';
 import { VariableInspector } from './inspector/variable-inspector.js';
+import { DEFAULT_NODE_CATALOG, type NodeCatalog } from './node-catalog.js';
 import { NodePalette } from './palette/node-palette.js';
 import type {
     WorkflowDraftCommandDiagnostic,
@@ -20,9 +22,16 @@ import type {
 export interface WorkflowBuilderProps {
     readonly onSave: (name: string) => Promise<void>;
     readonly onCancel: () => void;
+    readonly nodeCatalog?: NodeCatalog;
+    readonly eventCatalog?: EventCatalog;
 }
 
-export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): ReactElement {
+export function WorkflowBuilder({
+    onSave,
+    onCancel,
+    nodeCatalog = DEFAULT_NODE_CATALOG,
+    eventCatalog = EVENT_CATALOG,
+}: WorkflowBuilderProps): ReactElement {
     const pipelineName = useBuilderStore((state) => state.pipelineName);
     const setPipelineName = useBuilderStore((state) => state.setPipelineName);
     const meta = useBuilderStore((state) => state.meta);
@@ -32,7 +41,12 @@ export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): Rea
     const saveState = useBuilderStore((state) => state.saveState);
     const undo = useBuilderStore((state) => state.undo);
     const redo = useBuilderStore((state) => state.redo);
+    const setNodeCatalog = useBuilderStore((state) => state.setNodeCatalog);
     const [showInspector, setShowInspector] = useState(false);
+
+    useEffect(() => {
+        setNodeCatalog(nodeCatalog);
+    }, [nodeCatalog, setNodeCatalog]);
 
     const handleCancel = () => {
         if (dirty && !window.confirm('Discard unsaved Workflow changes?')) return;
@@ -96,14 +110,14 @@ export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): Rea
             </div>
             <div className="flex flex-1 gap-2 overflow-hidden">
                 <aside className="sigil-ornamental-frame relative w-60 shrink-0 overflow-hidden">
-                    <NodePalette />
+                    <NodePalette catalog={nodeCatalog} />
                     <CornerFlourish corner="tl" />
                     <CornerFlourish corner="br" />
                 </aside>
                 <div className="flex flex-1 flex-col overflow-hidden">
                     <div className="flex-1 overflow-hidden">
                         <ReactFlowProvider>
-                            <WorkflowCanvas />
+                            <WorkflowCanvas nodeCatalog={nodeCatalog} />
                         </ReactFlowProvider>
                     </div>
                     {showInspector ? (
@@ -116,10 +130,14 @@ export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): Rea
                             <CornerFlourish corner="br" />
                         </div>
                     ) : null}
-                    <ValidationBar onSave={onSave} saveState={saveState} />
+                    <ValidationBar
+                        onSave={onSave}
+                        saveState={saveState}
+                        nodeCatalog={nodeCatalog}
+                    />
                 </div>
                 <aside className="sigil-ornamental-frame relative w-80 shrink-0 overflow-hidden">
-                    <PropertiesPanel />
+                    <PropertiesPanel nodeCatalog={nodeCatalog} eventCatalog={eventCatalog} />
                     <CornerFlourish corner="tl" />
                     <CornerFlourish corner="br" />
                 </aside>
@@ -131,6 +149,7 @@ export function WorkflowBuilder({ onSave, onCancel }: WorkflowBuilderProps): Rea
 interface ValidationBarProps {
     readonly onSave: (name: string) => Promise<void>;
     readonly saveState: WorkflowDraftSaveState;
+    readonly nodeCatalog: NodeCatalog;
 }
 
 function diagnosticTargetLabel(diagnostic: TopologyDiagnostic): string {
@@ -212,14 +231,17 @@ function assertNever(value: never): never {
     throw new Error(`Unhandled Workflow Builder state: ${JSON.stringify(value)}`);
 }
 
-function ValidationBar({ onSave, saveState }: ValidationBarProps): ReactElement {
+function ValidationBar({ onSave, saveState, nodeCatalog }: ValidationBarProps): ReactElement {
     const nodes = useBuilderStore((state) => state.nodes);
     const edges = useBuilderStore((state) => state.edges);
     const meta = useBuilderStore((state) => state.meta);
     const pipelineName = useBuilderStore((state) => state.pipelineName);
     const dirty = useBuilderStore((state) => state.dirty);
     const validation = useBuilderStore((state) => state.validation);
-    const result = useMemo(() => compileGraph(nodes, edges, meta), [nodes, edges, meta]);
+    const result = useMemo(
+        () => compileGraph(nodes, edges, meta, { nodeCatalog }),
+        [nodes, edges, meta, nodeCatalog],
+    );
     const diagnostics = validation.diagnostics;
     const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === 'error').length;
     const warningCount = diagnostics.filter(

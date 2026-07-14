@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
     createNodeCatalog,
+    createNodeCatalogFromManifests,
     createPluginNodeCatalogEntry,
     DEFAULT_NODE_CATALOG,
     defaultNodeSpecForCatalogEntry,
@@ -111,5 +112,41 @@ describe('Workflow Builder Node catalog', () => {
             value: { message: 'updated' },
         });
         expect(nodeOutputPorts(spec, catalog)).toEqual(['out']);
+    });
+
+    it('only exposes Plugin adapters declared by loaded manifests', () => {
+        const declared = createPluginNodeCatalogEntry({
+            pluginId: 'com.example.declared',
+            type: 'declared-node',
+            label: 'Declared Node',
+            category: 'utility',
+            description: 'A declared Plugin Node.',
+            defaultConfig: {},
+            configSchema: z.object({}),
+            isTrigger: false,
+            outputPorts: () => ['out'],
+        });
+        const undeclared = createPluginNodeCatalogEntry({
+            pluginId: 'com.example.undeclared',
+            type: 'undeclared-node',
+            label: 'Undeclared Node',
+            category: 'utility',
+            description: 'An undeclared Plugin Node.',
+            defaultConfig: {},
+            configSchema: z.object({}),
+            isTrigger: false,
+            outputPorts: () => ['out'],
+        });
+
+        const catalog = createNodeCatalogFromManifests(
+            [{ id: 'com.example.declared', nodeType: 'declared-node' }],
+            [declared, undeclared],
+        );
+
+        expect(catalog.findPlugin('com.example.declared', 'declared-node')).toMatchObject({
+            pluginId: declared.pluginId,
+            type: declared.type,
+        });
+        expect(catalog.findPlugin('com.example.undeclared', 'undeclared-node')).toBeUndefined();
     });
 });
