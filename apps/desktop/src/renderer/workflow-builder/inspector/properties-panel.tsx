@@ -2,111 +2,16 @@ import { type ReactElement, useEffect, useRef } from 'react';
 import { Button } from '../../components/ui/button.js';
 import { useSigil } from '../../lib/use-sigil.js';
 import { cn } from '../../lib/utils.js';
-import { assertNever } from '../assert-never.js';
 import { useBuilderStore } from '../builder-store.js';
-import { type ResolvedNodeCatalogEntry, resolveNodeCatalogEntry } from '../node-catalog.js';
 import {
-    type BuiltinNodeSpec,
     CATEGORY_TEXT,
     isPluginNodeSpec,
     type NodeSpec,
+    nodeSpecWithConfig,
     type PluginNodeSpec,
-} from '../node-registry.js';
-import {
-    DelayConfigForm,
-    FileManagerConfigForm,
-    FileWatcherConfigForm,
-    IfElseConfigForm,
-    LogConfigForm,
-    ManualTriggerConfigForm,
-    NotificationConfigForm,
-    StateGetConfigForm,
-    StateSetConfigForm,
-    SwitchConfigForm,
-} from './config-forms.js';
-
-function BuiltinNodeConfigForm({
-    spec,
-    onChange,
-}: {
-    readonly spec: BuiltinNodeSpec;
-    readonly onChange: (next: NodeSpec) => void;
-}): ReactElement {
-    switch (spec.type) {
-        case 'file-watcher':
-            return (
-                <FileWatcherConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: spec.type, config })}
-                />
-            );
-        case 'manual-trigger':
-            return (
-                <ManualTriggerConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: spec.type, config })}
-                />
-            );
-        case 'if-else':
-            return (
-                <IfElseConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: spec.type, config })}
-                />
-            );
-        case 'switch':
-            return (
-                <SwitchConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: spec.type, config })}
-                />
-            );
-        case 'file-manager':
-            return (
-                <FileManagerConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: spec.type, config })}
-                />
-            );
-        case 'notification':
-            return (
-                <NotificationConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: spec.type, config })}
-                />
-            );
-        case 'state-get':
-            return (
-                <StateGetConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: spec.type, config })}
-                />
-            );
-        case 'state-set':
-            return (
-                <StateSetConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: spec.type, config })}
-                />
-            );
-        case 'log':
-            return (
-                <LogConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: spec.type, config })}
-                />
-            );
-        case 'delay':
-            return (
-                <DelayConfigForm
-                    config={spec.config}
-                    onChange={(config) => onChange({ type: spec.type, config })}
-                />
-            );
-        default:
-            return assertNever(spec, `Unhandled node type: ${JSON.stringify(spec)}`);
-    }
-}
+    type ResolvedNodeCatalogEntry,
+    resolveNodeCatalogEntry,
+} from '../node-catalog.js';
 
 function PluginReadOnlyDiagnostic({
     spec,
@@ -140,19 +45,22 @@ function NodeConfigForm({
     readonly entry: ResolvedNodeCatalogEntry;
     readonly onChange: (next: NodeSpec) => void;
 }): ReactElement {
-    if (!isPluginNodeSpec(spec)) {
-        return <BuiltinNodeConfigForm spec={spec} onChange={onChange} />;
-    }
-
     if (!entry.Form || entry.authoring === 'read-only') {
-        return <PluginReadOnlyDiagnostic spec={spec} entry={entry} />;
+        if (isPluginNodeSpec(spec)) {
+            return <PluginReadOnlyDiagnostic spec={spec} entry={entry} />;
+        }
+        return (
+            <p role="alert" className="text-old-blood-foreground font-data text-[10px]">
+                Node "{spec.type}" has no authoring adapter.
+            </p>
+        );
     }
 
     const Form = entry.Form;
     return (
         <Form
             config={spec.config}
-            onChange={(config) => onChange({ type: spec.type, pluginId: spec.pluginId, config })}
+            onChange={(config) => onChange(nodeSpecWithConfig(spec, config))}
         />
     );
 }

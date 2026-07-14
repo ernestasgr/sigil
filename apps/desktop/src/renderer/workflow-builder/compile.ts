@@ -1,5 +1,5 @@
 import { type CompiledPipeline, parsePipeline } from '@sigil/schema';
-import { isPluginNode, outputPortsForNode, type PipelineNode } from '@sigil/schema/nodes';
+import { isPluginNode, type PipelineNode } from '@sigil/schema/nodes';
 import {
     type ExecutableWorkflow,
     formatTopologyDiagnostics,
@@ -8,7 +8,12 @@ import {
     type WorkflowTopologyOptions,
 } from '@sigil/schema/topology';
 
-import { DEFAULT_NODE_CATALOG, type NodeCatalog, resolveNodeCatalogEntry } from './node-catalog.js';
+import {
+    DEFAULT_NODE_CATALOG,
+    type NodeCatalog,
+    pipelineNodeToSpec,
+    resolveNodeCatalogEntry,
+} from './node-catalog.js';
 
 export interface PipelineMeta {
     readonly id: string;
@@ -131,22 +136,11 @@ function topologyOptionsWithCatalog(
         ...(options?.isNodeSupported ? { isNodeSupported: options.isNodeSupported } : {}),
         isTrigger:
             options?.isTrigger ??
-            ((node) => {
-                const spec = pluginNodeSpec(node);
-                if (spec) {
-                    return resolveNodeCatalogEntry(spec, catalog).isTrigger === true;
-                }
-                return node.type === 'manual-trigger' || node.type === 'file-watcher';
-            }),
+            ((node) =>
+                resolveNodeCatalogEntry(pipelineNodeToSpec(node), catalog).isTrigger === true),
         outputPortsForNode:
             options?.outputPortsForNode ??
-            ((node) => {
-                const spec = pluginNodeSpec(node);
-                if (spec) {
-                    return resolveNodeCatalogEntry(spec, catalog).outputPorts;
-                }
-                return outputPortsForNode(node);
-            }),
+            ((node) => resolveNodeCatalogEntry(pipelineNodeToSpec(node), catalog).outputPorts),
     };
 }
 

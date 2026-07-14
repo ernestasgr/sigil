@@ -5,8 +5,13 @@ import { cn } from '../../lib/utils.js';
 import type { BuilderRFNode } from '../builder-store.js';
 import { useBuilderStore } from '../builder-store.js';
 import { CornerFlourish } from '../corner-flourish.js';
-import { nodeOutputPortLabel, resolveNodeCatalogEntry } from '../node-catalog.js';
-import { CATEGORY_TEXT, CATEGORY_TOP_ACCENT, isPluginNodeSpec } from '../node-registry.js';
+import {
+    CATEGORY_TEXT,
+    CATEGORY_TOP_ACCENT,
+    isPluginNodeSpec,
+    nodeOutputPortLabel,
+    resolveNodeCatalogEntry,
+} from '../node-catalog.js';
 
 const NODE_BASE_CLASS = 'relative min-w-52 border border-veil/40 bg-obsidian-ink/95 font-ui';
 

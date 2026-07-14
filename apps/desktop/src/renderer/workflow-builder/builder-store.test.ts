@@ -2,6 +2,7 @@ import type { CompiledPipeline } from '@sigil/schema';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useBuilderStore } from './builder-store.js';
+import { BUILTIN_PLUGIN_NODE_CATALOG } from './node-catalog.js';
 import type {
     WorkflowDraftDiagnostic,
     WorkflowDraftSaveCommand,
@@ -58,6 +59,20 @@ describe('useBuilderStore', () => {
         expect(state.nodes.find((node) => node.id === secondId)?.position).toEqual({
             x: 320,
             y: 40,
+        });
+    });
+
+    it('adds a Plugin Node from a catalog entry without dropping its identity', () => {
+        const entry = BUILTIN_PLUGIN_NODE_CATALOG[0];
+        if (!entry) throw new Error('Expected a bundled Plugin catalog entry.');
+
+        const id = useBuilderStore.getState().addNodeFromPalette(entry);
+        const node = useBuilderStore.getState().nodes.find((candidate) => candidate.id === id);
+
+        expect(node?.data).toMatchObject({
+            type: entry.type,
+            pluginId: entry.pluginId,
+            config: entry.defaultConfig,
         });
     });
 

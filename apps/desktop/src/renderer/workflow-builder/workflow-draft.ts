@@ -14,8 +14,12 @@ import {
 import type { WorkflowWriteDiagnostic } from '../../shared/ipc-channels.js';
 import { assertNever } from './assert-never.js';
 import type { PipelineMeta } from './compile.js';
-import { nodeOutputPorts } from './node-catalog.js';
-import { type BuilderNodeSpec, type NodeSpec, nodeSpecData } from './node-registry.js';
+import {
+    type BuilderNodeSpec,
+    type NodeSpec,
+    nodeOutputPorts,
+    nodeSpecData,
+} from './node-catalog.js';
 
 export type WorkflowDraftNode = Node<BuilderNodeSpec, 'sigil'>;
 export const WORKFLOW_DRAFT_NODE_TYPE = 'sigil' as const;
