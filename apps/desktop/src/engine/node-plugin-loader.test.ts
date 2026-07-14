@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Worker } from 'node:worker_threads';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -14,6 +15,7 @@ import type { KernelDeps } from './node-handlers/types.js';
 import { loadNodePlugin, loadNodePlugins, updatePluginPermissions } from './node-plugin-loader.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
 import { createPermissionOverrideStore } from './permission-override-store.js';
+import { NodePluginWorkerKind } from './plugin-node-rpc.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -1566,11 +1568,68 @@ describe('updatePluginPermissions', () => {
 // ─── Worker script path resolution ──────────────────────────
 
 describe('worker script path resolution', () => {
-    it('resolves plugin-worker.js relative to __dirname', () => {
+    it('resolves the compiled worker or source bootstrap relative to __dirname', () => {
         const jsPath = join(__dirname, 'plugin-worker.js');
         const bootstrapPath = join(__dirname, 'plugin-node-worker-bootstrap.mjs');
         const resolved = existsSync(jsPath) ? jsPath : bootstrapPath;
         expect(existsSync(resolved)).toBe(true);
+    });
+
+    it('executes the source fallback bootstrap and loads a TypeScript worker', async () => {
+        const pluginDir = join(tmpdir(), `sigil-bootstrap-worker-${crypto.randomUUID()}`);
+        mkdirSync(pluginDir, { recursive: true });
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.bootstrap-worker',
+                version: '0.0.1',
+                permissions: [],
+                emits: [],
+                nodeType: 'bootstrap-node',
+            },
+            `
+export const descriptor = {
+    type: 'bootstrap-node',
+    configSchema: { safeParse: (value) => ({ success: true, data: value }) },
+};
+
+export const handler = {
+    async execute({ ctx }) {
+        return { outputCtx: ctx, activePort: 'out' };
+    },
+};
+`,
+        );
+
+        const bootstrapPath = join(__dirname, 'plugin-node-worker-bootstrap.mjs');
+        const worker = new Worker(bootstrapPath, {
+            workerData: {
+                pluginId: 'com.sigil.bootstrap-worker',
+                manifestNodeType: 'bootstrap-node',
+                handlerPath: resolve(pluginDir, 'handler.ts'),
+                manifestPermissions: [],
+                permissions: [],
+            },
+        });
+
+        try {
+            const message = await new Promise<unknown>((resolveMessage, reject) => {
+                worker.once('message', resolveMessage);
+                worker.once('error', reject);
+                worker.once('exit', (code) => {
+                    reject(new Error(`Fallback worker exited with code ${code}`));
+                });
+            });
+
+            expect(message).toEqual({
+                kind: NodePluginWorkerKind.Loaded,
+                descriptorType: 'bootstrap-node',
+                isTrigger: false,
+            });
+        } finally {
+            await worker.terminate();
+            rmSync(pluginDir, { recursive: true, force: true });
+        }
     });
 });
 
