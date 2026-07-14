@@ -1,0 +1,276 @@
+name: Quality Gates
+
+on:
+    pull_request:
+    push:
+        branches:
+            - main
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: quality-gates-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    fast-checks:
+        name: Fast checks (Ubuntu)
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        permissions:
+            contents: read
+        env:
+            CI: 'true'
+        steps:
+            - name: Bootstrap — checkout source
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  fetch-depth: 1
+
+            - name: Bootstrap — setup pnpm 11.8.0
+              uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+              with:
+                  version: 11.8.0
+
+            - name: Bootstrap — setup Node.js 22.12.0
+              uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+              with:
+                  node-version: 22.12.0
+                  cache: pnpm
+                  cache-dependency-path: pnpm-lock.yaml
+
+            - name: Bootstrap — install workspace dependencies
+              run: pnpm install --frozen-lockfile --ignore-scripts
+
+            - name: Bootstrap — build shared schema package
+              run: pnpm --filter @sigil/schema build
+
+            - name: Fast gate — lint
+              run: pnpm lint
+
+            - name: Fast gate — formatting
+              run: pnpm format:check
+
+            - name: Fast gate — typecheck
+              run: pnpm typecheck
+
+            - name: Fast gate — pure schema and renderer tests
+              run: pnpm test:fast
+
+            - name: Summarize fast gate
+              if: always()
+              shell: bash
+              env:
+                  JOB_STATUS: ${{ job.status }}
+              run: |
+                  {
+                    echo '## Fast quality gate'
+                    echo
+                    echo "- **Status:** ${JOB_STATUS}"
+                    echo "- **Runner:** ${RUNNER_OS}"
+                    echo '- **Commands:** `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, and `pnpm test:fast`'
+                    echo '- **Failure ownership:** Biome lint/formatting, workspace TypeScript, or pure schema/renderer tests.'
+                    echo '- **Native isolation:** dependency lifecycle scripts were disabled; this job does not rebuild `better-sqlite3`.'
+                  } >> "$GITHUB_STEP_SUMMARY"
+
+    native-tests:
+        name: Native integration tests (Windows)
+        runs-on: windows-latest
+        timeout-minutes: 45
+        permissions:
+            contents: read
+        env:
+            CI: 'true'
+        steps:
+            - name: Bootstrap — checkout source
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  fetch-depth: 1
+
+            - name: Bootstrap — setup pnpm 11.8.0
+              uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+              with:
+                  version: 11.8.0
+
+            - name: Bootstrap — setup Node.js 22.12.0
+              uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+              with:
+                  node-version: 22.12.0
+                  cache: pnpm
+                  cache-dependency-path: pnpm-lock.yaml
+
+            - name: Bootstrap — verify Python and Visual Studio C++ prerequisites
+              shell: pwsh
+              run: |
+                  $ErrorActionPreference = 'Stop'
+
+                  if ($null -eq (Get-Command python -ErrorAction SilentlyContinue)) {
+                      throw 'Bootstrap prerequisite missing: Python 3 must be available on PATH for node-gyp.'
+                  }
+                  python --version
+
+                  $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+                  if (-not (Test-Path -LiteralPath $vswhere)) {
+                      throw 'Bootstrap prerequisite missing: Visual Studio 2022 Build Tools with the C++ workload was not found.'
+                  }
+
+                  $installationPath = (& $vswhere -latest -products '*' -requires 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64' -property installationPath | Select-Object -First 1 | Out-String).Trim()
+                  if ([string]::IsNullOrWhiteSpace($installationPath)) {
+                      throw 'Bootstrap prerequisite missing: the Visual Studio C++ toolchain (MSVC v143) was not found.'
+                  }
+
+                  Write-Host "Visual Studio C++ toolchain: $installationPath"
+
+            - name: Bootstrap — install workspace dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Native gate — setup, preflight, and full desktop test suite
+              run: pnpm test:native
+
+            - name: Preserve native diagnostics
+              if: always()
+              shell: pwsh
+              run: |
+                  $diagnostics = Join-Path $env:RUNNER_TEMP 'sigil-native-diagnostics.txt'
+                  $pythonVersion = if ($null -ne (Get-Command python -ErrorAction SilentlyContinue)) { (python --version 2>&1 | Out-String).Trim() } else { 'unavailable' }
+                  $nodeVersion = if ($null -ne (Get-Command node -ErrorAction SilentlyContinue)) { (node --version 2>&1 | Out-String).Trim() } else { 'unavailable' }
+                  $pnpmVersion = if ($null -ne (Get-Command pnpm -ErrorAction SilentlyContinue)) { (pnpm --version 2>&1 | Out-String).Trim() } else { 'unavailable' }
+                  $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+                  $visualStudio = if (Test-Path -LiteralPath $vswhere) { (& $vswhere -latest -products '*' -property installationPath | Select-Object -First 1 | Out-String).Trim() } else { 'unavailable' }
+
+                  @(
+                      "Runner: $env:RUNNER_OS"
+                      "Node: $nodeVersion"
+                      "pnpm: $pnpmVersion"
+                      "Python: $pythonVersion"
+                      "Visual Studio: $visualStudio"
+                      "Commit: $env:GITHUB_SHA"
+                  ) | Set-Content -Path $diagnostics -Encoding utf8
+
+            - name: Summarize native gate
+              if: always()
+              shell: pwsh
+              env:
+                  JOB_STATUS: ${{ job.status }}
+              run: |
+                  @(
+                      '## Native integration quality gate',
+                      '',
+                      "- **Status:** $env:JOB_STATUS",
+                      "- **Runner:** $env:RUNNER_OS",
+                      '- **Command:** `pnpm test:native`',
+                      '- **Failure ownership:** Windows native bootstrap, the `better-sqlite3` preflight, or the full desktop test suite.',
+                      '- **Prerequisites:** Python 3 and Visual Studio 2022 Build Tools with MSVC v143 and a Windows SDK.'
+                  ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+
+            - name: Upload native diagnostics
+              if: always()
+              continue-on-error: true
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: sigil-native-diagnostics-${{ github.run_id }}
+                  path: ${{ runner.temp }}/sigil-native-diagnostics.txt
+                  if-no-files-found: warn
+                  retention-days: 7
+
+    production-build:
+        name: Production build (Windows)
+        runs-on: windows-latest
+        timeout-minutes: 45
+        permissions:
+            contents: read
+        env:
+            CI: 'true'
+        steps:
+            - name: Bootstrap — checkout source
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  fetch-depth: 1
+
+            - name: Bootstrap — setup pnpm 11.8.0
+              uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+              with:
+                  version: 11.8.0
+
+            - name: Bootstrap — setup Node.js 22.12.0
+              uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+              with:
+                  node-version: 22.12.0
+                  cache: pnpm
+                  cache-dependency-path: pnpm-lock.yaml
+
+            - name: Bootstrap — verify Python and Visual Studio C++ prerequisites
+              shell: pwsh
+              run: |
+                  $ErrorActionPreference = 'Stop'
+
+                  if ($null -eq (Get-Command python -ErrorAction SilentlyContinue)) {
+                      throw 'Bootstrap prerequisite missing: Python 3 must be available on PATH for node-gyp.'
+                  }
+                  python --version
+
+                  $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+                  if (-not (Test-Path -LiteralPath $vswhere)) {
+                      throw 'Bootstrap prerequisite missing: Visual Studio 2022 Build Tools with the C++ workload was not found.'
+                  }
+
+                  $installationPath = (& $vswhere -latest -products '*' -requires 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64' -property installationPath | Select-Object -First 1 | Out-String).Trim()
+                  if ([string]::IsNullOrWhiteSpace($installationPath)) {
+                      throw 'Bootstrap prerequisite missing: the Visual Studio C++ toolchain (MSVC v143) was not found.'
+                  }
+
+                  Write-Host "Visual Studio C++ toolchain: $installationPath"
+
+            - name: Bootstrap — install workspace dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Build gate — schema and Electron production build
+              run: pnpm build
+
+            - name: Preserve production-build diagnostics
+              if: always()
+              shell: pwsh
+              run: |
+                  $diagnostics = Join-Path $env:RUNNER_TEMP 'sigil-production-build-diagnostics.txt'
+                  $pythonVersion = if ($null -ne (Get-Command python -ErrorAction SilentlyContinue)) { (python --version 2>&1 | Out-String).Trim() } else { 'unavailable' }
+                  $nodeVersion = if ($null -ne (Get-Command node -ErrorAction SilentlyContinue)) { (node --version 2>&1 | Out-String).Trim() } else { 'unavailable' }
+                  $pnpmVersion = if ($null -ne (Get-Command pnpm -ErrorAction SilentlyContinue)) { (pnpm --version 2>&1 | Out-String).Trim() } else { 'unavailable' }
+                  $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+                  $visualStudio = if (Test-Path -LiteralPath $vswhere) { (& $vswhere -latest -products '*' -property installationPath | Select-Object -First 1 | Out-String).Trim() } else { 'unavailable' }
+
+                  @(
+                      "Runner: $env:RUNNER_OS"
+                      "Node: $nodeVersion"
+                      "pnpm: $pnpmVersion"
+                      "Python: $pythonVersion"
+                      "Visual Studio: $visualStudio"
+                      "Commit: $env:GITHUB_SHA"
+                  ) | Set-Content -Path $diagnostics -Encoding utf8
+
+            - name: Summarize production build gate
+              if: always()
+              shell: pwsh
+              env:
+                  JOB_STATUS: ${{ job.status }}
+              run: |
+                  @(
+                      '## Production build quality gate',
+                      '',
+                      "- **Status:** $env:JOB_STATUS",
+                      "- **Runner:** $env:RUNNER_OS",
+                      '- **Command:** `pnpm build`',
+                      '- **Failure ownership:** dependency bootstrap, the shared schema build, Electron native rebuild, or the desktop production bundle.',
+                      '- **Prerequisites:** Python 3 and Visual Studio 2022 Build Tools with MSVC v143 and a Windows SDK.'
+                  ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+
+            - name: Upload production-build diagnostics
+              if: always()
+              continue-on-error: true
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: sigil-production-build-diagnostics-${{ github.run_id }}
+                  path: ${{ runner.temp }}/sigil-production-build-diagnostics.txt
+                  if-no-files-found: warn
+                  retention-days: 7
