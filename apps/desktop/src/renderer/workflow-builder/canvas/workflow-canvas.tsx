@@ -11,7 +11,7 @@ import { type DragEvent, type ReactElement, useCallback } from 'react';
 
 import { BUILDER_NODE_TYPE, useBuilderStore } from '../builder-store.js';
 import { NODE_DRAG_MIME } from '../constants.js';
-import { isNodeType } from '../node-registry.js';
+import { nodeCatalogEntryFromPaletteValue } from '../node-catalog.js';
 import { PipelineNodeCard } from './pipeline-node-card.js';
 
 const NODE_TYPES: NodeTypes = { [BUILDER_NODE_TYPE]: PipelineNodeCard };
@@ -35,10 +35,12 @@ export function WorkflowCanvas(): ReactElement {
     const onDrop = useCallback(
         (event: DragEvent<HTMLDivElement>) => {
             event.preventDefault();
-            const type = event.dataTransfer.getData(NODE_DRAG_MIME);
-            if (!isNodeType(type)) return;
+            const entry = nodeCatalogEntryFromPaletteValue(
+                event.dataTransfer.getData(NODE_DRAG_MIME),
+            );
+            if (!entry) return;
             const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-            addNode(type, position);
+            addNode(entry, position);
         },
         [screenToFlowPosition, addNode],
     );

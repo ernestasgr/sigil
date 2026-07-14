@@ -1,13 +1,19 @@
 import type { CompiledPipeline } from '@sigil/schema';
-import { isPluginNode, type NodeType, type PipelineNode } from '@sigil/schema/nodes';
+import type { NodeType, PipelineNode } from '@sigil/schema/nodes';
 import type { Connection, Edge, EdgeChange, NodeChange, XYPosition } from '@xyflow/react';
 import { create } from 'zustand';
 
-import { assertNever } from './assert-never.js';
 import type { CompileResult, PipelineMeta } from './compile.js';
 import { compileGraph } from './compile.js';
 import { nextPaletteNodePosition, resolveWorkflowPositions } from './layout.js';
-import { defaultNodeSpec, type NodeSpec, nodeSpecData } from './node-registry.js';
+import {
+    defaultNodeSpec,
+    defaultNodeSpecForCatalogEntry,
+    type NodeCatalogEntry,
+    type NodeSpec,
+    nodeSpecData,
+    pipelineNodeToSpec,
+} from './node-catalog.js';
 import {
     applyWorkflowDraftCommand,
     beginWorkflowDraftSave,
@@ -53,8 +59,8 @@ export interface BuilderState {
     readonly canRedo: boolean;
     readonly saveState: WorkflowDraftSaveState;
     readonly validation: WorkflowDraftValidationState;
-    readonly addNode: (type: NodeType, position: XYPosition) => string;
-    readonly addNodeFromPalette: (type: NodeType) => string;
+    readonly addNode: (entry: NodeType | NodeCatalogEntry, position: XYPosition) => string;
+    readonly addNodeFromPalette: (entry: NodeType | NodeCatalogEntry) => string;
     readonly updateSpec: (nodeId: string, spec: NodeSpec) => void;
     readonly removeNode: (nodeId: string) => void;
     readonly connect: (connection: Connection) => void;
@@ -173,44 +179,6 @@ function reconcileSelectedNode(
         : null;
 }
 
-function pipelineNodeToSpec(pipelineNode: PipelineNode): NodeSpec {
-    if (isPluginNode(pipelineNode)) {
-        return {
-            type: pipelineNode.type,
-            pluginId: pipelineNode.pluginId,
-            config: structuredClone(pipelineNode.config),
-        };
-    }
-
-    switch (pipelineNode.type) {
-        case 'file-watcher':
-            return { type: 'file-watcher', config: structuredClone(pipelineNode.config) };
-        case 'manual-trigger':
-            return { type: 'manual-trigger', config: structuredClone(pipelineNode.config) };
-        case 'if-else':
-            return { type: 'if-else', config: structuredClone(pipelineNode.config) };
-        case 'switch':
-            return { type: 'switch', config: structuredClone(pipelineNode.config) };
-        case 'file-manager':
-            return { type: 'file-manager', config: structuredClone(pipelineNode.config) };
-        case 'notification':
-            return { type: 'notification', config: structuredClone(pipelineNode.config) };
-        case 'log':
-            return { type: 'log', config: structuredClone(pipelineNode.config) };
-        case 'delay':
-            return { type: 'delay', config: structuredClone(pipelineNode.config) };
-        case 'state-get':
-            return { type: 'state-get', config: structuredClone(pipelineNode.config) };
-        case 'state-set':
-            return { type: 'state-set', config: structuredClone(pipelineNode.config) };
-        default:
-            return assertNever(
-                pipelineNode,
-                `Unhandled built-in Node type: ${String(pipelineNode)}`,
-            );
-    }
-}
-
 function pipelineSnapshot(
     pipeline: CompiledPipeline,
     name: string,
@@ -247,13 +215,16 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
         set((state) => projectDraft(applyWorkflowDraftCommand(state.draft, command)));
     }
 
-    function addNodeAtPosition(type: NodeType, position: XYPosition): string {
+    function addNodeAtPosition(entry: NodeType | NodeCatalogEntry, position: XYPosition): string {
         const id = crypto.randomUUID();
         const node: BuilderRFNode = {
             id,
             type: BUILDER_NODE_TYPE,
             position,
-            data: defaultNodeSpec(type),
+            data:
+                typeof entry === 'string'
+                    ? defaultNodeSpec(entry)
+                    : defaultNodeSpecForCatalogEntry(entry),
         };
         set((state) => ({
             ...projectDraft(
@@ -273,7 +244,8 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
 
         addNode: addNodeAtPosition,
 
-        addNodeFromPalette: (type) => addNodeAtPosition(type, nextPaletteNodePosition(get().nodes)),
+        addNodeFromPalette: (entry) =>
+            addNodeAtPosition(entry, nextPaletteNodePosition(get().nodes)),
 
         updateSpec: (nodeId, spec) => {
             applyCommand({ kind: 'update-node-spec', nodeId, spec });
