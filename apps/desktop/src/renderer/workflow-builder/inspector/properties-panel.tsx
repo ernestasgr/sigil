@@ -2,6 +2,7 @@ import { type ReactElement, useEffect, useRef } from 'react';
 import { Button } from '../../components/ui/button.js';
 import { useSigil } from '../../lib/use-sigil.js';
 import { cn } from '../../lib/utils.js';
+import { assertNever } from '../assert-never.js';
 import { useBuilderStore } from '../builder-store.js';
 import { type ResolvedNodeCatalogEntry, resolveNodeCatalogEntry } from '../node-catalog.js';
 import {
@@ -9,6 +10,7 @@ import {
     CATEGORY_TEXT,
     isPluginNodeSpec,
     type NodeSpec,
+    type PluginNodeSpec,
 } from '../node-registry.js';
 import {
     DelayConfigForm,
@@ -102,7 +104,7 @@ function BuiltinNodeConfigForm({
                 />
             );
         default:
-            return assertNever(spec);
+            return assertNever(spec, `Unhandled node type: ${JSON.stringify(spec)}`);
     }
 }
 
@@ -110,7 +112,7 @@ function PluginReadOnlyDiagnostic({
     spec,
     entry,
 }: {
-    readonly spec: Extract<NodeSpec, { readonly pluginId: string }>;
+    readonly spec: PluginNodeSpec;
     readonly entry: ResolvedNodeCatalogEntry;
 }): ReactElement {
     return (
@@ -131,16 +133,17 @@ function PluginReadOnlyDiagnostic({
 
 function NodeConfigForm({
     spec,
+    entry,
     onChange,
 }: {
     readonly spec: NodeSpec;
+    readonly entry: ResolvedNodeCatalogEntry;
     readonly onChange: (next: NodeSpec) => void;
 }): ReactElement {
     if (!isPluginNodeSpec(spec)) {
         return <BuiltinNodeConfigForm spec={spec} onChange={onChange} />;
     }
 
-    const entry = resolveNodeCatalogEntry(spec);
     if (!entry.Form || entry.authoring === 'read-only') {
         return <PluginReadOnlyDiagnostic spec={spec} entry={entry} />;
     }
@@ -152,10 +155,6 @@ function NodeConfigForm({
             onChange={(config) => onChange({ type: spec.type, pluginId: spec.pluginId, config })}
         />
     );
-}
-
-function assertNever(value: never): never {
-    throw new Error(`Unhandled node type: ${JSON.stringify(value)}`);
 }
 
 export function PropertiesPanel(): ReactElement {
@@ -226,6 +225,7 @@ export function PropertiesPanel(): ReactElement {
                 <NodeConfigForm
                     key={node.id}
                     spec={spec}
+                    entry={def}
                     onChange={(next) => updateSpec(node.id, next)}
                 />
             </div>

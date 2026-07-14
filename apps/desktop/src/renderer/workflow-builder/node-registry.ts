@@ -2,6 +2,7 @@ import { type BuiltinPipelineNode, getNodeDescriptor, type NodeType } from '@sig
 import { type ComponentType, createElement, type ReactElement } from 'react';
 import type { z } from 'zod';
 
+import { assertNever } from './assert-never.js';
 import type { ConfigFormProps } from './inspector/config-forms.js';
 import {
     DelayConfigForm,
@@ -24,7 +25,7 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 
 export type BuiltinNodeSpec = DistributiveOmit<BuiltinPipelineNode, 'id'>;
 
-export interface PluginNodeSpec extends Record<string, unknown> {
+export interface PluginNodeSpec {
     readonly type: string;
     readonly pluginId: string;
     readonly config: unknown;
@@ -34,6 +35,19 @@ export type NodeSpec = BuiltinNodeSpec | PluginNodeSpec;
 
 export function isPluginNodeSpec(spec: NodeSpec): spec is PluginNodeSpec {
     return 'pluginId' in spec;
+}
+
+export type BuilderNodeSpec = NodeSpec & Record<string, unknown>;
+
+export function nodeSpecData(spec: NodeSpec): BuilderNodeSpec {
+    if (isPluginNodeSpec(spec)) {
+        return {
+            type: spec.type,
+            pluginId: spec.pluginId,
+            config: structuredClone(spec.config),
+        };
+    }
+    return structuredClone(spec);
 }
 
 type NodeConfigMap = {
@@ -186,8 +200,8 @@ const DEFAULT_NODE_SPECS = {
     },
 } satisfies NodeSpecRegistry;
 
-export function defaultNodeSpec(type: NodeType): NodeSpec {
-    return structuredClone(DEFAULT_NODE_SPECS[type]);
+export function defaultNodeSpec(type: NodeType): BuilderNodeSpec {
+    return nodeSpecData(DEFAULT_NODE_SPECS[type]);
 }
 
 export type NodeTypeDef = NodeRegistry[NodeType];
@@ -221,10 +235,6 @@ function createKnownNodeConfigForm<T>(
             onChange: (next: T) => onChange(next),
         });
     };
-}
-
-function assertNever(value: never): never {
-    throw new Error(`Unhandled built-in Node type: ${String(value)}`);
 }
 
 export function createNodeConfigForm<K extends NodeType>(type: K): NodeConfigForm {
@@ -290,7 +300,7 @@ export function createNodeConfigForm<K extends NodeType>(type: K): NodeConfigFor
                 getNodeDescriptor('state-set').configSchema,
             );
         default:
-            return assertNever(type);
+            return assertNever(type, `Unhandled built-in Node type: ${String(type)}`);
     }
 }
 

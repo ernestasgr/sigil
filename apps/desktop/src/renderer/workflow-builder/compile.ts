@@ -132,24 +132,18 @@ function topologyOptionsWithCatalog(
         isTrigger:
             options?.isTrigger ??
             ((node) => {
-                if (isPluginNode(node)) {
-                    return (
-                        resolveNodeCatalogEntry(
-                            { type: node.type, pluginId: node.pluginId, config: node.config },
-                            catalog,
-                        ).isTrigger === true
-                    );
+                const spec = pluginNodeSpec(node);
+                if (spec) {
+                    return resolveNodeCatalogEntry(spec, catalog).isTrigger === true;
                 }
                 return node.type === 'manual-trigger' || node.type === 'file-watcher';
             }),
         outputPortsForNode:
             options?.outputPortsForNode ??
             ((node) => {
-                if (isPluginNode(node)) {
-                    return resolveNodeCatalogEntry(
-                        { type: node.type, pluginId: node.pluginId, config: node.config },
-                        catalog,
-                    ).outputPorts;
+                const spec = pluginNodeSpec(node);
+                if (spec) {
+                    return resolveNodeCatalogEntry(spec, catalog).outputPorts;
                 }
                 return outputPortsForNode(node);
             }),
