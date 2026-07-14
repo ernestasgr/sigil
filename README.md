@@ -198,8 +198,13 @@ The shared contract: `@sigil/schema` defines `CompiledPipeline`, `PipelineNode` 
 
 ## Prerequisites
 
+- **Windows** 10 or 11 (the MVP target platform)
 - **Node.js** `>= 22.12.0`
 - **pnpm** `11.8.0` (enforced via `packageManager`)
+- **Python** 3.x available on `PATH` for `node-gyp` native builds
+- **Visual Studio 2022 Build Tools** with the **Desktop development with C++** workload, MSVC v143, and a Windows 10/11 SDK
+
+The desktop app uses `better-sqlite3`, a native Node module. `pnpm install` may use a prebuilt binary, but `pnpm setup:native` rebuilds it for the current Node runtime. `pnpm build` runs `electron-rebuild` so the module also matches the Electron ABI; both paths need the Windows C++ toolchain when a prebuilt binary is unavailable.
 
 ## Getting Started
 
@@ -220,6 +225,11 @@ pnpm dev          # builds @sigil/schema, then launches the Electron app with HM
 | `pnpm lint:fix`     | Lint and auto-fix with Biome.                             |
 | `pnpm format`       | Format the repo with Biome.                               |
 | `pnpm format:check` | Check formatting without writing.                         |
+| `pnpm check:fast`   | Run lint, format, typecheck, and the pure test gate.       |
+| `pnpm test:fast`    | Run schema and renderer tests without a native rebuild.   |
+| `pnpm setup:native` | Rebuild `better-sqlite3` for the current Node runtime.    |
+| `pnpm check:native` | Load SQLite in memory and run a native binding preflight. |
+| `pnpm test:native`  | Setup/check SQLite, then run the full desktop test suite. |
 | `pnpm test`         | Run tests across every workspace package (Vitest).        |
 | `pnpm test:watch`   | Watch tests for `@sigil/schema`.                          |
 | `pnpm clean`        | Remove `dist`/`out`/`.turbo`/cache from every package.    |
@@ -232,7 +242,9 @@ Tests target architectural seams — feeding input into one side of a boundary a
 - **DAG Executor** — feed a compiled Pipeline + trigger payload, assert node sequence, branching, outputs, error handling, and State mutations.
 - **Event Bus + Bridge** — Events arrive with correct payloads, undeclared emissions are blocked, subscribers receive matching Events.
 
-Run the suite with `pnpm test`.
+Use `pnpm check:fast` for the quick feedback loop. It runs the static checks and then `pnpm test:fast`; the pure schema and renderer tests do not invoke the desktop package's native rebuild. Before changing engine persistence or other native code, run `pnpm test:native`. It rebuilds and checks `better-sqlite3` first, then runs the desktop tests. `pnpm test` remains the complete workspace suite.
+
+If `pnpm check:native` fails, follow the prerequisite message it prints, install the Windows C++/Python toolchain above, and rerun `pnpm setup:native` before retrying `pnpm test:native`.
 
 ## Project Docs
 

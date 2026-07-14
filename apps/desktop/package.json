@@ -10,8 +10,12 @@
         "build": "electron-vite build",
         "preview": "electron-vite preview",
         "typecheck": "tsc -p tsconfig.json --noEmit",
-        "pretest": "pnpm rebuild better-sqlite3",
+        "pretest": "pnpm run native:setup && pnpm run native:check",
         "test": "vitest run",
+        "test:renderer": "vitest run src/renderer",
+        "test:native": "pnpm run native:setup && pnpm run native:check && vitest run",
+        "native:setup": "pnpm rebuild better-sqlite3",
+        "native:check": "tsx scripts/check-native-sqlite.ts",
         "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
         "predev": "electron-rebuild -f -w better-sqlite3",
         "prebuild": "electron-rebuild -f -w better-sqlite3"
