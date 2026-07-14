@@ -3,8 +3,13 @@ import { Button } from '../../components/ui/button.js';
 import { useSigil } from '../../lib/use-sigil.js';
 import { cn } from '../../lib/utils.js';
 import { useBuilderStore } from '../builder-store.js';
-import type { NodeSpec } from '../node-registry.js';
-import { CATEGORY_TEXT, nodeTypeDef } from '../node-registry.js';
+import { type ResolvedNodeCatalogEntry, resolveNodeCatalogEntry } from '../node-catalog.js';
+import {
+    type BuiltinNodeSpec,
+    CATEGORY_TEXT,
+    isPluginNodeSpec,
+    type NodeSpec,
+} from '../node-registry.js';
 import {
     DelayConfigForm,
     FileManagerConfigForm,
@@ -18,11 +23,11 @@ import {
     SwitchConfigForm,
 } from './config-forms.js';
 
-function NodeConfigForm({
+function BuiltinNodeConfigForm({
     spec,
     onChange,
 }: {
-    readonly spec: NodeSpec;
+    readonly spec: BuiltinNodeSpec;
     readonly onChange: (next: NodeSpec) => void;
 }): ReactElement {
     switch (spec.type) {
@@ -101,6 +106,54 @@ function NodeConfigForm({
     }
 }
 
+function PluginReadOnlyDiagnostic({
+    spec,
+    entry,
+}: {
+    readonly spec: Extract<NodeSpec, { readonly pluginId: string }>;
+    readonly entry: ResolvedNodeCatalogEntry;
+}): ReactElement {
+    return (
+        <div
+            role="alert"
+            className="border-old-blood/50 bg-old-blood/10 flex flex-col gap-2 border p-3"
+        >
+            <p className="font-ui text-old-blood-foreground text-xs">Read-only Plugin Node</p>
+            <p className="font-data text-parchment text-[10px] break-words">
+                {entry.readOnlyReason ?? entry.description}
+            </p>
+            <p className="font-data text-veil-foreground text-[10px] break-words">
+                Identity: {spec.pluginId} · {spec.type}
+            </p>
+        </div>
+    );
+}
+
+function NodeConfigForm({
+    spec,
+    onChange,
+}: {
+    readonly spec: NodeSpec;
+    readonly onChange: (next: NodeSpec) => void;
+}): ReactElement {
+    if (!isPluginNodeSpec(spec)) {
+        return <BuiltinNodeConfigForm spec={spec} onChange={onChange} />;
+    }
+
+    const entry = resolveNodeCatalogEntry(spec);
+    if (!entry.Form || entry.authoring === 'read-only') {
+        return <PluginReadOnlyDiagnostic spec={spec} entry={entry} />;
+    }
+
+    const Form = entry.Form;
+    return (
+        <Form
+            config={spec.config}
+            onChange={(config) => onChange({ type: spec.type, pluginId: spec.pluginId, config })}
+        />
+    );
+}
+
 function assertNever(value: never): never {
     throw new Error(`Unhandled node type: ${JSON.stringify(value)}`);
 }
@@ -142,7 +195,7 @@ export function PropertiesPanel(): ReactElement {
     }
 
     const spec = node.data;
-    const def = nodeTypeDef(spec.type);
+    const def = resolveNodeCatalogEntry(spec);
 
     return (
         <section
@@ -177,7 +230,7 @@ export function PropertiesPanel(): ReactElement {
                 />
             </div>
             <footer className="border-gilt/40 flex items-center gap-2 border-t p-5">
-                {spec.type === 'manual-trigger' ? (
+                {!isPluginNodeSpec(spec) && spec.type === 'manual-trigger' ? (
                     <Button
                         variant="default"
                         size="sm"

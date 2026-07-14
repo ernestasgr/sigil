@@ -199,6 +199,92 @@ describe('compileGraph', () => {
         }
     });
 
+    it('compiles a bundled Plugin Node as a trigger through the default catalog', () => {
+        const nodes = [
+            {
+                id: 'file-trigger',
+                data: {
+                    type: 'file-watcher',
+                    pluginId: 'com.sigil.file-watcher',
+                    config: {
+                        path: '/tmp',
+                        recursive: true,
+                        events: ['file.created'],
+                    },
+                },
+            },
+            { id: 'log', data: { type: 'log', config: { message: 'hi' } } },
+        ];
+
+        const result = compileGraph(
+            nodes,
+            [{ id: 'e1', source: 'file-trigger', target: 'log', sourceHandle: 'out' }],
+            { id: 'p', workflowId: 'w' },
+        );
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.executable.triggerId).toBe('file-trigger');
+            expect(result.value.nodes[0]).toMatchObject({
+                id: 'file-trigger',
+                type: 'file-watcher',
+                pluginId: 'com.sigil.file-watcher',
+            });
+            expect(result.diagnostics).toEqual([]);
+        }
+    });
+
+    it('round-trips an unsupported Plugin Node with an explicit read-only diagnostic', () => {
+        const nodes = [
+            {
+                id: 'trigger',
+                data: {
+                    type: 'manual-trigger',
+                    config: {
+                        eventName: 'file.created',
+                        payload: {
+                            path: '/tmp/a.txt',
+                            name: 'a.txt',
+                            ext: 'txt',
+                            size: 1,
+                            dir: '/tmp',
+                        },
+                    },
+                },
+            },
+            {
+                id: 'plugin-action',
+                data: {
+                    type: 'third-party.action',
+                    pluginId: 'com.example.third-party',
+                    config: { destination: '/tmp' },
+                },
+            },
+        ];
+
+        const result = compileGraph(
+            nodes,
+            [{ id: 'e1', source: 'trigger', target: 'plugin-action', sourceHandle: 'out' }],
+            { id: 'p', workflowId: 'w' },
+        );
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.value.nodes[1]).toMatchObject({
+                type: 'third-party.action',
+                pluginId: 'com.example.third-party',
+                config: { destination: '/tmp' },
+            });
+            expect(result.diagnostics).toEqual([
+                expect.objectContaining({
+                    severity: 'warning',
+                    code: 'unsupported_plugin_authoring',
+                    nodeId: 'plugin-action',
+                }),
+            ]);
+        }
+    });
+
     it('recognises a plugin trigger when topology options supply isTrigger', () => {
         const nodes = [
             {

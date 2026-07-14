@@ -1,4 +1,3 @@
-import { outputPortLabelForNode, outputPortsForNode } from '@sigil/schema/nodes';
 import { Handle, type NodeProps, Position } from '@xyflow/react';
 import type { ReactElement } from 'react';
 
@@ -6,15 +5,17 @@ import { cn } from '../../lib/utils.js';
 import type { BuilderRFNode } from '../builder-store.js';
 import { useBuilderStore } from '../builder-store.js';
 import { CornerFlourish } from '../corner-flourish.js';
-import { CATEGORY_TEXT, CATEGORY_TOP_ACCENT, nodeTypeDef } from '../node-registry.js';
+import { nodeOutputPortLabel, nodeOutputPorts, resolveNodeCatalogEntry } from '../node-catalog.js';
+import { CATEGORY_TEXT, CATEGORY_TOP_ACCENT, isPluginNodeSpec } from '../node-registry.js';
 
 const NODE_BASE_CLASS = 'relative min-w-52 border border-veil/40 bg-obsidian-ink/95 font-ui';
 
 export function PipelineNodeCard({ id, data, selected }: NodeProps<BuilderRFNode>): ReactElement {
     const spec = data;
-    const def = nodeTypeDef(spec.type);
-    const ports = outputPortsForNode({ id, ...spec });
-    const showInput = def.category !== 'trigger';
+    const def = resolveNodeCatalogEntry(spec);
+    const ports = nodeOutputPorts(spec);
+    const visiblePorts = ports === 'dynamic' ? [] : ports;
+    const showInput = def.isTrigger !== true;
     const selectNode = useBuilderStore((state) => state.selectNode);
 
     return (
@@ -46,19 +47,22 @@ export function PipelineNodeCard({ id, data, selected }: NodeProps<BuilderRFNode
                             CATEGORY_TEXT[def.category],
                         )}
                     >
-                        {def.category}
+                        {def.source === 'plugin' ? 'plugin' : def.category}
                     </span>
                 </div>
                 <span className="text-sm tracking-wide text-parchment">{def.label}</span>
                 <span className="font-data text-[10px] text-veil-foreground">{spec.type}</span>
+                {isPluginNodeSpec(spec) ? (
+                    <span className="font-data text-[10px] text-gilt">{spec.pluginId}</span>
+                ) : null}
             </header>
             <div className="flex flex-col gap-1 px-4 pb-3">
-                {ports.map((port) => (
+                {visiblePorts.map((port) => (
                     <div
                         key={port}
                         className="relative flex items-center justify-end pr-2 font-data text-[10px] text-veil-foreground"
                     >
-                        <span>{outputPortLabelForNode({ id, ...spec }, port)}</span>
+                        <span>{nodeOutputPortLabel(spec, port)}</span>
                         <Handle
                             id={port}
                             type="source"
@@ -67,6 +71,11 @@ export function PipelineNodeCard({ id, data, selected }: NodeProps<BuilderRFNode
                         />
                     </div>
                 ))}
+                {def.authoring === 'read-only' ? (
+                    <span className="font-data text-[10px] text-old-blood-foreground">
+                        Read-only authoring
+                    </span>
+                ) : null}
             </div>
         </div>
     );

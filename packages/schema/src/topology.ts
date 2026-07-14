@@ -25,6 +25,8 @@ const TOPOLOGY_DIAGNOSTIC_CODES = [
     'duplicate_node_id',
     'duplicate_edge_id',
     'unsupported_node_handler',
+    'unsupported_plugin_authoring',
+    'invalid_plugin_config',
     ...SWITCH_DIAGNOSTIC_CODES,
 ] as const;
 

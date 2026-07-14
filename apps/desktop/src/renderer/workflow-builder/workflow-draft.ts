@@ -1,5 +1,4 @@
 import type { CompiledPipeline } from '@sigil/schema';
-import { outputPortsForNode } from '@sigil/schema/nodes';
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import {
     addEdge,
@@ -14,6 +13,7 @@ import {
 
 import type { WorkflowWriteDiagnostic } from '../../shared/ipc-channels.js';
 import type { PipelineMeta } from './compile.js';
+import { nodeOutputPorts } from './node-catalog.js';
 import type { NodeSpec } from './node-registry.js';
 
 export type WorkflowDraftNode = Node<NodeSpec, 'sigil'>;
@@ -168,15 +168,11 @@ function snapshotForComparison(snapshot: WorkflowDraftSnapshot): unknown {
         ...snapshot,
         nodes: snapshot.nodes.map((node) =>
             Object.fromEntries(
-                Object.entries(node).filter(
-                    ([key]) => !REACT_FLOW_RUNTIME_NODE_FIELDS.has(key),
-                ),
+                Object.entries(node).filter(([key]) => !REACT_FLOW_RUNTIME_NODE_FIELDS.has(key)),
             ),
         ),
         edges: snapshot.edges.map((edge) =>
-            Object.fromEntries(
-                Object.entries(edge).filter(([key]) => key !== 'selected'),
-            ),
+            Object.fromEntries(Object.entries(edge).filter(([key]) => key !== 'selected')),
         ),
     };
 }
@@ -234,12 +230,16 @@ function applyCommand(
                     ? { ...node, data: structuredClone(command.spec) }
                     : node,
             );
-            const validPorts = new Set(outputPortsForNode({ id: command.nodeId, ...command.spec }));
-            const edges = snapshot.edges.filter(
-                (edge) =>
-                    edge.source !== command.nodeId ||
-                    (edge.sourceHandle != null && validPorts.has(edge.sourceHandle)),
-            );
+            const outputPorts = nodeOutputPorts(command.spec);
+            const edges =
+                outputPorts === 'dynamic'
+                    ? snapshot.edges
+                    : snapshot.edges.filter(
+                          (edge) =>
+                              edge.source !== command.nodeId ||
+                              (edge.sourceHandle != null &&
+                                  outputPorts.includes(edge.sourceHandle)),
+                      );
             return { ...snapshot, nodes, edges };
         }
         case 'remove-node': {

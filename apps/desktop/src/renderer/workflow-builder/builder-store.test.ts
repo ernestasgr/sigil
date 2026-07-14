@@ -2,7 +2,11 @@ import type { CompiledPipeline } from '@sigil/schema';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useBuilderStore } from './builder-store.js';
-import type { WorkflowDraftDiagnostic, WorkflowDraftSaveResult } from './workflow-draft.js';
+import type {
+    WorkflowDraftDiagnostic,
+    WorkflowDraftSaveCommand,
+    WorkflowDraftSaveResult,
+} from './workflow-draft.js';
 
 describe('useBuilderStore', () => {
     beforeEach(() => {
@@ -137,7 +141,7 @@ describe('useBuilderStore', () => {
 
         const state = useBuilderStore.getState();
         expect(state.nodes[0].data.type).toBe('switch');
-        if (state.nodes[0].data.type === 'switch') {
+        if (!('pluginId' in state.nodes[0].data) && state.nodes[0].data.type === 'switch') {
             expect(state.nodes[0].data.config.cases).toEqual([{ id: 'case-png', value: 'png' }]);
         }
         const ports = state.edges.map((e) => e.sourceHandle);
@@ -414,6 +418,80 @@ describe('useBuilderStore', () => {
         useBuilderStore.getState().undo();
         expect(useBuilderStore.getState().dirty).toBe(false);
         expect(useBuilderStore.getState().nodes[0]?.position).toEqual({ x: 40, y: 60 });
+    });
+
+    it('preserves a bundled Plugin Node through load, edit, compile, and save', async () => {
+        const pipeline: CompiledPipeline = {
+            id: 'pipeline-plugin',
+            workflowId: 'workflow-plugin',
+            schemaVersion: 1,
+            nodes: [
+                {
+                    id: 'file-trigger',
+                    type: 'file-watcher',
+                    pluginId: 'com.sigil.file-watcher',
+                    config: {
+                        path: '/tmp',
+                        recursive: true,
+                        events: ['file.created'],
+                    },
+                },
+                { id: 'log', type: 'log', config: { message: 'Loaded' } },
+            ],
+            edges: [{ id: 'edge-1', source: 'file-trigger', target: 'log', sourcePort: 'out' }],
+        };
+
+        useBuilderStore.getState().loadPipeline(pipeline, 'Plugin Workflow');
+
+        expect(useBuilderStore.getState().nodes[0]?.data).toMatchObject({
+            type: 'file-watcher',
+            pluginId: 'com.sigil.file-watcher',
+        });
+
+        useBuilderStore.getState().updateSpec('file-trigger', {
+            type: 'file-watcher',
+            pluginId: 'com.sigil.file-watcher',
+            config: {
+                path: '/var/tmp',
+                recursive: false,
+                events: ['file.modified'],
+            },
+        });
+
+        const compiled = useBuilderStore.getState().compile();
+        expect(compiled.ok).toBe(true);
+        if (compiled.ok) {
+            expect(compiled.value.nodes[0]).toMatchObject({
+                type: 'file-watcher',
+                pluginId: 'com.sigil.file-watcher',
+                config: {
+                    path: '/var/tmp',
+                    recursive: false,
+                    events: ['file.modified'],
+                },
+            });
+        }
+
+        let savedPipeline: CompiledPipeline | undefined;
+        const command: WorkflowDraftSaveCommand = vi.fn(
+            async (request): Promise<WorkflowDraftSaveResult> => {
+                savedPipeline = request.pipeline;
+                return { ok: true };
+            },
+        );
+
+        await expect(useBuilderStore.getState().save('Plugin Workflow', command)).resolves.toEqual({
+            ok: true,
+        });
+        expect(savedPipeline?.nodes[0]).toMatchObject({
+            type: 'file-watcher',
+            pluginId: 'com.sigil.file-watcher',
+            config: {
+                path: '/var/tmp',
+                recursive: false,
+                events: ['file.modified'],
+            },
+        });
     });
 
     it('fills missing loaded positions with a deterministic topology layout', () => {

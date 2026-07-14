@@ -34,7 +34,7 @@ describe('nodeTypeDef', () => {
     it('gives the switch node a default case', () => {
         const spec = { type: 'switch', config: nodeTypeDef('switch').defaultConfig } as NodeSpec;
         expect(spec.type).toBe('switch');
-        if (spec.type === 'switch') {
+        if (!('pluginId' in spec) && spec.type === 'switch') {
             expect(spec.config.cases.length).toBeGreaterThan(0);
         }
     });
