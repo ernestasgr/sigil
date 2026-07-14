@@ -1,5 +1,3 @@
-import 'tsx';
-
 import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
@@ -156,10 +154,10 @@ export async function loadNodePlugin(
         : manifest.permissions;
 
     // Spawn Worker to load and run the handler in a sandboxed context
-    // Try compiled JS first (dev/production), fall back to source TS (tests)
+    // Try compiled JS first (dev/production), then use the tsx bootstrap (tests)
     const jsPath = join(__dirname, 'plugin-worker.js');
-    const tsPath = join(__dirname, 'plugin-node-worker.ts');
-    const workerScriptPath = existsSync(jsPath) ? jsPath : tsPath;
+    const bootstrapPath = join(__dirname, 'plugin-node-worker-bootstrap.mjs');
+    const workerScriptPath = existsSync(jsPath) ? jsPath : bootstrapPath;
 
     const worker = new Worker(workerScriptPath, {
         workerData: {
@@ -169,7 +167,6 @@ export async function loadNodePlugin(
             manifestPermissions: manifest.permissions,
             permissions: effectivePermissions,
         },
-        execArgv: ['--import', 'tsx/esm'],
         eval: false,
     });
 

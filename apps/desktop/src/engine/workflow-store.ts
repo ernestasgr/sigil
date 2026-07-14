@@ -369,11 +369,11 @@ function readWorkflowFile(
         );
         try {
             const openedStat = fstatSync(fileDescriptor);
-            if (
-                openedStat.dev !== initialStat.dev ||
-                openedStat.ino !== initialStat.ino ||
-                realpathSync(storagePath) !== initialRealPath
-            ) {
+            const sameFileIdentity =
+                process.platform === 'win32'
+                    ? openedStat.ino === initialStat.ino
+                    : openedStat.dev === initialStat.dev && openedStat.ino === initialStat.ino;
+            if (!sameFileIdentity || realpathSync(storagePath) !== initialRealPath) {
                 throw new Error(`Workflow file changed while opening: ${storagePath}`);
             }
             raw = JSON.parse(readFileSync(fileDescriptor, 'utf-8'));
