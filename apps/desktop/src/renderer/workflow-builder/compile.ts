@@ -132,15 +132,23 @@ function topologyOptionsWithCatalog(
     options: CompileOptions | undefined,
     catalog: NodeCatalog,
 ): WorkflowTopologyOptions {
+    const resolvedEntries = new Map<string, ReturnType<typeof resolveNodeCatalogEntry>>();
+    const resolveCatalogEntry = (
+        node: PipelineNode,
+    ): ReturnType<typeof resolveNodeCatalogEntry> => {
+        const cached = resolvedEntries.get(node.id);
+        if (cached !== undefined) return cached;
+
+        const entry = resolveNodeCatalogEntry(pipelineNodeToSpec(node), catalog);
+        resolvedEntries.set(node.id, entry);
+        return entry;
+    };
+
     return {
         ...(options?.isNodeSupported ? { isNodeSupported: options.isNodeSupported } : {}),
-        isTrigger:
-            options?.isTrigger ??
-            ((node) =>
-                resolveNodeCatalogEntry(pipelineNodeToSpec(node), catalog).isTrigger === true),
+        isTrigger: options?.isTrigger ?? ((node) => resolveCatalogEntry(node).isTrigger === true),
         outputPortsForNode:
-            options?.outputPortsForNode ??
-            ((node) => resolveNodeCatalogEntry(pipelineNodeToSpec(node), catalog).outputPorts),
+            options?.outputPortsForNode ?? ((node) => resolveCatalogEntry(node).outputPorts),
     };
 }
 

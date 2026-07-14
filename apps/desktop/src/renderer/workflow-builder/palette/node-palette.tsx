@@ -12,6 +12,10 @@ import {
     serializeNodeCatalogEntry,
 } from '../node-catalog.js';
 
+function nodeCatalogEntryKey(entry: NodeCatalogEntry): string {
+    return `${entry.pluginId ?? 'builtin'}:${entry.type}`;
+}
+
 export function NodePalette(): ReactElement {
     const titleId = useId();
     const [announcement, setAnnouncement] = useState('');
@@ -64,11 +68,7 @@ function PaletteCategory({
             </h3>
             <div className="flex flex-col gap-1.5">
                 {items.map((entry) => (
-                    <PaletteItem
-                        key={`${entry.pluginId ?? 'builtin'}:${entry.type}`}
-                        entry={entry}
-                        onAdd={onAdd}
-                    />
+                    <PaletteItem key={nodeCatalogEntryKey(entry)} entry={entry} onAdd={onAdd} />
                 ))}
             </div>
         </section>
@@ -82,7 +82,7 @@ function PaletteItem({
     readonly entry: NodeCatalogEntry;
     readonly onAdd: (entry: NodeCatalogEntry) => void;
 }): ReactElement {
-    const entryKey = `${entry.pluginId ?? 'builtin'}:${entry.type}`;
+    const entryKey = nodeCatalogEntryKey(entry);
     const onDragStart = (event: DragEvent<HTMLButtonElement>) => {
         event.dataTransfer.setData(NODE_DRAG_MIME, serializeNodeCatalogEntry(entry));
         event.dataTransfer.effectAllowed = 'move';
