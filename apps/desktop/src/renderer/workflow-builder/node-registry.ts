@@ -1,5 +1,6 @@
 import { type BuiltinPipelineNode, getNodeDescriptor, type NodeType } from '@sigil/schema/nodes';
-import type { ComponentType } from 'react';
+import { type ComponentType, createElement, type ReactElement } from 'react';
+import type { z } from 'zod';
 
 import type { ConfigFormProps } from './inspector/config-forms.js';
 import {
@@ -17,13 +18,29 @@ import {
 
 export type NodeCategory = 'trigger' | 'logic' | 'system' | 'state' | 'utility';
 
+export type NodeConfigForm = (props: ConfigFormProps<unknown>) => ReactElement;
+
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
-export type NodeSpec = DistributiveOmit<BuiltinPipelineNode, 'id'> & {
-    readonly pluginId?: string;
+export type BuiltinNodeSpec = DistributiveOmit<BuiltinPipelineNode, 'id'>;
+
+export interface PluginNodeSpec extends Record<string, unknown> {
+    readonly type: string;
+    readonly pluginId: string;
+    readonly config: unknown;
+}
+
+export type NodeSpec = BuiltinNodeSpec | PluginNodeSpec;
+
+export function isPluginNodeSpec(spec: NodeSpec): spec is PluginNodeSpec {
+    return 'pluginId' in spec;
+}
+
+type NodeConfigMap = {
+    [K in NodeType]: Extract<BuiltinPipelineNode, { type: K }>['config'];
 };
 
-type NodeConfigOf<K extends NodeType> = Extract<BuiltinPipelineNode, { type: K }>['config'];
+type NodeConfigOf<K extends NodeType> = NodeConfigMap[K];
 
 interface NodeRegistryEntry<K extends NodeType> {
     readonly type: K;
@@ -179,6 +196,102 @@ export const NODE_TYPES: readonly NodeTypeDef[] = Object.values(NODE_TYPE_REGIST
 
 export function nodeTypeDef<K extends NodeType>(type: K): NodeRegistry[K] {
     return NODE_TYPE_REGISTRY[type];
+}
+
+function createKnownNodeConfigForm<T>(
+    type: string,
+    Form: ComponentType<ConfigFormProps<T>>,
+    configSchema: z.ZodType<T>,
+): NodeConfigForm {
+    return ({ config, onChange }) => {
+        const parsed = configSchema.safeParse(config);
+        if (!parsed.success) {
+            return createElement(
+                'p',
+                {
+                    role: 'alert',
+                    className: 'text-old-blood-foreground font-data text-[10px]',
+                },
+                `Node "${type}" has invalid configuration: ${parsed.error.message}`,
+            );
+        }
+
+        return createElement(Form, {
+            config: parsed.data,
+            onChange: (next: T) => onChange(next),
+        });
+    };
+}
+
+function assertNever(value: never): never {
+    throw new Error(`Unhandled built-in Node type: ${String(value)}`);
+}
+
+export function createNodeConfigForm<K extends NodeType>(type: K): NodeConfigForm {
+    switch (type) {
+        case 'file-watcher':
+            return createKnownNodeConfigForm(
+                type,
+                nodeTypeDef('file-watcher').Form,
+                getNodeDescriptor('file-watcher').configSchema,
+            );
+        case 'manual-trigger':
+            return createKnownNodeConfigForm(
+                type,
+                nodeTypeDef('manual-trigger').Form,
+                getNodeDescriptor('manual-trigger').configSchema,
+            );
+        case 'if-else':
+            return createKnownNodeConfigForm(
+                type,
+                nodeTypeDef('if-else').Form,
+                getNodeDescriptor('if-else').configSchema,
+            );
+        case 'switch':
+            return createKnownNodeConfigForm(
+                type,
+                nodeTypeDef('switch').Form,
+                getNodeDescriptor('switch').configSchema,
+            );
+        case 'file-manager':
+            return createKnownNodeConfigForm(
+                type,
+                nodeTypeDef('file-manager').Form,
+                getNodeDescriptor('file-manager').configSchema,
+            );
+        case 'notification':
+            return createKnownNodeConfigForm(
+                type,
+                nodeTypeDef('notification').Form,
+                getNodeDescriptor('notification').configSchema,
+            );
+        case 'log':
+            return createKnownNodeConfigForm(
+                type,
+                nodeTypeDef('log').Form,
+                getNodeDescriptor('log').configSchema,
+            );
+        case 'delay':
+            return createKnownNodeConfigForm(
+                type,
+                nodeTypeDef('delay').Form,
+                getNodeDescriptor('delay').configSchema,
+            );
+        case 'state-get':
+            return createKnownNodeConfigForm(
+                type,
+                nodeTypeDef('state-get').Form,
+                getNodeDescriptor('state-get').configSchema,
+            );
+        case 'state-set':
+            return createKnownNodeConfigForm(
+                type,
+                nodeTypeDef('state-set').Form,
+                getNodeDescriptor('state-set').configSchema,
+            );
+        default:
+            return assertNever(type);
+    }
 }
 
 export interface CategoryMeta {

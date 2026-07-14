@@ -1,5 +1,5 @@
 import type { CompiledPipeline } from '@sigil/schema';
-import type { NodeType, PipelineNode } from '@sigil/schema/nodes';
+import { isPluginNode, type NodeType, type PipelineNode } from '@sigil/schema/nodes';
 import type { Connection, Edge, EdgeChange, NodeChange, XYPosition } from '@xyflow/react';
 import { create } from 'zustand';
 
@@ -172,6 +172,45 @@ function reconcileSelectedNode(
         : null;
 }
 
+function assertNever(value: never): never {
+    throw new Error(`Unhandled built-in Node type: ${String(value)}`);
+}
+
+function pipelineNodeToSpec(pipelineNode: PipelineNode): NodeSpec {
+    if (isPluginNode(pipelineNode)) {
+        return {
+            type: pipelineNode.type,
+            pluginId: pipelineNode.pluginId,
+            config: structuredClone(pipelineNode.config),
+        };
+    }
+
+    switch (pipelineNode.type) {
+        case 'file-watcher':
+            return { type: 'file-watcher', config: structuredClone(pipelineNode.config) };
+        case 'manual-trigger':
+            return { type: 'manual-trigger', config: structuredClone(pipelineNode.config) };
+        case 'if-else':
+            return { type: 'if-else', config: structuredClone(pipelineNode.config) };
+        case 'switch':
+            return { type: 'switch', config: structuredClone(pipelineNode.config) };
+        case 'file-manager':
+            return { type: 'file-manager', config: structuredClone(pipelineNode.config) };
+        case 'notification':
+            return { type: 'notification', config: structuredClone(pipelineNode.config) };
+        case 'log':
+            return { type: 'log', config: structuredClone(pipelineNode.config) };
+        case 'delay':
+            return { type: 'delay', config: structuredClone(pipelineNode.config) };
+        case 'state-get':
+            return { type: 'state-get', config: structuredClone(pipelineNode.config) };
+        case 'state-set':
+            return { type: 'state-set', config: structuredClone(pipelineNode.config) };
+        default:
+            return assertNever(pipelineNode);
+    }
+}
+
 function pipelineSnapshot(
     pipeline: CompiledPipeline,
     name: string,
@@ -183,11 +222,7 @@ function pipelineSnapshot(
             id: pipelineNode.id,
             type: BUILDER_NODE_TYPE,
             position: resolvedPositions[pipelineNode.id] ?? { x: 40, y: 40 },
-            data: {
-                type: pipelineNode.type,
-                config: structuredClone(pipelineNode.config),
-                ...('pluginId' in pipelineNode ? { pluginId: pipelineNode.pluginId } : {}),
-            } as NodeSpec,
+            data: pipelineNodeToSpec(pipelineNode),
         }),
     );
     const edges: Edge[] = pipeline.edges.map((pipelineEdge) => ({
