@@ -287,6 +287,12 @@ function storedWorkflowDiagnostic(
     };
 }
 
+function workflowReadFailureDetail(error: unknown): string {
+    if (error instanceof SyntaxError) return 'it is not valid JSON.';
+    const message = error instanceof Error ? error.message : String(error);
+    return `it could not be read: ${message}`;
+}
+
 function migrateSchemaVersion(
     fileName: string,
     schemaVersion: number | undefined,
@@ -380,9 +386,9 @@ function readWorkflowFile(
         } finally {
             closeSync(fileDescriptor);
         }
-    } catch {
+    } catch (error) {
         return invalidWorkflowRecord(storagePath, workflowId, raw, [
-            storedWorkflowDiagnostic(fileName, 'it is not valid JSON.'),
+            storedWorkflowDiagnostic(fileName, workflowReadFailureDetail(error)),
         ]);
     }
 
