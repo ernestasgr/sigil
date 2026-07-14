@@ -199,7 +199,7 @@ The shared contract: `@sigil/schema` defines `CompiledPipeline`, `PipelineNode` 
 ## Prerequisites
 
 - **Windows** 10 or 11 (the MVP target platform)
-- **Node.js** `>= 22.12.0`
+- **Node.js** `>= 22.13.0`
 - **pnpm** `11.8.0` (enforced via `packageManager`)
 - **Python** 3.x available on `PATH` for `node-gyp` native builds
 - **Visual Studio 2022 Build Tools** with the **Desktop development with C++** workload, MSVC v143, and a Windows 10/11 SDK
