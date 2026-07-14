@@ -607,8 +607,8 @@ export function pipelineNodeToSpec(pipelineNode: PipelineNode): NodeSpec {
         };
     }
 
-    return nodeSpecWithConfig(
-        { type: pipelineNode.type, config: pipelineNode.config } as NodeSpec,
-        structuredClone(pipelineNode.config),
-    );
+    return {
+        type: pipelineNode.type,
+        config: structuredClone(pipelineNode.config),
+    } as NodeSpec;
 }
