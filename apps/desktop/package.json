@@ -45,6 +45,7 @@
     "devDependencies": {
         "@electron/rebuild": "4.0.4",
         "@playwright/test": "1.55.0",
+        "fast-check": "3.23.2",
         "@tailwindcss/vite": "4.3.1",
         "@testing-library/jest-dom": "6.9.1",
         "@testing-library/react": "16.3.2",
