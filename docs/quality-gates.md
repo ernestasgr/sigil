@@ -14,6 +14,13 @@ It runs the following checks in order:
 4. `pnpm typecheck`
 5. `pnpm test:fast`
 
+The renderer-only DOM project is available as
+`pnpm --filter @sigil/desktop test:renderer:dom`. It runs the tests under
+`apps/desktop/tests/renderer/` in jsdom without the desktop package's native
+SQLite setup. `pnpm --filter @sigil/desktop test:renderer` runs those tests
+alongside the existing Node-oriented renderer tests; `pnpm test` runs the
+complete workspace suite, including both desktop test projects.
+
 The supported local command for the full native coverage gate is:
 
 ```bash

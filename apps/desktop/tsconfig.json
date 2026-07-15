@@ -16,7 +16,10 @@
         "src/**/*.tsx",
         "src/**/*.d.ts",
         "scripts/**/*.ts",
-        "electron.vite.config.ts"
+        "electron.vite.config.ts",
+        "vitest.renderer.config.ts",
+        "tests/**/*.ts",
+        "tests/**/*.tsx"
     ],
     "exclude": ["out", "dist", "node_modules"]
 }
