@@ -57,7 +57,8 @@ function createOutputBuffer(): OutputBuffer {
         append(source, chunk): void {
             const output = `[${source}] ${chunk.toString()}`;
             chunks.push(output);
-            for (const listener of [...listeners]) listener(output);
+            const text = chunks.join('');
+            for (const listener of [...listeners]) listener(text);
         },
         subscribe(listener): () => void {
             listeners.add(listener);
