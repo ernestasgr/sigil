@@ -228,6 +228,7 @@ pnpm dev          # builds @sigil/schema, then launches the Electron app with HM
 | `pnpm architecture:check` | Check dependency cycles and process/package boundaries.   |
 | `pnpm check:fast`   | Run lint, format, architecture, typecheck, and pure tests. |
 | `pnpm test:fast`    | Run schema and renderer tests without a native rebuild.   |
+| `pnpm test:e2e`     | Build the app and run the Windows Electron Workflow smoke test. |
 | `pnpm check:coverage` | Run native tests, report coverage, and enforce the measured baseline. |
 | `pnpm verify:production` | Check production files and launch the built Electron app briefly. |
 | `pnpm setup:native` | Rebuild `better-sqlite3` for the current Node runtime.    |
@@ -249,6 +250,8 @@ Use `pnpm check:fast` for the quick feedback loop. It runs lint, formatting, arc
 
 After `pnpm build`, `pnpm verify:production` checks the expected `out/` files, renderer asset references, and built Electron startup. GitHub Actions runs the static checks, full native test suite with coverage, production build, and startup verification in one Windows quality-gates job; the coverage reports are preserved as an artifact.
 
+Run `pnpm test:e2e -- tests/e2e/workflow-lifecycle.spec.ts` for the complete Electron Workflow lifecycle smoke test. Its isolated-data harness, launch path, native-dialog seam, and failure artifacts are documented in [`docs/electron-smoke-tests.md`](docs/electron-smoke-tests.md). GitHub Actions runs the Electron smoke test in the Windows quality-gates job and preserves its diagnostics on failure.
+
 If `pnpm check:native` fails, follow the prerequisite message it prints, install the Windows C++/Python toolchain above, and rerun `pnpm setup:native` before retrying `pnpm test:native`.
 
 ## Project Docs
@@ -257,6 +260,7 @@ If `pnpm check:native` fails, follow the prerequisite message it prints, install
 - [`CODING_STANDARDS.md`](CODING_STANDARDS.md) — TypeScript conventions: no `any`, discriminated unions with exhaustive switches, `readonly` by default, branded IDs, Zod at boundaries, functional style with Effect (`Either`, `Option`, `Match`), `Result` types over throwing.
 - [`UI_STYLE_GUIDANCE.md`](UI_STYLE_GUIDANCE.md) — visual language and color system.
 - [`docs/quality-gates.md`](docs/quality-gates.md) — local check scope and architecture exceptions.
+- [`docs/electron-smoke-tests.md`](docs/electron-smoke-tests.md) — Playwright Electron lifecycle test, isolation, launch path, and diagnostics.
 - [`docs/adr/`](docs/adr) — Architecture Decision Records.
 - [`docs/agents/`](docs/agents) — Agent-specific documentation (domain, issue tracker, triage labels).
 

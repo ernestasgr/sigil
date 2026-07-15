@@ -85,8 +85,23 @@ jobs:
             - name: Build gate - schema and Electron production build
               run: pnpm build
 
+            - name: E2E gate - Electron Workflow lifecycle smoke test
+              run: pnpm --filter @sigil/desktop test:e2e
+
             - name: Release gate - verify production artifacts and startup
               run: pnpm verify:production
+
+            - name: Upload Electron smoke diagnostics
+              if: always()
+              continue-on-error: true
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: sigil-electron-smoke-${{ github.run_id }}
+                  path: |
+                      apps/desktop/test-results
+                      apps/desktop/playwright-report
+                  if-no-files-found: warn
+                  retention-days: 14
 
             - name: Preserve quality-gate diagnostics
               if: always()
@@ -119,7 +134,7 @@ jobs:
                       '',
                       "- **Status:** $env:JOB_STATUS",
                       "- **Runner:** $env:RUNNER_OS",
-                      '- **Commands:** `pnpm lint`, `pnpm format:check`, `pnpm architecture:check`, `pnpm typecheck`, `pnpm test:fast`, `pnpm --filter @sigil/desktop test:renderer:dom`, native setup/check, `pnpm test:coverage`, `pnpm coverage:check`, `pnpm build`, and `pnpm verify:production`',
+                      '- **Commands:** `pnpm lint`, `pnpm format:check`, `pnpm architecture:check`, `pnpm typecheck`, `pnpm test:fast`, `pnpm --filter @sigil/desktop test:renderer:dom`, native setup/check, `pnpm test:coverage`, `pnpm coverage:check`, `pnpm build`, `pnpm --filter @sigil/desktop test:e2e`, and `pnpm verify:production`',
                       '- **Bootstrap ownership:** Node.js, pnpm, Python, Visual Studio C++ prerequisites, dependency installation, schema build, and native SQLite setup.',
                       '- **Product ownership:** static checks, pure tests, native tests, coverage baseline, production build, artifact completeness, and Electron startup.',
                       '- **Native isolation:** dependency lifecycle scripts are disabled during install; native setup runs explicitly after the fast checks.'

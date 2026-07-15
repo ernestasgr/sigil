@@ -21,6 +21,7 @@
         "architecture:check": "depcruise apps/desktop/src packages/schema/src --config .dependency-cruiser.json --output-type err-long --progress none",
         "check:fast": "pnpm lint && pnpm format:check && pnpm architecture:check && pnpm typecheck && pnpm test:fast",
         "test:fast": "pnpm --filter @sigil/schema test && pnpm --filter @sigil/desktop test:renderer",
+        "test:e2e": "pnpm --filter @sigil/schema build && pnpm --filter @sigil/desktop build && pnpm --filter @sigil/desktop test:e2e",
         "test:coverage": "pnpm --filter @sigil/schema test:coverage && pnpm --filter @sigil/desktop test:coverage",
         "coverage:check": "tsx scripts/check-coverage-baseline.ts",
         "check:coverage": "pnpm --filter @sigil/schema build && pnpm --filter @sigil/desktop native:setup && pnpm --filter @sigil/desktop native:check && pnpm test:coverage && pnpm coverage:check",

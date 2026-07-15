@@ -6,6 +6,8 @@ release/
 .turbo/
 .parcel-cache/
 coverage/
+test-results/
+playwright-report/
 
 # Electron / native build artifacts
 *.log
