@@ -54,6 +54,9 @@ jobs:
             - name: Fast gate — formatting
               run: pnpm format:check
 
+            - name: Fast gate — architecture
+              run: pnpm architecture:check
+
             - name: Fast gate — typecheck
               run: pnpm typecheck
 
@@ -71,8 +74,8 @@ jobs:
                     echo
                     echo "- **Status:** ${JOB_STATUS}"
                     echo "- **Runner:** ${RUNNER_OS}"
-                    echo '- **Commands:** `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, and `pnpm test:fast`'
-                    echo '- **Failure ownership:** Biome lint/formatting, workspace TypeScript, or pure schema/renderer tests.'
+                    echo '- **Commands:** `pnpm lint`, `pnpm format:check`, `pnpm architecture:check`, `pnpm typecheck`, and `pnpm test:fast`'
+                    echo '- **Failure ownership:** Biome lint/formatting, Dependency Cruiser architecture rules, workspace TypeScript, or pure schema/renderer tests.'
                     echo '- **Native isolation:** dependency lifecycle scripts were disabled; this job does not rebuild `better-sqlite3`.'
                   } >> "$GITHUB_STEP_SUMMARY"
 
