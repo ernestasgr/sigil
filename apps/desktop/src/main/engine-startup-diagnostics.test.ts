@@ -54,6 +54,22 @@ describe('Electron startup diagnostics', () => {
         expect(timeout.message).toContain('250ms');
     });
 
+    it('resolves immediately when the marker is already in the buffered output', async () => {
+        const process = createTestProcess();
+        const output = createTestOutput(ENGINE_READY_MARKER);
+
+        await expect(waitForEngineReady(process, output, 1_000)).resolves.toBeUndefined();
+    });
+
+    it('rejects immediately when the process already exited before the call', async () => {
+        const process = Object.assign(createTestProcess(), { exitCode: 1, signalCode: null });
+        const output = createTestOutput();
+
+        await expect(waitForEngineReady(process, output, 1_000)).rejects.toMatchObject({
+            kind: 'engine-startup-failure',
+        });
+    });
+
     it('rejects worker output as a startup failure', async () => {
         const process = createTestProcess();
         const output = createTestOutput();

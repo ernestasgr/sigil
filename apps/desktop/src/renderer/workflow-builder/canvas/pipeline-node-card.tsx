@@ -70,21 +70,24 @@ export function PipelineNodeCard({
                 ) : null}
             </header>
             <div className="flex flex-col gap-1 px-4 pb-3">
-                {visiblePorts.map((port) => (
-                    <div
-                        key={port}
-                        className="relative flex items-center justify-end pr-2 font-data text-[10px] text-veil-foreground"
-                    >
-                        <span>{nodeOutputPortLabel(spec, port, nodeCatalog)}</span>
-                        <Handle
-                            id={port}
-                            type="source"
-                            position={Position.Right}
-                            aria-label={`${def.label} output ${nodeOutputPortLabel(spec, port, nodeCatalog)}`}
-                            className="h-2.5! w-2.5! border-gilt! bg-obsidian-ink!"
-                        />
-                    </div>
-                ))}
+                {visiblePorts.map((port) => {
+                    const label = nodeOutputPortLabel(spec, port, nodeCatalog);
+                    return (
+                        <div
+                            key={port}
+                            className="relative flex items-center justify-end pr-2 font-data text-[10px] text-veil-foreground"
+                        >
+                            <span>{label}</span>
+                            <Handle
+                                id={port}
+                                type="source"
+                                position={Position.Right}
+                                aria-label={`${def.label} output ${label}`}
+                                className="h-2.5! w-2.5! border-gilt! bg-obsidian-ink!"
+                            />
+                        </div>
+                    );
+                })}
                 {def.authoring === 'read-only' ? (
                     <span className="font-data text-[10px] text-old-blood-foreground">
                         Read-only authoring
