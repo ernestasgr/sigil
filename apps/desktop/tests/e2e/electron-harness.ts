@@ -150,6 +150,7 @@ export async function launchElectron(
             args: [
                 '--no-sandbox',
                 '--disable-gpu',
+                '--force-device-scale-factor=1',
                 `--user-data-dir=${options.workspace.userDataDirectory}`,
                 layout.productionEntry,
             ],
