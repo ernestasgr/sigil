@@ -54,23 +54,23 @@ Coverage includes production TypeScript source under `packages/schema/src` and `
 
 The measured baseline is recorded in [`coverage-baseline.json`](coverage-baseline.json). `pnpm coverage:check` requires statements, branches, functions, and lines for both packages to be at least their committed baseline. This is a trend policy derived from the current measured suite, rather than an arbitrary round-number threshold. If production source is added without corresponding tests, the affected metric falls below the baseline and the gate fails; update the baseline only alongside an intentional, reviewed coverage-policy change.
 
-## Clean Windows smoke gate
+## Windows native quality gate
 
-The `Clean Windows smoke` job runs the end-to-end path on a fresh `windows-latest` runner:
+The `Native integration tests and coverage` job runs the full native test and coverage path on a fresh `windows-latest` runner:
 
 1. install the frozen workspace dependencies;
 2. build the shared schema package;
 3. prepare and preflight `better-sqlite3`;
-4. run workspace typechecking and the full test suite with coverage;
-5. enforce the coverage baseline;
-6. build the production Electron output; and
-7. verify the production artifacts and start the built app until the engine-ready marker is observed.
+4. run the schema and full desktop test suites with coverage; and
+5. enforce the measured coverage baseline.
 
-Bootstrap steps are explicitly named and call [`.github/scripts/verify-windows-bootstrap.ps1`](../.github/scripts/verify-windows-bootstrap.ps1). Missing Node.js, pnpm, Python, or the Visual Studio C++ toolchain is reported as `BOOTSTRAP FAILURE`; typecheck, test, coverage, build, and production-startup failures are reported by their `Smoke`, `Build`, or `Release` gate. This keeps environment failures distinguishable from product failures for both humans and AI agents.
+The separate `Production build` job installs the workspace independently, builds the production Electron output, and runs the production artifact/startup verifier. This keeps CI focused on product quality checks while retaining a platform-specific native test environment and a production compilation gate.
+
+Bootstrap steps are explicitly named and call [`.github/scripts/verify-windows-bootstrap.ps1`](../.github/scripts/verify-windows-bootstrap.ps1). Missing Node.js, pnpm, Python, or the Visual Studio C++ toolchain is reported as `BOOTSTRAP FAILURE`; static checks, native tests, coverage, build, and production-startup failures are reported by their `Fast`, `Native`, `Build`, or `Release` gate. This keeps environment failures distinguishable from product failures for both humans and AI agents.
 
 ## Production artifact checks
 
-`pnpm verify:production` checks that the build contains the main process entry, worker bundles, preload bundle, renderer entry, and every local JavaScript/CSS asset referenced by the renderer HTML. It then launches the built Electron entry and requires the existing `[main] engine worker ready` marker within 30 seconds before terminating the smoke process.
+`pnpm verify:production` checks that the build contains the main process entry, worker bundles, preload bundle, renderer entry, and every local JavaScript/CSS asset referenced by the renderer HTML. It then launches the built Electron entry and requires the existing `[main] engine worker ready` marker within 30 seconds before terminating the verification process.
 
 For a local release-oriented check, run:
 
@@ -79,4 +79,4 @@ pnpm build
 pnpm verify:production
 ```
 
-When a gate fails, start with the first failed stage: `Bootstrap` indicates prerequisites or dependency setup, `Fast` indicates static/pure checks, `Smoke` indicates the clean Windows path, `Build` indicates production compilation, and `Release` indicates artifact completeness or startup viability.
+When a gate fails, start with the first failed stage: `Bootstrap` indicates prerequisites or dependency setup, `Fast` indicates static/pure checks, `Native` indicates the Windows native test/coverage path, `Build` indicates production compilation, and `Release` indicates artifact completeness or startup viability.

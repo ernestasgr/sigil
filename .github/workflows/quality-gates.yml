@@ -79,94 +79,8 @@ jobs:
                     echo '- **Native isolation:** dependency lifecycle scripts were disabled; this job does not rebuild `better-sqlite3`.'
                   } >> "$GITHUB_STEP_SUMMARY"
 
-    windows-smoke:
-        name: Clean Windows smoke
-        runs-on: windows-latest
-        timeout-minutes: 60
-        permissions:
-            contents: read
-        env:
-            CI: 'true'
-        steps:
-            - name: Bootstrap - checkout source
-              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-              with:
-                  fetch-depth: 1
-                  persist-credentials: false
-
-            - name: Bootstrap - setup pnpm 11.8.0
-              uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
-              with:
-                  version: 11.8.0
-
-            - name: Bootstrap - setup Node.js 22.13.0
-              uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-              with:
-                  node-version: 22.13.0
-                  cache: pnpm
-                  cache-dependency-path: pnpm-lock.yaml
-
-            - name: Bootstrap - verify Windows prerequisites
-              shell: pwsh
-              run: pwsh .github/scripts/verify-windows-bootstrap.ps1
-
-            - name: Bootstrap - install workspace dependencies
-              run: pnpm install --frozen-lockfile
-
-            - name: Bootstrap - build shared schema package
-              run: pnpm --filter @sigil/schema build
-
-            - name: Bootstrap - prepare native SQLite runtime
-              run: pnpm setup:native
-
-            - name: Bootstrap - verify native SQLite runtime
-              run: pnpm check:native
-
-            - name: Smoke gate - typecheck
-              run: pnpm typecheck
-
-            - name: Smoke gate - full tests with coverage
-              run: pnpm test:coverage
-
-            - name: Smoke gate - enforce coverage baseline
-              run: pnpm coverage:check
-
-            - name: Build gate - production build
-              run: pnpm build
-
-            - name: Release gate - verify production artifacts and startup
-              run: pnpm verify:production
-
-            - name: Summarize Windows smoke gate
-              if: always()
-              shell: pwsh
-              env:
-                  JOB_STATUS: ${{ job.status }}
-              run: |
-                  @(
-                      '## Clean Windows smoke quality gate',
-                      '',
-                      "- **Status:** $env:JOB_STATUS",
-                      "- **Runner:** $env:RUNNER_OS",
-                      '- **Commands:** install, schema build, native preflight, `pnpm typecheck`, `pnpm test:coverage`, `pnpm coverage:check`, `pnpm build`, and `pnpm verify:production`',
-                      '- **Bootstrap ownership:** Node.js, pnpm, Python, Visual Studio C++ prerequisites, native SQLite setup, and the shared schema build.',
-                      '- **Product ownership:** workspace typechecking, full tests, coverage baseline, production build, artifact completeness, and Electron startup.'
-                  ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
-
-            - name: Upload coverage reports
-              if: always()
-              continue-on-error: true
-              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-              with:
-                  name: sigil-coverage-${{ github.run_id }}
-                  path: |
-                      packages/schema/coverage
-                      apps/desktop/coverage
-                  if-no-files-found: warn
-                  retention-days: 14
-
     native-tests:
-        name: Native integration tests (Windows)
+        name: Native integration tests and coverage (Windows)
         runs-on: windows-latest
         timeout-minutes: 45
         permissions:
@@ -202,8 +116,17 @@ jobs:
             - name: Bootstrap — build shared schema package
               run: pnpm --filter @sigil/schema build
 
-            - name: Native gate — setup, preflight, and full desktop test suite
-              run: pnpm test:native
+            - name: Bootstrap — prepare native SQLite runtime
+              run: pnpm setup:native
+
+            - name: Bootstrap — verify native SQLite runtime
+              run: pnpm check:native
+
+            - name: Native gate — full test suite with coverage
+              run: pnpm test:coverage
+
+            - name: Native gate — enforce coverage baseline
+              run: pnpm coverage:check
 
             - name: Preserve native diagnostics
               if: always()
@@ -232,12 +155,12 @@ jobs:
                   JOB_STATUS: ${{ job.status }}
               run: |
                   @(
-                      '## Native integration quality gate',
+                      '## Native integration and coverage quality gate',
                       '',
                       "- **Status:** $env:JOB_STATUS",
                       "- **Runner:** $env:RUNNER_OS",
-                      '- **Command:** `pnpm test:native`',
-                      '- **Failure ownership:** Windows native bootstrap, the `better-sqlite3` preflight, or the full desktop test suite.',
+                      '- **Commands:** `pnpm setup:native`, `pnpm check:native`, `pnpm test:coverage`, and `pnpm coverage:check`',
+                      '- **Failure ownership:** Windows native bootstrap, the `better-sqlite3` preflight, the full desktop test suite, or the coverage baseline.',
                       '- **Prerequisites:** Python 3 and Visual Studio 2022 Build Tools with MSVC v143 and a Windows SDK.'
                   ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 
@@ -250,6 +173,18 @@ jobs:
                   path: ${{ runner.temp }}/sigil-native-diagnostics.txt
                   if-no-files-found: warn
                   retention-days: 7
+
+            - name: Upload coverage reports
+              if: always()
+              continue-on-error: true
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: sigil-coverage-${{ github.run_id }}
+                  path: |
+                      packages/schema/coverage
+                      apps/desktop/coverage
+                  if-no-files-found: warn
+                  retention-days: 14
 
     production-build:
         name: Production build (Windows)

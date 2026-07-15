@@ -247,7 +247,7 @@ Tests target architectural seams — feeding input into one side of a boundary a
 
 Use `pnpm check:fast` for the quick feedback loop. It runs lint, formatting, architecture, typechecking, and then `pnpm test:fast`; the pure schema and renderer tests do not invoke the desktop package's native rebuild. Use `pnpm check:coverage` when a change needs the full native suite and coverage trend check; it prepares `better-sqlite3`, writes package coverage reports, and enforces [`docs/coverage-baseline.json`](docs/coverage-baseline.json). The exact formatting, dependency-analysis, coverage, and production verification scope is documented in [`docs/quality-gates.md`](docs/quality-gates.md). Before changing engine persistence or other native code, run `pnpm test:native`. It rebuilds and checks `better-sqlite3` first, then runs the desktop tests. `pnpm test` remains the complete workspace suite.
 
-After `pnpm build`, `pnpm verify:production` checks the expected `out/` files, renderer asset references, and built Electron startup. The GitHub Actions `Clean Windows smoke` job runs the same sequence after a fresh dependency install and preserves the coverage reports as an artifact.
+After `pnpm build`, `pnpm verify:production` checks the expected `out/` files, renderer asset references, and built Electron startup. GitHub Actions runs the full native test suite with coverage on Windows and runs production build verification in a separate Windows job; the coverage reports are preserved as an artifact.
 
 If `pnpm check:native` fails, follow the prerequisite message it prints, install the Windows C++/Python toolchain above, and rerun `pnpm setup:native` before retrying `pnpm test:native`.
 
