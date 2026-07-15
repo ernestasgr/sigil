@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import Database from 'better-sqlite3';
 import { Option } from 'effect';
 import * as fc from 'fast-check';
@@ -138,9 +142,15 @@ describe('Workflow State adapter properties', () => {
             fc.property(
                 fc.array(stateOperationArbitrary, { minLength: 1, maxLength: 40 }),
                 (operations) => {
-                    const database = new Database(':memory:');
+                    const storageDir = mkdtempSync(join(tmpdir(), 'sigil-persistence-property-'));
+                    const databasePath = join(storageDir, 'state.db');
+                    const database = new Database(databasePath);
                     const memory = createInMemoryWorkflowStateStore();
                     const sqlite = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
+                    const observedDatabase = new Database(databasePath);
+                    const observedSqlite = createWorkflowStateStore(observedDatabase, {
+                        flushIntervalMs: 60_000,
+                    });
 
                     try {
                         for (const operation of operations) {
@@ -159,11 +169,16 @@ describe('Workflow State adapter properties', () => {
                             }
 
                             assertStoresEquivalent(memory, sqlite);
+                            sqlite.flushAll();
+                            assertStoresEquivalent(memory, observedSqlite);
                         }
                     } finally {
                         memory.dispose();
                         sqlite.dispose();
+                        observedSqlite.dispose();
                         database.close();
+                        observedDatabase.close();
+                        rmSync(storageDir, { recursive: true, force: true });
                     }
                 },
             ),
@@ -173,7 +188,8 @@ describe('Workflow State adapter properties', () => {
 
     it('preserves generated empty and overwritten values as observable adapter state', () => {
         fc.assert(
-            fc.property(fc.array(valueArbitrary, { minLength: 1, maxLength: 12 }), (values) => {
+            fc.property(fc.array(valueArbitrary, { minLength: 0, maxLength: 11 }), (generated) => {
+                const values = ['', ...generated];
                 const database = new Database(':memory:');
                 const memory = createInMemoryWorkflowStateStore();
                 const sqlite = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
@@ -188,6 +204,16 @@ describe('Workflow State adapter properties', () => {
                         };
                         applyWrite(memory, operation);
                         applyWrite(sqlite, operation);
+
+                        for (const observed of [
+                            memory.forWorkflow('wf-a').get('empty'),
+                            sqlite.forWorkflow('wf-a').get('empty'),
+                        ]) {
+                            expect(Option.isSome(observed)).toBe(true);
+                            if (Option.isSome(observed)) {
+                                expect(observed.value).toBe(value);
+                            }
+                        }
                         assertStoresEquivalent(memory, sqlite);
                     }
                 } finally {

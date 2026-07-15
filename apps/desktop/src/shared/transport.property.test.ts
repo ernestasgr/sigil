@@ -14,7 +14,6 @@ import { PersistenceWriteOutcomeSchema } from './persistence.js';
 
 const PROPERTY_OPTIONS = {
     numRuns: 100,
-    seed: 118_2029,
     verbose: true,
 };
 

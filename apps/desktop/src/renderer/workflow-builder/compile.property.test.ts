@@ -6,7 +6,6 @@ import { compileGraph, type VisualEdge, type VisualNode } from './compile.js';
 
 const PROPERTY_OPTIONS = {
     numRuns: 100,
-    seed: 118_2027,
     verbose: true,
 };
 

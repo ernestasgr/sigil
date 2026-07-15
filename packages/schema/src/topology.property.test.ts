@@ -8,7 +8,6 @@ import { validateWorkflowTopology } from './topology.js';
 
 const PROPERTY_OPTIONS = {
     numRuns: 100,
-    seed: 118_2026,
     verbose: true,
 };
 
