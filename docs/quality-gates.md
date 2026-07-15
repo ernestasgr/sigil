@@ -67,7 +67,7 @@ The `Quality gates (Windows)` job runs every required check sequentially on a fr
 
 1. install the frozen workspace dependencies with lifecycle scripts disabled;
 2. build the shared schema package;
-3. run lint, formatting, architecture, typecheck, and pure schema/renderer tests;
+3. run lint, formatting, architecture, typecheck, pure schema/renderer tests, and the dedicated renderer DOM interaction tests;
 4. prepare and preflight `better-sqlite3`;
 5. run the schema and full desktop test suites with coverage;
 6. enforce the measured coverage baseline;
