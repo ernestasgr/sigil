@@ -228,6 +228,8 @@ pnpm dev          # builds @sigil/schema, then launches the Electron app with HM
 | `pnpm architecture:check` | Check dependency cycles and process/package boundaries.   |
 | `pnpm check:fast`   | Run lint, format, architecture, typecheck, and pure tests. |
 | `pnpm test:fast`    | Run schema and renderer tests without a native rebuild.   |
+| `pnpm check:coverage` | Run native tests, report coverage, and enforce the measured baseline. |
+| `pnpm verify:production` | Check production files and launch the built Electron app briefly. |
 | `pnpm setup:native` | Rebuild `better-sqlite3` for the current Node runtime.    |
 | `pnpm check:native` | Load SQLite in memory and run a native binding preflight. |
 | `pnpm test:native`  | Setup/check SQLite, then run the full desktop test suite. |
@@ -243,7 +245,9 @@ Tests target architectural seams — feeding input into one side of a boundary a
 - **DAG Executor** — feed a compiled Pipeline + trigger payload, assert node sequence, branching, outputs, error handling, and State mutations.
 - **Event Bus + Bridge** — Events arrive with correct payloads, undeclared emissions are blocked, subscribers receive matching Events.
 
-Use `pnpm check:fast` for the quick feedback loop. It runs lint, formatting, architecture, typechecking, and then `pnpm test:fast`; the pure schema and renderer tests do not invoke the desktop package's native rebuild. The exact formatting and dependency-analysis scope, including intentional architecture exceptions, is documented in [`docs/quality-gates.md`](docs/quality-gates.md). Before changing engine persistence or other native code, run `pnpm test:native`. It rebuilds and checks `better-sqlite3` first, then runs the desktop tests. `pnpm test` remains the complete workspace suite.
+Use `pnpm check:fast` for the quick feedback loop. It runs lint, formatting, architecture, typechecking, and then `pnpm test:fast`; the pure schema and renderer tests do not invoke the desktop package's native rebuild. Use `pnpm check:coverage` when a change needs the full native suite and coverage trend check; it prepares `better-sqlite3`, writes package coverage reports, and enforces [`docs/coverage-baseline.json`](docs/coverage-baseline.json). The exact formatting, dependency-analysis, coverage, and production verification scope is documented in [`docs/quality-gates.md`](docs/quality-gates.md). Before changing engine persistence or other native code, run `pnpm test:native`. It rebuilds and checks `better-sqlite3` first, then runs the desktop tests. `pnpm test` remains the complete workspace suite.
+
+After `pnpm build`, `pnpm verify:production` checks the expected `out/` files, renderer asset references, and built Electron startup. The GitHub Actions `Clean Windows smoke` job runs the same sequence after a fresh dependency install and preserves the coverage reports as an artifact.
 
 If `pnpm check:native` fails, follow the prerequisite message it prints, install the Windows C++/Python toolchain above, and rerun `pnpm setup:native` before retrying `pnpm test:native`.
 
