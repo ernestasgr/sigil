@@ -79,6 +79,92 @@ jobs:
                     echo '- **Native isolation:** dependency lifecycle scripts were disabled; this job does not rebuild `better-sqlite3`.'
                   } >> "$GITHUB_STEP_SUMMARY"
 
+    windows-smoke:
+        name: Clean Windows smoke
+        runs-on: windows-latest
+        timeout-minutes: 60
+        permissions:
+            contents: read
+        env:
+            CI: 'true'
+        steps:
+            - name: Bootstrap - checkout source
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  fetch-depth: 1
+                  persist-credentials: false
+
+            - name: Bootstrap - setup pnpm 11.8.0
+              uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+              with:
+                  version: 11.8.0
+
+            - name: Bootstrap - setup Node.js 22.13.0
+              uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+              with:
+                  node-version: 22.13.0
+                  cache: pnpm
+                  cache-dependency-path: pnpm-lock.yaml
+
+            - name: Bootstrap - verify Windows prerequisites
+              shell: pwsh
+              run: pwsh .github/scripts/verify-windows-bootstrap.ps1
+
+            - name: Bootstrap - install workspace dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Bootstrap - build shared schema package
+              run: pnpm --filter @sigil/schema build
+
+            - name: Bootstrap - prepare native SQLite runtime
+              run: pnpm setup:native
+
+            - name: Bootstrap - verify native SQLite runtime
+              run: pnpm check:native
+
+            - name: Smoke gate - typecheck
+              run: pnpm typecheck
+
+            - name: Smoke gate - full tests with coverage
+              run: pnpm test:coverage
+
+            - name: Smoke gate - enforce coverage baseline
+              run: pnpm coverage:check
+
+            - name: Build gate - production build
+              run: pnpm build
+
+            - name: Release gate - verify production artifacts and startup
+              run: pnpm verify:production
+
+            - name: Summarize Windows smoke gate
+              if: always()
+              shell: pwsh
+              env:
+                  JOB_STATUS: ${{ job.status }}
+              run: |
+                  @(
+                      '## Clean Windows smoke quality gate',
+                      '',
+                      "- **Status:** $env:JOB_STATUS",
+                      "- **Runner:** $env:RUNNER_OS",
+                      '- **Commands:** install, schema build, native preflight, `pnpm typecheck`, `pnpm test:coverage`, `pnpm coverage:check`, `pnpm build`, and `pnpm verify:production`',
+                      '- **Bootstrap ownership:** Node.js, pnpm, Python, Visual Studio C++ prerequisites, native SQLite setup, and the shared schema build.',
+                      '- **Product ownership:** workspace typechecking, full tests, coverage baseline, production build, artifact completeness, and Electron startup.'
+                  ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+
+            - name: Upload coverage reports
+              if: always()
+              continue-on-error: true
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: sigil-coverage-${{ github.run_id }}
+                  path: |
+                      packages/schema/coverage
+                      apps/desktop/coverage
+                  if-no-files-found: warn
+                  retention-days: 14
+
     native-tests:
         name: Native integration tests (Windows)
         runs-on: windows-latest
@@ -108,25 +194,7 @@ jobs:
 
             - name: Bootstrap — verify Python and Visual Studio C++ prerequisites
               shell: pwsh
-              run: |
-                  $ErrorActionPreference = 'Stop'
-
-                  if ($null -eq (Get-Command python -ErrorAction SilentlyContinue)) {
-                      throw 'Bootstrap prerequisite missing: Python 3 must be available on PATH for node-gyp.'
-                  }
-                  python --version
-
-                  $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-                  if (-not (Test-Path -LiteralPath $vswhere)) {
-                      throw 'Bootstrap prerequisite missing: Visual Studio 2022 Build Tools with the C++ workload was not found.'
-                  }
-
-                  $installationPath = (& $vswhere -latest -products '*' -requires 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64' -property installationPath | Select-Object -First 1 | Out-String).Trim()
-                  if ([string]::IsNullOrWhiteSpace($installationPath)) {
-                      throw 'Bootstrap prerequisite missing: the Visual Studio C++ toolchain (MSVC v143) was not found.'
-                  }
-
-                  Write-Host "Visual Studio C++ toolchain: $installationPath"
+              run: pwsh .github/scripts/verify-windows-bootstrap.ps1
 
             - name: Bootstrap — install workspace dependencies
               run: pnpm install --frozen-lockfile
@@ -212,31 +280,16 @@ jobs:
 
             - name: Bootstrap — verify Python and Visual Studio C++ prerequisites
               shell: pwsh
-              run: |
-                  $ErrorActionPreference = 'Stop'
-
-                  if ($null -eq (Get-Command python -ErrorAction SilentlyContinue)) {
-                      throw 'Bootstrap prerequisite missing: Python 3 must be available on PATH for node-gyp.'
-                  }
-                  python --version
-
-                  $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-                  if (-not (Test-Path -LiteralPath $vswhere)) {
-                      throw 'Bootstrap prerequisite missing: Visual Studio 2022 Build Tools with the C++ workload was not found.'
-                  }
-
-                  $installationPath = (& $vswhere -latest -products '*' -requires 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64' -property installationPath | Select-Object -First 1 | Out-String).Trim()
-                  if ([string]::IsNullOrWhiteSpace($installationPath)) {
-                      throw 'Bootstrap prerequisite missing: the Visual Studio C++ toolchain (MSVC v143) was not found.'
-                  }
-
-                  Write-Host "Visual Studio C++ toolchain: $installationPath"
+              run: pwsh .github/scripts/verify-windows-bootstrap.ps1
 
             - name: Bootstrap — install workspace dependencies
               run: pnpm install --frozen-lockfile
 
             - name: Build gate — schema and Electron production build
               run: pnpm build
+
+            - name: Release gate — verify production artifacts and startup
+              run: pnpm verify:production
 
             - name: Preserve production-build diagnostics
               if: always()
@@ -270,7 +323,7 @@ jobs:
                       "- **Status:** $env:JOB_STATUS",
                       "- **Runner:** $env:RUNNER_OS",
                       '- **Command:** `pnpm build`',
-                      '- **Failure ownership:** dependency bootstrap, the shared schema build, Electron native rebuild, or the desktop production bundle.',
+                      '- **Failure ownership:** dependency bootstrap, the shared schema build, Electron native rebuild, the desktop production bundle, or production artifact/startup verification.',
                       '- **Prerequisites:** Python 3 and Visual Studio 2022 Build Tools with MSVC v143 and a Windows SDK.'
                   ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 

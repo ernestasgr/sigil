@@ -12,5 +12,12 @@ export default defineConfig({
         environment: 'node',
         testTimeout: 30_000,
         include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+        coverage: {
+            provider: 'v8',
+            reporter: ['text-summary', 'json-summary', 'lcov'],
+            reportsDirectory: './coverage',
+            include: ['src/**/*.ts', 'src/**/*.tsx'],
+            exclude: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'src/**/*.d.ts'],
+        },
     },
 });

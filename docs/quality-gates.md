@@ -14,6 +14,14 @@ It runs the following checks in order:
 4. `pnpm typecheck`
 5. `pnpm test:fast`
 
+The supported local command for the full native coverage gate is:
+
+```bash
+pnpm check:coverage
+```
+
+It builds the shared schema package, prepares and checks the native SQLite binding, runs the schema and full desktop test suites with Vitest V8 coverage, and compares both reports with the committed baseline.
+
 ## Scope decisions
 
 | Check | Included | Explicitly excluded |
@@ -39,3 +47,36 @@ Two existing relationships are intentionally visible as warnings rather than hid
 - `renderer/lib/event-display.ts → engine/event-payload-schemas.ts` uses the Engine's pure event metadata registry. It remains a one-file exception until that registry has a neutral home.
 
 Both exceptions are encoded narrowly in [`.dependency-cruiser.json`](../.dependency-cruiser.json), so unrelated cycles or process-boundary imports still fail the check.
+
+## Coverage policy
+
+Coverage includes production TypeScript source under `packages/schema/src` and `apps/desktop/src`; test files and declaration files are excluded. Each package writes a human-readable summary plus `coverage-summary.json` and LCOV output under its ignored `coverage/` directory.
+
+The measured baseline is recorded in [`coverage-baseline.json`](coverage-baseline.json). `pnpm coverage:check` requires statements, branches, functions, and lines for both packages to be at least their committed baseline. This is a trend policy derived from the current measured suite, rather than an arbitrary round-number threshold. If production source is added without corresponding tests, the affected metric falls below the baseline and the gate fails; update the baseline only alongside an intentional, reviewed coverage-policy change.
+
+## Clean Windows smoke gate
+
+The `Clean Windows smoke` job runs the end-to-end path on a fresh `windows-latest` runner:
+
+1. install the frozen workspace dependencies;
+2. build the shared schema package;
+3. prepare and preflight `better-sqlite3`;
+4. run workspace typechecking and the full test suite with coverage;
+5. enforce the coverage baseline;
+6. build the production Electron output; and
+7. verify the production artifacts and start the built app until the engine-ready marker is observed.
+
+Bootstrap steps are explicitly named and call [`.github/scripts/verify-windows-bootstrap.ps1`](../.github/scripts/verify-windows-bootstrap.ps1). Missing Node.js, pnpm, Python, or the Visual Studio C++ toolchain is reported as `BOOTSTRAP FAILURE`; typecheck, test, coverage, build, and production-startup failures are reported by their `Smoke`, `Build`, or `Release` gate. This keeps environment failures distinguishable from product failures for both humans and AI agents.
+
+## Production artifact checks
+
+`pnpm verify:production` checks that the build contains the main process entry, worker bundles, preload bundle, renderer entry, and every local JavaScript/CSS asset referenced by the renderer HTML. It then launches the built Electron entry and requires the existing `[main] engine worker ready` marker within 30 seconds before terminating the smoke process.
+
+For a local release-oriented check, run:
+
+```bash
+pnpm build
+pnpm verify:production
+```
+
+When a gate fails, start with the first failed stage: `Bootstrap` indicates prerequisites or dependency setup, `Fast` indicates static/pure checks, `Smoke` indicates the clean Windows path, `Build` indicates production compilation, and `Release` indicates artifact completeness or startup viability.
