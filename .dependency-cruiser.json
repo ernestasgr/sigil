@@ -1,0 +1,124 @@
+{
+    "forbidden": [
+        {
+            "name": "no-runtime-circular",
+            "comment": "Runtime dependency cycles make process startup and module initialization order-dependent.",
+            "severity": "error",
+            "from": {
+                "path": "^(apps/desktop/src|packages/schema/src)/"
+            },
+            "to": {
+                "circular": true,
+                "viaOnly": {
+                    "dependencyTypesNot": ["type-only"]
+                }
+            }
+        },
+        {
+            "name": "no-engine-circular",
+            "comment": "Keep new Engine cycles out. The one documented Engine type-contract cycle is reported separately as a warning below.",
+            "severity": "error",
+            "from": {
+                "path": "^apps/desktop/src/engine/"
+            },
+            "to": {
+                "circular": true,
+                "viaOnly": {
+                    "pathNot": "^apps/desktop/src/engine/engine\\.ts$"
+                }
+            }
+        },
+        {
+            "name": "known-engine-contract-cycle",
+            "comment": "Intentional type-only cycle: Engine owns activation construction, while WorkflowActivator receives the Engine contract for diagnostic publication. Keep this visible until that contract has a neutral home.",
+            "severity": "warn",
+            "from": {
+                "path": "^apps/desktop/src/engine/"
+            },
+            "to": {
+                "circular": true,
+                "via": {
+                    "path": "^apps/desktop/src/engine/engine\\.ts$"
+                }
+            }
+        },
+        {
+            "name": "renderer-does-not-import-engine",
+            "comment": "The Renderer talks to the desktop runtime through the preload bridge and must not import Engine modules directly, except for the one documented metadata registry below.",
+            "severity": "error",
+            "from": {
+                "path": "^apps/desktop/src/renderer/",
+                "pathNot": "^apps/desktop/src/renderer/lib/event-display\\.ts$"
+            },
+            "to": {
+                "path": "^apps/desktop/src/engine/",
+                "dependencyTypesNot": ["type-only"]
+            }
+        },
+        {
+            "name": "renderer-does-not-import-main-or-preload",
+            "comment": "The Renderer communicates with Main through the preload bridge and must not import process-boundary implementation modules directly.",
+            "severity": "error",
+            "from": {
+                "path": "^apps/desktop/src/renderer/"
+            },
+            "to": {
+                "path": "^apps/desktop/src/(main|preload)/",
+                "dependencyTypesNot": ["type-only"]
+            }
+        },
+        {
+            "name": "renderer-event-payload-metadata-exception",
+            "comment": "Intentional narrow exception: the Renderer currently consumes the Engine's pure event metadata registry. Keep this visible until the registry has a neutral home.",
+            "severity": "warn",
+            "from": {
+                "path": "^apps/desktop/src/renderer/lib/event-display\\.ts$"
+            },
+            "to": {
+                "path": "^apps/desktop/src/engine/event-payload-schemas\\.ts$"
+            }
+        },
+        {
+            "name": "engine-does-not-import-renderer",
+            "comment": "The Engine is a background runtime and must not depend on Renderer implementation details.",
+            "severity": "error",
+            "from": {
+                "path": "^apps/desktop/src/engine/"
+            },
+            "to": {
+                "path": "^apps/desktop/src/renderer/"
+            }
+        },
+        {
+            "name": "preload-does-not-import-renderer",
+            "comment": "The preload bridge exposes a stable IPC surface; it must not depend on Renderer implementation details.",
+            "severity": "error",
+            "from": {
+                "path": "^apps/desktop/src/preload/"
+            },
+            "to": {
+                "path": "^apps/desktop/src/renderer/"
+            }
+        },
+        {
+            "name": "schema-does-not-import-desktop",
+            "comment": "The shared schema package is platform-agnostic and must not depend on the Electron desktop application.",
+            "severity": "error",
+            "from": {
+                "path": "^packages/schema/src/"
+            },
+            "to": {
+                "path": "^apps/desktop/src/"
+            }
+        }
+    ],
+    "options": {
+        "includeOnly": {
+            "path": "^(apps/desktop/src|packages/schema/src)/"
+        },
+        "exclude": {
+            "path": "(^|/)(dist|out|release|coverage|\\.turbo|node_modules|\\.sandcastle)(/|$)|(^|/)src/.*\\.d\\.ts$|(^|/)src/.*\\.test\\.(ts|tsx)$"
+        },
+        "tsPreCompilationDeps": true
+    }
+}

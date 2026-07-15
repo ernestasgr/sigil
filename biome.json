@@ -6,7 +6,25 @@
         "useIgnoreFile": true
     },
     "files": {
-        "ignoreUnknown": true
+        "ignoreUnknown": true,
+        "includes": [
+            "**",
+            "!!**/node_modules",
+            "!!**/dist",
+            "!!**/out",
+            "!!**/release",
+            "!!**/coverage",
+            "!!**/.turbo",
+            "!!.sandcastle",
+            "!!assets",
+            "!!learning-records",
+            "!!reference",
+            "!!lessons",
+            "!!**/*.db",
+            "!!**/*.db-*",
+            "!!**/*.log",
+            "!!**/*.tsbuildinfo"
+        ]
     },
     "formatter": {
         "enabled": true,
