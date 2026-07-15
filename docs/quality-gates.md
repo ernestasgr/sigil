@@ -54,17 +54,20 @@ Coverage includes production TypeScript source under `packages/schema/src` and `
 
 The measured baseline is recorded in [`coverage-baseline.json`](coverage-baseline.json). `pnpm coverage:check` requires statements, branches, functions, and lines for both packages to be at least their committed baseline. This is a trend policy derived from the current measured suite, rather than an arbitrary round-number threshold. If production source is added without corresponding tests, the affected metric falls below the baseline and the gate fails; update the baseline only alongside an intentional, reviewed coverage-policy change.
 
-## Windows native quality gate
+## CI quality gate
 
-The `Native integration tests and coverage` job runs the full native test and coverage path on a fresh `windows-latest` runner:
+The `Quality gates (Windows)` job runs every required check sequentially on a fresh `windows-latest` runner:
 
-1. install the frozen workspace dependencies;
+1. install the frozen workspace dependencies with lifecycle scripts disabled;
 2. build the shared schema package;
-3. prepare and preflight `better-sqlite3`;
-4. run the schema and full desktop test suites with coverage; and
-5. enforce the measured coverage baseline.
+3. run lint, formatting, architecture, typecheck, and pure schema/renderer tests;
+4. prepare and preflight `better-sqlite3`;
+5. run the schema and full desktop test suites with coverage;
+6. enforce the measured coverage baseline;
+7. build the production Electron output; and
+8. verify the production artifacts and startup marker.
 
-The separate `Production build` job installs the workspace independently, builds the production Electron output, and runs the production artifact/startup verifier. This keeps CI focused on product quality checks while retaining a platform-specific native test environment and a production compilation gate.
+The single job keeps the quality contract easy to find and preserves the intended order: fast static and pure checks run before native setup, while build and release verification run only after tests and coverage pass.
 
 Bootstrap steps are explicitly named and call [`.github/scripts/verify-windows-bootstrap.ps1`](../.github/scripts/verify-windows-bootstrap.ps1). Missing Node.js, pnpm, Python, or the Visual Studio C++ toolchain is reported as `BOOTSTRAP FAILURE`; static checks, native tests, coverage, build, and production-startup failures are reported by their `Fast`, `Native`, `Build`, or `Release` gate. This keeps environment failures distinguishable from product failures for both humans and AI agents.
 
