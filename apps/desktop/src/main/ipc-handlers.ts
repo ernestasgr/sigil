@@ -1,7 +1,6 @@
 import { stat } from 'node:fs/promises';
 import { basename, dirname, extname } from 'node:path';
 import type { BrowserWindow } from 'electron';
-import { dialog } from 'electron';
 import {
     RendererCommandContracts,
     type RendererCommandName,
@@ -14,11 +13,13 @@ import {
 } from '../shared/persistence.js';
 import type { EngineHandle } from './engine-client.js';
 import { ipcHandleCommand } from './ipc-handle.js';
+import { electronNativeDialogAdapter, type NativeDialogAdapter } from './native-dialog.js';
 
 export interface IpcHandlerContext {
     readonly getEngine: () => EngineHandle | null;
     readonly getMainWindow: () => BrowserWindow | null;
     readonly onRendererReady: () => void;
+    readonly nativeDialog?: NativeDialogAdapter;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -95,6 +96,7 @@ function executionFailure(error: unknown): ExecutionFailure {
 export function registerIpcHandlers(ctx: IpcHandlerContext): void {
     const h = ctx;
     const renderer = RendererCommandContracts;
+    const nativeDialog = h.nativeDialog ?? electronNativeDialogAdapter;
 
     ipcHandleCommand<'rendererReady'>(renderer.rendererReady, async () => {
         h.onRendererReady();
@@ -288,9 +290,7 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
             const mainWindow = h.getMainWindow();
             if (!mainWindow) return null;
             try {
-                const result = await dialog.showOpenDialog(mainWindow, {
-                    properties: ['openFile'],
-                });
+                const result = await nativeDialog.showOpenFileDialog(mainWindow);
                 if (result.canceled || result.filePaths.length === 0) return null;
                 const filePath = result.filePaths[0];
                 if (!filePath) return null;

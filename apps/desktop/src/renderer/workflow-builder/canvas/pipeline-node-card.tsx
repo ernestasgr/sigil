@@ -49,7 +49,9 @@ export function PipelineNodeCard({
             )}
         >
             <CornerFlourish corner="tl" size={10} inset={4} opacity={0.55} />
-            {showInput ? <Handle type="target" position={Position.Left} /> : null}
+            {showInput ? (
+                <Handle type="target" position={Position.Left} aria-label={`${def.label} input`} />
+            ) : null}
             <header className="flex flex-col gap-0.5 px-4 pt-3 pb-2">
                 <div className="flex items-center gap-2">
                     <span
@@ -78,6 +80,7 @@ export function PipelineNodeCard({
                             id={port}
                             type="source"
                             position={Position.Right}
+                            aria-label={`${def.label} output ${nodeOutputPortLabel(spec, port, nodeCatalog)}`}
                             className="h-2.5! w-2.5! border-gilt! bg-obsidian-ink!"
                         />
                     </div>
