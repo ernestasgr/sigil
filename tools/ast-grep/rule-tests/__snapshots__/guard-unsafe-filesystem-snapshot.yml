@@ -1,0 +1,16 @@
+id: guard-unsafe-filesystem
+snapshots:
+  ? |
+    fs.promises.rename(sourcePath, destinationPath);
+  : labels:
+    - source: fs.promises.rename(sourcePath, destinationPath)
+      style: primary
+      start: 0
+      end: 47
+  ? |
+    writeFileSync(filePath, contents, 'utf8');
+  : labels:
+    - source: writeFileSync(filePath, contents, 'utf8')
+      style: primary
+      start: 0
+      end: 41

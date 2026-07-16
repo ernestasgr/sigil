@@ -1,0 +1,9 @@
+id: guard-direct-console-tsx
+snapshots:
+  ? |
+    const view = <button onClick={() => console.error(error)}>Retry</button>;
+  : labels:
+    - source: console.error(error)
+      style: primary
+      start: 36
+      end: 56

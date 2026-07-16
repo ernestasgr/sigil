@@ -1,0 +1,9 @@
+id: guard-double-assertion
+valid:
+    - |
+      const value = input as string;
+    - |
+      const value = parseString(input);
+invalid:
+    - |
+      const value = input as unknown as string;

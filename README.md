@@ -226,7 +226,12 @@ pnpm dev          # builds @sigil/schema, then launches the Electron app with HM
 | `pnpm format`       | Format the repo with Biome.                               |
 | `pnpm format:check` | Check formatting without writing.                         |
 | `pnpm architecture:check` | Check dependency cycles and process/package boundaries.   |
-| `pnpm check:fast`   | Run lint, format, architecture, typecheck, and pure tests. |
+| `pnpm structure:check` | Report syntax-aware architecture findings without writing. |
+| `pnpm structure:check:json` | Emit deterministic structural findings for CI and agents. |
+| `pnpm structure:test` | Test ast-grep guards and codemod fixtures.                 |
+| `pnpm structure:codemod` | Preview the checked-in codemod recipes.                 |
+| `pnpm structure:codemod:write` | Apply codemods only with an explicit write command.       |
+| `pnpm check:fast`   | Run lint, format, architecture, structural checks, typecheck, and pure tests. |
 | `pnpm test:fast`    | Run schema and renderer tests without a native rebuild.   |
 | `pnpm coverage`     | Run schema, desktop, and renderer Vitest coverage.        |
 | `pnpm coverage:check` | Enforce the committed aggregate coverage baselines.       |
@@ -249,7 +254,7 @@ Tests target architectural seams — feeding input into one side of a boundary a
 - **DAG Executor** — feed a compiled Pipeline + trigger payload, assert node sequence, branching, outputs, error handling, and State mutations.
 - **Event Bus + Bridge** — Events arrive with correct payloads, undeclared emissions are blocked, subscribers receive matching Events.
 
-Use `pnpm check:fast` for the quick feedback loop. It runs lint, formatting, architecture, typechecking, and then `pnpm test:fast`; the pure schema and renderer tests do not invoke the desktop package's native rebuild. Run `pnpm --filter @sigil/desktop test:renderer:dom` for the isolated jsdom project; it uses DOM Testing Library without loading Electron or `better-sqlite3`. `pnpm --filter @sigil/desktop test:renderer` runs the existing renderer unit tests plus that DOM project. Use `pnpm coverage` for text, JSON-summary, and LCOV reports across the schema, desktop, and renderer projects, then `pnpm coverage:check` to enforce [`docs/coverage-baseline.json`](docs/coverage-baseline.json). The critical seam floors are centralized in [`vitest.coverage.ts`](vitest.coverage.ts). Use `pnpm check:coverage` when a change needs the full native suite and coverage trend check; it prepares `better-sqlite3`, writes package coverage reports, and enforces the baseline. The exact formatting, dependency-analysis, coverage, and production verification scope is documented in [`docs/quality-gates.md`](docs/quality-gates.md). Before changing engine persistence or other native code, run `pnpm test:native`. It rebuilds and checks `better-sqlite3` first, then runs the desktop tests. `pnpm test` remains the complete workspace suite: the desktop package runs its Node-oriented suite and then the dedicated renderer project.
+Use `pnpm check:fast` for the quick feedback loop. It runs lint, formatting, architecture, structural checks and fixtures, typechecking, and then `pnpm test:fast`; the pure schema and renderer tests do not invoke the desktop package's native rebuild. Run `pnpm --filter @sigil/desktop test:renderer:dom` for the isolated jsdom project; it uses DOM Testing Library without loading Electron or `better-sqlite3`. `pnpm --filter @sigil/desktop test:renderer` runs the existing renderer unit tests plus that DOM project. Use `pnpm coverage` for text, JSON-summary, and LCOV reports across the schema, desktop, and renderer projects, then `pnpm coverage:check` to enforce [`docs/coverage-baseline.json`](docs/coverage-baseline.json). The critical seam floors are centralized in [`vitest.coverage.ts`](vitest.coverage.ts). Use `pnpm check:coverage` when a change needs the full native suite and coverage trend check; it prepares `better-sqlite3`, writes package coverage reports, and enforces the baseline. The exact formatting, dependency-analysis, structural-check, coverage, and production verification scope is documented in [`docs/quality-gates.md`](docs/quality-gates.md). Before changing engine persistence or other native code, run `pnpm test:native`. It rebuilds and checks `better-sqlite3` first, then runs the desktop tests. `pnpm test` remains the complete workspace suite: the desktop package runs its Node-oriented suite and then the dedicated renderer project.
 
 For interactive test discovery and debugging, run `pnpm test:ui`. It opens the Vitest UI with the schema, desktop, and renderer projects, including filters for project, file, test name, and failures plus reruns that do not rebuild the production Electron bundle. Use the targeted CLI commands in [`docs/quality-gates.md`](docs/quality-gates.md) for deterministic checks, CI, and agent automation; the UI is a local development aid only.
 
@@ -265,6 +270,7 @@ If `pnpm check:native` fails, follow the prerequisite message it prints, install
 - [`CODING_STANDARDS.md`](CODING_STANDARDS.md) — TypeScript conventions: no `any`, discriminated unions with exhaustive switches, `readonly` by default, branded IDs, Zod at boundaries, functional style with Effect (`Either`, `Option`, `Match`), `Result` types over throwing.
 - [`UI_STYLE_GUIDANCE.md`](UI_STYLE_GUIDANCE.md) — visual language and color system.
 - [`docs/quality-gates.md`](docs/quality-gates.md) — local check scope and architecture exceptions.
+- [`docs/structural-checks.md`](docs/structural-checks.md) — ast-grep guards, fixtures, JSON output, suppressions, and codemods.
 - [`docs/electron-smoke-tests.md`](docs/electron-smoke-tests.md) — Playwright Electron lifecycle test, isolation, launch path, and diagnostics.
 - [`docs/adr/`](docs/adr) — Architecture Decision Records.
 - [`docs/agents/`](docs/agents) — Agent-specific documentation (domain, issue tracker, triage labels).

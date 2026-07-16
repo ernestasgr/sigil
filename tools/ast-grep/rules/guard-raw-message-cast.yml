@@ -1,0 +1,25 @@
+id: guard-raw-message-cast
+language: TypeScript
+severity: warning
+message: Raw message-like type assertions bypass receive-site schema validation.
+note: |
+    Parse raw transport input with the co-located Zod envelope schema and use
+    the parsed value after the boundary. Keep assertions for trusted values
+    outside the transport seam only when the reason is explicit.
+files:
+    - apps/**/src/**/*.ts
+    - apps/**/src/**/*.tsx
+    - packages/**/src/**/*.ts
+ignores:
+    # Tests deliberately build partial transport doubles; production paths are
+    # the architectural surface this guard protects.
+    - '**/*.test.ts'
+    - '**/*.test.tsx'
+rule:
+    pattern: $VALUE as $TYPE
+constraints:
+    TYPE:
+        regex: '(?:Message|Request|Response|Envelope)(?:<[^>]*>)?$'
+metadata:
+    category: transport-boundary
+    remediation: Use the co-located Zod schema safeParse result instead of casting raw input.

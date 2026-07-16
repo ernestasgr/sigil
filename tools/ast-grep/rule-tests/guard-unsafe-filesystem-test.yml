@@ -1,0 +1,11 @@
+id: guard-unsafe-filesystem
+valid:
+    - |
+      const contents = readFileSync(filePath, 'utf8');
+    - |
+      const result = pathPolicy.resolve(input);
+invalid:
+    - |
+      writeFileSync(filePath, contents, 'utf8');
+    - |
+      fs.promises.rename(sourcePath, destinationPath);

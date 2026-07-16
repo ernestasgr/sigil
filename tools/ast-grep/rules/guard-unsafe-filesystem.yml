@@ -1,0 +1,35 @@
+id: guard-unsafe-filesystem
+language: TypeScript
+severity: warning
+message: Filesystem mutation is outside an explicitly reviewed persistence or Action Plugin seam.
+note: |
+    Keep filesystem mutation in an audited adapter that owns capability checks,
+    path policy, atomic replacement, and failure cleanup. Read-only calls are
+    intentionally not reported by this first rule.
+files:
+    - apps/**/src/**/*.ts
+    - apps/**/src/**/*.tsx
+    - packages/**/src/**/*.ts
+ignores:
+    - '**/*.test.ts'
+    - '**/*.test.tsx'
+    # Narrow, reviewed seams: atomic persistence, the file-manager Action
+    # Plugin, and Workflow Store record deletion.
+    - apps/desktop/src/engine/atomic-file.ts
+    - apps/desktop/src/builtin-plugins/file-manager/handler.ts
+    - apps/desktop/src/engine/workflow-store.ts
+rule:
+    any:
+        - pattern: fs.$METHOD($$$ARGS)
+        - pattern: fs.promises.$METHOD($$$ARGS)
+        - pattern: fileSystem.$METHOD($$$ARGS)
+        - pattern: filesystem.$METHOD($$$ARGS)
+        - pattern: $BARE_METHOD($$$ARGS)
+constraints:
+    METHOD:
+        regex: '^(write|writeFile|writeFileSync|appendFile|appendFileSync|mkdir|mkdirSync|rename|renameSync|copyFile|copyFileSync|unlink|unlinkSync|rm|rmSync|rmdir|rmdirSync|chmod|chmodSync|symlink|symlinkSync|link|linkSync|truncate|truncateSync|open|openSync|createWriteStream|cp|cpSync)$'
+    BARE_METHOD:
+        regex: '^(writeFile|writeFileSync|appendFile|appendFileSync|mkdirSync|renameSync|copyFileSync|unlinkSync|rmSync|rmdirSync|chmodSync|symlinkSync|linkSync|truncateSync|openSync|createWriteStream|cpSync)$'
+metadata:
+    category: filesystem-boundary
+    remediation: Move the mutation into an audited adapter with capability, path, atomicity, and cleanup checks.

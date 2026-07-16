@@ -1,0 +1,7 @@
+id: guard-direct-console-tsx
+valid:
+    - |
+      const view = <Logger />;
+invalid:
+    - |
+      const view = <button onClick={() => console.error(error)}>Retry</button>;

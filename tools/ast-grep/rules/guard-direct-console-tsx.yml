@@ -1,0 +1,19 @@
+id: guard-direct-console-tsx
+language: Tsx
+severity: warning
+message: Direct console logging in a production TSX path bypasses the structured log or Event seam.
+note: |
+    Route operational diagnostics through the owning Renderer logging seam so
+    output can be correlated, bounded, and tested.
+files:
+    - apps/**/src/**/*.tsx
+ignores:
+    - '**/*.test.tsx'
+rule:
+    pattern: console.$METHOD($$$ARGS)
+constraints:
+    METHOD:
+        regex: '^(log|error|warn|info|debug)$'
+metadata:
+    category: observability
+    remediation: Use the structured Renderer logging or Event Bus seam instead of direct console output.

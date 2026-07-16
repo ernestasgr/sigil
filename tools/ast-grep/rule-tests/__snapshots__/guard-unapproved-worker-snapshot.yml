@@ -1,0 +1,9 @@
+id: guard-unapproved-worker
+snapshots:
+  ? |
+    const worker = new Worker(script, { workerData });
+  : labels:
+    - source: new Worker(script, { workerData })
+      style: primary
+      start: 15
+      end: 49

@@ -49,6 +49,9 @@ jobs:
             - name: Bootstrap - install workspace dependencies
               run: pnpm install --frozen-lockfile --ignore-scripts
 
+            - name: Bootstrap - prepare ast-grep CLI
+              run: pnpm rebuild @ast-grep/cli
+
             - name: Bootstrap - build shared schema package
               run: pnpm --filter @sigil/schema build
 
@@ -67,6 +70,18 @@ jobs:
 
             - name: Fast gate - architecture
               run: pnpm architecture:check
+
+            - name: Advisory gate - structural checks
+              run: pnpm structure:check
+
+            - name: Fast gate - structural rule fixtures
+              run: pnpm structure:test
+
+            - name: Advisory gate - structural findings JSON
+              shell: pwsh
+              run: |
+                  $reportPath = Join-Path $env:RUNNER_TEMP 'sigil-structural-findings.json'
+                  pnpm structure:check:json | Set-Content -Path $reportPath -Encoding utf8
 
             - name: Fast gate - typecheck
               run: pnpm typecheck
@@ -141,8 +156,8 @@ jobs:
                       '',
                       "- **Status:** $env:JOB_STATUS",
                       "- **Runner:** $env:RUNNER_OS",
-                      '- **Commands:** `pnpm lint`, `pnpm format:check`, `pnpm architecture:check`, `pnpm typecheck`, `pnpm test:fast`, `pnpm --filter @sigil/desktop test:renderer:dom`, native setup/check, `pnpm test:coverage` (schema, desktop, and renderer projects), `pnpm coverage:check`, `pnpm build`, `pnpm --filter @sigil/desktop test:e2e`, and `pnpm verify:production`',
-                      '- **Bootstrap ownership:** Node.js, pnpm, Python, Visual Studio C++ prerequisites, dependency installation, schema build, and native SQLite setup.',
+                      '- **Commands:** `pnpm lint`, `pnpm format:check`, `pnpm architecture:check`, `pnpm structure:check`, `pnpm structure:test`, `pnpm structure:check:json`, `pnpm typecheck`, `pnpm test:fast`, `pnpm --filter @sigil/desktop test:renderer:dom`, native setup/check, `pnpm test:coverage` (schema, desktop, and renderer projects), `pnpm coverage:check`, `pnpm build`, `pnpm --filter @sigil/desktop test:e2e`, and `pnpm verify:production`',
+                      '- **Bootstrap ownership:** Node.js, pnpm, Python, Visual Studio C++ prerequisites, dependency installation, ast-grep CLI preparation, schema build, and native SQLite setup.',
                       '- **Product ownership:** static checks, pure tests, native tests, coverage baseline, production build, artifact completeness, and Electron startup.',
                       '- **Native isolation:** dependency lifecycle scripts are disabled during install; native setup runs explicitly after the fast checks.'
                   ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
@@ -176,5 +191,15 @@ jobs:
               with:
                   name: sigil-knip-${{ github.run_id }}
                   path: ${{ runner.temp }}/sigil-knip-report.json
+                  if-no-files-found: warn
+                  retention-days: 14
+
+            - name: Upload structural findings
+              if: always()
+              continue-on-error: true
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: sigil-structural-findings-${{ github.run_id }}
+                  path: ${{ runner.temp }}/sigil-structural-findings.json
                   if-no-files-found: warn
                   retention-days: 14
