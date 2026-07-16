@@ -237,6 +237,7 @@ pnpm dev          # builds @sigil/schema, then launches the Electron app with HM
 | `pnpm check:native` | Load SQLite in memory and run a native binding preflight. |
 | `pnpm test:native`  | Setup/check SQLite, then run the full desktop test suite. |
 | `pnpm test`         | Run tests across every workspace package (Vitest).        |
+| `pnpm test:ui`      | Open the interactive Vitest UI for all test projects.     |
 | `pnpm test:watch`   | Watch tests for `@sigil/schema`.                          |
 | `pnpm clean`        | Remove `dist`/`out`/`.turbo`/cache from every package.    |
 
@@ -249,6 +250,8 @@ Tests target architectural seams — feeding input into one side of a boundary a
 - **Event Bus + Bridge** — Events arrive with correct payloads, undeclared emissions are blocked, subscribers receive matching Events.
 
 Use `pnpm check:fast` for the quick feedback loop. It runs lint, formatting, architecture, typechecking, and then `pnpm test:fast`; the pure schema and renderer tests do not invoke the desktop package's native rebuild. Run `pnpm --filter @sigil/desktop test:renderer:dom` for the isolated jsdom project; it uses DOM Testing Library without loading Electron or `better-sqlite3`. `pnpm --filter @sigil/desktop test:renderer` runs the existing renderer unit tests plus that DOM project. Use `pnpm coverage` for text, JSON-summary, and LCOV reports across the schema, desktop, and renderer projects, then `pnpm coverage:check` to enforce [`docs/coverage-baseline.json`](docs/coverage-baseline.json). The critical seam floors are centralized in [`vitest.coverage.ts`](vitest.coverage.ts). Use `pnpm check:coverage` when a change needs the full native suite and coverage trend check; it prepares `better-sqlite3`, writes package coverage reports, and enforces the baseline. The exact formatting, dependency-analysis, coverage, and production verification scope is documented in [`docs/quality-gates.md`](docs/quality-gates.md). Before changing engine persistence or other native code, run `pnpm test:native`. It rebuilds and checks `better-sqlite3` first, then runs the desktop tests. `pnpm test` remains the complete workspace suite: the desktop package runs its Node-oriented suite and then the dedicated renderer project.
+
+For interactive test discovery and debugging, run `pnpm test:ui`. It opens the Vitest UI with the schema, desktop, and renderer projects, including filters for project, file, test name, and failures plus reruns that do not rebuild the production Electron bundle. Use the targeted CLI commands in [`docs/quality-gates.md`](docs/quality-gates.md) for deterministic checks, CI, and agent automation; the UI is a local development aid only.
 
 After `pnpm build`, `pnpm verify:production` checks the expected `out/` files, renderer asset references, and built Electron startup. GitHub Actions runs the static checks, full native test suite with coverage, production build, and startup verification in one Windows quality-gates job; the coverage reports are preserved as an artifact.
 

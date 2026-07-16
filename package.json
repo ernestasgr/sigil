@@ -26,6 +26,7 @@
         "coverage": "pnpm test:coverage",
         "coverage:check": "tsx scripts/check-coverage-baseline.ts",
         "check:coverage": "pnpm --filter @sigil/schema build && pnpm --filter @sigil/desktop native:setup && pnpm --filter @sigil/desktop native:check && pnpm test:coverage && pnpm coverage:check",
+        "test:ui": "vitest --config vitest.config.ts --ui",
         "setup:native": "pnpm --filter @sigil/desktop native:setup",
         "check:native": "pnpm --filter @sigil/desktop native:check",
         "test:native": "pnpm --filter @sigil/desktop test:native",
@@ -39,12 +40,14 @@
         "@ai-hero/sandcastle": "^0.10.0",
         "@biomejs/biome": "^2.5.3",
         "@types/node": "26.0.0",
+        "@vitest/ui": "4.1.9",
         "dependency-cruiser": "18.0.0",
         "husky": "^9.1.7",
         "lint-staged": "^17.0.7",
         "rimraf": "6.0.1",
         "tsx": "^4.22.4",
         "typescript": "^6.0.3",
+        "vitest": "4.1.9",
         "zod": "4.4.3"
     }
 }
