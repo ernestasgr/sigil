@@ -1,9 +1,9 @@
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    DEFAULT_PROPERTIES,
     loadPropertiesFile,
     type ResolvedProperties,
+    resolveAll,
 } from '@sigil/schema/properties-file';
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
@@ -91,7 +91,9 @@ export function createEngine(options?: EngineOptions): Engine {
     const propertiesResult = loadPropertiesFile(options?.properties, {
         databasePath: options?.defaultDatabasePath,
     });
-    const resolvedProperties = propertiesResult.ok ? propertiesResult.value : DEFAULT_PROPERTIES;
+    const resolvedProperties = propertiesResult.ok
+        ? propertiesResult.value
+        : resolveAll({}, { databasePath: options?.defaultDatabasePath });
 
     const settings = resolveSettings(resolvedProperties);
     const database = new Database(resolvedProperties.databasePath);
