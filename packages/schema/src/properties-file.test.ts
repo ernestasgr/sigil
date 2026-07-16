@@ -1,6 +1,96 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_PROPERTIES, loadPropertiesFile, PropertiesFileSchema } from './properties-file.js';
+import type { ResolvedProperties } from './properties-file.js';
+import {
+    DEFAULT_IGNORE_PATTERNS,
+    DEFAULT_PROPERTIES,
+    loadPropertiesFile,
+    PROPERTY_DESCRIPTORS,
+    PropertiesFileSchema,
+    resolve,
+    resolveAll,
+} from './properties-file.js';
+
+describe('Properties resolution', () => {
+    it('prefers an explicit value over the Properties File value', () => {
+        expect(
+            resolve('notifyOnWorkflowError', {
+                explicit: false,
+                properties: { notifyOnWorkflowError: true },
+            }),
+        ).toBe(false);
+    });
+
+    it('resolves all registered descriptors to their hardcoded fallbacks', () => {
+        expect(Object.keys(PROPERTY_DESCRIPTORS)).toEqual([
+            'notifyOnWorkflowError',
+            'databasePath',
+            'collisionSuffixStyle',
+            'file-watcher.ignorePatterns',
+            'file-manager.defaultOnConflict',
+            'file-manager.collisionSuffixStyle',
+        ]);
+        expect(resolveAll({})).toEqual({
+            notifyOnWorkflowError: true,
+            databasePath: ':memory:',
+            collisionSuffixStyle: 'windows',
+            'file-watcher.ignorePatterns': DEFAULT_IGNORE_PATTERNS,
+            'file-manager.defaultOnConflict': 'error',
+            'file-manager.collisionSuffixStyle': 'windows',
+        });
+    });
+
+    it('returns a typed resolved object containing engine and builtin plugin values', () => {
+        expect(
+            resolveAll({
+                notifyOnWorkflowError: false,
+                databasePath: '/properties/sigil.db',
+                collisionSuffixStyle: 'underscore',
+                'file-watcher.ignorePatterns': ['*.user-defined'],
+                'file-manager.defaultOnConflict': 'skip',
+                'file-manager.collisionSuffixStyle': 'hyphen',
+            }),
+        ).toEqual({
+            notifyOnWorkflowError: false,
+            databasePath: '/properties/sigil.db',
+            collisionSuffixStyle: 'underscore',
+            'file-watcher.ignorePatterns': ['*.user-defined'],
+            'file-manager.defaultOnConflict': 'skip',
+            'file-manager.collisionSuffixStyle': 'hyphen',
+        });
+    });
+
+    it('enforces explicit, Properties File, then hardcoded precedence for every key', () => {
+        const properties: Partial<ResolvedProperties> = {
+            notifyOnWorkflowError: false,
+            databasePath: '/properties/sigil.db',
+            collisionSuffixStyle: 'underscore',
+            'file-watcher.ignorePatterns': ['*.properties'],
+            'file-manager.defaultOnConflict': 'skip',
+            'file-manager.collisionSuffixStyle': 'hyphen',
+        };
+        const explicit: Partial<ResolvedProperties> = {
+            notifyOnWorkflowError: true,
+            databasePath: '/explicit/sigil.db',
+            collisionSuffixStyle: 'hyphen',
+            'file-watcher.ignorePatterns': ['*.explicit'],
+            'file-manager.defaultOnConflict': 'overwrite',
+            'file-manager.collisionSuffixStyle': 'underscore',
+        };
+
+        for (const key of Object.keys(PROPERTY_DESCRIPTORS) as (keyof ResolvedProperties)[]) {
+            const propertyValue = properties[key];
+            const explicitValue = explicit[key];
+            if (propertyValue === undefined || explicitValue === undefined) {
+                throw new Error(`Missing test value for ${key}`);
+            }
+
+            expect(resolve(key, { properties })).toEqual(propertyValue);
+            expect(resolve(key, { explicit: explicitValue, properties })).toEqual(explicitValue);
+            expect(resolve(key, { properties: {} })).toEqual(PROPERTY_DESCRIPTORS[key].fallback);
+        }
+    });
+});
 
 describe('PropertiesFileSchema', () => {
     it('accepts an object with notifyOnWorkflowError set to false', () => {
@@ -13,14 +103,31 @@ describe('PropertiesFileSchema', () => {
         expect(result.success).toBe(true);
     });
 
-    it('passes through unknown plugin-settings keys without error', () => {
+    it('accepts every documented builtin plugin default', () => {
         const result = PropertiesFileSchema.safeParse({
             notifyOnWorkflowError: true,
-            'file-watcher': { ignorePatterns: ['*.tmp'] },
+            'file-watcher.ignorePatterns': ['*.tmp'],
+            'file-manager.defaultOnConflict': 'skip',
+            'file-manager.collisionSuffixStyle': 'hyphen',
         });
         expect(result.success).toBe(true);
         if (result.success) {
             expect(result.data.notifyOnWorkflowError).toBe(true);
+        }
+    });
+
+    it('rejects an unknown key with a structured validation issue', () => {
+        const result = PropertiesFileSchema.safeParse({ notifyOnWorklowError: true });
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error.issues).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        code: 'unrecognized_keys',
+                        keys: ['notifyOnWorklowError'],
+                    }),
+                ]),
+            );
         }
     });
 

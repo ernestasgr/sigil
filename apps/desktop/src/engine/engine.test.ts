@@ -133,6 +133,20 @@ describe('createEngine', () => {
         expect(engine.settings.notifyOnWorkflowError).toBe(false);
     });
 
+    it('accepts documented builtin plugin defaults while resolving engine settings', () => {
+        const engine = createEngine({
+            properties: {
+                notifyOnWorkflowError: false,
+                'file-watcher.ignorePatterns': ['*.user-defined'],
+                'file-manager.defaultOnConflict': 'skip',
+                'file-manager.collisionSuffixStyle': 'hyphen',
+            },
+        });
+
+        expect(engine.settings.notifyOnWorkflowError).toBe(false);
+        engine.dispose();
+    });
+
     it('falls back to the hardcoded default when the properties content is malformed', () => {
         const engine = createEngine({ properties: { notifyOnWorkflowError: 'not-a-boolean' } });
         expect(engine.settings.notifyOnWorkflowError).toBe(true);
