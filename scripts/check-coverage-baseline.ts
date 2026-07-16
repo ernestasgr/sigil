@@ -23,20 +23,21 @@ const BaselineMetricsSchema = z.object({
 });
 
 const CoverageBaselineSchema = z.object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     policy: z.object({
         comparison: z.literal('no-lower-than-baseline'),
         source: z.string().min(1),
     }),
-    packages: z.object({
+    projects: z.object({
         schema: BaselineMetricsSchema,
         desktop: BaselineMetricsSchema,
+        renderer: BaselineMetricsSchema,
     }),
 });
 
 type CoverageSummary = z.infer<typeof CoverageSummarySchema>;
 type CoverageBaseline = z.infer<typeof CoverageBaselineSchema>;
-type PackageKey = keyof CoverageBaseline['packages'];
+type ProjectKey = keyof CoverageBaseline['projects'];
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const baselinePath = resolve(repositoryRoot, 'docs/coverage-baseline.json');
@@ -44,16 +45,21 @@ const baselinePath = resolve(repositoryRoot, 'docs/coverage-baseline.json');
 const coverageTargets = [
     {
         key: 'schema',
-        label: '@sigil/schema',
+        label: 'schema',
         reportPath: resolve(repositoryRoot, 'packages/schema/coverage/coverage-summary.json'),
     },
     {
         key: 'desktop',
-        label: '@sigil/desktop',
-        reportPath: resolve(repositoryRoot, 'apps/desktop/coverage/coverage-summary.json'),
+        label: 'desktop',
+        reportPath: resolve(repositoryRoot, 'apps/desktop/coverage/desktop/coverage-summary.json'),
+    },
+    {
+        key: 'renderer',
+        label: 'renderer',
+        reportPath: resolve(repositoryRoot, 'apps/desktop/coverage/renderer/coverage-summary.json'),
     },
 ] as const satisfies ReadonlyArray<{
-    key: PackageKey;
+    key: ProjectKey;
     label: string;
     reportPath: string;
 }>;
@@ -78,18 +84,18 @@ function formatPercentage(value: number): string {
 
 async function checkCoverage(): Promise<void> {
     const baseline = await readBaseline();
-    let failed = false;
+    const failures: string[] = [];
 
     console.log(`Coverage policy: ${baseline.policy.comparison}`);
     console.log(`Baseline source: ${baseline.policy.source}`);
 
     for (const target of coverageTargets) {
         const summary = await readSummary(target.reportPath);
-        const packageBaseline = baseline.packages[target.key];
+        const projectBaseline = baseline.projects[target.key];
 
         for (const metric of COVERAGE_METRICS) {
             const current = summary.total[metric].pct;
-            const minimum = packageBaseline[metric];
+            const minimum = projectBaseline[metric];
             const status = current >= minimum ? 'ok' : 'failed';
 
             console.log(
@@ -98,15 +104,13 @@ async function checkCoverage(): Promise<void> {
             );
 
             if (current < minimum) {
-                failed = true;
+                failures.push(`${target.label} ${metric}`);
             }
         }
     }
 
-    if (failed) {
-        throw new Error(
-            'Coverage policy failed: one or more measured metrics are below the committed baseline.',
-        );
+    if (failures.length > 0) {
+        throw new Error(`Coverage policy failed for: ${failures.join(', ')}.`);
     }
 }
 

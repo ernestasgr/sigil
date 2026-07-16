@@ -1,6 +1,12 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
+import {
+    coverageExcludes,
+    coverageReporters,
+    rendererCoverageThresholds,
+} from '../../vitest.coverage.js';
+
 export default defineConfig({
     resolve: {
         alias: {
@@ -16,5 +22,13 @@ export default defineConfig({
         include: ['tests/renderer/**/*.test.ts', 'tests/renderer/**/*.test.tsx'],
         clearMocks: true,
         restoreMocks: true,
+        coverage: {
+            provider: 'v8',
+            reporter: [...coverageReporters],
+            reportsDirectory: './coverage/renderer',
+            include: ['src/renderer/**/*.ts', 'src/renderer/**/*.tsx'],
+            exclude: [...coverageExcludes],
+            thresholds: rendererCoverageThresholds,
+        },
     },
 });
