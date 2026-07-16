@@ -52,6 +52,13 @@ jobs:
             - name: Bootstrap - build shared schema package
               run: pnpm --filter @sigil/schema build
 
+            - name: Advisory gate - Knip machine-readable report
+              shell: pwsh
+              run: |
+                  $reportPath = Join-Path $env:GITHUB_WORKSPACE 'knip-report.json'
+                  $report = (pnpm --silent knip:report | Out-String).Trim()
+                  [System.IO.File]::WriteAllText($reportPath, $report, [System.Text.UTF8Encoding]::new($false))
+
             - name: Fast gate - lint
               run: pnpm lint
 
@@ -159,5 +166,15 @@ jobs:
                   path: |
                       packages/schema/coverage
                       apps/desktop/coverage
+                  if-no-files-found: warn
+                  retention-days: 14
+
+            - name: Upload Knip advisory report
+              if: always()
+              continue-on-error: true
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: sigil-knip-${{ github.run_id }}
+                  path: knip-report.json
                   if-no-files-found: warn
                   retention-days: 14
