@@ -150,7 +150,6 @@ export async function launchElectron(
             args: [
                 '--no-sandbox',
                 '--disable-gpu',
-                '--force-device-scale-factor=1',
                 `--user-data-dir=${options.workspace.userDataDirectory}`,
                 layout.productionEntry,
             ],
@@ -181,6 +180,10 @@ export async function launchElectron(
         );
         const window = await application.firstWindow({
             timeout: options.startupTimeoutMs ?? DEFAULT_ENGINE_STARTUP_TIMEOUT_MS,
+        });
+        const browserWindow = await application.browserWindow(window);
+        await browserWindow.evaluate((window) => {
+            window.setSize(1600, 900);
         });
         window.on('console', (message) => {
             output.append(`renderer-console:${message.type()}`, message.text());
