@@ -55,7 +55,7 @@ jobs:
             - name: Advisory gate - Knip machine-readable report
               shell: pwsh
               run: |
-                  $reportPath = Join-Path $env:GITHUB_WORKSPACE 'knip-report.json'
+                  $reportPath = Join-Path $env:RUNNER_TEMP 'sigil-knip-report.json'
                   $report = (pnpm --silent knip:report | Out-String).Trim()
                   [System.IO.File]::WriteAllText($reportPath, $report, [System.Text.UTF8Encoding]::new($false))
 
@@ -175,6 +175,6 @@ jobs:
               uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: sigil-knip-${{ github.run_id }}
-                  path: knip-report.json
+                  path: ${{ runner.temp }}/sigil-knip-report.json
                   if-no-files-found: warn
                   retention-days: 14
