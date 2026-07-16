@@ -27,7 +27,7 @@ The supported local command for the full native coverage gate is:
 pnpm check:coverage
 ```
 
-It builds the shared schema package, prepares and checks the native SQLite binding, runs the schema and full desktop test suites with Vitest V8 coverage, and compares both reports with the committed baseline.
+It builds the shared schema package, prepares and checks the native SQLite binding, runs the schema, desktop, and renderer Vitest projects with V8 coverage, and compares all three reports with the committed baseline. `pnpm coverage` is a short alias for the report-only command.
 
 ## Scope decisions
 
@@ -35,6 +35,7 @@ It builds the shared schema package, prepares and checks the native SQLite bindi
 | --- | --- | --- |
 | Biome lint and format | Repository source, configuration, and documentation files that Biome understands | `node_modules`, `dist`, `out`, `release`, `coverage`, `.turbo`, `.sandcastle`, generated database/log/typecheck files, and user-owned `assets`, `learning-records`, `reference`, and `lessons` trees |
 | Dependency Cruiser | Production `.ts`/`.tsx` dependencies below `apps/desktop/src` and `packages/schema/src` | Tests, generated output, declaration output, `node_modules`, and agent tooling |
+| Vitest coverage | Production `.ts`/`.tsx` source in the schema, desktop, and renderer project roots | Test files, declarations, generated output, fixtures, mock data, vendor code, and ignored coverage output |
 
 The committed `sigil.properties.json` is a small example configuration and remains in the Biome scope. Runtime `sigil.db*` files are user-owned and ignored.
 
@@ -57,9 +58,11 @@ Both exceptions are encoded narrowly in [`.dependency-cruiser.json`](../.depende
 
 ## Coverage policy
 
-Coverage includes production TypeScript source under `packages/schema/src` and `apps/desktop/src`; test files and declaration files are excluded. Each package writes a human-readable summary plus `coverage-summary.json` and LCOV output under its ignored `coverage/` directory.
+Coverage includes production TypeScript source under `packages/schema/src`, non-renderer desktop source under `apps/desktop/src`, and renderer source under `apps/desktop/src/renderer`. Test files and declaration files are excluded. The schema project writes a human-readable summary plus `coverage-summary.json` and LCOV output under `packages/schema/coverage`; the desktop and renderer projects write separate reports under `apps/desktop/coverage/desktop` and `apps/desktop/coverage/renderer`.
 
-The measured baseline is recorded in [`coverage-baseline.json`](coverage-baseline.json). `pnpm coverage:check` requires statements, branches, functions, and lines for both packages to be at least their committed baseline. This is a trend policy derived from the current measured suite, rather than an arbitrary round-number threshold. If production source is added without corresponding tests, the affected metric falls below the baseline and the gate fails; update the baseline only alongside an intentional, reviewed coverage-policy change.
+The measured baseline is recorded in [`coverage-baseline.json`](coverage-baseline.json). `pnpm coverage:check` requires statements, branches, functions, and lines for the schema, desktop, and renderer projects to be at least their committed baseline. This is a trend policy derived from the current measured suite, rather than an arbitrary round-number threshold. If production source is added without corresponding tests, the affected metric falls below the baseline and the gate fails; update the baseline only alongside an intentional, reviewed coverage-policy change.
+
+The per-file seam floors live in the root [`vitest.coverage.ts`](../vitest.coverage.ts) policy module. They cover topology compilation; Plugin authentication and command dispatch; Workflow persistence; Workflow lifecycle supervision; and renderer state transitions. Each floor is rounded down from the current report for that seam, while the aggregate baseline prevents the rest of the source tree from regressing unnoticed.
 
 ## CI quality gate
 
@@ -69,8 +72,8 @@ The `Quality gates (Windows)` job runs every required check sequentially on a fr
 2. build the shared schema package;
 3. run lint, formatting, architecture, typecheck, pure schema/renderer tests, and the dedicated renderer DOM interaction tests;
 4. prepare and preflight `better-sqlite3`;
-5. run the schema and full desktop test suites with coverage;
-6. enforce the measured coverage baseline;
+5. run the schema, desktop, and renderer test projects with coverage;
+6. enforce the measured project baselines and per-file seam thresholds;
 7. build the production Electron output; and
 8. verify the production artifacts and startup marker.
 

@@ -23,6 +23,7 @@
         "test:fast": "pnpm --filter @sigil/schema test && pnpm --filter @sigil/desktop test:renderer",
         "test:e2e": "pnpm --filter @sigil/schema build && pnpm --filter @sigil/desktop build && pnpm --filter @sigil/desktop test:e2e",
         "test:coverage": "pnpm --filter @sigil/schema test:coverage && pnpm --filter @sigil/desktop test:coverage",
+        "coverage": "pnpm test:coverage",
         "coverage:check": "tsx scripts/check-coverage-baseline.ts",
         "check:coverage": "pnpm --filter @sigil/schema build && pnpm --filter @sigil/desktop native:setup && pnpm --filter @sigil/desktop native:check && pnpm test:coverage && pnpm coverage:check",
         "setup:native": "pnpm --filter @sigil/desktop native:setup",

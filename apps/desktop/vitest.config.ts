@@ -1,6 +1,12 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
+import {
+    coverageExcludes,
+    coverageReporters,
+    desktopCoverageThresholds,
+} from '../../vitest.coverage.js';
+
 export default defineConfig({
     resolve: {
         alias: {
@@ -9,15 +15,17 @@ export default defineConfig({
         },
     },
     test: {
+        name: 'desktop',
         environment: 'node',
         testTimeout: 30_000,
         include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
         coverage: {
             provider: 'v8',
-            reporter: ['text-summary', 'json-summary', 'lcov'],
-            reportsDirectory: './coverage',
+            reporter: [...coverageReporters],
+            reportsDirectory: './coverage/desktop',
             include: ['src/**/*.ts', 'src/**/*.tsx'],
-            exclude: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'src/**/*.d.ts'],
+            exclude: [...coverageExcludes, 'src/renderer/**'],
+            thresholds: desktopCoverageThresholds,
         },
     },
 });

@@ -1,21 +1,27 @@
 {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "policy": {
         "comparison": "no-lower-than-baseline",
-        "source": "Vitest 4.1.9 V8 coverage over production source on 2026-07-15"
+        "source": "Vitest 4.1.9 V8 coverage over production source on 2026-07-16"
     },
-    "packages": {
+    "projects": {
         "schema": {
             "statements": 81.71,
-            "branches": 64.06,
+            "branches": 64.5,
             "functions": 72.85,
             "lines": 83.98
         },
         "desktop": {
-            "statements": 53.46,
-            "branches": 47.99,
-            "functions": 48.09,
-            "lines": 55.14
+            "statements": 63.72,
+            "branches": 60.25,
+            "functions": 61.89,
+            "lines": 65.33
+        },
+        "renderer": {
+            "statements": 41.54,
+            "branches": 30.21,
+            "functions": 40.13,
+            "lines": 41.25
         }
     }
 }
