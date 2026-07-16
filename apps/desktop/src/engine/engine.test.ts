@@ -233,6 +233,23 @@ describe('createEngine — databasePath from properties', () => {
         reader.dispose();
     });
 
+    it('preserves defaultDatabasePath when properties validation fails', () => {
+        const dbPath = join(tempDir, 'from-default-after-invalid-properties.db');
+        const engine = createEngine({
+            properties: { databasePath: 42 },
+            defaultDatabasePath: dbPath,
+        });
+        engine.workflowStateStore.forWorkflow('wf').set('k', 'default-used');
+        engine.workflowStateStore.flushAll();
+        engine.dispose();
+
+        const reader = createEngine({ properties: {}, defaultDatabasePath: dbPath });
+        expect(Option.getOrThrow(reader.workflowStateStore.forWorkflow('wf').get('k'))).toBe(
+            'default-used',
+        );
+        reader.dispose();
+    });
+
     it('an explicit databasePath in properties wins over defaultDatabasePath', () => {
         const explicit = join(tempDir, 'explicit.db');
         const fallback = join(tempDir, 'fallback.db');
