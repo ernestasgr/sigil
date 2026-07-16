@@ -60,10 +60,10 @@ export interface Engine {
     readonly dispose: () => void;
 }
 
-export function resolveSettings(properties: ResolvedProperties): ExecutorSettings {
+export function resolveSettings(resolvedProperties: ResolvedProperties): ExecutorSettings {
     return {
-        notifyOnWorkflowError: properties.notifyOnWorkflowError,
-        collisionSuffixStyle: properties.collisionSuffixStyle,
+        notifyOnWorkflowError: resolvedProperties.notifyOnWorkflowError,
+        collisionSuffixStyle: resolvedProperties.collisionSuffixStyle,
     };
 }
 
@@ -91,10 +91,10 @@ export function createEngine(options?: EngineOptions): Engine {
     const propertiesResult = loadPropertiesFile(options?.properties, {
         databasePath: options?.defaultDatabasePath,
     });
-    const properties = propertiesResult.ok ? propertiesResult.value : DEFAULT_PROPERTIES;
-    const settings = resolveSettings(properties);
+    const resolvedProperties = propertiesResult.ok ? propertiesResult.value : DEFAULT_PROPERTIES;
 
-    const database = new Database(properties.databasePath);
+    const settings = resolveSettings(resolvedProperties);
+    const database = new Database(resolvedProperties.databasePath);
     const workflowStateStore = createWorkflowStateStore(database);
 
     const fileWatcherManager = createFileWatcherManager();
