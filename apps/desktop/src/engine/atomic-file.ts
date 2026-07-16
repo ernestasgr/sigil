@@ -46,7 +46,7 @@ export interface AtomicFileWriter {
     ) => AtomicWriteResult;
 }
 
-export const nodeAtomicFileSystem: AtomicFileSystem = {
+const nodeAtomicFileSystem: AtomicFileSystem = {
     makeDirectory: (path) => {
         mkdirSync(path, { recursive: true });
     },

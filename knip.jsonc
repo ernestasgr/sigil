@@ -1,0 +1,87 @@
+{
+    "$schema": "https://unpkg.com/knip@6/schema.json",
+
+    // Knip is advisory while the baseline is reviewed. Findings remain
+    // visible in CI, but no issue type is allowed to fail the build yet.
+    "rules": {
+        "files": "warn",
+        "dependencies": "warn",
+        "unlisted": "warn",
+        "binaries": "warn",
+        "unresolved": "warn",
+        "exports": "warn",
+        "types": "warn",
+        "duplicates": "warn"
+    },
+
+    "workspaces": {
+        ".": {
+            // Repository-level executable code and test-runner configuration.
+            // Agent orchestration under .sandcastle is intentionally outside
+            // the product workspace and is not part of this baseline.
+            "entry": ["scripts/**/*.ts", "vitest.config.ts", "vitest.coverage.ts"],
+            "project": ["scripts/**/*.ts", "vitest.config.ts", "vitest.coverage.ts"],
+            // The hook invokes lint-staged through pnpm's shell shim, which
+            // Knip cannot associate with the root devDependency statically.
+            "ignore": [".husky/pre-commit"],
+            "ignoreDependencies": ["lint-staged"]
+        },
+        "packages/schema": {
+            // Every non-test source module is listed in package.json#exports;
+            // these are intentional public module boundaries.
+            "entry": ["src/**/*.ts", "!src/**/*.test.ts"],
+            "project": ["src/**/*.ts"]
+        },
+        "apps/desktop": {
+            // electron-vite has separate main, preload, renderer, engine
+            // worker, and plugin-worker entrypoints. Plugin handlers and
+            // manifests are discovered from the filesystem at runtime.
+            "entry": [
+                "electron.vite.config.ts",
+                "playwright.config.ts",
+                "vitest.config.ts",
+                "vitest.renderer.config.ts",
+                "src/main/index.ts",
+                "src/preload/index.ts",
+                "src/engine/worker.ts",
+                "src/engine/plugin-node-worker.ts",
+                "src/engine/plugin-node-worker-bootstrap.mjs",
+                "src/renderer/index.html",
+                "src/renderer/main.tsx",
+                "src/builtin-plugins/**/plugin.manifest.json",
+                "src/builtin-plugins/**/handler.ts",
+                "scripts/**/*.ts"
+            ],
+            "project": [
+                "electron.vite.config.ts",
+                "playwright.config.ts",
+                "vitest.config.ts",
+                "vitest.renderer.config.ts",
+                "src/**/*.{ts,tsx,mjs,json}",
+                "src/**/*.html",
+                "scripts/**/*.ts",
+                "tests/**/*.{ts,tsx,mjs}"
+            ],
+            // These are runtime/build boundaries rather than modules in the
+            // import graph. Knip also honors .gitignore for dist/out/etc.; the
+            // patterns are repeated here so the boundary is visible beside
+            // the entrypoint model.
+            // Tailwind v4 and tw-animate-css are consumed from styles.css via
+            // CSS @import, outside Knip's JavaScript/TypeScript graph.
+            "ignoreDependencies": ["tailwindcss", "tw-animate-css"],
+            "ignoreFiles": [
+                "**/dist/**",
+                "**/out/**",
+                "**/release/**",
+                "**/coverage/**",
+                "**/test-results/**",
+                "**/playwright-report/**",
+                "**/generated/**",
+                "**/*.generated.*",
+                "tests/e2e/fixtures.ts",
+                "tests/renderer/test-support.tsx",
+                "src/renderer/styles.css"
+            ]
+        }
+    }
+}
