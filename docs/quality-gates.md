@@ -21,6 +21,33 @@ SQLite setup. `pnpm --filter @sigil/desktop test:renderer` runs those tests
 alongside the existing Node-oriented renderer tests; `pnpm test` runs the
 complete workspace suite, including both desktop test projects.
 
+## Interactive Vitest UI
+
+Use the local-only UI when you are exploring the test suite or debugging a
+failure interactively:
+
+```bash
+pnpm test:ui
+```
+
+The root [`vitest.config.ts`](../vitest.config.ts) loads the `schema`,
+`desktop`, and `renderer` projects. The UI can filter by project, test file,
+test name, or failed status, and a failed test exposes its assertion diff,
+timing, and captured output. Focused tests can be rerun from the UI without
+building the production Electron bundle.
+
+Use targeted CLI commands for deterministic local checks, CI, and agent
+automation. For example:
+
+```bash
+pnpm --filter @sigil/schema test -- src/topology.test.ts
+pnpm --filter @sigil/desktop exec vitest run src/engine/workflow-store.test.ts
+pnpm --filter @sigil/desktop exec vitest run --config vitest.renderer.config.ts tests/renderer/workflow-builder.test.tsx
+```
+
+The UI package is a development-only dependency; CI and agent workflows stay
+on the non-interactive CLI scripts.
+
 The supported local command for the full native coverage gate is:
 
 ```bash
