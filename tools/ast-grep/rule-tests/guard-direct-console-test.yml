@@ -1,0 +1,11 @@
+id: guard-direct-console
+valid:
+    - |
+      logger.info('started');
+    - |
+      structuredLog({ message: 'started' });
+invalid:
+    - |
+      console.log('started');
+    - |
+      console.error(error);

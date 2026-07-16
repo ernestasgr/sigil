@@ -1,0 +1,7 @@
+id: codemod-remove-unknown-assertion
+valid:
+    - |
+      const value = input as string;
+invalid:
+    - |
+      const value = input as unknown as string;

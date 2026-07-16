@@ -1,0 +1,9 @@
+id: guard-double-assertion
+snapshots:
+  ? |
+    const value = input as unknown as string;
+  : labels:
+    - source: input as unknown as string
+      style: primary
+      start: 14
+      end: 40

@@ -1,0 +1,21 @@
+id: guard-reflective-rpc
+language: TypeScript
+severity: warning
+message: Reflective invocation hides the concrete RPC or sandbox call target.
+note: |
+    Prefer a typed adapter call. If reflection is required by a sandbox seam,
+    keep it inside the reviewed adapter and document the capability boundary.
+files:
+    - apps/**/src/**/*.ts
+    - apps/**/src/**/*.tsx
+    - packages/**/src/**/*.ts
+ignores:
+    - '**/*.test.ts'
+    - '**/*.test.tsx'
+rule:
+    any:
+        - pattern: Reflect.apply($$$ARGS)
+        - pattern: Reflect.construct($$$ARGS)
+metadata:
+    category: capability-boundary
+    remediation: Replace reflective invocation with a typed adapter or document the reviewed sandbox seam.

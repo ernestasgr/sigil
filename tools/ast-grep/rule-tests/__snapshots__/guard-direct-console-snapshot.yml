@@ -1,0 +1,16 @@
+id: guard-direct-console
+snapshots:
+  ? |
+    console.error(error);
+  : labels:
+    - source: console.error(error)
+      style: primary
+      start: 0
+      end: 20
+  ? |
+    console.log('started');
+  : labels:
+    - source: console.log('started')
+      style: primary
+      start: 0
+      end: 22

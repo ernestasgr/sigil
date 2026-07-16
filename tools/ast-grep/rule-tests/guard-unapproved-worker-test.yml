@@ -1,0 +1,7 @@
+id: guard-unapproved-worker
+valid:
+    - |
+      const worker = createWorker(script);
+invalid:
+    - |
+      const worker = new Worker(script, { workerData });

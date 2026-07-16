@@ -1,0 +1,11 @@
+id: codemod-remove-unknown-assertion
+snapshots:
+  ? |
+    const value = input as unknown as string;
+  : fixed: |
+      const value = input as string;
+    labels:
+    - source: input as unknown as string
+      style: primary
+      start: 14
+      end: 40

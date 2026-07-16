@@ -1,0 +1,22 @@
+id: guard-direct-console
+language: TypeScript
+severity: warning
+message: Direct console logging in a production path bypasses the structured log or Event seam.
+note: |
+    Route operational diagnostics through the owning Engine, Main, or
+    Renderer logging seam so output can be correlated, bounded, and tested.
+files:
+    - apps/**/src/**/*.ts
+    - apps/**/src/**/*.tsx
+    - packages/**/src/**/*.ts
+ignores:
+    - '**/*.test.ts'
+    - '**/*.test.tsx'
+rule:
+    pattern: console.$METHOD($$$ARGS)
+constraints:
+    METHOD:
+        regex: '^(log|error|warn|info|debug)$'
+metadata:
+    category: observability
+    remediation: Use the structured logging or Event Bus seam owned by the current process boundary.

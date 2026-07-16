@@ -1,0 +1,23 @@
+id: guard-unapproved-worker
+language: TypeScript
+severity: warning
+message: Worker construction is outside the approved worker adapter seams.
+note: |
+    Create workers through a reviewed adapter that owns workerData, lifecycle,
+    message validation, and termination. The two current adapters are the
+    Main engine client and the Engine Plugin loader; keep this allowlist narrow.
+files:
+    - apps/**/src/**/*.ts
+    - apps/**/src/**/*.tsx
+    - packages/**/src/**/*.ts
+ignores:
+    - '**/*.test.ts'
+    - '**/*.test.tsx'
+    # Approved adapters: Main -> Engine worker and Engine -> Plugin worker.
+    - apps/desktop/src/main/engine-client.ts
+    - apps/desktop/src/engine/node-plugin-loader.ts
+rule:
+    pattern: new Worker($$$ARGS)
+metadata:
+    category: process-boundary
+    remediation: Add the worker behind an approved adapter with validated messages and explicit lifecycle ownership.

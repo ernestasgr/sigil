@@ -1,0 +1,11 @@
+id: guard-raw-message-cast
+valid:
+    - |
+      const message = parseMessage(raw);
+    - |
+      const envelope = raw satisfies MessageEnvelope;
+invalid:
+    - |
+      const message = raw as EngineMessage;
+    - |
+      const request = raw as RendererRequest<'ping'>;

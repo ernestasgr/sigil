@@ -1,0 +1,19 @@
+id: guard-double-assertion
+language: TypeScript
+severity: warning
+message: Double type assertion through unknown hides a type-boundary mismatch.
+note: |
+    Improve the upstream type or validate the trust-boundary value. A
+    remaining assertion should be narrow and justified at the boundary.
+files:
+    - apps/**/src/**/*.ts
+    - apps/**/src/**/*.tsx
+    - packages/**/src/**/*.ts
+ignores:
+    - '**/*.test.ts'
+    - '**/*.test.tsx'
+rule:
+    pattern: $VALUE as unknown as $TYPE
+metadata:
+    category: type-safety
+    remediation: Remove the intermediate unknown assertion and improve or validate the upstream type.

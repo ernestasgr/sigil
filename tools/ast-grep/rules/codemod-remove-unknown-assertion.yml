@@ -1,0 +1,21 @@
+id: codemod-remove-unknown-assertion
+language: TypeScript
+severity: hint
+message: Codemod recipe removes only the redundant intermediate unknown assertion.
+note: |
+    Preview this recipe, review the resulting diff, and run typecheck before
+    accepting it. The remaining assertion still needs a narrow trust-boundary
+    justification.
+files:
+    - apps/**/src/**/*.ts
+    - apps/**/src/**/*.tsx
+    - packages/**/src/**/*.ts
+ignores:
+    - '**/*.test.ts'
+    - '**/*.test.tsx'
+rule:
+    pattern: $VALUE as unknown as $TYPE
+fix: $VALUE as $TYPE
+metadata:
+    category: codemod
+    remediation: Preview with pnpm structure:codemod, then use the explicit write command and review git diff.

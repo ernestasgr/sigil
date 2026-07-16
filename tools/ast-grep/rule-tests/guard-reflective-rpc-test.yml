@@ -1,0 +1,9 @@
+id: guard-reflective-rpc
+valid:
+    - |
+      const result = typedAdapter.invoke(target, args);
+invalid:
+    - |
+      const result = Reflect.apply(target, receiver, args);
+    - |
+      const instance = Reflect.construct(Constructor, args);

@@ -1,0 +1,16 @@
+id: guard-reflective-rpc
+snapshots:
+  ? |
+    const instance = Reflect.construct(Constructor, args);
+  : labels:
+    - source: Reflect.construct(Constructor, args)
+      style: primary
+      start: 17
+      end: 53
+  ? |
+    const result = Reflect.apply(target, receiver, args);
+  : labels:
+    - source: Reflect.apply(target, receiver, args)
+      style: primary
+      start: 15
+      end: 52
