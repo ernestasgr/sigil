@@ -31,6 +31,12 @@ async function activateFileWatcher(
     return teardown;
 }
 
+async function waitForFileWatcherQuiescence(): Promise<void> {
+    await new Promise<void>((resolve) => {
+        setTimeout(resolve, 50);
+    });
+}
+
 describe('createEngine', () => {
     it('exposes the event bus, stub bridge, and stub capability broker', () => {
         const engine = createEngine();
@@ -299,7 +305,8 @@ describe('createEngine — databasePath from properties', () => {
 
     it('resolves builtinPluginsDir and loads file-manager and file-watcher', async () => {
         const engine = createEngine();
-        const results = await engine.loadNodePlugins();
+
+        const results = await engine.loadNodePlugins(tempDir);
 
         const successes = results.filter((r) => r.ok);
         expect(successes.length).toBeGreaterThanOrEqual(2);
@@ -355,6 +362,7 @@ describe('createEngine — file-watcher Properties File defaults', () => {
                     'accepted.properties',
                 );
             });
+            await waitForFileWatcherQuiescence();
             expect(contexts.map((context) => context.payload.name)).not.toContain(
                 'ignored.explicit',
             );
@@ -379,6 +387,7 @@ describe('createEngine — file-watcher Properties File defaults', () => {
                     'accepted.txt',
                 );
             });
+            await waitForFileWatcherQuiescence();
             expect(omittedConfigContexts.map((context) => context.payload.name)).not.toContain(
                 'ignored.properties',
             );
@@ -407,6 +416,7 @@ describe('createEngine — file-watcher Properties File defaults', () => {
                     'accepted.txt',
                 );
             });
+            await waitForFileWatcherQuiescence();
             expect(firstContexts.map((context) => context.payload.name)).not.toContain(
                 'ignored.tmp',
             );
@@ -441,6 +451,7 @@ describe('createEngine — file-watcher Properties File defaults', () => {
                     'accepted.tmp',
                 );
             });
+            await waitForFileWatcherQuiescence();
             expect(secondContexts.map((context) => context.payload.name)).not.toContain(
                 'ignored.custom',
             );
