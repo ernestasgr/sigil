@@ -1,11 +1,13 @@
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+    createPropertyRegistry,
     loadPropertiesFile,
+    PROPERTY_REGISTRY,
     type PropertiesFile,
+    type PropertyRegistry,
+    type RegisteredResolvedProperties,
     type ResolvedProperties,
-    resolve,
-    resolveAll,
 } from '@sigil/schema/properties-file';
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
@@ -52,6 +54,7 @@ export interface Engine {
     readonly settings: ExecutorSettings;
     readonly fileWatcherManager: FileWatcherManager;
     readonly handlerRegistry: NodeHandlerRegistry;
+    readonly propertyRegistry: PropertyRegistry;
     readonly registerBuiltinManifests: () => void;
     readonly loadNodePlugins: (dir?: string) => Promise<readonly NodePluginLoadResult[]>;
     readonly execute: (
@@ -65,13 +68,15 @@ export interface Engine {
 export function resolveSettings(
     resolvedProperties: ResolvedProperties,
     properties: PropertiesFile = {},
+    propertyRegistry: PropertyRegistry = PROPERTY_REGISTRY,
 ): ExecutorSettings {
     return {
         notifyOnWorkflowError: resolvedProperties.notifyOnWorkflowError,
         collisionSuffixStyle: resolvedProperties.collisionSuffixStyle,
+        properties: resolvedProperties,
         fileManager: {
             defaultOnConflict: resolvedProperties['file-manager.defaultOnConflict'],
-            collisionSuffixStyle: resolve('file-manager.collisionSuffixStyle', {
+            collisionSuffixStyle: propertyRegistry.resolve('file-manager.collisionSuffixStyle', {
                 properties,
                 fallback: resolvedProperties.collisionSuffixStyle,
             }),
@@ -99,16 +104,32 @@ export function createEngine(options?: EngineOptions): Engine {
     const permissionOverrides = createPermissionOverrideStore(options?.permissionOverridesPath);
     const bridge = createBridge(bus, registry);
     const capabilityBroker = createCapabilityBroker(registry, permissionOverrides);
+    const propertyRegistry = createPropertyRegistry();
+    const rawProperties = options?.properties ?? {};
 
-    const propertiesResult = loadPropertiesFile(options?.properties, {
-        databasePath: options?.defaultDatabasePath,
-    });
-    const resolvedProperties = propertiesResult.ok
-        ? propertiesResult.value
-        : resolveAll({}, { databasePath: options?.defaultDatabasePath });
-    const properties = propertiesResult.ok ? propertiesResult.properties : {};
+    const resolveConfiguredProperties = (): {
+        readonly resolved: RegisteredResolvedProperties;
+        readonly properties: PropertiesFile;
+    } => {
+        const propertiesResult = loadPropertiesFile(
+            rawProperties,
+            { databasePath: options?.defaultDatabasePath },
+            propertyRegistry,
+        );
+        return propertiesResult.ok
+            ? { resolved: propertiesResult.value, properties: propertiesResult.properties }
+            : {
+                  resolved: propertyRegistry.resolveAll(
+                      {},
+                      { databasePath: options?.defaultDatabasePath },
+                  ),
+                  properties: {},
+              };
+    };
 
-    const settings = resolveSettings(resolvedProperties, properties);
+    let { resolved: resolvedProperties, properties } = resolveConfiguredProperties();
+
+    let settings = resolveSettings(resolvedProperties, properties, propertyRegistry);
     const database = new Database(resolvedProperties.databasePath);
     const workflowStateStore = createWorkflowStateStore(database);
 
@@ -121,14 +142,27 @@ export function createEngine(options?: EngineOptions): Engine {
 
     const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
 
+    const refreshResolvedProperties = (): void => {
+        const next = resolveConfiguredProperties();
+        resolvedProperties = next.resolved;
+        properties = next.properties;
+        settings = resolveSettings(resolvedProperties, properties, propertyRegistry);
+        fileWatcherManager.setDefaultIgnorePatterns(
+            resolvedProperties['file-watcher.ignorePatterns'],
+        );
+    };
+
     return {
         bus,
         bridge,
         capabilityBroker,
         permissionOverrides,
         registry,
+        propertyRegistry,
         workflowStateStore,
-        settings,
+        get settings() {
+            return settings;
+        },
         fileWatcherManager,
         handlerRegistry,
         registerBuiltinManifests: (): void => {
@@ -142,13 +176,19 @@ export function createEngine(options?: EngineOptions): Engine {
                 kernel,
                 bridge,
                 permissionOverrides,
+                propertyRegistry,
                 diagnosticEvent: (event: EngineDiagnosticPayload): void => {
                     bus.next({ name: 'engine.diagnostic', payload: event });
                 },
             };
-            const builtinResults = await loadNodePlugins(builtinPluginsDir, deps);
+            const builtinResults = await loadNodePlugins(builtinPluginsDir, {
+                ...deps,
+                allowExistingPropertyDescriptors: true,
+            });
+            refreshResolvedProperties();
             if (dir) {
                 const userResults = await loadNodePlugins(dir, deps);
+                refreshResolvedProperties();
                 return [...builtinResults, ...userResults];
             }
             return builtinResults;

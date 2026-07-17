@@ -368,7 +368,15 @@ const rendererCommands = {
         direction: 'renderer-to-main',
         channel: RendererChannel.ReadProperties,
         requestSchema: z.undefined(),
-        responseSchema: z.record(z.string(), z.unknown()).readonly(),
+        responseSchema: z.union([
+            z.record(z.string(), z.unknown()).readonly(),
+            z
+                .object({
+                    properties: z.record(z.string(), z.unknown()).readonly(),
+                    defaults: z.record(z.string(), z.unknown()).readonly().optional(),
+                })
+                .readonly(),
+        ]),
     },
     saveProperties: {
         direction: 'renderer-to-main',

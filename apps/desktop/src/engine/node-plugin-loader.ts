@@ -6,6 +6,7 @@ import { Worker } from 'node:worker_threads';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
 
 import { parseManifest } from '@sigil/schema/manifest';
+import type { PropertyRegistry, SerializedPropertyDescriptor } from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { Either, Option } from 'effect';
@@ -48,6 +49,19 @@ export type NodePluginLoadError =
       }
     | { readonly kind: 'duplicate'; readonly dir: string; readonly pluginId: string }
     | { readonly kind: 'duplicate_type'; readonly dir: string; readonly nodeType: string }
+    | {
+          readonly kind: 'invalid_property_descriptor';
+          readonly dir: string;
+          readonly key?: string;
+          readonly index?: number;
+          readonly error: string;
+      }
+    | {
+          readonly kind: 'duplicate_property';
+          readonly dir: string;
+          readonly key: string;
+          readonly index?: number;
+      }
     | { readonly kind: 'import_error'; readonly dir: string; readonly error: string }
     | { readonly kind: 'worker_error'; readonly dir: string; readonly error: string };
 
@@ -56,6 +70,7 @@ export type NodePluginLoadResult =
           readonly ok: true;
           readonly manifest: Manifest;
           readonly descriptor: { readonly type: string };
+          readonly propertyDescriptors: readonly SerializedPropertyDescriptor[];
           readonly handler: NodeHandler;
       }
     | { readonly ok: false; readonly error: NodePluginLoadError };
@@ -66,6 +81,8 @@ export interface NodePluginLoaderDeps {
     readonly kernel?: KernelDeps;
     readonly bridge?: Pick<Bridge, 'emit'>;
     readonly permissionOverrides?: PermissionOverrideStore;
+    readonly propertyRegistry?: PropertyRegistry;
+    readonly allowExistingPropertyDescriptors?: boolean;
     readonly diagnostic?: (message: string) => void;
     readonly diagnosticEvent?: (event: EngineDiagnosticPayload) => void;
 }
@@ -205,9 +222,81 @@ export async function loadNodePlugin(
     if (loaded.kind === NodePluginWorkerKind.LoadError) {
         pluginWorkers.delete(manifest.id);
         worker.terminate().catch(() => {});
+        if (loaded.propertyError?.kind === 'duplicate' && loaded.propertyError.key) {
+            return {
+                ok: false,
+                error: {
+                    kind: 'duplicate_property',
+                    dir: pluginDir,
+                    key: loaded.propertyError.key,
+                    ...(loaded.propertyError.index === undefined
+                        ? {}
+                        : { index: loaded.propertyError.index }),
+                },
+            };
+        }
+        if (loaded.propertyError) {
+            return {
+                ok: false,
+                error: {
+                    kind: 'invalid_property_descriptor',
+                    dir: pluginDir,
+                    ...(loaded.propertyError.key === undefined
+                        ? {}
+                        : { key: loaded.propertyError.key }),
+                    ...(loaded.propertyError.index === undefined
+                        ? {}
+                        : { index: loaded.propertyError.index }),
+                    error: loaded.propertyError.message,
+                },
+            };
+        }
         return {
             ok: false,
             error: { kind: 'worker_error', dir: pluginDir, error: loaded.error },
+        };
+    }
+
+    const propertyDescriptors = loaded.propertyDescriptors ?? [];
+    if (propertyDescriptors.length > 0 && deps.propertyRegistry === undefined) {
+        pluginWorkers.delete(manifest.id);
+        worker.terminate().catch(() => {});
+        return {
+            ok: false,
+            error: {
+                kind: 'invalid_property_descriptor',
+                dir: pluginDir,
+                error: 'Plugin properties require a Property registry during loading.',
+            },
+        };
+    }
+    const propertyRegistration = deps.propertyRegistry?.registerMany(propertyDescriptors, {
+        owner: manifest.id,
+        allowExisting: deps.allowExistingPropertyDescriptors,
+    });
+    if (propertyRegistration && !propertyRegistration.ok) {
+        pluginWorkers.delete(manifest.id);
+        worker.terminate().catch(() => {});
+        if (propertyRegistration.error.kind === 'duplicate') {
+            return {
+                ok: false,
+                error: {
+                    kind: 'duplicate_property',
+                    dir: pluginDir,
+                    key: propertyRegistration.error.key,
+                },
+            };
+        }
+        return {
+            ok: false,
+            error: {
+                kind: 'invalid_property_descriptor',
+                dir: pluginDir,
+                ...(propertyRegistration.error.key === undefined
+                    ? {}
+                    : { key: propertyRegistration.error.key }),
+                error: propertyRegistration.error.message,
+            },
         };
     }
 
@@ -215,6 +304,7 @@ export async function loadNodePlugin(
     if (Either.isLeft(registerResult)) {
         pluginWorkers.delete(manifest.id);
         worker.terminate().catch(() => {});
+        deps.propertyRegistry?.unregisterOwner(manifest.id);
         return { ok: false, error: { kind: 'duplicate', dir: pluginDir, pluginId: manifest.id } };
     }
 
@@ -233,6 +323,7 @@ export async function loadNodePlugin(
         ok: true,
         manifest,
         descriptor: { type: loaded.descriptorType },
+        propertyDescriptors,
         handler,
     };
 }
@@ -492,6 +583,7 @@ function createWorkerNodeHandlerProxy(
                         deps: {
                             collisionSuffixStyle: deps.collisionSuffixStyle,
                             fileManager: deps.fileManager,
+                            properties: deps.properties,
                         },
                     });
                 } catch (err) {

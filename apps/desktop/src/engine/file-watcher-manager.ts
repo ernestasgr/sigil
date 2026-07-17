@@ -58,6 +58,7 @@ export interface FileWatcherManager {
     readonly unregisterSubscriber: (id: string) => void;
     readonly getWatcherCount: () => number;
     readonly getSubscriberCount: () => number;
+    readonly setDefaultIgnorePatterns: (patterns: readonly string[]) => void;
     readonly dispose: () => void;
 }
 
@@ -106,7 +107,7 @@ export function createFileWatcherManager(
     createWatcher?: CreateWatcherFn,
     getFileStats?: GetFileStatsFn,
 ): FileWatcherManager {
-    const resolvedDefaultPatterns = defaultIgnorePatterns ?? DEFAULT_IGNORE_PATTERNS;
+    let resolvedDefaultPatterns = defaultIgnorePatterns ?? DEFAULT_IGNORE_PATTERNS;
     const resolvedCreateWatcher: CreateWatcherFn =
         createWatcher ??
         ((watchPath, recursive, onEvent) => {
@@ -213,6 +214,10 @@ export function createFileWatcherManager(
                 (count, entry) => count + entry.subscribers.size,
                 0,
             ),
+
+        setDefaultIgnorePatterns: (patterns) => {
+            resolvedDefaultPatterns = patterns;
+        },
 
         dispose: () => {
             for (const entry of watchers.values()) {

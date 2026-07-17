@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { FileWatcherConfigSchema } from '@sigil/schema/nodes/file-watcher';
+import { PROPERTY_DESCRIPTORS } from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Either } from 'effect';
 
@@ -16,6 +17,7 @@ export const descriptor = {
     configSchema: FileWatcherConfigSchema,
     defaultConfig: { path: '/', recursive: true, events: ['file.created'] },
     getOutputPorts: () => ['out'] as const,
+    properties: [PROPERTY_DESCRIPTORS['file-watcher.ignorePatterns']],
 };
 
 export function handler(kernel: KernelDeps): TriggerHandler {

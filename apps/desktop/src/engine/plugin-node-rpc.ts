@@ -1,7 +1,11 @@
 import { PipelineConditionSchema } from '@sigil/schema/conditions';
 import { CapabilitySchema } from '@sigil/schema/manifest';
 import { SwitchConfigSchema } from '@sigil/schema/nodes/switch';
-import { CollisionSuffixStyleSchema, ConflictPolicySchema } from '@sigil/schema/properties-file';
+import {
+    CollisionSuffixStyleSchema,
+    ConflictPolicySchema,
+    SerializedPropertyDescriptorSchema,
+} from '@sigil/schema/properties-file';
 import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { z } from 'zod';
 
@@ -31,12 +35,24 @@ export const NodePluginWorkerLoadedSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.Loaded),
     descriptorType: z.string(),
     isTrigger: z.boolean(),
+    propertyDescriptors: z.array(SerializedPropertyDescriptorSchema).readonly().optional(),
 });
 export type NodePluginWorkerLoaded = z.infer<typeof NodePluginWorkerLoadedSchema>;
+
+export const NodePluginPropertyErrorSchema = z
+    .object({
+        kind: z.enum(['invalid', 'duplicate']),
+        index: z.number().int().nonnegative(),
+        key: z.string().min(1).optional(),
+        message: z.string(),
+    })
+    .strict();
+export type NodePluginPropertyError = z.infer<typeof NodePluginPropertyErrorSchema>;
 
 export const NodePluginWorkerLoadErrorSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.LoadError),
     error: z.string(),
+    propertyError: NodePluginPropertyErrorSchema.optional(),
 });
 export type NodePluginWorkerLoadError = z.infer<typeof NodePluginWorkerLoadErrorSchema>;
 
@@ -189,6 +205,7 @@ export const NodePluginWorkerExecuteRequestSchema = z.object({
                     collisionSuffixStyle: CollisionSuffixStyleSchema,
                 })
                 .optional(),
+            properties: z.record(z.string(), z.unknown()).readonly().optional(),
         })
         .passthrough()
         .optional(),

@@ -30,7 +30,7 @@ vi.mock('./properties-loader.js', () => ({
     writePropertiesFile: () => Either.right(undefined),
 }));
 
-function createFakeSubsystems(): {
+function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown>>): {
     subsystems: DispatchSubsystems;
     postMessage: ReturnType<typeof vi.fn>;
     log: ReturnType<typeof vi.fn>;
@@ -38,6 +38,7 @@ function createFakeSubsystems(): {
     engine: {
         execute: ReturnType<typeof vi.fn>;
         registry: { all: ReturnType<typeof vi.fn> };
+        propertyRegistry?: { defaults: ReturnType<typeof vi.fn> };
         permissionOverrides: {
             has: ReturnType<typeof vi.fn>;
             get: ReturnType<typeof vi.fn>;
@@ -68,6 +69,10 @@ function createFakeSubsystems(): {
     const broadcastWorkflowsList = vi.fn();
     const execute = vi.fn().mockResolvedValue(undefined);
     const registryAll = vi.fn().mockReturnValue([]);
+    const propertyRegistry =
+        propertyDefaults === undefined
+            ? undefined
+            : { defaults: vi.fn().mockReturnValue(propertyDefaults) };
     const permissionHas = vi.fn();
     const permissionGet = vi.fn();
     const permissionSet = vi.fn().mockReturnValue(Either.right(undefined));
@@ -90,6 +95,7 @@ function createFakeSubsystems(): {
             engine: {
                 execute,
                 registry: { all: registryAll },
+                ...(propertyRegistry === undefined ? {} : { propertyRegistry }),
                 permissionOverrides: {
                     has: permissionHas,
                     get: permissionGet,
@@ -124,6 +130,7 @@ function createFakeSubsystems(): {
         engine: {
             execute,
             registry: { all: registryAll },
+            ...(propertyRegistry === undefined ? {} : { propertyRegistry }),
             permissionOverrides: { has: permissionHas, get: permissionGet, set: permissionSet },
             workflowStateStore: { listKeys, setKey, deleteKey, deleteWorkflow },
         },
@@ -709,6 +716,26 @@ describe('dispatch', () => {
             type: EngineChannel.ReadPropertiesResult,
             correlationId: 'corr-8',
             properties: { loadedKey: 'loadedValue' },
+        });
+    });
+
+    it('includes registered property defaults in the ReadProperties response', () => {
+        const defaults = { notifyOnWorkflowError: true, 'plugin.enabled': false };
+        const { subsystems, postMessage } = createFakeSubsystems(defaults);
+
+        dispatch(
+            {
+                type: EngineChannel.ReadProperties,
+                correlationId: 'corr-properties-defaults',
+            },
+            subsystems,
+        );
+
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.ReadPropertiesResult,
+            correlationId: 'corr-properties-defaults',
+            properties: { loadedKey: 'loadedValue' },
+            defaults,
         });
     });
 

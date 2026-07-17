@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
+import { createPropertyRegistry } from '@sigil/schema/properties-file';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
 import type { CapabilityBroker } from './capability-broker.js';
 import { createCapabilityBroker } from './capability-broker.js';
 import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
@@ -103,6 +103,26 @@ export const handler: NodeHandler = {
 };
 `;
 
+const PROPERTY_PLUGIN_HANDLER = `
+import { z } from 'zod';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'property-node' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+    properties: [{ key: 'property-node.message', schema: z.string(), fallback: 'hello' }],
+};
+
+export const handler = {
+    async execute({ ctx }) {
+        return { outputCtx: ctx, activePort: 'out' };
+    },
+};
+`;
+
 describe('loadNodePlugin', () => {
     let tempDir: string;
 
@@ -138,6 +158,114 @@ describe('loadNodePlugin', () => {
             expect(handlerRegistry.has('greet')).toBe(true);
             expect(manifestRegistry.has('com.sigil.greet')).toBe(true);
         }
+    });
+
+    it('registers typed Plugin properties before the Engine validates the Properties File', async () => {
+        const pluginDir = join(tempDir, 'property-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.property-plugin',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'property-node',
+            },
+            PROPERTY_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const propertyRegistry = createPropertyRegistry();
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            propertyRegistry,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(
+            propertyRegistry.schema().safeParse({ 'property-node.message': 'configured' }).success,
+        ).toBe(true);
+        expect(propertyRegistry.resolveAll({})['property-node.message']).toBe('hello');
+    });
+
+    it('returns a structured diagnostic for an invalid Plugin property descriptor', async () => {
+        const pluginDir = join(tempDir, 'invalid-property-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.invalid-property-plugin',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'invalid-property-node',
+            },
+            PROPERTY_PLUGIN_HANDLER.replace(
+                "key: 'property-node.message', schema: z.string(), fallback: 'hello'",
+                "key: 'invalid-property.message', schema: z.string(), fallback: 42",
+            ).replaceAll('property-node', 'invalid-property-node'),
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            propertyRegistry: createPropertyRegistry(),
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: { kind: 'invalid_property_descriptor', key: 'invalid-property.message' },
+        });
+    });
+
+    it('returns a structured diagnostic for a duplicate registered Plugin property', async () => {
+        const firstDir = join(tempDir, 'first-property-plugin');
+        const secondDir = join(tempDir, 'second-property-plugin');
+        const firstManifest = {
+            id: 'com.sigil.first-property-plugin',
+            version: '0.0.1',
+            permissions: [],
+            emits: ['x'],
+            nodeType: 'first-property-node',
+        };
+        const secondManifest = {
+            ...firstManifest,
+            id: 'com.sigil.second-property-plugin',
+            nodeType: 'second-property-node',
+        };
+        writePlugin(
+            firstDir,
+            firstManifest,
+            PROPERTY_PLUGIN_HANDLER.replaceAll('property-node', 'first-property-node'),
+        );
+        writePlugin(
+            secondDir,
+            secondManifest,
+            PROPERTY_PLUGIN_HANDLER.replaceAll('property-node', 'second-property-node').replace(
+                "key: 'second-property-node.message'",
+                "key: 'first-property-node.message'",
+            ),
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const propertyRegistry = createPropertyRegistry();
+        const first = await loadNodePlugin(firstDir, {
+            manifestRegistry,
+            handlerRegistry,
+            propertyRegistry,
+        });
+        const second = await loadNodePlugin(secondDir, {
+            manifestRegistry,
+            handlerRegistry,
+            propertyRegistry,
+        });
+
+        expect(first.ok).toBe(true);
+        expect(second).toMatchObject({
+            ok: false,
+            error: { kind: 'duplicate_property', key: 'first-property-node.message' },
+        });
     });
 
     it('registers a trigger plugin with an activate method', async () => {
@@ -1651,9 +1779,12 @@ describe('builtin plugins integration', () => {
         expect(existsSync(builtinPluginsDir)).toBe(true);
 
         const { manifestRegistry, handlerRegistry } = createRegistries();
+        const propertyRegistry = createPropertyRegistry();
         const results = await loadNodePlugins(builtinPluginsDir, {
             manifestRegistry,
             handlerRegistry,
+            propertyRegistry,
+            allowExistingPropertyDescriptors: true,
         });
 
         const successes = results.filter((r) => r.ok);

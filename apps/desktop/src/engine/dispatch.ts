@@ -542,12 +542,14 @@ function handleReadProperties(
         Effect.runSync,
     );
     const properties = isRecord(current) ? current : {};
+    const defaults = subsystems.engine.propertyRegistry?.defaults();
     postCommandResponse(
         'readProperties',
         {
             type: EngineChannel.ReadPropertiesResult,
             correlationId: message.correlationId,
             properties,
+            ...(defaults === undefined ? {} : { defaults }),
         },
         subsystems,
     );
