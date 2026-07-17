@@ -1,7 +1,7 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
 import type { NodeType, PipelineNode, UnknownNodeDescriptor } from '@sigil/schema/nodes';
 import type { SwitchConfig } from '@sigil/schema/nodes/switch';
-import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
+import type { CollisionSuffixStyle, ConflictPolicy } from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import type { CapabilityBroker } from '../capability-broker.js';
 import type { BusEvent } from '../event-bus.js';
@@ -26,6 +26,11 @@ export type ResolveTemplate = (template: string, ctx: WorkflowContext) => string
 export type EvaluateCondition = (condition: PipelineCondition, ctx: WorkflowContext) => boolean;
 export type MatchSwitchCase = (config: SwitchConfig, ctx: WorkflowContext) => string;
 
+export interface FileManagerNodeHandlerDeps {
+    readonly defaultOnConflict: ConflictPolicy;
+    readonly collisionSuffixStyle: CollisionSuffixStyle;
+}
+
 export interface NodeHandlerDeps {
     readonly bus: EventSink;
     /** Present for worker-backed Plugins; built-in Nodes use the Event Bus directly. */
@@ -39,6 +44,7 @@ export interface NodeHandlerDeps {
     readonly state: WorkflowState;
     readonly capabilityBroker: CapabilityBroker;
     readonly collisionSuffixStyle?: CollisionSuffixStyle;
+    readonly fileManager?: FileManagerNodeHandlerDeps;
 }
 
 export interface NodeHandlerInput {

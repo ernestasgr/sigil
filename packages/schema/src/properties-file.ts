@@ -114,12 +114,18 @@ export function resolveAll(
 
 export const DEFAULT_PROPERTIES: Readonly<ResolvedProperties> = resolveAll({});
 
+export type PropertiesFileLoadResult =
+    | {
+          readonly ok: true;
+          readonly value: ResolvedProperties;
+          readonly properties: PropertiesFile;
+      }
+    | { readonly ok: false; readonly error: string };
+
 export function loadPropertiesFile(
     unknown: unknown,
     defaults: Partial<ResolvedProperties> = {},
-):
-    | { readonly ok: true; readonly value: ResolvedProperties }
-    | { readonly ok: false; readonly error: string } {
+): PropertiesFileLoadResult {
     const result = PropertiesFileSchema.safeParse(unknown);
     if (!result.success) {
         return {
@@ -130,5 +136,6 @@ export function loadPropertiesFile(
     return {
         ok: true,
         value: resolveAll(result.data, defaults),
+        properties: result.data,
     };
 }

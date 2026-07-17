@@ -1,7 +1,7 @@
 import { PipelineConditionSchema } from '@sigil/schema/conditions';
 import { CapabilitySchema } from '@sigil/schema/manifest';
 import { SwitchConfigSchema } from '@sigil/schema/nodes/switch';
-import { CollisionSuffixStyleSchema } from '@sigil/schema/properties-file';
+import { CollisionSuffixStyleSchema, ConflictPolicySchema } from '@sigil/schema/properties-file';
 import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { z } from 'zod';
 
@@ -183,6 +183,12 @@ export const NodePluginWorkerExecuteRequestSchema = z.object({
     deps: z
         .object({
             collisionSuffixStyle: CollisionSuffixStyleSchema.optional(),
+            fileManager: z
+                .object({
+                    defaultOnConflict: ConflictPolicySchema,
+                    collisionSuffixStyle: CollisionSuffixStyleSchema,
+                })
+                .optional(),
         })
         .passthrough()
         .optional(),

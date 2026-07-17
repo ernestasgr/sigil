@@ -1,7 +1,11 @@
 import { copyFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import { basename, dirname, join, parse } from 'node:path';
 import { FileManagerConfigSchema } from '@sigil/schema/nodes/file-manager';
-import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
+import {
+    type CollisionSuffixStyle,
+    type ConflictPolicy,
+    DEFAULT_PROPERTIES,
+} from '@sigil/schema/properties-file';
 import { Either } from 'effect';
 
 import type { CapabilityBroker } from '../../engine/capability-broker.js';
@@ -11,7 +15,6 @@ import { narrowNode } from '../../engine/node-handlers/types.js';
 const FILE_MANAGER_PLUGIN_ID = 'com.sigil.file-manager';
 
 type FileAction = 'move' | 'copy' | 'rename';
-type ConflictPolicy = 'skip' | 'overwrite' | 'auto-rename' | 'error';
 
 interface DestinationInfo {
     readonly fullPath: string;
@@ -170,13 +173,18 @@ export const handler: NodeHandler = {
     async execute({ node, ctx }, deps): Promise<NodeRunResult> {
         const typedNode = narrowNode(node, 'file-manager');
 
-        const { action, destination, onConflict } = typedNode.config;
+        const { action, destination } = typedNode.config;
+        const onConflict =
+            typedNode.config.onConflict ??
+            deps.fileManager?.defaultOnConflict ??
+            DEFAULT_PROPERTIES['file-manager.defaultOnConflict'];
         const sourcePath = ctx.payload.path;
         if (typeof sourcePath !== 'string' || sourcePath === '') {
             throw new Error('File-manager: payload.path is missing or empty');
         }
 
-        const { collisionSuffixStyle } = deps;
+        const collisionSuffixStyle =
+            deps.fileManager?.collisionSuffixStyle ?? deps.collisionSuffixStyle;
 
         checkPermissions(deps.capabilityBroker, FILE_MANAGER_PLUGIN_ID);
 

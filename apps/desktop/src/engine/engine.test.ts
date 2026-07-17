@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CompiledPipeline } from '@sigil/schema';
+import { type CompiledPipeline, parsePipeline } from '@sigil/schema';
 import type { FileWatcherConfig } from '@sigil/schema/nodes/file-watcher';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
@@ -35,6 +35,48 @@ async function waitForFileWatcherQuiescence(): Promise<void> {
     await new Promise<void>((resolve) => {
         setTimeout(resolve, 50);
     });
+}
+
+function fileManagerWorkflow(
+    sourcePath: string,
+    sourceName: string,
+    sourceDir: string,
+    config: Readonly<Record<string, unknown>>,
+): unknown {
+    return {
+        id: 'file-manager-properties',
+        workflowId: 'file-manager-properties',
+        schemaVersion: 1,
+        nodes: [
+            {
+                id: 'trigger',
+                type: 'manual-trigger',
+                config: {
+                    eventName: 'file.created',
+                    payload: {
+                        path: sourcePath,
+                        name: sourceName,
+                        ext: 'txt',
+                        size: 0,
+                        dir: sourceDir,
+                    },
+                },
+            },
+            {
+                id: 'file-manager',
+                type: 'file-manager',
+                config,
+            },
+        ],
+        edges: [
+            {
+                id: 'trigger-to-file-manager',
+                source: 'trigger',
+                target: 'file-manager',
+                sourcePort: 'out',
+            },
+        ],
+    };
 }
 
 describe('createEngine', () => {
@@ -458,6 +500,202 @@ describe('createEngine — file-watcher Properties File defaults', () => {
         } finally {
             secondTeardown?.();
             secondEngine.dispose();
+        }
+    });
+});
+
+describe('createEngine — file-manager Properties File defaults', () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+        tempDir = mkdtempSync(join(tmpdir(), 'sigil-file-manager-properties-'));
+    });
+
+    afterEach(() => {
+        rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it('applies defaultOnConflict when the Node omits onConflict', async () => {
+        const sourceDir = join(tempDir, 'source');
+        const destinationDir = join(tempDir, 'destination');
+        mkdirSync(sourceDir);
+        mkdirSync(destinationDir);
+        const sourcePath = join(sourceDir, 'report.txt');
+        const destinationPath = join(destinationDir, 'report.txt');
+        writeFileSync(sourcePath, 'new content');
+        writeFileSync(destinationPath, 'existing content');
+
+        const engine = createEngine({
+            properties: { 'file-manager.defaultOnConflict': 'skip' },
+        });
+
+        try {
+            await engine.loadNodePlugins();
+
+            const parsed = parsePipeline(
+                fileManagerWorkflow(sourcePath, 'report.txt', sourceDir, {
+                    action: 'move',
+                    destination: destinationDir,
+                }),
+            );
+
+            expect(parsed.ok).toBe(true);
+            if (!parsed.ok) return;
+
+            const result = await engine.execute(parsed.value);
+
+            expect(result.outcome).toBe('succeeded');
+            expect(existsSync(sourcePath)).toBe(true);
+            expect(readFileSync(destinationPath, 'utf-8')).toBe('existing content');
+        } finally {
+            engine.dispose();
+        }
+    });
+
+    it('lets an explicit Node conflict policy override the Properties File', async () => {
+        const sourceDir = join(tempDir, 'source');
+        const destinationDir = join(tempDir, 'destination');
+        mkdirSync(sourceDir);
+        mkdirSync(destinationDir);
+        const sourcePath = join(sourceDir, 'report.txt');
+        const destinationPath = join(destinationDir, 'report.txt');
+        writeFileSync(sourcePath, 'new content');
+        writeFileSync(destinationPath, 'existing content');
+
+        const engine = createEngine({
+            properties: { 'file-manager.defaultOnConflict': 'skip' },
+        });
+
+        try {
+            await engine.loadNodePlugins();
+            const parsed = parsePipeline(
+                fileManagerWorkflow(sourcePath, 'report.txt', sourceDir, {
+                    action: 'move',
+                    destination: destinationDir,
+                    onConflict: 'error',
+                }),
+            );
+
+            expect(parsed.ok).toBe(true);
+            if (!parsed.ok) return;
+
+            const result = await engine.execute(parsed.value);
+
+            expect(result.outcome).toBe('failed');
+            expect(existsSync(sourcePath)).toBe(true);
+            expect(readFileSync(destinationPath, 'utf-8')).toBe('existing content');
+        } finally {
+            engine.dispose();
+        }
+    });
+
+    it('uses the hardcoded conflict fallback when the Node and Properties File omit it', async () => {
+        const sourceDir = join(tempDir, 'source');
+        const destinationDir = join(tempDir, 'destination');
+        mkdirSync(sourceDir);
+        mkdirSync(destinationDir);
+        const sourcePath = join(sourceDir, 'report.txt');
+        const destinationPath = join(destinationDir, 'report.txt');
+        writeFileSync(sourcePath, 'new content');
+        writeFileSync(destinationPath, 'existing content');
+
+        const engine = createEngine({ properties: {} });
+
+        try {
+            await engine.loadNodePlugins();
+            const parsed = parsePipeline(
+                fileManagerWorkflow(sourcePath, 'report.txt', sourceDir, {
+                    action: 'move',
+                    destination: destinationDir,
+                }),
+            );
+
+            expect(parsed.ok).toBe(true);
+            if (!parsed.ok) return;
+
+            const result = await engine.execute(parsed.value);
+
+            expect(result.outcome).toBe('failed');
+            expect(existsSync(sourcePath)).toBe(true);
+            expect(readFileSync(destinationPath, 'utf-8')).toBe('existing content');
+        } finally {
+            engine.dispose();
+        }
+    });
+
+    it('uses the file-manager suffix style over the engine-wide style for auto-rename', async () => {
+        const sourceDir = join(tempDir, 'source');
+        mkdirSync(sourceDir);
+        const sourcePath = join(sourceDir, 'source.txt');
+        const collisionPath = join(sourceDir, 'target.txt');
+        const scopedPath = join(sourceDir, 'target-2.txt');
+        writeFileSync(sourcePath, 'new content');
+        writeFileSync(collisionPath, 'existing content');
+
+        const engine = createEngine({
+            properties: {
+                collisionSuffixStyle: 'underscore',
+                'file-manager.collisionSuffixStyle': 'hyphen',
+            },
+        });
+
+        try {
+            await engine.loadNodePlugins();
+            const parsed = parsePipeline(
+                fileManagerWorkflow(sourcePath, 'source.txt', sourceDir, {
+                    action: 'rename',
+                    destination: 'target.txt',
+                    onConflict: 'auto-rename',
+                }),
+            );
+
+            expect(parsed.ok).toBe(true);
+            if (!parsed.ok) return;
+
+            const result = await engine.execute(parsed.value);
+
+            expect(result.outcome).toBe('succeeded');
+            expect(existsSync(sourcePath)).toBe(false);
+            expect(existsSync(scopedPath)).toBe(true);
+            expect(existsSync(join(sourceDir, 'target_2.txt'))).toBe(false);
+        } finally {
+            engine.dispose();
+        }
+    });
+
+    it('uses the engine-wide suffix style when the file-manager style is absent', async () => {
+        const sourceDir = join(tempDir, 'source');
+        mkdirSync(sourceDir);
+        const sourcePath = join(sourceDir, 'source.txt');
+        const collisionPath = join(sourceDir, 'target.txt');
+        const engineStylePath = join(sourceDir, 'target_2.txt');
+        writeFileSync(sourcePath, 'new content');
+        writeFileSync(collisionPath, 'existing content');
+
+        const engine = createEngine({
+            properties: { collisionSuffixStyle: 'underscore' },
+        });
+
+        try {
+            await engine.loadNodePlugins();
+            const parsed = parsePipeline(
+                fileManagerWorkflow(sourcePath, 'source.txt', sourceDir, {
+                    action: 'rename',
+                    destination: 'target.txt',
+                    onConflict: 'auto-rename',
+                }),
+            );
+
+            expect(parsed.ok).toBe(true);
+            if (!parsed.ok) return;
+
+            const result = await engine.execute(parsed.value);
+
+            expect(result.outcome).toBe('succeeded');
+            expect(existsSync(engineStylePath)).toBe(true);
+            expect(existsSync(join(sourceDir, 'target (2).txt'))).toBe(false);
+        } finally {
+            engine.dispose();
         }
     });
 });

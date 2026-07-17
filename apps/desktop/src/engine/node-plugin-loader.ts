@@ -491,6 +491,7 @@ function createWorkerNodeHandlerProxy(
                         ctx,
                         deps: {
                             collisionSuffixStyle: deps.collisionSuffixStyle,
+                            fileManager: deps.fileManager,
                         },
                     });
                 } catch (err) {
