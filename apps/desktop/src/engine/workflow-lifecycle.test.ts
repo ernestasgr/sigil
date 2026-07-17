@@ -278,4 +278,37 @@ describe('WorkflowLifecycle transitions', () => {
         expect(activate).toHaveBeenCalledTimes(2);
         expect(teardowns[0]).toHaveBeenCalledTimes(1);
     });
+
+    it('returns empty transition results for missing and disabled workflows', () => {
+        const fixture = createFixture(() => () => {});
+        fixtures.push(fixture);
+
+        expect(fixture.lifecycle.enable('missing')).toEqual(Option.none());
+        expect(fixture.lifecycle.disable('missing')).toEqual(Option.none());
+        expect(fixture.lifecycle.toggle('missing')).toEqual(Option.none());
+        expect(fixture.lifecycle.activateEnabled('missing')).toEqual(Option.none());
+        expect(fixture.lifecycle.activateEnabled(fixture.workflowId)).toMatchObject(
+            Option.some({ enabled: false }),
+        );
+    });
+
+    it('updates a disabled workflow without waiting for activation or reactivating it', async () => {
+        const fixture = createFixture(() => () => {});
+        fixtures.push(fixture);
+
+        const result = await fixture.lifecycle.updateAndDrain(fixture.workflowId, () =>
+            fixture.store.save(
+                fixture.workflowId,
+                'Updated Disabled Workflow',
+                testPipeline('pipeline-disabled-update', 'workflow-1'),
+                {},
+            ),
+        );
+
+        expect(result).toMatchObject({
+            name: 'Updated Disabled Workflow',
+            enabled: false,
+            activation: { kind: 'disabled' },
+        });
+    });
 });

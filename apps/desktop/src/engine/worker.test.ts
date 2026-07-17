@@ -25,9 +25,14 @@ import {
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
 import { createWorkflowTopologyError } from './workflow-topology-error.js';
 
+const { readPropertiesFileMock, writePropertiesFileMock } = vi.hoisted(() => ({
+    readPropertiesFileMock: vi.fn(),
+    writePropertiesFileMock: vi.fn(),
+}));
+
 vi.mock('./properties-loader.js', () => ({
-    readPropertiesFile: () => Effect.succeed({ loadedKey: 'loadedValue' }),
-    writePropertiesFile: () => Either.right(undefined),
+    readPropertiesFile: readPropertiesFileMock,
+    writePropertiesFile: writePropertiesFileMock,
 }));
 
 function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown>>): {
@@ -64,6 +69,8 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
         deactivate: ReturnType<typeof vi.fn>;
     };
 } {
+    readPropertiesFileMock.mockReturnValue(Effect.succeed({ loadedKey: 'loadedValue' }));
+    writePropertiesFileMock.mockReturnValue(Either.right(undefined));
     const postMessage = vi.fn();
     const log = vi.fn();
     const broadcastWorkflowsList = vi.fn();
@@ -539,6 +546,33 @@ describe('dispatch', () => {
         expect(log).toHaveBeenCalledWith('Created workflow "New" via update for missing id (wf-1)');
     });
 
+    it('coordinates UpdateWorkflow through the lifecycle when one is available', async () => {
+        const { subsystems, store } = createFakeSubsystems();
+        const updateAndDrain = vi.fn((_id: string, update: () => unknown) => update());
+        (
+            subsystems as unknown as {
+                lifecycle: { updateAndDrain: typeof updateAndDrain };
+            }
+        ).lifecycle = { updateAndDrain };
+        store.get.mockReturnValue(Option.some({ id: 'wf-1', name: 'Old', enabled: false }));
+        store.save.mockReturnValue({ id: 'wf-1', name: 'Updated', enabled: false });
+
+        await dispatch(
+            {
+                type: EngineChannel.UpdateWorkflow,
+                correlationId: 'lifecycle-update',
+                id: 'wf-1',
+                name: 'Updated',
+                pipeline: { id: 'p-1' } as CompiledPipeline,
+                positions: {},
+            },
+            subsystems,
+        );
+
+        expect(updateAndDrain).toHaveBeenCalledWith('wf-1', expect.any(Function));
+        expect(store.save).toHaveBeenCalledWith('wf-1', 'Updated', { id: 'p-1' }, {});
+    });
+
     it('routes DeleteWorkflow and calls remove, deactivates, broadcasts, and posts result', () => {
         const { subsystems, postMessage, store, activator, broadcastWorkflowsList, log, engine } =
             createFakeSubsystems();
@@ -574,6 +608,35 @@ describe('dispatch', () => {
 
         expect(log).not.toHaveBeenCalled();
         expect(engine.workflowStateStore.deleteWorkflow).not.toHaveBeenCalled();
+    });
+
+    it('disables a workflow through the lifecycle and waits for in-flight runs before delete', async () => {
+        const { subsystems, store, activator } = createFakeSubsystems();
+        const disable = vi.fn();
+        const hasInFlightRuns = vi.fn().mockReturnValue(true);
+        const waitForRuns = vi.fn().mockResolvedValue(undefined);
+        (subsystems as unknown as { lifecycle: { disable: typeof disable } }).lifecycle = {
+            disable,
+        };
+        (
+            subsystems as unknown as {
+                activator: {
+                    hasInFlightRuns: typeof hasInFlightRuns;
+                    waitForRuns: typeof waitForRuns;
+                };
+            }
+        ).activator = { ...activator, hasInFlightRuns, waitForRuns };
+        store.remove.mockReturnValue(false);
+
+        await dispatch(
+            { type: EngineChannel.DeleteWorkflow, correlationId: 'lifecycle-delete', id: 'wf-1' },
+            subsystems,
+        );
+
+        expect(disable).toHaveBeenCalledWith('wf-1');
+        expect(hasInFlightRuns).toHaveBeenCalledWith('wf-1');
+        expect(waitForRuns).toHaveBeenCalledWith('wf-1');
+        expect(activator.deactivate).not.toHaveBeenCalled();
     });
 
     it('routes GetWorkflow and posts found result when workflow exists', () => {
@@ -719,6 +782,30 @@ describe('dispatch', () => {
         });
     });
 
+    it('logs unexpected properties-file failures and returns an empty object', () => {
+        const { subsystems, postMessage, log } = createFakeSubsystems();
+        const diagnostic = {
+            kind: 'persistence',
+            operation: 'read',
+            phase: 'read',
+            path: '/fake/properties.json',
+            message: 'permission denied',
+        } as const;
+        readPropertiesFileMock.mockReturnValue(Effect.fail(diagnostic));
+
+        dispatch(
+            { type: EngineChannel.ReadProperties, correlationId: 'corr-properties-failed' },
+            subsystems,
+        );
+
+        expect(log).toHaveBeenCalledWith(expect.stringContaining('Properties file diagnostic:'));
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.ReadPropertiesResult,
+            correlationId: 'corr-properties-failed',
+            properties: {},
+        });
+    });
+
     it('includes registered property defaults in the ReadProperties response', () => {
         const defaults = { notifyOnWorkflowError: true, 'plugin.enabled': false };
         const { subsystems, postMessage } = createFakeSubsystems(defaults);
@@ -753,6 +840,72 @@ describe('dispatch', () => {
             type: EngineChannel.SavePropertiesResult,
             correlationId: 'corr-9',
             ok: true,
+        });
+    });
+
+    it('returns a diagnostic when saving properties fails', () => {
+        const { subsystems, postMessage, log } = createFakeSubsystems();
+        const diagnostic = {
+            kind: 'persistence',
+            operation: 'write',
+            phase: 'write',
+            path: '/fake/properties.json',
+            message: 'disk full',
+        } as const;
+        writePropertiesFileMock.mockReturnValue(Either.left(diagnostic));
+
+        dispatch(
+            {
+                type: EngineChannel.SaveProperties,
+                correlationId: 'corr-properties-save-failed',
+                properties: { key: 'value' },
+            },
+            subsystems,
+        );
+
+        expect(log).toHaveBeenCalledWith(expect.stringContaining('Failed to save properties:'));
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.SavePropertiesResult,
+            correlationId: 'corr-properties-save-failed',
+            ok: false,
+            error: expect.stringContaining('disk full'),
+            diagnostic,
+        });
+    });
+
+    it('awaits shutdown before acknowledging the Engine shutdown command', async () => {
+        const { subsystems, postMessage } = createFakeSubsystems();
+        const shutdown = vi.fn().mockResolvedValue(undefined);
+        (subsystems as unknown as { shutdown: typeof shutdown }).shutdown = shutdown;
+
+        await dispatch(
+            { type: EngineChannel.Shutdown, correlationId: 'corr-shutdown' },
+            subsystems,
+        );
+
+        expect(shutdown).toHaveBeenCalledTimes(1);
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.ShutdownResult,
+            correlationId: 'corr-shutdown',
+            ok: true,
+        });
+    });
+
+    it('reports shutdown failures to the Engine channel', async () => {
+        const { subsystems, postMessage, log } = createFakeSubsystems();
+        const shutdown = vi.fn().mockRejectedValue(new Error('shutdown failed'));
+        (subsystems as unknown as { shutdown: typeof shutdown }).shutdown = shutdown;
+
+        await dispatch(
+            { type: EngineChannel.Shutdown, correlationId: 'corr-shutdown-failed' },
+            subsystems,
+        );
+
+        expect(log).toHaveBeenCalledWith('[error] engine shutdown failed: shutdown failed');
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.ShutdownResult,
+            correlationId: 'corr-shutdown-failed',
+            ok: false,
         });
     });
 
