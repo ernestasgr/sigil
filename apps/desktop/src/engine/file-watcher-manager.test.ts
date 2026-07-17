@@ -508,6 +508,31 @@ describe('FileWatcherManager — ignorePatterns resolution chain', () => {
         manager.dispose();
     });
 
+    it('preserves an explicit empty Properties File default as no ignored patterns', () => {
+        const mock = createMockWatcher();
+        const manager = createFileWatcherManager([], mock.createWatcher, MOCK_STAT_FN);
+        const sub = collectFileEvents();
+
+        manager.registerSubscriber(
+            {
+                id: 'sub',
+                path: '/watch',
+                recursive: true,
+                events: ['file.created', 'file.modified', 'file.deleted'],
+            },
+            sub.onEvent,
+        );
+
+        const watcher = mock.watchers[0];
+        expect(watcher).toBeDefined();
+
+        watcher.triggerEvent('rename', 'file.tmp');
+
+        expect(sub.events).toHaveLength(1);
+        expect(sub.events[0]?.payload.name).toBe('file.tmp');
+        manager.dispose();
+    });
+
     it('DEFAULT_IGNORE_PATTERNS contains the expected patterns', () => {
         expect(DEFAULT_IGNORE_PATTERNS).toEqual(['*.crdownload', '*.part', '*.tmp', '*.download']);
     });
