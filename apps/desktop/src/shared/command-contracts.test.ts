@@ -201,6 +201,13 @@ describe('CommandContracts', () => {
         }
     });
 
+    it('requires the structured readProperties response shape', () => {
+        const responseSchema = RendererCommandContracts.readProperties.responseSchema;
+
+        expect(responseSchema.safeParse({ properties: {}, defaults: {} }).success).toBe(true);
+        expect(responseSchema.safeParse({ 'dynamic.property': true }).success).toBe(false);
+    });
+
     it('keeps expected renderer failures in the response contract', () => {
         const failure = { ok: false, error: 'Engine not ready' };
 

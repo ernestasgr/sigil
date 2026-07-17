@@ -31,11 +31,52 @@ export interface SerializedPropertyDescriptor {
     readonly fallback: unknown;
 }
 
+function isJsonSafe(value: unknown, seen = new Set<object>()): boolean {
+    if (value === null) return true;
+
+    switch (typeof value) {
+        case 'string':
+        case 'boolean':
+            return true;
+        case 'number':
+            return Number.isFinite(value);
+        case 'object':
+            if (seen.has(value)) return false;
+            seen.add(value);
+            try {
+                if (Array.isArray(value)) {
+                    return value.every((item) => isJsonSafe(item, seen));
+                }
+                const prototype = Object.getPrototypeOf(value);
+                const record = value as Record<string, unknown>;
+                return (
+                    (prototype === Object.prototype || prototype === null) &&
+                    Object.keys(record).every((key) => isJsonSafe(record[key], seen))
+                );
+            } catch {
+                return false;
+            } finally {
+                seen.delete(value);
+            }
+        default:
+            return false;
+    }
+}
+
+const JsonSafeFallbackSchema = z.unknown().refine((value) => isJsonSafe(value), {
+    message: 'Property descriptor fallback must be JSON-safe.',
+});
+
 export const SerializedPropertyDescriptorSchema = z
     .object({
-        key: z.string().min(1),
+        key: z
+            .string()
+            .min(1)
+            .refine((key) => key !== '__proto__', {
+                message: 'Property descriptor key "__proto__" is reserved.',
+            }),
         schema: z.union([z.boolean(), z.record(z.string(), z.unknown())]),
-        fallback: z.unknown(),
+        fallback: JsonSafeFallbackSchema,
     })
     .strict();
 
@@ -167,6 +208,9 @@ export function serializePropertyDescriptor(
             `Fallback for property "${descriptor.key}" does not match its schema: ${fallback.error.message}`,
         );
     }
+    if (!isJsonSafe(fallback.data)) {
+        throw new Error(`Fallback for property "${descriptor.key}" must be JSON-safe.`);
+    }
 
     return {
         key: descriptor.key,
@@ -200,6 +244,10 @@ function normalizeDescriptor(
     }
 
     const key = input.key;
+    if (key === '__proto__') {
+        return invalidDescriptor('Property descriptor key "__proto__" is reserved.', key);
+    }
+
     let schema: z.ZodType;
     if (isZodSchema(input.schema)) {
         schema = input.schema;
@@ -232,6 +280,9 @@ function normalizeDescriptor(
     }
     if (fallback.data === undefined) {
         return invalidDescriptor('Property descriptor fallback must be defined.', key);
+    }
+    if (!isJsonSafe(fallback.data)) {
+        return invalidDescriptor('Property descriptor fallback must be JSON-safe.', key);
     }
 
     return {

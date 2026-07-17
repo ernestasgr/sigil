@@ -14,6 +14,7 @@ import {
     registerPropertyDescriptor,
     resolve,
     resolveAll,
+    SerializedPropertyDescriptorSchema,
     serializePropertyDescriptor,
 } from './properties-file.js';
 
@@ -96,6 +97,47 @@ describe('Property registry', () => {
                 fallback: 42 as never,
             }),
         ).toThrow(/does not match its schema/);
+    });
+
+    it('rejects reserved keys and non-JSON-safe fallbacks', () => {
+        const registry = createPropertyRegistry([]);
+
+        expect(
+            registry.register({ key: '__proto__', schema: z.string(), fallback: 'value' }),
+        ).toMatchObject({
+            ok: false,
+            error: { kind: 'invalid_descriptor', key: '__proto__' },
+        });
+        expect(registry.has('__proto__')).toBe(false);
+
+        expect(
+            SerializedPropertyDescriptorSchema.safeParse({
+                key: 'serialized.invalid-fallback',
+                schema: { type: 'string' },
+                fallback: undefined,
+            }).success,
+        ).toBe(false);
+        expect(
+            registry.register({
+                key: 'invalid.json-fallback',
+                schema: z.bigint(),
+                fallback: 1n,
+            }),
+        ).toMatchObject({
+            ok: false,
+            error: {
+                kind: 'invalid_descriptor',
+                key: 'invalid.json-fallback',
+                message: 'Property descriptor fallback must be JSON-safe.',
+            },
+        });
+        expect(() =>
+            serializePropertyDescriptor({
+                key: 'invalid.json-fallback',
+                schema: z.bigint(),
+                fallback: 1n,
+            }),
+        ).toThrow('must be JSON-safe');
     });
 
     it('only accepts an exact descriptor when allowing an existing key', () => {

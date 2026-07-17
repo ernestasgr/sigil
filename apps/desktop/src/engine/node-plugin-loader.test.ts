@@ -3,9 +3,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { createPropertyRegistry, type PropertyRegistry } from '@sigil/schema/properties-file';
+import {
+    createPropertyRegistry,
+    definePropertyDescriptor,
+    type PropertyRegistry,
+} from '@sigil/schema/properties-file';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { CapabilityBroker } from './capability-broker.js';
 import { createCapabilityBroker } from './capability-broker.js';
 import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
@@ -431,16 +436,25 @@ describe('loadNodePlugin', () => {
 
     it('removes registered properties when manifest registration loses a race', async () => {
         const pluginDir = join(tempDir, 'manifest-race-property-plugin');
+        const manifestId = 'com.sigil.manifest-race-property';
+        const existingPropertyKey = 'manifest-race-property-node.message';
+        const newPropertyKey = 'manifest-race-property-node.new';
         writePlugin(
             pluginDir,
             {
-                id: 'com.sigil.manifest-race-property',
+                id: manifestId,
                 version: '0.0.1',
                 permissions: [],
                 emits: ['x'],
                 nodeType: 'manifest-race-property-node',
             },
-            PROPERTY_PLUGIN_HANDLER.replaceAll('property-node', 'manifest-race-property-node'),
+            PROPERTY_PLUGIN_HANDLER.replaceAll(
+                'property-node',
+                'manifest-race-property-node',
+            ).replace(
+                `properties: [{ key: '${existingPropertyKey}', schema: z.string(), fallback: 'hello' }],`,
+                `properties: [{ key: '${existingPropertyKey}', schema: z.string(), fallback: 'hello' }, { key: '${newPropertyKey}', schema: z.boolean(), fallback: false }],`,
+            ),
         );
 
         const realManifestRegistry = createManifestRegistry();
@@ -450,18 +464,26 @@ describe('loadNodePlugin', () => {
         };
         const { handlerRegistry } = createRegistries();
         const propertyRegistry = createPropertyRegistry();
+        expect(
+            propertyRegistry.register(
+                definePropertyDescriptor(existingPropertyKey, z.string(), 'hello'),
+                { owner: manifestId },
+            ),
+        ).toMatchObject({ ok: true, registered: true });
 
         const result = await loadNodePlugin(pluginDir, {
             manifestRegistry,
             handlerRegistry,
             propertyRegistry,
+            allowExistingPropertyDescriptors: true,
         });
 
         expect(result).toMatchObject({
             ok: false,
-            error: { kind: 'duplicate', pluginId: 'com.sigil.manifest-race-property' },
+            error: { kind: 'duplicate', pluginId: manifestId },
         });
-        expect(propertyRegistry.has('manifest-race-property-node.message')).toBe(false);
+        expect(propertyRegistry.has(existingPropertyKey)).toBe(true);
+        expect(propertyRegistry.has(newPropertyKey)).toBe(false);
     });
 
     it('registers a trigger plugin with an activate method', async () => {
