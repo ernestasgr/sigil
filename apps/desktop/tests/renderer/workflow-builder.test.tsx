@@ -1,7 +1,9 @@
+import type { FileManagerConfig } from '@sigil/schema/nodes/file-manager';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBuilderStore } from '../../src/renderer/workflow-builder/builder-store.js';
+import { FileManagerConfigForm } from '../../src/renderer/workflow-builder/inspector/config-forms.js';
 import { PropertiesPanel } from '../../src/renderer/workflow-builder/inspector/properties-panel.js';
 import { DEFAULT_NODE_CATALOG } from '../../src/renderer/workflow-builder/node-catalog.js';
 import {
@@ -261,5 +263,30 @@ describe('Properties Panel in isolation', () => {
         expect(
             screen.getByText('Select a node on the canvas to inscribe its properties.'),
         ).toBeInTheDocument();
+    });
+});
+
+describe('File-manager config form renderer behavior', () => {
+    it('falls back to Skip when onConflict is omitted and preserves explicit values', () => {
+        const onChange = vi.fn();
+        const omittedConfig: FileManagerConfig = {
+            action: 'move',
+            destination: '/',
+        };
+        const { rerender } = render(
+            <FileManagerConfigForm config={omittedConfig} onChange={onChange} />,
+        );
+
+        const conflictSelect = screen.getByRole('combobox', { name: 'On conflict' });
+        expect(conflictSelect).toHaveValue('skip');
+
+        rerender(
+            <FileManagerConfigForm
+                config={{ ...omittedConfig, onConflict: 'overwrite' }}
+                onChange={onChange}
+            />,
+        );
+
+        expect(screen.getByRole('combobox', { name: 'On conflict' })).toHaveValue('overwrite');
     });
 });
