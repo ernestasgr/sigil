@@ -1,7 +1,11 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
 import type { NodeType, PipelineNode, UnknownNodeDescriptor } from '@sigil/schema/nodes';
 import type { SwitchConfig } from '@sigil/schema/nodes/switch';
-import type { CollisionSuffixStyle, ConflictPolicy } from '@sigil/schema/properties-file';
+import type {
+    CollisionSuffixStyle,
+    ConflictPolicy,
+    PropertyDescriptor,
+} from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import type { CapabilityBroker } from '../capability-broker.js';
 import type { BusEvent } from '../event-bus.js';
@@ -35,6 +39,8 @@ export interface NodeHandlerDeps {
     readonly bus: EventSink;
     /** Present for worker-backed Plugins; built-in Nodes use the Event Bus directly. */
     readonly event?: PluginEventSink;
+    /** Resolved Properties File values available to Plugin handlers. */
+    readonly properties?: Readonly<Record<string, unknown>>;
     /** Aborted when the owning Workflow run is cancelled or drained. */
     readonly signal?: AbortSignal;
     readonly sleep: Sleep;
@@ -72,9 +78,15 @@ export interface KernelDeps {
     readonly capabilityBroker: CapabilityBroker;
 }
 
+export type NodePluginProperties = PropertyDescriptor | readonly PropertyDescriptor[];
+
 export interface NodePluginModule {
-    readonly descriptor: UnknownNodeDescriptor;
+    readonly descriptor: UnknownNodeDescriptor & {
+        readonly properties?: NodePluginProperties;
+        readonly propertyDescriptors?: NodePluginProperties;
+    };
     readonly handler: NodeHandler | ((kernel: KernelDeps) => NodeHandler);
+    readonly properties?: NodePluginProperties;
 }
 
 export function narrowNode<K extends NodeType>(

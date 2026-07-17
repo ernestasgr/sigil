@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import type { ResolvedProperties } from './properties-file.js';
 import {
+    createPropertyRegistry,
     DEFAULT_IGNORE_PATTERNS,
     DEFAULT_PROPERTIES,
+    definePropertyDescriptor,
     loadPropertiesFile,
     PROPERTY_DESCRIPTORS,
     PropertiesFileSchema,
@@ -12,6 +15,26 @@ import {
 } from './properties-file.js';
 
 describe('Properties resolution', () => {
+    it('registers a Plugin descriptor into validation and default resolution', () => {
+        const registry = createPropertyRegistry();
+        const registration = registry.register(
+            definePropertyDescriptor('example-plugin.enabled', z.boolean(), false),
+        );
+
+        expect(registration.ok).toBe(true);
+        expect(registry.schema().safeParse({ 'example-plugin.enabled': true }).success).toBe(true);
+        expect(registry.schema().safeParse({ 'example-plugin.enabled': 'yes' }).success).toBe(
+            false,
+        );
+        expect(registry.resolveAll({})['example-plugin.enabled']).toBe(false);
+
+        const loaded = loadPropertiesFile({}, { 'example-plugin.enabled': true }, registry);
+        expect(loaded.ok).toBe(true);
+        if (loaded.ok) {
+            expect(loaded.value['example-plugin.enabled']).toBe(true);
+        }
+    });
+
     it('prefers an explicit value over the Properties File value', () => {
         expect(
             resolve('notifyOnWorkflowError', {

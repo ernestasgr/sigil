@@ -28,6 +28,7 @@ export interface ExecutorSettings {
     readonly notifyOnWorkflowError: boolean;
     readonly collisionSuffixStyle: CollisionSuffixStyle;
     readonly fileManager?: FileManagerExecutorSettings;
+    readonly properties?: Readonly<Record<string, unknown>>;
 }
 
 export interface FileManagerExecutorSettings {
@@ -263,6 +264,7 @@ export async function executeValidatedWorkflow(
             capabilityBroker: capabilityBroker ?? createDenyAllCapabilityBroker(),
             collisionSuffixStyle: settings.collisionSuffixStyle,
             fileManager: settings.fileManager,
+            properties: settings.properties,
             signal: executionOptions.signal,
         };
 

@@ -6,6 +6,10 @@ import vm from 'node:vm';
 import { parentPort, workerData } from 'node:worker_threads';
 import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
 import type { PluginPipelineNode } from '@sigil/schema/nodes';
+import {
+    type AnyPropertyDescriptor,
+    serializePropertyDescriptor,
+} from '@sigil/schema/properties-file';
 import { type WorkflowContext, WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { Either } from 'effect';
 import { z } from 'zod';
@@ -24,6 +28,7 @@ import {
     type NodePluginDepsRpcOperation,
     type NodePluginDepsRpcRequest,
     NodePluginMainToWorkerSchema,
+    type NodePluginPropertyError,
     type NodePluginWorkerCallbackInvoke,
     type NodePluginWorkerExecuteRequest,
     NodePluginWorkerKind,
@@ -73,6 +78,10 @@ function isCallable(value: unknown): value is Callable {
     return typeof value === 'function';
 }
 
+function isZodSchema(value: unknown): value is z.ZodType {
+    return isRecord(value) && isCallable(value.safeParse);
+}
+
 function createLiveFunctionProxy(getCurrent: () => unknown, name: string): Callable {
     const target = function (this: unknown, ...args: unknown[]): unknown {
         const current = getCurrent();
@@ -110,11 +119,14 @@ function createLiveFunctionProxy(getCurrent: () => unknown, name: string): Calla
 interface RawPluginDescriptor {
     readonly type: string;
     readonly configSchema: { readonly safeParse: (value: unknown) => unknown };
+    readonly properties?: unknown;
+    readonly propertyDescriptors?: unknown;
 }
 
 interface RawPluginModule {
     readonly descriptor: RawPluginDescriptor;
     readonly handler: unknown;
+    readonly properties?: unknown;
 }
 
 function isRawPluginDescriptor(value: unknown): value is RawPluginDescriptor {
@@ -128,6 +140,104 @@ function isRawPluginDescriptor(value: unknown): value is RawPluginDescriptor {
 
 function isNodeHandler(value: unknown): value is NodeHandler {
     return isRecord(value) && isCallable(value.execute);
+}
+
+function collectDeclaredProperties(
+    value: unknown,
+    indexOffset: number,
+):
+    | { readonly ok: true; readonly values: readonly unknown[] }
+    | { readonly ok: false; readonly error: NodePluginPropertyError } {
+    if (value === undefined) return { ok: true, values: [] };
+    if (isRecord(value) && 'key' in value) {
+        return { ok: true, values: [value] };
+    }
+    if (!Array.isArray(value)) {
+        return {
+            ok: false,
+            error: {
+                kind: 'invalid',
+                index: indexOffset,
+                message: 'Plugin properties must be an array of property descriptors.',
+            },
+        };
+    }
+    return { ok: true, values: value };
+}
+
+function serializePluginProperties(mod: RawPluginModule):
+    | {
+          readonly ok: true;
+          readonly descriptors: readonly ReturnType<typeof serializePropertyDescriptor>[];
+      }
+    | { readonly ok: false; readonly error: NodePluginPropertyError } {
+    const propertySources = [
+        mod.descriptor.properties,
+        mod.descriptor.propertyDescriptors,
+        mod.properties,
+    ];
+    const declared: unknown[] = [];
+    for (const source of propertySources) {
+        const result = collectDeclaredProperties(source, declared.length);
+        if (!result.ok) {
+            return result;
+        }
+        declared.push(...result.values);
+    }
+
+    const keys = new Set<string>();
+    const descriptors: ReturnType<typeof serializePropertyDescriptor>[] = [];
+    for (const [index, value] of declared.entries()) {
+        if (
+            !isRecord(value) ||
+            typeof value.key !== 'string' ||
+            value.key.length === 0 ||
+            !isZodSchema(value.schema)
+        ) {
+            return {
+                ok: false,
+                error: {
+                    kind: 'invalid',
+                    index,
+                    key: isRecord(value) && typeof value.key === 'string' ? value.key : undefined,
+                    message: 'Plugin property descriptors require a key and Zod schema.',
+                },
+            };
+        }
+        if (keys.has(value.key)) {
+            return {
+                ok: false,
+                error: {
+                    kind: 'duplicate',
+                    index,
+                    key: value.key,
+                    message: `Plugin declares property "${value.key}" more than once.`,
+                },
+            };
+        }
+        keys.add(value.key);
+
+        try {
+            const descriptor: AnyPropertyDescriptor = {
+                key: value.key,
+                schema: value.schema,
+                fallback: value.fallback,
+            };
+            descriptors.push(serializePropertyDescriptor(descriptor));
+        } catch (error) {
+            return {
+                ok: false,
+                error: {
+                    kind: 'invalid',
+                    index,
+                    key: value.key,
+                    message: error instanceof Error ? error.message : String(error),
+                },
+            };
+        }
+    }
+
+    return { ok: true, descriptors };
 }
 
 function assertNever(value: never): never {
@@ -270,6 +380,7 @@ function createProxiedDeps(
     executeRequestId: string,
     collisionSuffixStyle: NodeHandlerDeps['collisionSuffixStyle'] = undefined,
     fileManager: NodeHandlerDeps['fileManager'] = undefined,
+    properties: NodeHandlerDeps['properties'] = undefined,
 ): NodeHandlerDeps {
     const emit = remoteCall<'event.emit', Promise<void>>('event.emit', executeRequestId);
     const next: NodeHandlerDeps['bus']['next'] = (value: PluginBusEvent) => {
@@ -326,6 +437,7 @@ function createProxiedDeps(
         },
         collisionSuffixStyle,
         fileManager,
+        properties,
     };
 }
 
@@ -545,7 +657,11 @@ async function loadHandler(): Promise<RawPluginModule> {
         throw new Error('Plugin module must export a handler object or factory function');
     }
 
-    return { descriptor, handler };
+    return {
+        descriptor,
+        handler,
+        ...(pluginExports.properties === undefined ? {} : { properties: pluginExports.properties }),
+    };
 }
 
 // ─── Load handler ─────────────────────────────────────────────
@@ -559,6 +675,16 @@ async function main(): Promise<void> {
         send({
             kind: NodePluginWorkerKind.LoadError,
             error: err instanceof Error ? err.message : String(err),
+        });
+        return;
+    }
+
+    const serializedProperties = serializePluginProperties(mod);
+    if (!serializedProperties.ok) {
+        send({
+            kind: NodePluginWorkerKind.LoadError,
+            error: serializedProperties.error.message,
+            propertyError: serializedProperties.error,
         });
         return;
     }
@@ -603,6 +729,9 @@ async function main(): Promise<void> {
         kind: NodePluginWorkerKind.Loaded,
         descriptorType,
         isTrigger,
+        ...(serializedProperties.descriptors.length === 0
+            ? {}
+            : { propertyDescriptors: serializedProperties.descriptors }),
     });
 
     // ─── Handle incoming messages ─────────────────────────
@@ -718,6 +847,7 @@ async function handleExecute(
             msg.requestId,
             msg.deps?.collisionSuffixStyle,
             msg.deps?.fileManager,
+            msg.deps?.properties,
         );
         const result = await handler.execute({ node, ctx: parsedContext.data }, deps);
         sendResult(result);

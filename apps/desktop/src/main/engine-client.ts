@@ -479,9 +479,10 @@ export function spawnEngine(): EngineHandle {
         readProperties(
             timeoutMs = EngineCommandContracts.readProperties.timeoutMs,
         ): Promise<RendererResponse<'readProperties'>> {
-            return client
-                .request('readProperties', {}, timeoutMs)
-                .then((response) => response.properties);
+            return client.request('readProperties', {}, timeoutMs).then((response) => ({
+                properties: response.properties,
+                ...(response.defaults === undefined ? {} : { defaults: response.defaults }),
+            }));
         },
         saveProperties(
             payload: EngineRequestPayload<'saveProperties'>,

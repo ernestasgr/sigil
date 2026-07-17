@@ -120,6 +120,14 @@ for (const result of pluginResults) {
             Match.when({ kind: 'duplicate_type' }, (e) =>
                 log(`Plugin load failed (${e.dir}): duplicate type — ${e.nodeType}`),
             ),
+            Match.when({ kind: 'invalid_property_descriptor' }, (e) =>
+                log(
+                    `Plugin load failed (${e.dir}): invalid property descriptor${e.key === undefined ? '' : ` "${e.key}"`} — ${e.error}`,
+                ),
+            ),
+            Match.when({ kind: 'duplicate_property' }, (e) =>
+                log(`Plugin load failed (${e.dir}): duplicate property — ${e.key}`),
+            ),
             Match.when({ kind: 'missing_manifest' }, (e) =>
                 log(`Plugin load failed (${e.dir}): missing manifest`),
             ),

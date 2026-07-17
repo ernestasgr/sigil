@@ -12,11 +12,25 @@ import { SectionShell } from '../components/section-shell.js';
 import { Button } from '../components/ui/button.js';
 import { useSigil } from '../lib/use-sigil.js';
 import { useAppStore } from '../store/app-store.js';
+import { propertiesTemplateFromDefaults } from './properties-template.js';
 
 const ALL_CAPABILITIES = CapabilitySchema.options;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizePropertiesReadResult(value: Record<string, unknown>): {
+    readonly properties: Record<string, unknown>;
+    readonly defaults: Readonly<Record<string, unknown>>;
+} {
+    if (isRecord(value.properties)) {
+        return {
+            properties: value.properties,
+            defaults: isRecord(value.defaults) ? value.defaults : ENGINE_DEFAULTS,
+        };
+    }
+    return { properties: value, defaults: ENGINE_DEFAULTS };
 }
 
 function persistenceErrorMessage(
@@ -188,27 +202,20 @@ function PluginPermissionsCard({
     );
 }
 
-const DEFAULT_PROPERTIES_TEMPLATE: Record<string, unknown> = {
-    notifyOnWorkflowError: ENGINE_DEFAULTS.notifyOnWorkflowError,
-    databasePath: ENGINE_DEFAULTS.databasePath,
-    collisionSuffixStyle: ENGINE_DEFAULTS.collisionSuffixStyle,
-    'file-watcher.ignorePatterns': ['*.crdownload', '*.part', '*.tmp', '*.download'],
-    'file-manager.defaultOnConflict': 'error',
-    'file-manager.collisionSuffixStyle': ENGINE_DEFAULTS.collisionSuffixStyle,
-};
-
 function PropertiesEditor({
     properties,
+    defaults,
     onSave,
     onCancel,
 }: {
     readonly properties: Record<string, unknown>;
+    readonly defaults: Readonly<Record<string, unknown>>;
     readonly onSave: (props: Record<string, unknown>) => void;
     readonly onCancel: () => void;
 }): ReactElement {
     const [jsonText, setJsonText] = useState(() => {
         if (Object.keys(properties).length === 0) {
-            return JSON.stringify(DEFAULT_PROPERTIES_TEMPLATE, null, 4);
+            return propertiesTemplateFromDefaults(defaults);
         }
         return JSON.stringify(properties, null, 4);
     });
@@ -221,12 +228,12 @@ function PropertiesEditor({
             return;
         }
         if (Object.keys(properties).length === 0) {
-            setJsonText(JSON.stringify(DEFAULT_PROPERTIES_TEMPLATE, null, 4));
+            setJsonText(propertiesTemplateFromDefaults(defaults));
         } else {
             setJsonText(JSON.stringify(properties, null, 4));
         }
         setError(null);
-    }, [properties]);
+    }, [defaults, properties]);
 
     const handleSave = (): void => {
         try {
@@ -311,8 +318,10 @@ function PropertiesFilePanel({
     onSave,
     onCancel,
     properties,
+    defaults,
 }: {
     readonly properties: Record<string, unknown>;
+    readonly defaults: Readonly<Record<string, unknown>>;
     readonly onSave: (props: Record<string, unknown>) => void;
     readonly onCancel: () => void;
 }): ReactElement {
@@ -326,7 +335,12 @@ function PropertiesFilePanel({
                 <code className="font-data text-gilt">sigil.properties.json</code> and are picked up
                 by the Engine&apos;s resolution order.
             </p>
-            <PropertiesEditor properties={properties} onSave={onSave} onCancel={onCancel} />
+            <PropertiesEditor
+                properties={properties}
+                defaults={defaults}
+                onSave={onSave}
+                onCancel={onCancel}
+            />
         </div>
     );
 }
@@ -595,6 +609,8 @@ export function SettingsSection(): ReactElement {
     const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
     const [pluginsLoading, setPluginsLoading] = useState(true);
     const [properties, setProperties] = useState<Record<string, unknown>>({});
+    const [propertyDefaults, setPropertyDefaults] =
+        useState<Readonly<Record<string, unknown>>>(ENGINE_DEFAULTS);
     const [propertiesLoading, setPropertiesLoading] = useState(true);
     const [persistenceError, setPersistenceError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'permissions' | 'properties' | 'workflow-state'>(
@@ -614,8 +630,15 @@ export function SettingsSection(): ReactElement {
             .finally(() => setPluginsLoading(false));
         sigil
             .readProperties()
-            .then(setProperties)
-            .catch(() => setProperties({}))
+            .then((result) => {
+                const snapshot = normalizePropertiesReadResult(result);
+                setProperties(snapshot.properties);
+                setPropertyDefaults(snapshot.defaults);
+            })
+            .catch(() => {
+                setProperties({});
+                setPropertyDefaults(ENGINE_DEFAULTS);
+            })
             .finally(() => setPropertiesLoading(false));
     }, [sigil]);
 
@@ -745,6 +768,7 @@ export function SettingsSection(): ReactElement {
                     ) : (
                         <PropertiesFilePanel
                             properties={properties}
+                            defaults={propertyDefaults}
                             onSave={handlePropertiesSave}
                             onCancel={handlePropertiesCancel}
                         />

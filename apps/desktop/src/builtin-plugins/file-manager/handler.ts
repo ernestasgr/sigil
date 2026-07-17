@@ -5,6 +5,7 @@ import {
     type CollisionSuffixStyle,
     type ConflictPolicy,
     DEFAULT_PROPERTIES,
+    PROPERTY_DESCRIPTORS,
 } from '@sigil/schema/properties-file';
 import { Either } from 'effect';
 
@@ -167,6 +168,10 @@ export const descriptor = {
     configSchema: FileManagerConfigSchema,
     defaultConfig: { action: 'move', destination: '/', onConflict: 'skip' },
     getOutputPorts: () => ['out'] as const,
+    properties: [
+        PROPERTY_DESCRIPTORS['file-manager.defaultOnConflict'],
+        PROPERTY_DESCRIPTORS['file-manager.collisionSuffixStyle'],
+    ],
 };
 
 export const handler: NodeHandler = {
