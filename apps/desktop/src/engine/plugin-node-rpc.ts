@@ -8,7 +8,7 @@ import {
 } from '@sigil/schema/properties-file';
 import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { z } from 'zod';
-
+import { WorkflowStatePrimitiveSchema } from '../shared/ipc-channels.js';
 import { SubscriberRegistrationSchema } from './file-watcher-manager.js';
 
 export const NodePluginWorkerKind = {
@@ -128,7 +128,7 @@ export const NodePluginDepsRpcSchema = z.discriminatedUnion('operation', [
     }),
     NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('state.set'),
-        args: z.tuple([z.string(), z.string()]),
+        args: z.tuple([z.string(), WorkflowStatePrimitiveSchema]),
     }),
     NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('state.flush'),

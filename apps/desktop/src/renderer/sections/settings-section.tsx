@@ -345,6 +345,21 @@ function PropertiesFilePanel({
     );
 }
 
+function workflowStateEntryText(entry: WorkflowStateEntry): string {
+    switch (entry.type) {
+        case 'string':
+            return entry.value;
+        case 'number':
+            return entry.value.toString();
+        case 'boolean':
+            return entry.value ? 'true' : 'false';
+        default: {
+            const unreachable: never = entry;
+            throw new Error(`Unhandled Workflow State entry: ${JSON.stringify(unreachable)}`);
+        }
+    }
+}
+
 function WorkflowStateCard({
     workflow,
     entries,
@@ -443,8 +458,11 @@ function WorkflowStateCard({
                                             <span className="font-ui text-gilt text-[10px] tracking-wider uppercase">
                                                 {entry.key}
                                             </span>
-                                            <span className="font-data text-parchment break-all text-xs">
-                                                {entry.value}
+                                            <span
+                                                className="font-data text-parchment break-all text-xs"
+                                                data-value-type={entry.type}
+                                            >
+                                                {workflowStateEntryText(entry)}
                                             </span>
                                         </div>
                                         <div className="flex shrink-0 flex-col gap-1">
@@ -452,7 +470,7 @@ function WorkflowStateCard({
                                                 type="button"
                                                 onClick={() => {
                                                     setEditingKey(entry.key);
-                                                    setEditValue(entry.value);
+                                                    setEditValue(workflowStateEntryText(entry));
                                                 }}
                                                 className="font-ui text-gilt hover:text-gilt/80 text-[10px] tracking-widest uppercase transition-colors"
                                             >
@@ -539,10 +557,15 @@ function WorkflowStatePanel({
                     setStateMap((prev) => {
                         const entries = prev[workflowId] ?? [];
                         const existing = entries.findIndex((e) => e.key === key);
+                        const updatedEntry: WorkflowStateEntry = {
+                            key,
+                            type: 'string',
+                            value,
+                        };
                         const updated =
                             existing >= 0
-                                ? entries.map((e) => (e.key === key ? { ...e, value } : e))
-                                : [...entries, { key, value }];
+                                ? entries.map((e) => (e.key === key ? updatedEntry : e))
+                                : [...entries, updatedEntry];
                         return { ...prev, [workflowId]: updated };
                     });
                 }

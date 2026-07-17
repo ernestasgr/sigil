@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
     createInMemoryWorkflowStateStore,
     createWorkflowStateStore,
+    type WorkflowStatePrimitive,
     type WorkflowStateStore,
 } from './workflow-state.js';
 
@@ -81,7 +82,10 @@ const stateOperationArbitrary: fc.Arbitrary<StateOperation> = fc.oneof(
     fc.constant({ kind: 'flushAll' as const }),
 );
 
-function assertOptionEquivalent(left: Option.Option<string>, right: Option.Option<string>): void {
+function assertOptionEquivalent(
+    left: Option.Option<WorkflowStatePrimitive>,
+    right: Option.Option<WorkflowStatePrimitive>,
+): void {
     expect(Option.isSome(left)).toBe(Option.isSome(right));
     if (Option.isSome(left) && Option.isSome(right)) {
         expect(left.value).toBe(right.value);

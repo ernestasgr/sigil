@@ -911,7 +911,9 @@ describe('dispatch', () => {
 
     it('routes ReadWorkflowState and posts entries', () => {
         const { subsystems, postMessage, engine } = createFakeSubsystems();
-        engine.workflowStateStore.listKeys.mockReturnValue([{ key: 'k1', value: 'v1' }]);
+        engine.workflowStateStore.listKeys.mockReturnValue([
+            { key: 'k1', type: 'string', value: 'v1' },
+        ]);
 
         const message: EngineReadWorkflowState = {
             type: EngineChannel.ReadWorkflowState,
@@ -924,7 +926,7 @@ describe('dispatch', () => {
         expect(postMessage).toHaveBeenCalledWith({
             type: EngineChannel.ReadWorkflowStateResult,
             correlationId: 'corr-10',
-            entries: [{ key: 'k1', value: 'v1' }],
+            entries: [{ key: 'k1', type: 'string', value: 'v1' }],
         });
     });
 
