@@ -53,16 +53,20 @@ function runWorkflowStateContract(store: WorkflowStateStore): void {
     expect(first.get('empty')).toEqual(Option.some(''));
     expect(store.listKeys('wf-contract-a')).toEqual(
         expect.arrayContaining([
-            { key: 'empty', value: '' },
-            { key: 'value', value: 'a-value' },
+            { key: 'empty', type: 'string', value: '' },
+            { key: 'value', type: 'string', value: 'a-value' },
         ]),
     );
-    expect(store.listKeys('wf-contract-b')).toEqual([{ key: 'survivor', value: 'b-value' }]);
+    expect(store.listKeys('wf-contract-b')).toEqual([
+        { key: 'survivor', type: 'string', value: 'b-value' },
+    ]);
 
     store.deleteWorkflow('wf-contract-a');
 
     expect(store.listKeys('wf-contract-a')).toEqual([]);
-    expect(store.listKeys('wf-contract-b')).toEqual([{ key: 'survivor', value: 'b-value' }]);
+    expect(store.listKeys('wf-contract-b')).toEqual([
+        { key: 'survivor', type: 'string', value: 'b-value' },
+    ]);
 }
 
 describe('Persistence restart contract', () => {

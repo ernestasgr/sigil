@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import Database from 'better-sqlite3';
 import { Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -26,12 +30,103 @@ describe('createWorkflowStateStore — get/set', () => {
 
         store.forWorkflow('wf-a').set('k', 'a-value');
         store.forWorkflow('wf-b').set('k', 'b-value');
+        store.forWorkflow('wf-a').set('count', 0);
+        store.forWorkflow('wf-b').set('enabled', false);
 
         expect(Option.getOrThrow(store.forWorkflow('wf-a').get('k'))).toBe('a-value');
         expect(Option.getOrThrow(store.forWorkflow('wf-b').get('k'))).toBe('b-value');
+        expect(Option.getOrThrow(store.forWorkflow('wf-a').get('count'))).toBe(0);
+        expect(Option.getOrThrow(store.forWorkflow('wf-b').get('enabled'))).toBe(false);
 
         store.dispose();
         database.close();
+    });
+
+    it.each([
+        ['string', 'value'],
+        ['number', 42],
+        ['true', true],
+        ['false', false],
+    ] as const)('round-trips a %s value through SQLite', (_kind, value) => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        const state = store.forWorkflow('wf-a');
+
+        state.set('typed', value);
+        expect(state.get('typed')).toEqual(Option.some(value));
+
+        state.flush();
+        const reader = createStore(database);
+        expect(reader.forWorkflow('wf-a').get('typed')).toEqual(Option.some(value));
+
+        store.dispose();
+        reader.dispose();
+        database.close();
+    });
+
+    it('stores typed values as marked versioned envelopes in the existing text column', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        store.forWorkflow('wf-a').set('typed', 42);
+        store.forWorkflow('wf-a').flush();
+
+        expect(
+            database
+                .prepare('SELECT value FROM workflow_state WHERE workflow_id = ? AND key = ?')
+                .get('wf-a', 'typed'),
+        ).toEqual({
+            value: JSON.stringify({
+                format: 'sigil.workflow-state',
+                version: 1,
+                type: 'number',
+                value: 42,
+            }),
+        });
+
+        store.dispose();
+        database.close();
+    });
+
+    it('reads legacy bare strings without re-typing them', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        database
+            .prepare('INSERT INTO workflow_state (workflow_id, key, value) VALUES (?, ?, ?)')
+            .run('wf-a', 'empty', '');
+        database
+            .prepare('INSERT INTO workflow_state (workflow_id, key, value) VALUES (?, ?, ?)')
+            .run('wf-a', 'number-looking', '42');
+        database
+            .prepare('INSERT INTO workflow_state (workflow_id, key, value) VALUES (?, ?, ?)')
+            .run('wf-a', 'boolean-looking', 'false');
+
+        const state = store.forWorkflow('wf-a');
+        expect(state.get('empty')).toEqual(Option.some(''));
+        expect(state.get('number-looking')).toEqual(Option.some('42'));
+        expect(state.get('boolean-looking')).toEqual(Option.some('false'));
+
+        store.dispose();
+        database.close();
+    });
+
+    it('preserves typed values across SQLite close and reopen', () => {
+        const storageDir = mkdtempSync(join(tmpdir(), 'sigil-workflow-state-'));
+        const databasePath = join(storageDir, 'state.db');
+
+        const database = new Database(databasePath);
+        const writer = createStore(database);
+        writer.forWorkflow('wf-a').set('count', 42);
+        writer.forWorkflow('wf-a').set('enabled', false);
+        writer.dispose();
+        database.close();
+
+        const reopenedDatabase = new Database(databasePath);
+        const reader = createStore(reopenedDatabase);
+        expect(reader.forWorkflow('wf-a').get('count')).toEqual(Option.some(42));
+        expect(reader.forWorkflow('wf-a').get('enabled')).toEqual(Option.some(false));
+        reader.dispose();
+        reopenedDatabase.close();
+        rmSync(storageDir, { recursive: true, force: true });
     });
 
     it('round-trips an empty string through SQLite as a present value', () => {
@@ -279,7 +374,7 @@ describe('createWorkflowStateStore — listKeys / setKey / deleteKey', () => {
         const database = new Database(':memory:');
         const store = createStore(database);
         store.setKey('wf-a', 'k', 'v');
-        expect(store.listKeys('wf-a')).toEqual([{ key: 'k', value: 'v' }]);
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'k', type: 'string', value: 'v' }]);
         store.dispose();
         database.close();
     });
@@ -289,7 +384,7 @@ describe('createWorkflowStateStore — listKeys / setKey / deleteKey', () => {
         const store = createStore(database);
         store.setKey('wf-a', 'k', 'first');
         store.setKey('wf-a', 'k', 'second');
-        expect(store.listKeys('wf-a')).toEqual([{ key: 'k', value: 'second' }]);
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'k', type: 'string', value: 'second' }]);
         store.dispose();
         database.close();
     });
@@ -299,7 +394,7 @@ describe('createWorkflowStateStore — listKeys / setKey / deleteKey', () => {
         const writer = createStore(database);
         writer.setKey('wf-a', 'k', 'persisted');
         const reader = createStore(database);
-        expect(reader.listKeys('wf-a')).toEqual([{ key: 'k', value: 'persisted' }]);
+        expect(reader.listKeys('wf-a')).toEqual([{ key: 'k', type: 'string', value: 'persisted' }]);
         writer.dispose();
         reader.dispose();
         database.close();
@@ -338,8 +433,8 @@ describe('createWorkflowStateStore — listKeys / setKey / deleteKey', () => {
         const store = createStore(database);
         store.setKey('wf-a', 'ka', 'a');
         store.setKey('wf-b', 'kb', 'b');
-        expect(store.listKeys('wf-a')).toEqual([{ key: 'ka', value: 'a' }]);
-        expect(store.listKeys('wf-b')).toEqual([{ key: 'kb', value: 'b' }]);
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'ka', type: 'string', value: 'a' }]);
+        expect(store.listKeys('wf-b')).toEqual([{ key: 'kb', type: 'string', value: 'b' }]);
         store.dispose();
         database.close();
     });
@@ -356,7 +451,7 @@ describe('createWorkflowStateStore — listKeys / setKey / deleteKey', () => {
         store.flushAll();
 
         expect(store.listKeys('wf-a')).toEqual([]);
-        expect(store.listKeys('wf-b')).toEqual([{ key: 'survivor', value: 'b' }]);
+        expect(store.listKeys('wf-b')).toEqual([{ key: 'survivor', type: 'string', value: 'b' }]);
 
         store.dispose();
         database.close();
@@ -376,7 +471,7 @@ describe('createWorkflowStateStore — listKeys / setKey / deleteKey', () => {
         database.exec('DROP TRIGGER fail_workflow_state_delete');
         store.flushAll();
 
-        expect(store.listKeys('wf-a')).toEqual([{ key: 'persisted', value: 'a' }]);
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'persisted', type: 'string', value: 'a' }]);
 
         store.dispose();
         database.close();
@@ -384,6 +479,27 @@ describe('createWorkflowStateStore — listKeys / setKey / deleteKey', () => {
 });
 
 describe('createInMemoryWorkflowStateStore — listKeys / setKey / deleteKey', () => {
+    it.each([
+        ['string', 'value'],
+        ['number', 0],
+        ['true', true],
+        ['false', false],
+    ] as const)('round-trips a %s value without SQLite', (_kind, value) => {
+        const store = createInMemoryWorkflowStateStore();
+        const state = store.forWorkflow('wf-a');
+
+        state.set('typed', value);
+
+        expect(state.get('typed')).toEqual(Option.some(value));
+        expect(store.listKeys('wf-a')).toEqual([
+            {
+                key: 'typed',
+                type: typeof value,
+                value,
+            },
+        ]);
+    });
+
     it('round-trips missing, empty, and non-empty values consistently', () => {
         const store = createInMemoryWorkflowStateStore();
         const state = store.forWorkflow('wf-a');
@@ -404,14 +520,14 @@ describe('createInMemoryWorkflowStateStore — listKeys / setKey / deleteKey', (
     it('setKey writes a key and listKeys returns it', () => {
         const store = createInMemoryWorkflowStateStore();
         store.setKey('wf-a', 'k', 'v');
-        expect(store.listKeys('wf-a')).toEqual([{ key: 'k', value: 'v' }]);
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'k', type: 'string', value: 'v' }]);
     });
 
     it('setKey overwrites an existing key', () => {
         const store = createInMemoryWorkflowStateStore();
         store.setKey('wf-a', 'k', 'first');
         store.setKey('wf-a', 'k', 'second');
-        expect(store.listKeys('wf-a')).toEqual([{ key: 'k', value: 'second' }]);
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'k', type: 'string', value: 'second' }]);
     });
 
     it('deleteKey removes a key', () => {
@@ -430,8 +546,8 @@ describe('createInMemoryWorkflowStateStore — listKeys / setKey / deleteKey', (
         const store = createInMemoryWorkflowStateStore();
         store.setKey('wf-a', 'ka', 'a');
         store.setKey('wf-b', 'kb', 'b');
-        expect(store.listKeys('wf-a')).toEqual([{ key: 'ka', value: 'a' }]);
-        expect(store.listKeys('wf-b')).toEqual([{ key: 'kb', value: 'b' }]);
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'ka', type: 'string', value: 'a' }]);
+        expect(store.listKeys('wf-b')).toEqual([{ key: 'kb', type: 'string', value: 'b' }]);
     });
 
     it('deletes pending state for one Workflow without touching another', () => {
@@ -444,6 +560,6 @@ describe('createInMemoryWorkflowStateStore — listKeys / setKey / deleteKey', (
 
         expect(state.get('removed')).toEqual(Option.none());
         expect(store.listKeys('wf-a')).toEqual([]);
-        expect(store.listKeys('wf-b')).toEqual([{ key: 'survivor', value: 'b' }]);
+        expect(store.listKeys('wf-b')).toEqual([{ key: 'survivor', type: 'string', value: 'b' }]);
     });
 });

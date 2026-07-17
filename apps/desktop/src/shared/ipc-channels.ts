@@ -75,12 +75,58 @@ export type WorkflowDeleteOutcome = z.infer<typeof WorkflowDeleteOutcomeSchema>;
 const NodePositionSchema = z.object({ x: z.number(), y: z.number() }).readonly();
 export const NodePositionRecordSchema = z.record(z.string(), NodePositionSchema).readonly();
 
-const WorkflowStateEntrySchema = z
+const WorkflowStateStringValueSchema = z
     .object({
-        key: z.string(),
+        type: z.literal('string'),
         value: z.string(),
     })
     .readonly();
+const WorkflowStateNumberValueSchema = z
+    .object({
+        type: z.literal('number'),
+        value: z.number().finite(),
+    })
+    .readonly();
+const WorkflowStateBooleanValueSchema = z
+    .object({
+        type: z.literal('boolean'),
+        value: z.boolean(),
+    })
+    .readonly();
+
+export const WorkflowStateValueSchema = z.discriminatedUnion('type', [
+    WorkflowStateStringValueSchema,
+    WorkflowStateNumberValueSchema,
+    WorkflowStateBooleanValueSchema,
+]);
+export type WorkflowStateValue = z.infer<typeof WorkflowStateValueSchema>;
+export type WorkflowStatePrimitive = WorkflowStateValue['value'];
+export type WorkflowStateValueType = WorkflowStateValue['type'];
+export const WorkflowStatePrimitiveSchema = z.union([z.string(), z.number().finite(), z.boolean()]);
+
+const WorkflowStateEntrySchema = z.discriminatedUnion('type', [
+    z
+        .object({
+            key: z.string(),
+            type: z.literal('string'),
+            value: z.string(),
+        })
+        .readonly(),
+    z
+        .object({
+            key: z.string(),
+            type: z.literal('number'),
+            value: z.number().finite(),
+        })
+        .readonly(),
+    z
+        .object({
+            key: z.string(),
+            type: z.literal('boolean'),
+            value: z.boolean(),
+        })
+        .readonly(),
+]);
 
 export { WorkflowStateEntrySchema };
 export type WorkflowStateEntry = z.infer<typeof WorkflowStateEntrySchema>;

@@ -90,6 +90,7 @@ const responseArbitrary = fc.oneof(
         entries: fc.array(
             fc.record({
                 key: fc.constantFrom('alpha', 'beta'),
+                type: fc.constant('string'),
                 value: fc.string({ minLength: 0, maxLength: 12 }),
             }),
             { maxLength: 4 },

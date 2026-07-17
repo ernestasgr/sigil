@@ -16,6 +16,8 @@ import {
     MainToEngineMessageSchema,
     WorkerInboundSchema,
     WorkflowIdSchema,
+    WorkflowStateEntrySchema,
+    WorkflowStateValueSchema,
 } from './ipc-channels.js';
 
 describe('WorkerInboundSchema', () => {
@@ -316,6 +318,34 @@ describe('WorkflowIdSchema', () => {
         'C:\\tmp\\outside',
     ])('rejects a path-shaped identifier: %s', (id) => {
         expect(WorkflowIdSchema.safeParse(id).success).toBe(false);
+    });
+});
+
+describe('Workflow State schemas', () => {
+    it('accepts discriminated string, number, and boolean entries', () => {
+        expect(
+            WorkflowStateEntrySchema.array().safeParse([
+                { key: 'text', type: 'string', value: '42' },
+                { key: 'count', type: 'number', value: 42 },
+                { key: 'enabled', type: 'boolean', value: false },
+            ]).success,
+        ).toBe(true);
+    });
+
+    it('rejects a Workflow State value whose type and payload disagree', () => {
+        expect(WorkflowStateValueSchema.safeParse({ type: 'number', value: '42' }).success).toBe(
+            false,
+        );
+    });
+
+    it('rejects an untyped Engine-to-Main Workflow State entry', () => {
+        expect(
+            EngineToMainMessageSchema.safeParse({
+                type: EngineChannel.ReadWorkflowStateResult,
+                correlationId: 'corr-state',
+                entries: [{ key: 'count', value: 42 }],
+            }).success,
+        ).toBe(false);
     });
 });
 

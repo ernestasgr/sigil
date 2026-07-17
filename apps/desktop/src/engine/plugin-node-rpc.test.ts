@@ -72,6 +72,9 @@ const validCalls = [
     },
     { operation: 'state.get', args: ['key'] },
     { operation: 'state.set', args: ['key', 'value'] },
+    { operation: 'state.set', args: ['number-key', 42] },
+    { operation: 'state.set', args: ['true-key', true] },
+    { operation: 'state.set', args: ['false-key', false] },
     { operation: 'state.flush', args: [] },
     {
         operation: 'capabilityBroker.request',
