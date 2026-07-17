@@ -9,10 +9,248 @@ import {
     definePropertyDescriptor,
     loadPropertiesFile,
     PROPERTY_DESCRIPTORS,
+    PROPERTY_REGISTRY,
     PropertiesFileSchema,
+    registerPropertyDescriptor,
     resolve,
     resolveAll,
+    serializePropertyDescriptor,
 } from './properties-file.js';
+
+describe('Property registry', () => {
+    it('serializes a descriptor and restores it from JSON Schema', () => {
+        const descriptor = definePropertyDescriptor(
+            'example-plugin.enabled',
+            z.object({ enabled: z.boolean() }),
+            { enabled: false },
+        );
+        const serialized = serializePropertyDescriptor(descriptor);
+        const registry = createPropertyRegistry([]);
+
+        const registration = registry.register(serialized);
+
+        expect(registration).toMatchObject({
+            ok: true,
+            registered: true,
+            descriptor: { key: 'example-plugin.enabled', fallback: { enabled: false } },
+        });
+        expect(
+            registry.schema().safeParse({ 'example-plugin.enabled': { enabled: true } }).success,
+        ).toBe(true);
+        expect(registry.defaults()['example-plugin.enabled']).toEqual({ enabled: false });
+    });
+
+    it('reports invalid descriptor inputs without changing the registry', () => {
+        const registry = createPropertyRegistry([]);
+
+        expect(registry.register({ key: '', schema: z.string(), fallback: 'value' })).toMatchObject(
+            {
+                ok: false,
+                error: { kind: 'invalid_descriptor' },
+            },
+        );
+        expect(
+            registry.register({
+                key: 'invalid.schema',
+                schema: 42 as never,
+                fallback: 'value',
+            }),
+        ).toMatchObject({
+            ok: false,
+            error: {
+                kind: 'invalid_descriptor',
+                key: 'invalid.schema',
+            },
+        });
+        expect(
+            registry.register({
+                key: 'invalid.json-schema',
+                schema: { type: 'not-a-json-schema' },
+                fallback: 'value',
+            }),
+        ).toMatchObject({
+            ok: false,
+            error: {
+                kind: 'invalid_descriptor',
+                key: 'invalid.json-schema',
+            },
+        });
+        expect(
+            registry.register({
+                key: 'invalid.fallback',
+                schema: z.string(),
+                fallback: 42 as never,
+            }),
+        ).toMatchObject({
+            ok: false,
+            error: {
+                kind: 'invalid_descriptor',
+                key: 'invalid.fallback',
+            },
+        });
+        expect(registry.has('invalid.fallback')).toBe(false);
+        expect(() =>
+            serializePropertyDescriptor({
+                key: 'invalid.fallback',
+                schema: z.string(),
+                fallback: 42 as never,
+            }),
+        ).toThrow(/does not match its schema/);
+    });
+
+    it('only accepts an exact descriptor when allowing an existing key', () => {
+        const registry = createPropertyRegistry([]);
+        const descriptor = definePropertyDescriptor('example-plugin.mode', z.string(), 'safe');
+
+        expect(registry.register(descriptor)).toMatchObject({ ok: true, registered: true });
+        expect(registry.register(descriptor)).toMatchObject({
+            ok: false,
+            error: { kind: 'duplicate', key: 'example-plugin.mode' },
+        });
+        expect(registry.register(descriptor, { allowExisting: true })).toMatchObject({
+            ok: true,
+            registered: false,
+        });
+        expect(
+            registry.register(
+                definePropertyDescriptor('example-plugin.mode', z.string(), 'unsafe'),
+                { allowExisting: true },
+            ),
+        ).toMatchObject({
+            ok: false,
+            error: { kind: 'duplicate', key: 'example-plugin.mode' },
+        });
+        expect(
+            registry.register(definePropertyDescriptor('example-plugin.mode', z.number(), 1), {
+                allowExisting: true,
+            }),
+        ).toMatchObject({
+            ok: false,
+            error: { kind: 'duplicate', key: 'example-plugin.mode' },
+        });
+    });
+
+    it('rolls back a batch when a later descriptor is invalid or duplicated', () => {
+        const first = definePropertyDescriptor('example-plugin.first', z.string(), 'first');
+        const second = definePropertyDescriptor('example-plugin.second', z.number(), 2);
+        const registry = createPropertyRegistry([]);
+
+        expect(
+            registry.registerMany([
+                first,
+                {
+                    key: 'example-plugin.invalid',
+                    schema: z.string(),
+                    fallback: 42 as never,
+                },
+            ]),
+        ).toMatchObject({
+            ok: false,
+            error: { kind: 'invalid_descriptor', key: 'example-plugin.invalid' },
+        });
+        expect(registry.has(first.key)).toBe(false);
+
+        expect(registry.registerMany([first, first])).toMatchObject({
+            ok: false,
+            error: { kind: 'duplicate', key: first.key },
+        });
+        expect(registry.has(first.key)).toBe(false);
+
+        expect(registry.registerMany([first, second], { owner: 'example-plugin' })).toMatchObject({
+            ok: true,
+            registeredKeys: [first.key, second.key],
+        });
+        expect(registry.get(first.key)).toEqual(expect.objectContaining({ key: first.key }));
+        expect(registry.has(second.key)).toBe(true);
+        expect(registry.all().map((descriptor) => descriptor.key)).toEqual([first.key, second.key]);
+
+        registry.unregisterOwner('different-owner');
+        expect(registry.has(first.key)).toBe(true);
+        registry.unregisterOwner('example-plugin');
+        expect(registry.has(first.key)).toBe(false);
+        expect(registry.has(second.key)).toBe(false);
+        registry.unregister('missing-key');
+    });
+
+    it('resolves a registered key through explicit, file, caller fallback, and descriptor fallback values', () => {
+        const registry = createPropertyRegistry([
+            definePropertyDescriptor('example-plugin.mode', z.string(), 'hardcoded'),
+        ]);
+
+        expect(
+            registry.resolve('example-plugin.mode', {
+                explicit: 'explicit',
+                properties: { 'example-plugin.mode': 'from-file' },
+                fallback: 'caller-fallback',
+            }),
+        ).toBe('explicit');
+        expect(
+            registry.resolve('example-plugin.mode', {
+                properties: { 'example-plugin.mode': 'from-file' },
+                fallback: 'caller-fallback',
+            }),
+        ).toBe('from-file');
+        expect(
+            registry.resolve('example-plugin.mode', {
+                properties: {},
+                fallback: 'caller-fallback',
+            }),
+        ).toBe('caller-fallback');
+        expect(registry.resolve('example-plugin.mode', { properties: {} })).toBe('hardcoded');
+        expect(registry.resolve('missing-key', { properties: {} })).toBeUndefined();
+    });
+
+    it('refreshes its schema and defaults when a descriptor is removed', () => {
+        const registry = createPropertyRegistry([]);
+        const descriptor = definePropertyDescriptor('example-plugin.enabled', z.boolean(), false);
+
+        registry.register(descriptor);
+        expect(registry.schema().safeParse({ 'example-plugin.enabled': true }).success).toBe(true);
+        expect(registry.defaults()['example-plugin.enabled']).toBe(false);
+
+        registry.unregister(descriptor.key);
+
+        expect(registry.schema().safeParse({ 'example-plugin.enabled': true }).success).toBe(false);
+        expect(registry.defaults()).toEqual({});
+    });
+
+    it('rejects invalid or duplicate initial descriptors', () => {
+        const descriptor = definePropertyDescriptor('example-plugin.mode', z.string(), 'safe');
+
+        expect(() => createPropertyRegistry([descriptor, descriptor])).toThrow(
+            `Duplicate property "${descriptor.key}"`,
+        );
+        expect(() =>
+            createPropertyRegistry([
+                {
+                    key: 'example-plugin.invalid',
+                    schema: z.string(),
+                    fallback: 42 as never,
+                },
+            ]),
+        ).toThrow(/does not match its schema/);
+    });
+
+    it('registers a descriptor into the default schema through the public helper', () => {
+        const descriptor = definePropertyDescriptor(
+            'example-plugin.global-enabled',
+            z.boolean(),
+            false,
+        );
+
+        try {
+            expect(registerPropertyDescriptor(descriptor)).toMatchObject({
+                ok: true,
+                registered: true,
+            });
+            expect(
+                PropertiesFileSchema.safeParse({ 'example-plugin.global-enabled': true }).success,
+            ).toBe(true);
+        } finally {
+            PROPERTY_REGISTRY.unregister(descriptor.key);
+        }
+    });
+});
 
 describe('Properties resolution', () => {
     it('registers a Plugin descriptor into validation and default resolution', () => {

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { createPropertyRegistry } from '@sigil/schema/properties-file';
+import { createPropertyRegistry, type PropertyRegistry } from '@sigil/schema/properties-file';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CapabilityBroker } from './capability-broker.js';
@@ -123,6 +123,31 @@ export const handler = {
 };
 `;
 
+const ALL_PROPERTY_SOURCES_PLUGIN_HANDLER = `
+import { z } from 'zod';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'all-property-sources-node' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+    properties: [{ key: 'all-property-sources.descriptor', schema: z.string(), fallback: 'descriptor' }],
+    propertyDescriptors: [{ key: 'all-property-sources.propertyDescriptors', schema: z.boolean(), fallback: false }],
+};
+
+export const properties = [
+    { key: 'all-property-sources.module', schema: z.number(), fallback: 3 },
+];
+
+export const handler = {
+    async execute({ ctx }) {
+        return { outputCtx: ctx, activePort: 'out' };
+    },
+};
+`;
+
 describe('loadNodePlugin', () => {
     let tempDir: string;
 
@@ -187,6 +212,101 @@ describe('loadNodePlugin', () => {
             propertyRegistry.schema().safeParse({ 'property-node.message': 'configured' }).success,
         ).toBe(true);
         expect(propertyRegistry.resolveAll({})['property-node.message']).toBe('hello');
+    });
+
+    it('collects properties declared on the descriptor and module export', async () => {
+        const pluginDir = join(tempDir, 'all-property-sources-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.all-property-sources',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'all-property-sources-node',
+            },
+            ALL_PROPERTY_SOURCES_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const propertyRegistry = createPropertyRegistry();
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            propertyRegistry,
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.propertyDescriptors).toHaveLength(3);
+        }
+        expect(propertyRegistry.defaults()).toMatchObject({
+            'all-property-sources.descriptor': 'descriptor',
+            'all-property-sources.propertyDescriptors': false,
+            'all-property-sources.module': 3,
+        });
+    });
+
+    it('rejects a property-bearing plugin when no registry is supplied', async () => {
+        const pluginDir = join(tempDir, 'property-without-registry-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.property-without-registry',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'property-without-registry-node',
+            },
+            PROPERTY_PLUGIN_HANDLER.replaceAll('property-node', 'property-without-registry-node'),
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: {
+                kind: 'invalid_property_descriptor',
+                error: 'Plugin properties require a Property registry during loading.',
+            },
+        });
+        expect(manifestRegistry.has('com.sigil.property-without-registry')).toBe(false);
+    });
+
+    it('reports duplicate declarations from one plugin before registration', async () => {
+        const pluginDir = join(tempDir, 'duplicate-declared-property-plugin');
+        const duplicateHandler = PROPERTY_PLUGIN_HANDLER.replace(
+            "properties: [{ key: 'property-node.message', schema: z.string(), fallback: 'hello' }],",
+            "properties: [{ key: 'property-node.message', schema: z.string(), fallback: 'hello' }, { key: 'property-node.message', schema: z.string(), fallback: 'again' }],",
+        );
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.duplicate-declared-property',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'property-node',
+            },
+            duplicateHandler,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            propertyRegistry: createPropertyRegistry(),
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: {
+                kind: 'duplicate_property',
+                key: 'property-node.message',
+                index: 1,
+            },
+        });
     });
 
     it('returns a structured diagnostic for an invalid Plugin property descriptor', async () => {
@@ -266,6 +386,82 @@ describe('loadNodePlugin', () => {
             ok: false,
             error: { kind: 'duplicate_property', key: 'first-property-node.message' },
         });
+    });
+
+    it('surfaces a property-registry rejection without exposing an internal key', async () => {
+        const pluginDir = join(tempDir, 'registry-rejected-property-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.registry-rejected-property',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'registry-rejected-property-node',
+            },
+            PROPERTY_PLUGIN_HANDLER.replaceAll('property-node', 'registry-rejected-property-node'),
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const propertyRegistry = {
+            ...createPropertyRegistry(),
+            registerMany: () => ({
+                ok: false as const,
+                error: {
+                    kind: 'invalid_descriptor' as const,
+                    message: 'registry rejected the descriptor',
+                },
+            }),
+        } as unknown as PropertyRegistry;
+
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            propertyRegistry,
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: {
+                kind: 'invalid_property_descriptor',
+                error: 'registry rejected the descriptor',
+            },
+        });
+    });
+
+    it('removes registered properties when manifest registration loses a race', async () => {
+        const pluginDir = join(tempDir, 'manifest-race-property-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.manifest-race-property',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'manifest-race-property-node',
+            },
+            PROPERTY_PLUGIN_HANDLER.replaceAll('property-node', 'manifest-race-property-node'),
+        );
+
+        const realManifestRegistry = createManifestRegistry();
+        const manifestRegistry = {
+            ...realManifestRegistry,
+            register: () => Either.left('duplicate' as const),
+        };
+        const { handlerRegistry } = createRegistries();
+        const propertyRegistry = createPropertyRegistry();
+
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            propertyRegistry,
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: { kind: 'duplicate', pluginId: 'com.sigil.manifest-race-property' },
+        });
+        expect(propertyRegistry.has('manifest-race-property-node.message')).toBe(false);
     });
 
     it('registers a trigger plugin with an activate method', async () => {

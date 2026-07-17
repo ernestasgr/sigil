@@ -116,6 +116,8 @@ describe('createEngine', () => {
         expect(engine.bus).toBeDefined();
         expect(engine.bridge).toBeDefined();
         expect(engine.capabilityBroker).toBeDefined();
+        engine.registerBuiltinManifests();
+        engine.dispose();
     });
 
     it('runs the sample pipeline through execute and emits log.output on the bus', async () => {
