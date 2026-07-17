@@ -84,7 +84,7 @@ function resolveIgnorePatterns(
     if (subscriberConfig !== undefined) {
         return subscriberConfig;
     }
-    if (propertiesDefault !== undefined && propertiesDefault.length > 0) {
+    if (propertiesDefault !== undefined) {
         return propertiesDefault;
     }
     return DEFAULT_IGNORE_PATTERNS;

@@ -99,7 +99,9 @@ export function createEngine(options?: EngineOptions): Engine {
     const database = new Database(resolvedProperties.databasePath);
     const workflowStateStore = createWorkflowStateStore(database);
 
-    const fileWatcherManager = createFileWatcherManager();
+    const fileWatcherManager = createFileWatcherManager(
+        resolvedProperties['file-watcher.ignorePatterns'],
+    );
 
     const __filename = fileURLToPath(import.meta.url);
     const builtinPluginsDir = resolvePath(dirname(__filename), '../../src/builtin-plugins');
