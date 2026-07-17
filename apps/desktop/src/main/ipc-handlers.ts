@@ -258,12 +258,12 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
         renderer.readProperties,
         async (): Promise<RendererResponse<'readProperties'>> => {
             const engine = h.getEngine();
-            if (!engine) return {};
+            if (!engine) return { properties: {} };
             try {
                 return await engine.readProperties();
             } catch (err) {
                 console.error('[main] readProperties failed:', err);
-                return {};
+                return { properties: {} };
             }
         },
     );

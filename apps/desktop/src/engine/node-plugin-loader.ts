@@ -300,11 +300,16 @@ export async function loadNodePlugin(
         };
     }
 
+    const registeredPropertyKeys =
+        propertyRegistration?.ok === true ? propertyRegistration.registeredKeys : [];
+
     const registerResult = deps.manifestRegistry.register(manifest);
     if (Either.isLeft(registerResult)) {
         pluginWorkers.delete(manifest.id);
         worker.terminate().catch(() => {});
-        deps.propertyRegistry?.unregisterOwner(manifest.id);
+        for (const key of registeredPropertyKeys) {
+            deps.propertyRegistry?.unregister(key);
+        }
         return { ok: false, error: { kind: 'duplicate', dir: pluginDir, pluginId: manifest.id } };
     }
 
