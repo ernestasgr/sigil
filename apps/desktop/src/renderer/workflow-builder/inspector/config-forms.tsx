@@ -427,8 +427,9 @@ export function FileManagerConfigForm({
         { value: 'rename', label: 'Rename' },
         { value: 'copy', label: 'Copy' },
     ];
+    type ConflictPolicy = NonNullable<FileManagerConfig['onConflict']>;
     const CONFLICT_OPTIONS: {
-        readonly value: FileManagerConfig['onConflict'];
+        readonly value: ConflictPolicy;
         readonly label: string;
     }[] = [
         { value: 'skip', label: 'Skip' },
@@ -452,7 +453,7 @@ export function FileManagerConfigForm({
             />
             <SelectInput
                 label="On conflict"
-                value={config.onConflict}
+                value={config.onConflict ?? 'skip'}
                 options={CONFLICT_OPTIONS}
                 onChange={(onConflict) => onChange({ ...config, onConflict })}
             />

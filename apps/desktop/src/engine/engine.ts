@@ -2,7 +2,9 @@ import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
     loadPropertiesFile,
+    type PropertiesFile,
     type ResolvedProperties,
+    resolve,
     resolveAll,
 } from '@sigil/schema/properties-file';
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
@@ -60,10 +62,20 @@ export interface Engine {
     readonly dispose: () => void;
 }
 
-export function resolveSettings(resolvedProperties: ResolvedProperties): ExecutorSettings {
+export function resolveSettings(
+    resolvedProperties: ResolvedProperties,
+    properties: PropertiesFile = {},
+): ExecutorSettings {
     return {
         notifyOnWorkflowError: resolvedProperties.notifyOnWorkflowError,
         collisionSuffixStyle: resolvedProperties.collisionSuffixStyle,
+        fileManager: {
+            defaultOnConflict: resolvedProperties['file-manager.defaultOnConflict'],
+            collisionSuffixStyle: resolve('file-manager.collisionSuffixStyle', {
+                properties,
+                fallback: resolvedProperties.collisionSuffixStyle,
+            }),
+        },
     };
 }
 
@@ -94,8 +106,9 @@ export function createEngine(options?: EngineOptions): Engine {
     const resolvedProperties = propertiesResult.ok
         ? propertiesResult.value
         : resolveAll({}, { databasePath: options?.defaultDatabasePath });
+    const properties = propertiesResult.ok ? propertiesResult.properties : {};
 
-    const settings = resolveSettings(resolvedProperties);
+    const settings = resolveSettings(resolvedProperties, properties);
     const database = new Database(resolvedProperties.databasePath);
     const workflowStateStore = createWorkflowStateStore(database);
 

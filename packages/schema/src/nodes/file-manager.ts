@@ -1,11 +1,12 @@
 import { z } from 'zod';
 
+import { ConflictPolicySchema } from '../properties-file.js';
 import { defineNode } from './types.js';
 
 export const FileManagerConfigSchema = z.object({
     action: z.enum(['move', 'rename', 'copy']),
     destination: z.string().min(1),
-    onConflict: z.enum(['skip', 'overwrite', 'auto-rename', 'error']),
+    onConflict: ConflictPolicySchema.optional(),
 });
 
 export type FileManagerConfig = z.infer<typeof FileManagerConfigSchema>;

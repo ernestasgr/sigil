@@ -269,6 +269,7 @@ function unregisterFileWatcherSubscriber(subscriberId: string): Promise<unknown>
 function createProxiedDeps(
     executeRequestId: string,
     collisionSuffixStyle: NodeHandlerDeps['collisionSuffixStyle'] = undefined,
+    fileManager: NodeHandlerDeps['fileManager'] = undefined,
 ): NodeHandlerDeps {
     const emit = remoteCall<'event.emit', Promise<void>>('event.emit', executeRequestId);
     const next: NodeHandlerDeps['bus']['next'] = (value: PluginBusEvent) => {
@@ -324,6 +325,7 @@ function createProxiedDeps(
                     : Either.left({ kind: 'denied' as const, capability }),
         },
         collisionSuffixStyle,
+        fileManager,
     };
 }
 
@@ -712,7 +714,11 @@ async function handleExecute(
             pluginId: data.pluginId,
             config: msg.nodeConfig,
         };
-        const deps = createProxiedDeps(msg.requestId, msg.deps?.collisionSuffixStyle);
+        const deps = createProxiedDeps(
+            msg.requestId,
+            msg.deps?.collisionSuffixStyle,
+            msg.deps?.fileManager,
+        );
         const result = await handler.execute({ node, ctx: parsedContext.data }, deps);
         sendResult(result);
     } catch (err) {

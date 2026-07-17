@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineNode } from '@sigil/schema/nodes';
-import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
+import type { CollisionSuffixStyle, ConflictPolicy } from '@sigil/schema/properties-file';
 import type { ExecutableWorkflow } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Either, Option } from 'effect';
@@ -27,6 +27,12 @@ import { createWorkflowTopologyError } from './workflow-topology-error.js';
 export interface ExecutorSettings {
     readonly notifyOnWorkflowError: boolean;
     readonly collisionSuffixStyle: CollisionSuffixStyle;
+    readonly fileManager?: FileManagerExecutorSettings;
+}
+
+export interface FileManagerExecutorSettings {
+    readonly defaultOnConflict: ConflictPolicy;
+    readonly collisionSuffixStyle: CollisionSuffixStyle;
 }
 
 export interface ExecutionOptions {
@@ -46,6 +52,10 @@ export interface WorkflowExecutionResult {
 export const DEFAULT_EXECUTOR_SETTINGS: ExecutorSettings = {
     notifyOnWorkflowError: true,
     collisionSuffixStyle: 'windows',
+    fileManager: {
+        defaultOnConflict: 'error',
+        collisionSuffixStyle: 'windows',
+    },
 };
 
 const DEFAULT_SLEEP: Sleep = (ms: number, signal?: AbortSignal): Promise<void> => {
@@ -252,6 +262,7 @@ export async function executeValidatedWorkflow(
             state,
             capabilityBroker: capabilityBroker ?? createDenyAllCapabilityBroker(),
             collisionSuffixStyle: settings.collisionSuffixStyle,
+            fileManager: settings.fileManager,
             signal: executionOptions.signal,
         };
 
