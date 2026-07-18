@@ -572,7 +572,7 @@ export const EngineSetWorkflowStateKeySchema = z.object({
     correlationId: CorrelationIdSchema,
     workflowId: WorkflowIdSchema,
     key: z.string(),
-    value: z.string(),
+    value: WorkflowStatePrimitiveSchema,
 });
 export type EngineSetWorkflowStateKey = z.infer<typeof EngineSetWorkflowStateKeySchema>;
 

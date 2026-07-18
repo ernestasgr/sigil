@@ -50,6 +50,7 @@ import {
     WorkflowDeleteOutcomeSchema,
     WorkflowIdSchema,
     WorkflowStateEntrySchema,
+    WorkflowStatePrimitiveSchema,
     WorkflowWriteOutcomeSchema,
 } from './ipc-channels.js';
 import { PersistenceWriteOutcomeSchema } from './persistence.js';
@@ -402,7 +403,7 @@ const rendererCommands = {
     setWorkflowStateKey: {
         direction: 'renderer-to-main',
         channel: RendererChannel.SetWorkflowStateKey,
-        requestSchema: z.tuple([WorkflowIdSchema, z.string(), z.string()]),
+        requestSchema: z.tuple([WorkflowIdSchema, z.string(), WorkflowStatePrimitiveSchema]),
         responseSchema: z.boolean(),
     },
     deleteWorkflowStateKey: {
