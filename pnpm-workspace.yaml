@@ -2,6 +2,9 @@ packages:
     - 'packages/*'
     - 'apps/*'
 
+overrides:
+    '@types/node': 24.13.3
+
 allowBuilds:
     '@ast-grep/cli': true
     better-sqlite3: true

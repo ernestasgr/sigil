@@ -13,6 +13,12 @@ try {
         Fail-Bootstrap 'Node.js was not found on PATH after setup.'
     }
 
+    $nodeVersionCheck = @(& node scripts/check-node-version.mjs 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        Fail-Bootstrap ($nodeVersionCheck -join [Environment]::NewLine)
+    }
+    Write-Host ($nodeVersionCheck -join [Environment]::NewLine)
+
     if ($null -eq (Get-Command pnpm -ErrorAction SilentlyContinue)) {
         Fail-Bootstrap 'pnpm was not found on PATH after setup.'
     }
