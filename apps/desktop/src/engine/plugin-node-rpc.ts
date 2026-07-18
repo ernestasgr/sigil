@@ -162,12 +162,51 @@ export type NodePluginDepsRpcArgs<TOperation extends NodePluginDepsRpcOperation>
     { operation: TOperation }
 >['args'];
 
+const NodePluginCapabilityResultSchema = z.union([
+    z
+        .object({
+            ok: z.literal(true),
+        })
+        .strict(),
+    z
+        .object({
+            ok: z.literal(false),
+            error: z
+                .object({
+                    kind: z.literal('denied'),
+                    capability: CapabilitySchema,
+                })
+                .strict(),
+        })
+        .strict(),
+]);
+
+export const NodePluginDepsRpcResultValueSchema = z.union([
+    z.undefined(),
+    WorkflowStatePrimitiveSchema,
+    NodePluginCapabilityResultSchema,
+]);
+export type NodePluginDepsRpcResultValue = z.infer<typeof NodePluginDepsRpcResultValueSchema>;
+
 export const NodePluginDepsRpcResultSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.DepsRpcResult),
     requestId: z.string(),
-    value: z.unknown(),
+    value: NodePluginDepsRpcResultValueSchema,
 });
 export type NodePluginDepsRpcResult = z.infer<typeof NodePluginDepsRpcResultSchema>;
+
+export const NodePluginStateGetValueSchema = z.union([WorkflowStatePrimitiveSchema, z.undefined()]);
+export type NodePluginStateGetValue = z.infer<typeof NodePluginStateGetValueSchema>;
+
+export const NodePluginStateGetResultSchema = NodePluginDepsRpcResultSchema.extend({
+    value: NodePluginStateGetValueSchema,
+});
+export type NodePluginStateGetResult = z.infer<typeof NodePluginStateGetResultSchema>;
+
+export const NodePluginStateMutationResultSchema = NodePluginDepsRpcResultSchema.extend({
+    value: z.undefined(),
+});
+export type NodePluginStateMutationResult = z.infer<typeof NodePluginStateMutationResultSchema>;
 
 export const NodePluginDepsRpcErrorSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.DepsRpcError),
