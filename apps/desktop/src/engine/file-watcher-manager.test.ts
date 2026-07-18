@@ -1,3 +1,6 @@
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Manifest } from '@sigil/schema/manifest';
 import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
 import { Either } from 'effect';
@@ -187,6 +190,34 @@ describe('Bridge + Manifest validation seam', () => {
 });
 
 describe('FileWatcherManager — watcher deduplication', () => {
+    it('canonicalizes existing Windows watcher paths before opening an OS watcher', () => {
+        const tempDir = mkdtempSync(join(tmpdir(), 'sigil-file-watcher-path-'));
+        const mock = createMockWatcher();
+        const manager = createFileWatcherManager(undefined, mock.createWatcher, MOCK_STAT_FN);
+
+        try {
+            manager.registerSubscriber(
+                {
+                    id: 'canonical-path',
+                    path: tempDir,
+                    recursive: false,
+                    events: ['file.created'],
+                    ignorePatterns: [],
+                },
+                () => {},
+            );
+
+            const watcher = mock.watchers[0];
+            expect(watcher).toBeDefined();
+            expect(watcher?.path).toBe(
+                process.platform === 'win32' ? realpathSync.native(tempDir) : tempDir,
+            );
+        } finally {
+            manager.dispose();
+            rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+
     it('creates one OS watcher per unique (path, recursive) pair', () => {
         const mock = createMockWatcher();
         const manager = createFileWatcherManager(undefined, mock.createWatcher, MOCK_STAT_FN);
