@@ -1,4 +1,4 @@
-import { watch as fsWatch, statSync } from 'node:fs';
+import { watch as fsWatch, realpathSync, statSync } from 'node:fs';
 import { join, parse } from 'node:path';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import { FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
@@ -66,6 +66,19 @@ function watcherKey(path: string, recursive: boolean): string {
     return `${path}::${recursive}`;
 }
 
+function resolveWatcherPath(path: string): string {
+    if (process.platform !== 'win32') {
+        return path;
+    }
+
+    try {
+        return realpathSync.native(path);
+    } catch {
+        // Preserve fs.watch's existing error for paths that do not exist.
+        return path;
+    }
+}
+
 function matchesGlob(filename: string, pattern: string): boolean {
     const regex = new RegExp(
         `^${pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`,
@@ -126,13 +139,14 @@ export function createFileWatcherManager(
     const watchers = new Map<string, WatcherEntry>();
 
     function ensureWatcher(path: string, recursive: boolean): WatcherEntry {
-        const key = watcherKey(path, recursive);
+        const resolvedPath = resolveWatcherPath(path);
+        const key = watcherKey(resolvedPath, recursive);
         const existing = watchers.get(key);
         if (existing) {
             return existing;
         }
         const subscribers = new Map<string, SubscriberEntry>();
-        const handle = resolvedCreateWatcher(path, recursive, (eventType, filename) => {
+        const handle = resolvedCreateWatcher(resolvedPath, recursive, (eventType, filename) => {
             const entry = watchers.get(key);
             if (!entry) return;
 
@@ -141,7 +155,7 @@ export function createFileWatcherManager(
 
             if (filename === null) return;
 
-            const fullPath = join(path, filename);
+            const fullPath = join(resolvedPath, filename);
 
             let stats: Option.Option<{ readonly size: number }> = Option.none();
             try {
