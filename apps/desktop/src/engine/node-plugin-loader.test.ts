@@ -1901,6 +1901,133 @@ export const handler = {
 };
 `;
 
+const CODE_GENERATION_CONTRACT_HANDLER = `
+import { z } from 'zod';
+
+const ConfigSchema = z.object({});
+
+function capture(operation) {
+    try {
+        operation();
+        return 'allowed';
+    } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+    }
+}
+
+async function captureAsync(operation) {
+    try {
+        await operation();
+        return 'allowed';
+    } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+    }
+}
+
+export const descriptor = {
+    type: 'code-generation-contract-plugin' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler = {
+    async execute({ ctx }) {
+        const wasmBytes = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
+        return {
+            outputCtx: {
+                ...ctx,
+                vars: {
+                    ...ctx.vars,
+                    evalFailure: capture(() => eval('1 + 1')),
+                    functionFailure: capture(() => new Function('return 1')()),
+                    wasmCompileFailure: await captureAsync(() => WebAssembly.compile(wasmBytes)),
+                    wasmInstantiateFailure: await captureAsync(() => WebAssembly.instantiate(wasmBytes)),
+                },
+            },
+            activePort: 'out',
+        };
+    },
+};
+`;
+
+const SANDBOX_BOUNDARY_HANDLER = `
+const ConfigSchema = {
+    safeParse(value) {
+        return { success: true, data: value };
+    },
+};
+
+function capture(operation) {
+    try {
+        return String(operation());
+    } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+    }
+}
+
+export const descriptor = {
+    type: 'sandbox-boundary-plugin' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler = {
+    async execute({ ctx }) {
+        const declaredGlobalKeys = Object.keys(globalThis)
+            .filter((key) => key !== '__plugin__')
+            .sort();
+        const hostEscape = capture(() =>
+            globalThis.constructor.constructor('return process')().versions.node,
+        );
+
+        return {
+            outputCtx: {
+                ...ctx,
+                vars: {
+                    ...ctx.vars,
+                    declaredGlobalKeys,
+                    globalAliasesMatch: global === globalThis,
+                    globalSelfReferencesMatch:
+                        global.global === globalThis && global.globalThis === globalThis,
+                    ambientAliasesMatch:
+                        global.require === require &&
+                        global.console === console &&
+                        global.process === process &&
+                        global.Buffer === Buffer &&
+                        global.setTimeout === setTimeout,
+                    contextIntrinsics: [
+                        typeof globalThis.JSON,
+                        typeof globalThis.Math,
+                        typeof globalThis.Date,
+                        typeof globalThis.Promise,
+                        typeof globalThis.Array,
+                        typeof globalThis.Object,
+                        typeof globalThis.String,
+                        typeof globalThis.Number,
+                        typeof globalThis.Boolean,
+                        typeof globalThis.Map,
+                        typeof globalThis.Set,
+                        typeof globalThis.Error,
+                        typeof globalThis.RegExp,
+                        typeof globalThis.WebAssembly,
+                    ],
+                    processKeys: Object.keys(process).sort(),
+                    processEnvKeys: Object.keys(process.env).sort(),
+                    processVersionsType: typeof process.versions,
+                    workerDataType: typeof globalThis.workerData,
+                    parentPortType: typeof globalThis.parentPort,
+                    setImmediateType: typeof globalThis.setImmediate,
+                    hostEscape,
+                },
+            },
+            activePort: 'out',
+        };
+    },
+};
+`;
+
 describe('Plugin Sandbox Surface', () => {
     let tempDir: string;
 
@@ -2014,6 +2141,135 @@ describe('Plugin Sandbox Surface', () => {
         );
 
         expect(output.outputCtx.vars.wasmError).toContain('Wasm code generation disallowed');
+    });
+
+    it('enforces the registry code-generation policy for eval, Function, and WebAssembly', async () => {
+        const pluginDir = join(tempDir, 'code-generation-contract-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.code-generation-contract',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'code-generation-contract-plugin',
+            },
+            CODE_GENERATION_CONTRACT_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('code-generation-contract-plugin'));
+        const output = await handler.execute(
+            {
+                node: {
+                    id: 'n1',
+                    type: 'code-generation-contract-plugin',
+                    pluginId: 'com.sigil.code-generation-contract',
+                    config: {},
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            },
+            {} as never,
+        );
+
+        expect(output.outputCtx.vars.evalFailure).toContain(
+            'Code generation from strings disallowed',
+        );
+        expect(output.outputCtx.vars.functionFailure).toContain(
+            'Code generation from strings disallowed',
+        );
+        expect(output.outputCtx.vars.wasmCompileFailure).toContain(
+            'Wasm code generation disallowed',
+        );
+        expect(output.outputCtx.vars.wasmInstantiateFailure).toContain(
+            'Wasm code generation disallowed',
+        );
+    });
+
+    it('exposes only the registry surface and context intrinsics through global and globalThis', async () => {
+        const pluginDir = join(tempDir, 'sandbox-boundary-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.sandbox-boundary',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'sandbox-boundary-plugin',
+            },
+            SANDBOX_BOUNDARY_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('sandbox-boundary-plugin'));
+        const output = await handler.execute(
+            {
+                node: {
+                    id: 'n1',
+                    type: 'sandbox-boundary-plugin',
+                    pluginId: 'com.sigil.sandbox-boundary',
+                    config: {},
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            },
+            {} as never,
+        );
+
+        expect(output.outputCtx.vars.declaredGlobalKeys).toEqual([
+            'Buffer',
+            'TextDecoder',
+            'TextEncoder',
+            'URL',
+            'URLSearchParams',
+            'atob',
+            'btoa',
+            'clearInterval',
+            'clearTimeout',
+            'console',
+            'global',
+            'globalThis',
+            'process',
+            'require',
+            'setInterval',
+            'setTimeout',
+            'structuredClone',
+        ]);
+        expect(output.outputCtx.vars.globalAliasesMatch).toBe(true);
+        expect(output.outputCtx.vars.globalSelfReferencesMatch).toBe(true);
+        expect(output.outputCtx.vars.ambientAliasesMatch).toBe(true);
+        expect(output.outputCtx.vars.contextIntrinsics).toEqual([
+            'object',
+            'object',
+            'function',
+            'function',
+            'function',
+            'function',
+            'function',
+            'function',
+            'function',
+            'function',
+            'function',
+            'function',
+            'function',
+            'object',
+        ]);
+        expect(output.outputCtx.vars.processKeys).toEqual(['env']);
+        expect(output.outputCtx.vars.processEnvKeys).toEqual([]);
+        expect(output.outputCtx.vars.processVersionsType).toBe('undefined');
+        expect(output.outputCtx.vars.workerDataType).toBe('undefined');
+        expect(output.outputCtx.vars.parentPortType).toBe('undefined');
+        expect(output.outputCtx.vars.setImmediateType).toBe('undefined');
+        expect(output.outputCtx.vars.hostEscape).toContain(
+            'Code generation from strings disallowed',
+        );
     });
 });
 
