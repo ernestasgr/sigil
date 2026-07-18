@@ -23,17 +23,13 @@ jobs:
 
         env:
             CLOSED_NUMBER: ${{ github.event.issue.number }}
-            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             GH_REPO: ${{ github.repository }}
-            # AGENT_PAT is required for the promoted `agent:implement` label to
-            # fire `agent-implement.yml` — labels added via GITHUB_TOKEN do not
-            # trigger downstream workflows. Falls back to GITHUB_TOKEN, in which
-            # case promotion lands but the downstream run won't auto-trigger.
-            AGENT_PAT: ${{ secrets.AGENT_PAT }}
 
         steps:
             - name: Find dependents of the closed issue
               id: dependents
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   set -euo pipefail
                   owner="${GH_REPO%/*}"
@@ -50,7 +46,12 @@ jobs:
             - name: Evaluate and promote each dependent
               if: steps.dependents.outputs.list != '[]'
               env:
+                  # AGENT_PAT is required for the promoted `agent:implement`
+                  # label to fire the downstream workflow. The GitHub token is
+                  # retained as a fallback when the PAT is unavailable.
+                  AGENT_PAT: ${{ secrets.AGENT_PAT }}
                   DEPENDENTS_JSON: ${{ steps.dependents.outputs.list }}
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   set -euo pipefail
                   owner="${GH_REPO%/*}"

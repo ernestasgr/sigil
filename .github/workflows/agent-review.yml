@@ -25,21 +25,24 @@ jobs:
             PR_NUMBER: ${{ github.event.pull_request.number }}
             BRANCH: ${{ github.event.pull_request.head.ref }}
             BRANCH_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             GH_REPO: ${{ github.repository }}
 
         steps:
             - name: Transition labels — remove trigger + blocked, add in-progress
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   gh pr edit "$PR_NUMBER" --remove-label "agent:review" || true
                   gh pr edit "$PR_NUMBER" --remove-label "agent:blocked" || true
                   gh pr edit "$PR_NUMBER" --add-label "agent:in-progress"
 
             - name: Checkout PR branch
-              uses: actions/checkout@v4
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
               with:
                   ref: ${{ github.event.pull_request.head.sha }}
                   fetch-depth: 0
+                  token: ${{ secrets.GITHUB_TOKEN }}
+                  persist-credentials: false
 
             - name: Ensure main is available for diffing
               run: |
@@ -50,12 +53,12 @@ jobs:
               id: pre
               run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-            - uses: pnpm/action-setup@v4
+            - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
               with:
                   version: 11.8.0
 
             - name: Setup Node.js 22
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
               with:
                   node-version: '22'
 
@@ -63,7 +66,7 @@ jobs:
               run: pnpm install
 
             - name: Install opencode
-              run: curl -fsSL https://opencode.ai/install | bash
+              run: bash .github/scripts/install-opencode.sh
 
             - name: Configure git identity
               run: |
@@ -73,6 +76,7 @@ jobs:
             - name: Run review.ts
               id: review
               env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
                   OUTPUT_DIR: ${{ runner.temp }}
               run: npx tsx .sandcastle/review/review.ts
@@ -80,11 +84,13 @@ jobs:
             - name: Push branch (abort cleanly if non-fast-forward)
               id: push
               if: success()
+              env:
+                  GH_TOKEN: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
               run: |
                   # Lease against the SHA we checked out — fails cleanly if anything
                   # pushed to the branch during our run.
                   set +e
-                  git push --force-with-lease="refs/heads/$BRANCH:$BRANCH_HEAD_SHA" origin "$BRANCH" 2> push_err.txt
+                  bash .github/scripts/push-agent-branch.sh --force-with-lease="refs/heads/$BRANCH:$BRANCH_HEAD_SHA" origin "$BRANCH" 2> push_err.txt
                   status=$?
                   set -e
                   if [ $status -ne 0 ]; then
@@ -101,6 +107,7 @@ jobs:
             - name: Post PR review (inline comments + summary)
               if: success()
               env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   PAYLOAD: ${{ runner.temp }}/review_payload.json
               run: |
                   gh api \
@@ -110,11 +117,14 @@ jobs:
 
             - name: Mark PR ready for review
               if: success()
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: gh pr ready "$PR_NUMBER" || true
 
             - name: Post thread replies
               if: success()
               env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   REPLIES: ${{ runner.temp }}/replies.json
               run: |
                   count=$(jq 'length' "$REPLIES")
@@ -136,6 +146,7 @@ jobs:
             - name: Mark blocked on failure
               if: failure()
               env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
               run: |
                   reason="(no reason file written — check workflow logs)"
@@ -156,4 +167,6 @@ jobs:
 
             - name: Always remove in-progress label
               if: always()
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: gh pr edit "$PR_NUMBER" --remove-label "agent:in-progress" || true

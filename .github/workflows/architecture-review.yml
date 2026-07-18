@@ -19,11 +19,10 @@ jobs:
               with:
                   ref: main
                   fetch-depth: 0
+                  persist-credentials: false
 
             - name: Check for commits yesterday
               id: check-commits
-              env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   YESTERDAY_START=$(date -d "yesterday 00:00:00" --utc +"%Y-%m-%dT%H:%M:%SZ")
                   YESTERDAY_END=$(date -d "today 00:00:00" --utc +"%Y-%m-%dT%H:%M:%SZ")
@@ -49,7 +48,6 @@ jobs:
             issues: write
 
         env:
-            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             GH_REPO: ${{ github.repository }}
 
         steps:
@@ -58,6 +56,7 @@ jobs:
               with:
                   ref: main
                   fetch-depth: 1
+                  persist-credentials: false
 
             - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
               with:
@@ -72,10 +71,11 @@ jobs:
               run: pnpm install
 
             - name: Install opencode
-              run: curl -fsSL https://opencode.ai/install | bash
+              run: bash .github/scripts/install-opencode.sh
 
             - name: Run architecture-review.ts
               env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
                   OUTPUT_DIR: ${{ runner.temp }}
               run: npx tsx .sandcastle/architecture-review/architecture-review.ts
@@ -86,6 +86,7 @@ jobs:
                   OUTPUT_FILE: ${{ runner.temp }}/architecture_review_output.json
                   TITLE_FILE: ${{ runner.temp }}/prd_title.txt
                   BODY_FILE: ${{ runner.temp }}/prd_body.md
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   LABEL: source:architecture-review
               run: |
                   set -euo pipefail
