@@ -56,7 +56,7 @@ export interface Engine {
     readonly handlerRegistry: NodeHandlerRegistry;
     readonly propertyRegistry: PropertyRegistry;
     readonly registerBuiltinManifests: () => void;
-    readonly loadNodePlugins: (dir?: string) => Promise<readonly NodePluginLoadResult[]>;
+    readonly loadBuiltinPlugins: () => Promise<readonly NodePluginLoadResult[]>;
     readonly execute: (
         pipeline: WorkflowInput,
         seedContext?: WorkflowContext,
@@ -166,9 +166,9 @@ export function createEngine(options?: EngineOptions): Engine {
         fileWatcherManager,
         handlerRegistry,
         registerBuiltinManifests: (): void => {
-            /* builtin manifests are now loaded as part of loadNodePlugins */
+            /* builtin manifests are now loaded as part of loadBuiltinPlugins */
         },
-        loadNodePlugins: async (dir?: string): Promise<readonly NodePluginLoadResult[]> => {
+        loadBuiltinPlugins: async (): Promise<readonly NodePluginLoadResult[]> => {
             const kernel = { fileWatcherManager, capabilityBroker };
             const deps = {
                 manifestRegistry: registry,
@@ -186,11 +186,6 @@ export function createEngine(options?: EngineOptions): Engine {
                 allowExistingPropertyDescriptors: true,
             });
             refreshResolvedProperties();
-            if (dir) {
-                const userResults = await loadNodePlugins(dir, deps);
-                refreshResolvedProperties();
-                return [...builtinResults, ...userResults];
-            }
             return builtinResults;
         },
         execute: async (

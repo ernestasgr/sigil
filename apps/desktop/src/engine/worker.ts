@@ -85,11 +85,10 @@ engine.bus.subscribe((event) => {
     }
 });
 
-// Load builtin node plugins (file-watcher, file-manager) first, then any
-// user-installed TS node plugins from the user data directory.
-const pluginsDir = join(userDataPath ?? '', 'plugins');
-const pluginResults = await engine.loadNodePlugins(pluginsDir).catch((err: unknown) => {
-    log(`Failed to load node plugins: ${err instanceof Error ? err.message : String(err)}`, {
+// Production executes only source-controlled built-in Plugins. External Plugin discovery stays
+// closed until the isolation requirements in ADR-0008 are met.
+const pluginResults = await engine.loadBuiltinPlugins().catch((err: unknown) => {
+    log(`Failed to load built-in Plugins: ${err instanceof Error ? err.message : String(err)}`, {
         source: 'worker',
         kind: 'plugin-load',
         outcome: 'failed',

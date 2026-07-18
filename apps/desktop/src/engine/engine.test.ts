@@ -16,7 +16,7 @@ async function activateFileWatcher(
     config: FileWatcherConfig,
     contexts: WorkflowContext[],
 ): Promise<() => void> {
-    await engine.loadNodePlugins();
+    await engine.loadBuiltinPlugins();
 
     const handler = engine.handlerRegistry.get('file-watcher');
     if (Option.isNone(handler)) throw new Error('file-watcher handler was not loaded');
@@ -78,36 +78,6 @@ function fileManagerWorkflow(
         ],
     };
 }
-
-function writePlugin(
-    dir: string,
-    manifest: Readonly<Record<string, unknown>>,
-    handler: string,
-): void {
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'plugin.manifest.json'), JSON.stringify(manifest));
-    writeFileSync(join(dir, 'handler.ts'), handler);
-}
-
-const PROPERTY_PLUGIN_HANDLER = `
-import { z } from 'zod';
-
-const ConfigSchema = z.object({});
-
-export const descriptor = {
-    type: 'engine-property-node' as const,
-    configSchema: ConfigSchema,
-    defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
-    properties: [{ key: 'engine-property.message', schema: z.string(), fallback: 'fallback' }],
-};
-
-export const handler = {
-    async execute({ ctx }) {
-        return { outputCtx: ctx, activePort: 'out' };
-    },
-};
-`;
 
 describe('createEngine', () => {
     it('exposes the event bus, stub bridge, and stub capability broker', () => {
@@ -261,14 +231,14 @@ describe('createEngine', () => {
         engine.dispose();
     });
 
-    it('exposes a handler registry with builtin + plugin handlers after loadNodePlugins', async () => {
+    it('exposes a handler registry with built-in Plugin handlers after loadBuiltinPlugins', async () => {
         const engine = createEngine();
 
         expect(engine.handlerRegistry.has('manual-trigger')).toBe(true);
         expect(engine.handlerRegistry.has('file-watcher')).toBe(false);
         expect(engine.handlerRegistry.has('file-manager')).toBe(false);
 
-        await engine.loadNodePlugins();
+        await engine.loadBuiltinPlugins();
 
         expect(engine.handlerRegistry.has('file-watcher')).toBe(true);
         expect(engine.handlerRegistry.has('file-manager')).toBe(true);
@@ -277,54 +247,17 @@ describe('createEngine', () => {
         engine.dispose();
     });
 
-    it('loadNodePlugins is idempotent (duplicate_type rejection)', async () => {
+    it('loadBuiltinPlugins is idempotent (duplicate_type rejection)', async () => {
         const engine = createEngine();
 
-        const first = await engine.loadNodePlugins();
+        const first = await engine.loadBuiltinPlugins();
         expect(first.filter((r) => r.ok)).toHaveLength(2);
 
-        const second = await engine.loadNodePlugins();
+        const second = await engine.loadBuiltinPlugins();
         expect(second.filter((r) => r.ok)).toHaveLength(0);
 
         expect(engine.registry.all()).toHaveLength(2);
         engine.dispose();
-    });
-
-    it('revalidates the Properties File after a loaded Plugin registers its descriptor', async () => {
-        const tempDir = mkdtempSync(join(tmpdir(), 'sigil-engine-plugin-properties-'));
-        const engine = createEngine({
-            properties: { 'engine-property.message': 'configured' },
-        });
-
-        try {
-            writePlugin(
-                join(tempDir, 'engine-property-plugin'),
-                {
-                    id: 'com.sigil.engine-property',
-                    version: '0.0.1',
-                    permissions: [],
-                    emits: ['x'],
-                    nodeType: 'engine-property-node',
-                },
-                PROPERTY_PLUGIN_HANDLER,
-            );
-
-            const results = await engine.loadNodePlugins(tempDir);
-
-            expect(
-                results.some(
-                    (result) => result.ok && result.manifest.id === 'com.sigil.engine-property',
-                ),
-            ).toBe(true);
-            expect(
-                engine.propertyRegistry.schema().safeParse({ 'engine-property.message': 'ok' })
-                    .success,
-            ).toBe(true);
-            expect(engine.settings.properties?.['engine-property.message']).toBe('configured');
-        } finally {
-            engine.dispose();
-            rmSync(tempDir, { recursive: true, force: true });
-        }
     });
 });
 
@@ -417,7 +350,7 @@ describe('createEngine — databasePath from properties', () => {
     it('resolves builtinPluginsDir and loads file-manager and file-watcher', async () => {
         const engine = createEngine();
 
-        const results = await engine.loadNodePlugins(tempDir);
+        const results = await engine.loadBuiltinPlugins();
 
         const successes = results.filter((r) => r.ok);
         expect(successes.length).toBeGreaterThanOrEqual(2);
@@ -599,7 +532,7 @@ describe('createEngine — file-manager Properties File defaults', () => {
         });
 
         try {
-            await engine.loadNodePlugins();
+            await engine.loadBuiltinPlugins();
 
             const parsed = parsePipeline(
                 fileManagerWorkflow(sourcePath, 'report.txt', sourceDir, {
@@ -636,7 +569,7 @@ describe('createEngine — file-manager Properties File defaults', () => {
         });
 
         try {
-            await engine.loadNodePlugins();
+            await engine.loadBuiltinPlugins();
             const parsed = parsePipeline(
                 fileManagerWorkflow(sourcePath, 'report.txt', sourceDir, {
                     action: 'move',
@@ -671,7 +604,7 @@ describe('createEngine — file-manager Properties File defaults', () => {
         const engine = createEngine({ properties: {} });
 
         try {
-            await engine.loadNodePlugins();
+            await engine.loadBuiltinPlugins();
             const parsed = parsePipeline(
                 fileManagerWorkflow(sourcePath, 'report.txt', sourceDir, {
                     action: 'move',
@@ -709,7 +642,7 @@ describe('createEngine — file-manager Properties File defaults', () => {
         });
 
         try {
-            await engine.loadNodePlugins();
+            await engine.loadBuiltinPlugins();
             const parsed = parsePipeline(
                 fileManagerWorkflow(sourcePath, 'source.txt', sourceDir, {
                     action: 'rename',
@@ -746,7 +679,7 @@ describe('createEngine — file-manager Properties File defaults', () => {
         });
 
         try {
-            await engine.loadNodePlugins();
+            await engine.loadBuiltinPlugins();
             const parsed = parsePipeline(
                 fileManagerWorkflow(sourcePath, 'source.txt', sourceDir, {
                     action: 'rename',
