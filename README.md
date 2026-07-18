@@ -232,16 +232,17 @@ The shared contract: `@sigil/schema` defines `CompiledPipeline`, `PipelineNode` 
 ## Prerequisites
 
 - **Windows** 10 or 11 (the MVP target platform)
-- **Node.js** `>= 22.13.0`
+- **Node.js** `>=24.15.0 <25` (the repository recommends the latest Node 24 patch in [`.node-version`](.node-version))
 - **pnpm** `11.8.0` (enforced via `packageManager`)
 - **Python** 3.x available on `PATH` for `node-gyp` native builds
 - **Visual Studio 2022 Build Tools** with the **Desktop development with C++** workload, MSVC v143, and a Windows 10/11 SDK
 
-The desktop app uses `better-sqlite3`, a native Node module. `pnpm install` may use a prebuilt binary, but `pnpm setup:native` rebuilds it for the current Node runtime. `pnpm build` runs `electron-rebuild` so the module also matches the Electron ABI; both paths need the Windows C++ toolchain when a prebuilt binary is unavailable.
+The repository follows Electron 42.4.1's embedded Node 24 runtime. Run `pnpm check:node` before installing dependencies; it fails early with an actionable message when the current Node version is outside the supported range. `pnpm install` runs the same check automatically. The desktop app uses `better-sqlite3`, a native Node module. `pnpm install` may use a prebuilt binary, but `pnpm setup:native` rebuilds it for the current Node runtime. `pnpm build` runs `electron-rebuild` so the module also matches the Electron ABI; both paths need the Windows C++ toolchain when a prebuilt binary is unavailable.
 
 ## Getting Started
 
 ```bash
+pnpm check:node
 pnpm install
 pnpm dev          # builds @sigil/schema, then launches the Electron app with HMR
 ```
@@ -278,6 +279,7 @@ pnpm dev          # builds @sigil/schema, then launches the Electron app with HM
 | `pnpm test:ui`      | Open the interactive Vitest UI for all test projects.     |
 | `pnpm test:watch`   | Watch tests for `@sigil/schema`.                          |
 | `pnpm clean`        | Remove `dist`/`out`/`.turbo`/cache from every package.    |
+| `pnpm check:node`   | Verify the current Node.js version before working in the repo. |
 
 ## Testing
 

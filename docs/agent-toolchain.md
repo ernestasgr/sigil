@@ -5,6 +5,17 @@ Agent workflows use immutable toolchain inputs and validate those inputs with
 new workflow variant is covered automatically when its filename starts with
 `agent-` or it runs OpenCode.
 
+## Node and Electron runtime
+
+The repository supports Node.js `>=24.15.0 <25` to match the Node 24 runtime
+embedded by Electron 42. The checked-in [`.node-version`](../.node-version)
+file contains the current recommended Node 24 patch, and every CI and agent
+workflow that runs Node uses that same version. Run `pnpm check:node` before working; the
+repository's `preinstall` hook repeats the check and reports the detected
+version plus the corrective action when the runtime is unsupported. Do not
+move the workflows to Node 25 or 26 without first changing the Electron
+runtime contract.
+
 ## Updating OpenCode
 
 Edit `OPENCODE_VERSION` and `OPENCODE_SHA256` together at the top of
