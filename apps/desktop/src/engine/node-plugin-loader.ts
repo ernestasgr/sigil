@@ -28,7 +28,12 @@ import type {
     NodePluginWorkerLoaded,
     NodePluginWorkerRuntimeToMain,
 } from './plugin-node-rpc.js';
-import { NodePluginWorkerKind, NodePluginWorkerToMainSchema } from './plugin-node-rpc.js';
+import {
+    NodePluginStateGetResultSchema,
+    NodePluginStateMutationResultSchema,
+    NodePluginWorkerKind,
+    NodePluginWorkerToMainSchema,
+} from './plugin-node-rpc.js';
 import { getDeactivationHook } from './workflow-activator.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -733,6 +738,51 @@ function postDepsRpcValue(worker: Worker, requestId: string, value: unknown): vo
     postDepsRpcResult(worker, requestId, value);
 }
 
+function postWorkflowStateRpcValue(
+    worker: Worker,
+    requestId: string,
+    operation: NodePluginStateRpc['operation'],
+    value: unknown,
+): void {
+    if (operation === 'state.get') {
+        if (!Option.isOption(value)) {
+            postDepsRpcError(worker, requestId, 'Workflow State get must return an Option value');
+            return;
+        }
+
+        const parsed = NodePluginStateGetResultSchema.safeParse({
+            kind: NodePluginWorkerKind.DepsRpcResult,
+            requestId,
+            value: Option.getOrUndefined(value),
+        });
+        if (!parsed.success) {
+            postDepsRpcError(
+                worker,
+                requestId,
+                `Invalid Workflow State get result: ${parsed.error.message}`,
+            );
+            return;
+        }
+        postDepsRpcResult(worker, requestId, parsed.data.value);
+        return;
+    }
+
+    const parsed = NodePluginStateMutationResultSchema.safeParse({
+        kind: NodePluginWorkerKind.DepsRpcResult,
+        requestId,
+        value,
+    });
+    if (!parsed.success) {
+        postDepsRpcError(
+            worker,
+            requestId,
+            `Invalid Workflow State mutation result: ${parsed.error.message}`,
+        );
+        return;
+    }
+    postDepsRpcResult(worker, requestId, parsed.data.value);
+}
+
 function handleDepsRpc(
     msg: NodePluginDepsRpc,
     pendingExecutes: Map<
@@ -997,7 +1047,7 @@ function handleStateRpc(
         }
 
         const value = callWorkflowStateMethod(pending.deps.state, msg);
-        postDepsRpcValue(worker, msg.requestId, value);
+        postWorkflowStateRpcValue(worker, msg.requestId, msg.operation, value);
     } catch (err) {
         postDepsRpcError(worker, msg.requestId, err instanceof Error ? err.message : String(err));
     }

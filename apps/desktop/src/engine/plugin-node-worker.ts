@@ -11,7 +11,7 @@ import {
     serializePropertyDescriptor,
 } from '@sigil/schema/properties-file';
 import { type WorkflowContext, WorkflowContextSchema } from '@sigil/schema/workflow-context';
-import { Either } from 'effect';
+import { Either, Option } from 'effect';
 import { z } from 'zod';
 import type { CapabilityResult } from './capability-broker.js';
 import type { FileEventCallback, SubscriberRegistration } from './file-watcher-manager.js';
@@ -27,8 +27,11 @@ import {
     type NodePluginDepsRpcArgs,
     type NodePluginDepsRpcOperation,
     type NodePluginDepsRpcRequest,
+    type NodePluginDepsRpcResult,
     NodePluginMainToWorkerSchema,
     type NodePluginPropertyError,
+    NodePluginStateGetResultSchema,
+    NodePluginStateMutationResultSchema,
     type NodePluginWorkerCallbackInvoke,
     type NodePluginWorkerExecuteRequest,
     NodePluginWorkerKind,
@@ -260,7 +263,11 @@ function send(msg: NodePluginWorkerToMain): void {
 
 const depRpcPending = new Map<
     string,
-    { resolve: (value: unknown) => void; reject: (err: Error) => void }
+    {
+        readonly operation: NodePluginDepsRpcOperation;
+        readonly resolve: (value: unknown) => void;
+        readonly reject: (err: Error) => void;
+    }
 >();
 
 function depRpcCall(
@@ -269,7 +276,7 @@ function depRpcCall(
 ): Promise<unknown> {
     return new Promise((resolve, reject) => {
         const requestId = randomUUID();
-        depRpcPending.set(requestId, { resolve, reject });
+        depRpcPending.set(requestId, { operation: request.operation, resolve, reject });
         send({
             kind: NodePluginWorkerKind.DepsRpc,
             requestId,
@@ -277,6 +284,42 @@ function depRpcCall(
             executeRequestId,
         });
     });
+}
+
+type DependencyRpcDecodeResult =
+    | { readonly ok: true; readonly value: unknown }
+    | { readonly ok: false; readonly error: string };
+
+function decodeDependencyRpcResult(
+    operation: NodePluginDepsRpcOperation,
+    message: NodePluginDepsRpcResult,
+): DependencyRpcDecodeResult {
+    switch (operation) {
+        case 'state.get': {
+            const parsed = NodePluginStateGetResultSchema.safeParse(message);
+            if (!parsed.success) {
+                return { ok: false, error: parsed.error.message };
+            }
+            return { ok: true, value: Option.fromNullable(parsed.data.value) };
+        }
+        case 'state.set':
+        case 'state.flush': {
+            const parsed = NodePluginStateMutationResultSchema.safeParse(message);
+            return parsed.success
+                ? { ok: true, value: undefined }
+                : { ok: false, error: parsed.error.message };
+        }
+        default:
+            return { ok: true, value: message.value };
+    }
+}
+
+function rejectMalformedDependencyRpc(raw: unknown, error: string): void {
+    if (!isRecord(raw) || typeof raw.requestId !== 'string') return;
+    const pending = depRpcPending.get(raw.requestId);
+    if (!pending) return;
+    depRpcPending.delete(raw.requestId);
+    pending.reject(new Error(`Invalid dependency RPC response: ${error}`));
 }
 
 /**
@@ -739,6 +782,7 @@ async function main(): Promise<void> {
     port.on('message', async (raw: unknown) => {
         const parsed = NodePluginMainToWorkerSchema.safeParse(raw);
         if (!parsed.success) {
+            rejectMalformedDependencyRpc(raw, parsed.error.message);
             console.warn(
                 `[plugin-worker:${data.pluginId}] failed to parse incoming message:`,
                 parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
@@ -763,7 +807,14 @@ async function main(): Promise<void> {
                 if (!pending) break;
                 depRpcPending.delete(msg.requestId);
                 if (msg.kind === NodePluginWorkerKind.DepsRpcResult) {
-                    pending.resolve(msg.value);
+                    const decoded = decodeDependencyRpcResult(pending.operation, msg);
+                    if (decoded.ok) {
+                        pending.resolve(decoded.value);
+                    } else {
+                        pending.reject(
+                            new Error(`Invalid dependency RPC response: ${decoded.error}`),
+                        );
+                    }
                 } else {
                     pending.reject(new Error(msg.error));
                 }

@@ -11,6 +11,8 @@ import { createNodeHandlerRegistry } from './node-registry.js';
 import {
     NodePluginDepsRpcSchema,
     NodePluginMainToWorkerSchema,
+    NodePluginStateGetResultSchema,
+    NodePluginStateMutationResultSchema,
     NodePluginWorkerKind,
     NodePluginWorkerToMainSchema,
 } from './plugin-node-rpc.js';
@@ -123,6 +125,23 @@ describe('NodePluginDepsRpcSchema', () => {
         expect(parsed.success).toBe(false);
     });
 
+    it.each([
+        null,
+        {},
+        [],
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+    ])('rejects a state.set value that is not a finite primitive: %j', (value) => {
+        const parsed = NodePluginDepsRpcSchema.safeParse({
+            kind: NodePluginWorkerKind.DepsRpc,
+            requestId: 'request:typed-invalid',
+            operation: 'state.set',
+            args: ['key', value],
+        });
+
+        expect(parsed.success).toBe(false);
+    });
+
     it('rejects extra operation envelope fields instead of silently stripping them', () => {
         const parsed = NodePluginDepsRpcSchema.safeParse({
             kind: NodePluginWorkerKind.DepsRpc,
@@ -228,7 +247,7 @@ describe('NodePluginDepsRpcSchema', () => {
         pair.postMessage({
             kind: NodePluginWorkerKind.DepsRpcResult,
             requestId: 'request:success',
-            value: 'value',
+            value: 42,
         });
         pair.postMessage({
             kind: NodePluginWorkerKind.DepsRpcError,
@@ -238,6 +257,54 @@ describe('NodePluginDepsRpcSchema', () => {
 
         expect(settled).toEqual(['resolved', 'rejected: failed']);
         expect(pending).toHaveLength(0);
+    });
+
+    it.each([
+        'text',
+        42,
+        false,
+        undefined,
+    ])('accepts a typed state.get result value: %j', (value) => {
+        const parsed = NodePluginStateGetResultSchema.safeParse({
+            kind: NodePluginWorkerKind.DepsRpcResult,
+            requestId: 'request:typed-result',
+            value,
+        });
+
+        expect(parsed.success).toBe(true);
+    });
+
+    it.each([
+        null,
+        {},
+        [],
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+    ])('rejects a malformed state.get result value: %j', (value) => {
+        const parsed = NodePluginStateGetResultSchema.safeParse({
+            kind: NodePluginWorkerKind.DepsRpcResult,
+            requestId: 'request:typed-malformed-result',
+            value,
+        });
+
+        expect(parsed.success).toBe(false);
+    });
+
+    it('accepts only an empty result for state mutations', () => {
+        expect(
+            NodePluginStateMutationResultSchema.safeParse({
+                kind: NodePluginWorkerKind.DepsRpcResult,
+                requestId: 'request:mutation-result',
+                value: undefined,
+            }).success,
+        ).toBe(true);
+        expect(
+            NodePluginStateMutationResultSchema.safeParse({
+                kind: NodePluginWorkerKind.DepsRpcResult,
+                requestId: 'request:mutation-result',
+                value: 42,
+            }).success,
+        ).toBe(false);
     });
 
     it('correlates an independent worker dependency RPC with its execute request', async () => {

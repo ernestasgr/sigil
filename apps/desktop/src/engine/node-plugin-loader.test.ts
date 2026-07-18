@@ -21,6 +21,7 @@ import { loadNodePlugin, loadNodePlugins, updatePluginPermissions } from './node
 import { createNodeHandlerRegistry } from './node-registry.js';
 import { createPermissionOverrideStore } from './permission-override-store.js';
 import { NodePluginWorkerKind } from './plugin-node-rpc.js';
+import { createInMemoryWorkflowStateStore } from './workflow-state.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -926,6 +927,42 @@ export const handler = {
 };
 `;
 
+const TYPED_STATE_ROUND_TRIP_HANDLER = `
+import { Option } from 'effect';
+import { z } from 'zod';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'typed-state-round-trip' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler = {
+    async execute({ ctx }, deps) {
+        await deps.state.set('count', 42);
+        await deps.state.set('enabled', false);
+        const count = await deps.state.get('count');
+        const enabled = await deps.state.get('enabled');
+        const missing = await deps.state.get('missing');
+        return {
+            outputCtx: {
+                ...ctx,
+                vars: {
+                    ...ctx.vars,
+                    count: Option.getOrUndefined(count),
+                    enabled: Option.getOrUndefined(enabled),
+                    missing: Option.getOrUndefined(missing),
+                },
+            },
+            activePort: 'out',
+        };
+    },
+};
+`;
+
 function createKernel(capabilityBroker: CapabilityBroker): KernelDeps {
     return {
         capabilityBroker,
@@ -1115,6 +1152,65 @@ describe('Workflow State authorization for Node Plugins', () => {
             capability: 'state.read',
         });
         expect(state.get).toHaveBeenCalledWith('secret');
+    });
+
+    it('round-trips typed Workflow State values through the real Plugin Bridge path', async () => {
+        const pluginId = 'com.sigil.typed-state-round-trip';
+        const pluginDir = join(tempDir, 'typed-state-round-trip');
+        writePlugin(
+            pluginDir,
+            {
+                id: pluginId,
+                version: '0.0.1',
+                permissions: ['state.read', 'state.write'],
+                emits: ['x'],
+                nodeType: 'typed-state-round-trip',
+            },
+            TYPED_STATE_ROUND_TRIP_HANDLER,
+        );
+
+        const manifestRegistry = createManifestRegistry();
+        const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+        const capabilityBroker: CapabilityBroker = {
+            request: vi.fn().mockReturnValue(Either.right(undefined)),
+        };
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            kernel: createKernel(capabilityBroker),
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const stateStore = createInMemoryWorkflowStateStore();
+        try {
+            const state = stateStore.forWorkflow('wf-typed-plugin');
+            const handler = Option.getOrThrow(handlerRegistry.get('typed-state-round-trip'));
+            const output = await handler.execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'typed-state-round-trip',
+                        pluginId,
+                        config: {},
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                { state } as never,
+            );
+
+            expect(output.outputCtx.vars).toMatchObject({
+                count: 42,
+                enabled: false,
+                missing: undefined,
+            });
+            expect(state.get('count')).toEqual(Option.some(42));
+            expect(state.get('enabled')).toEqual(Option.some(false));
+            expect(state.get('missing')).toEqual(Option.none());
+        } finally {
+            stateStore.dispose();
+        }
     });
 
     it('rejects a crafted state read without state.read before reaching the state adapter', async () => {
