@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { CapabilitySchema } from '@sigil/schema/manifest';
 import { describe, expect, it } from 'vitest';
@@ -37,7 +38,77 @@ function createFakeModules(): Record<string, Record<string, unknown>> {
     return modules;
 }
 
+function compareNames(left: string, right: string): number {
+    if (left < right) return -1;
+    if (left > right) return 1;
+    return 0;
+}
+
+function formatCodeGenerationPolicy(surface: ReturnType<typeof createTestSurface>): string {
+    return `registry-backed \`codeGeneration\` policy (\`strings: ${surface.codeGeneration.strings}\`, \`wasm: ${surface.codeGeneration.wasm}\`)`;
+}
+
+function renderSandboxSurfaceDocumentation(surface: ReturnType<typeof createTestSurface>): string {
+    const globals = Object.entries(surface.globals)
+        .sort(([left], [right]) => compareNames(left, right))
+        .map(([name, entry]) => {
+            const label = name === 'process' ? '`process` (only `env: {}`)' : `\`${name}\``;
+            return `- ${label} — ${entry.rationale}`;
+        });
+    const unconditionalModules = Object.values(surface.unconditionalModules).map(
+        (entry) =>
+            `- \`${entry.module}\` — APIs: ${entry.apiNames.map((apiName) => `\`${apiName}\``).join(', ')}. ${entry.rationale}`,
+    );
+    const permissionGatedModules = getSandboxModuleNames().map((moduleName) => {
+        const capabilities = Object.values(SANDBOX_CAPABILITY_TABLE)
+            .filter((entry) => entry.module === moduleName)
+            .map((entry) => `\`${entry.capability}\``)
+            .sort(compareNames);
+        return `- \`${moduleName}\` — ${capabilities.join(' / ')}`;
+    });
+
+    return [
+        '<!-- plugin-sandbox-surface:start -->',
+        '**Registry-declared ambient globals** (explicit injections; standard context intrinsics remain available):',
+        ...globals,
+        '',
+        '**Registry-declared unconditional modules** (no Manifest permission required):',
+        ...unconditionalModules,
+        '',
+        '**Permission-gated modules** (the Capability Broker re-checks the required Manifest permissions on each API call):',
+        ...permissionGatedModules,
+        '',
+        `**Code generation** — the registry sets \`codeGeneration.strings: ${surface.codeGeneration.strings}\` and \`codeGeneration.wasm: ${surface.codeGeneration.wasm}\`; plugin evaluation still has a 5-second timeout.`,
+        '<!-- plugin-sandbox-surface:end -->',
+    ].join('\n');
+}
+
+function readmeText(): string {
+    return readFileSync(new URL('../../../../README.md', import.meta.url), 'utf8').replace(
+        /\r\n/g,
+        '\n',
+    );
+}
+
 describe('sandbox capability table', () => {
+    it('keeps the README sandbox contract synchronized with the surface registry', () => {
+        const surface = createTestSurface();
+        const readme = readmeText();
+        const surfaceStart = readme.indexOf('<!-- plugin-sandbox-surface:start -->');
+        const surfaceEndMarker = '<!-- plugin-sandbox-surface:end -->';
+        const surfaceEnd = readme.indexOf(surfaceEndMarker, surfaceStart);
+
+        expect(surfaceStart).toBeGreaterThanOrEqual(0);
+        expect(surfaceEnd).toBeGreaterThan(surfaceStart);
+
+        const documentedSurface = readme.slice(surfaceStart, surfaceEnd + surfaceEndMarker.length);
+        expect(documentedSurface).toBe(renderSandboxSurfaceDocumentation(surface));
+
+        const securityRow = `| **Plugin sandbox**    | Typed surface registry; ${formatCodeGenerationPolicy(surface)}; 5s eval timeout, 30s worker ready timeout |`;
+        expect(readme).toContain(securityRow);
+        expect(readme).not.toContain('PluginSandbox (no require/process/fs/net)');
+    });
+
     it('declares the complete ambient surface, unconditional modules, and code-generation policy', () => {
         const surface = createTestSurface();
 

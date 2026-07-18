@@ -31,7 +31,7 @@ Three fully isolated layers, each with a distinct responsibility:
        │ postMessage RPC
 ┌──────▼──────────────────────────────────────────────┐
 │     Plugin Worker (worker_thread + vm.Context)       │
-│  PluginSandbox (no require/process/fs/net)           │
+│  PluginSandbox (typed ambient surface + gated APIs)  │
 │  RPC bridge for privileged operations                │
 └─────────────────────────────────────────────────────┘
 ```
@@ -84,9 +84,42 @@ Plugin code evaluation inside `vm.Context` has a separate 5-second timeout.
 
 ### Plugins
 
-Plugins are double-sandboxed modules. Each runs in its own `worker_thread`, with plugin code evaluated inside a `vm.Context`. The explicit ambient surface is declared in `apps/desktop/src/engine/plugin-node-sandbox.ts`: `console`, an inert `process` (`{ env: {} }`), `global`/`globalThis`, `Buffer`, worker timers, `URL`/`URLSearchParams`, `TextEncoder`/`TextDecoder`, `structuredClone`, `btoa`, and `atob`. Standard context intrinsics such as `JSON`, `Math`, `Date`, `Promise`, `Array`, `Object`, `String`, `Number`, `Boolean`, `Map`, `Set`, `Error`, and `RegExp` remain available. `require()` resolves unconditional `node:path`, `node:url`, and `node:crypto.randomUUID` APIs, plus permission-gated `node:fs`, `node:net`, and `node:child_process` surfaces; the latter remain composed through the Capability Broker.
+Plugins are double-sandboxed modules. Each runs in its own `worker_thread`, with plugin code evaluated inside a `vm.Context`. The explicit ambient surface is declared in `apps/desktop/src/engine/plugin-node-sandbox.ts`; the registry-derived contract is kept in sync below. Standard context intrinsics such as `JSON`, `Math`, `Date`, `Promise`, `Array`, `Object`, `String`, `Number`, `Boolean`, `Map`, `Set`, `Error`, and `RegExp` remain available.
 
-Code generation (`eval`, `Function`, WebAssembly) is explicitly disabled. Execution has a 5-second timeout.
+<!-- plugin-sandbox-surface:start -->
+**Registry-declared ambient globals** (explicit injections; standard context intrinsics remain available):
+- `Buffer` — Supports binary encoding and decoding for plugin data handling.
+- `TextDecoder` — Provides standard UTF-8 decoding for plugin data handling.
+- `TextEncoder` — Provides standard UTF-8 encoding for plugin data handling.
+- `URL` — Provides standards-based URL parsing without exposing network access.
+- `URLSearchParams` — Provides standards-based URL query-string handling without network access.
+- `atob` — Provides standard base64 decoding for plugin data handling.
+- `btoa` — Provides standard base64 encoding for plugin data handling.
+- `clearInterval` — Allows plugins to cancel recurring timers they created inside their worker.
+- `clearTimeout` — Allows plugins to cancel timers they created inside their worker.
+- `console` — Provides worker-scoped diagnostics without exposing host process APIs.
+- `global` — Provides a sandbox self-reference without exposing the worker global object.
+- `globalThis` — Provides the standard sandbox self-reference without exposing the worker global object.
+- `process` (only `env: {}`) — Provides an inert process shape without environment, lifecycle, or host access.
+- `require` — Resolves only unconditional and permission-gated modules declared by the sandbox surface.
+- `setInterval` — Allows trigger plugins to schedule recurring work inside their worker.
+- `setTimeout` — Allows plugins to schedule asynchronous work inside their worker.
+- `structuredClone` — Provides structured data cloning without exposing host resources.
+
+**Registry-declared unconditional modules** (no Manifest permission required):
+- `node:path` — APIs: `_makeLong`, `basename`, `delimiter`, `dirname`, `extname`, `format`, `isAbsolute`, `join`, `matchesGlob`, `normalize`, `parse`, `posix`, `relative`, `resolve`, `sep`, `toNamespacedPath`, `win32`. Provides pure path parsing and formatting without filesystem access.
+- `node:url` — APIs: `URL`, `URLPattern`, `URLSearchParams`, `Url`, `domainToASCII`, `domainToUnicode`, `fileURLToPath`, `fileURLToPathBuffer`, `format`, `parse`, `pathToFileURL`, `resolve`, `resolveObject`, `urlToHttpOptions`. Provides pure URL parsing and formatting without network access.
+- `node:crypto` — APIs: `randomUUID`. Provides opaque identifiers while withholding unrelated cryptographic APIs.
+
+**Permission-gated modules** (the Capability Broker re-checks the required Manifest permissions on each API call):
+- `node:fs` — `filesystem.read` / `filesystem.write`
+- `node:net` — `network`
+- `node:child_process` — `processes`
+
+**Code generation** — the registry sets `codeGeneration.strings: false` and `codeGeneration.wasm: false`; plugin evaluation still has a 5-second timeout.
+<!-- plugin-sandbox-surface:end -->
+
+Code generation through `eval`, `Function`, or WebAssembly is therefore rejected during plugin evaluation.
 
 All privileged operations cross the Bridge via `postMessage` RPC and are re-checked by the Capability Broker against the plugin's Manifest permissions on every call.
 
@@ -137,7 +170,7 @@ Event Bus subscriptions:
 | **Preload**           | Only `window.sigil` API surface via `contextBridge`                                                         |
 | **Engine isolation**  | Separate `worker_thread` — independent heap, no shared state                                                |
 | **Plugin isolation**  | Own `worker_thread` + `vm.Context` with only registry-declared ambient globals                              |
-| **Plugin sandbox**    | Typed surface registry; code generation disabled (`codeGeneration: { strings: false, wasm: false }`); 5s eval timeout, 30s worker ready timeout |
+| **Plugin sandbox**    | Typed surface registry; registry-backed `codeGeneration` policy (`strings: false`, `wasm: false`); 5s eval timeout, 30s worker ready timeout |
 | **Permission model**  | Manifest declares capabilities; Bridge checks `emits`; Capability Broker checks `permissions` on every call |
 | **Schema validation** | Zod validates all data at every process boundary                                                            |
 
