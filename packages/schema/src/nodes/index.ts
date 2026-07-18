@@ -19,7 +19,11 @@ export type { LogConfig } from './log.js';
 export type { ManualTriggerConfig } from './manual-trigger.js';
 export type { NotificationConfig } from './notification.js';
 export type { StateGetConfig } from './state-get.js';
-export type { StateSetConfig } from './state-set.js';
+export type { StateSetConfig, StateSetValueType } from './state-set.js';
+export {
+    STATE_SET_VALUE_TYPES,
+    StateSetValueTypeSchema,
+} from './state-set.js';
 export type { SwitchCase, SwitchConfig, SwitchDiagnostic, SwitchDiagnosticCode } from './switch.js';
 export {
     SWITCH_DEFAULT_PORT,

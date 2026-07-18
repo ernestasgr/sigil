@@ -23,6 +23,18 @@ const stateSetNode: PipelineNode = {
     config: { key: 'counter', valueTemplate: '{{event}}:{{payload.name}}' },
 };
 
+const typedStateSetNode: PipelineNode = {
+    id: 'set-typed-counter',
+    type: 'state-set',
+    config: { key: 'counter', valueTemplate: '{{payload.size}}', valueType: 'number' },
+};
+
+const booleanStateSetNode: PipelineNode = {
+    id: 'set-enabled',
+    type: 'state-set',
+    config: { key: 'enabled', valueTemplate: 'false', valueType: 'boolean' },
+};
+
 function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
     return {
         bus: createEventBus(),
@@ -69,5 +81,39 @@ describe('state-set handler', () => {
         await stateSetHandler.execute({ node: stateSetNode, ctx }, deps);
 
         expect(state.get).not.toHaveBeenCalled();
+    });
+
+    it('converts the resolved template to the selected primitive type before writing', async () => {
+        const resolveTemplate = vi.fn().mockReturnValue('42');
+        const state = { ...buildDeps().state, set: vi.fn() };
+        const deps = { ...buildDeps(), resolveTemplate, state };
+
+        const { stateSetHandler } = await import('./state-set.js');
+        await stateSetHandler.execute({ node: typedStateSetNode, ctx }, deps);
+
+        expect(state.set).toHaveBeenCalledWith('counter', 42);
+    });
+
+    it('converts boolean templates to boolean state values', async () => {
+        const resolveTemplate = vi.fn().mockReturnValue('false');
+        const state = { ...buildDeps().state, set: vi.fn() };
+        const deps = { ...buildDeps(), resolveTemplate, state };
+
+        const { stateSetHandler } = await import('./state-set.js');
+        await stateSetHandler.execute({ node: booleanStateSetNode, ctx }, deps);
+
+        expect(state.set).toHaveBeenCalledWith('enabled', false);
+    });
+
+    it('reports invalid typed input instead of silently storing a string', async () => {
+        const resolveTemplate = vi.fn().mockReturnValue('not-a-number');
+        const state = { ...buildDeps().state, set: vi.fn() };
+        const deps = { ...buildDeps(), resolveTemplate, state };
+
+        const { stateSetHandler } = await import('./state-set.js');
+        await expect(
+            stateSetHandler.execute({ node: typedStateSetNode, ctx }, deps),
+        ).rejects.toThrow('State Set value must be a finite number; received "not-a-number".');
+        expect(state.set).not.toHaveBeenCalled();
     });
 });

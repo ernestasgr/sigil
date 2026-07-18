@@ -1,9 +1,13 @@
 import type { FileManagerConfig } from '@sigil/schema/nodes/file-manager';
+import type { StateSetConfig } from '@sigil/schema/nodes/state-set';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBuilderStore } from '../../src/renderer/workflow-builder/builder-store.js';
-import { FileManagerConfigForm } from '../../src/renderer/workflow-builder/inspector/config-forms.js';
+import {
+    FileManagerConfigForm,
+    StateSetConfigForm,
+} from '../../src/renderer/workflow-builder/inspector/config-forms.js';
 import { PropertiesPanel } from '../../src/renderer/workflow-builder/inspector/properties-panel.js';
 import { DEFAULT_NODE_CATALOG } from '../../src/renderer/workflow-builder/node-catalog.js';
 import {
@@ -115,6 +119,41 @@ describe('Workflow Builder renderer behavior', () => {
 
         expect(nameInput).toHaveValue('renamed.txt');
         expect(screen.getByText(/Valid/)).toBeInTheDocument();
+    });
+
+    it('persists the State Set value type in the compiled Workflow', async () => {
+        const user = userEvent.setup();
+        renderBuilder();
+        await addPaletteNode(user, 'Manual Trigger');
+        await addPaletteNode(user, 'State Set');
+
+        await user.selectOptions(screen.getByRole('combobox', { name: 'Value type' }), 'number');
+
+        const nodes = useBuilderStore.getState().nodes;
+        const triggerNode = nodes.find((node) => node.data.type === 'manual-trigger');
+        const stateSetNode = nodes.find((node) => node.data.type === 'state-set');
+        if (!triggerNode || !stateSetNode) throw new Error('Expected trigger and State Set nodes.');
+
+        useBuilderStore.getState().connect({
+            source: triggerNode.id,
+            target: stateSetNode.id,
+            sourceHandle: 'out',
+            targetHandle: null,
+        });
+
+        const result = useBuilderStore.getState().compile();
+        expect(result.ok).toBe(true);
+        if (!result.ok) throw new Error(result.error);
+
+        expect(result.value.nodes).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: stateSetNode.id,
+                    type: 'state-set',
+                    config: expect.objectContaining({ valueType: 'number' }),
+                }),
+            ]),
+        );
     });
 
     it('supports keyboard activation for the Node Library and Builder interactions', async () => {
@@ -288,5 +327,27 @@ describe('File-manager config form renderer behavior', () => {
         );
 
         expect(screen.getByRole('combobox', { name: 'On conflict' })).toHaveValue('overwrite');
+    });
+});
+
+describe('State Set config form renderer behavior', () => {
+    it('shows Text for legacy configs and persists a selected primitive type', async () => {
+        const user = userEvent.setup();
+        const onChange = vi.fn();
+        const config: StateSetConfig = { key: 'retry-count', valueTemplate: '3' };
+        render(<StateSetConfigForm config={config} onChange={onChange} />);
+
+        const valueType = screen.getByRole('combobox', { name: 'Value type' });
+        expect(valueType).toHaveValue('string');
+        expect(screen.getByRole('option', { name: 'Text' })).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'Number' })).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'Boolean' })).toBeInTheDocument();
+
+        await user.selectOptions(valueType, 'number');
+
+        expect(onChange).toHaveBeenLastCalledWith({
+            ...config,
+            valueType: 'number',
+        });
     });
 });

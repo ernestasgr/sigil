@@ -511,15 +511,133 @@ describe('dag-executor', () => {
     });
 
     describe('executePipeline — workflow state', () => {
-        const stateSet = (id: string, key: string, valueTemplate: string): PipelineNode => ({
+        const stateSet = (
+            id: string,
+            key: string,
+            valueTemplate: string,
+            valueType?: 'string' | 'number' | 'boolean',
+        ): PipelineNode => ({
             id,
             type: 'state-set',
-            config: { key, valueTemplate },
+            config: { key, valueTemplate, ...(valueType ? { valueType } : {}) },
         });
         const stateGet = (id: string, key: string, assignTo: string): PipelineNode => ({
             id,
             type: 'state-get',
             config: { key, assignTo },
+        });
+
+        it.each([
+            { valueType: 'number' as const, template: '42', matchValue: '042', expected: 42 },
+            { valueType: 'boolean' as const, template: 'true', matchValue: 'true', expected: true },
+        ])('routes a real $valueType state-set -> state-get value through Switch matching', async ({
+            valueType,
+            template,
+            matchValue,
+            expected,
+        }) => {
+            const database = new Database(':memory:');
+            const store = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
+            const bus = createEventBus();
+            const events = captureEvents(bus);
+
+            await executePipeline(
+                pipeline(
+                    [
+                        trigger(),
+                        stateSet('set', 'stored-value', template, valueType),
+                        stateGet('get', 'stored-value', 'remembered'),
+                        {
+                            id: 'switch',
+                            type: 'switch',
+                            config: {
+                                target: 'vars',
+                                field: 'remembered',
+                                cases: [{ id: 'typed-match', value: matchValue }],
+                            },
+                        },
+                        log('matched', 'typed match'),
+                        log('default', 'default branch'),
+                    ],
+                    [
+                        edge('trigger-to-set', 'trigger', 'set', 'out'),
+                        edge('set-to-get', 'set', 'get', 'out'),
+                        edge('get-to-switch', 'get', 'switch', 'out'),
+                        edge('switch-to-match', 'switch', 'matched', 'typed-match'),
+                        edge('switch-to-default', 'switch', 'default', 'default'),
+                    ],
+                ),
+                bus,
+                handlerRegistry,
+                undefined,
+                undefined,
+                store,
+            );
+
+            const messages = events
+                .filter((event) => event.name === 'log.output')
+                .map((event) => (event.name === 'log.output' ? event.payload.message : ''));
+            expect(messages).toContain('typed match');
+            expect(messages).not.toContain('default branch');
+            expect(store.forWorkflow('test-workflow').get('stored-value')).toEqual(
+                Option.some(expected),
+            );
+
+            store.dispose();
+            database.close();
+        });
+
+        it('compares a real typed numeric state value in an If/Else branch', async () => {
+            const database = new Database(':memory:');
+            const store = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
+            const bus = createEventBus();
+            const events = captureEvents(bus);
+
+            await executePipeline(
+                pipeline(
+                    [
+                        trigger(),
+                        stateSet('set', 'stored-value', '42', 'number'),
+                        stateGet('get', 'stored-value', 'remembered'),
+                        {
+                            id: 'branch',
+                            type: 'if-else',
+                            config: {
+                                condition: {
+                                    target: 'vars',
+                                    field: 'remembered',
+                                    operator: 'equals',
+                                    value: 42,
+                                },
+                            },
+                        },
+                        log('true', 'numeric match'),
+                        log('false', 'numeric mismatch'),
+                    ],
+                    [
+                        edge('trigger-to-set', 'trigger', 'set', 'out'),
+                        edge('set-to-get', 'set', 'get', 'out'),
+                        edge('get-to-branch', 'get', 'branch', 'out'),
+                        edge('branch-to-true', 'branch', 'true', 'true'),
+                        edge('branch-to-false', 'branch', 'false', 'false'),
+                    ],
+                ),
+                bus,
+                handlerRegistry,
+                undefined,
+                undefined,
+                store,
+            );
+
+            const messages = events
+                .filter((event) => event.name === 'log.output')
+                .map((event) => (event.name === 'log.output' ? event.payload.message : ''));
+            expect(messages).toContain('numeric match');
+            expect(messages).not.toContain('numeric mismatch');
+            expect(store.forWorkflow('test-workflow').get('stored-value')).toEqual(Option.some(42));
+
+            store.dispose();
+            database.close();
         });
 
         it('makes a buffered state-set visible to a state-get within the same run', async () => {

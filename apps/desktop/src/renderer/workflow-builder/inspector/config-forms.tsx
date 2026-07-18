@@ -545,6 +545,12 @@ export function StateSetConfigForm({
                 placeholder="{{payload.path}}"
                 onChange={(valueTemplate) => onChange({ ...config, valueTemplate })}
             />
+            <SelectInput
+                label="Value type"
+                value={config.valueType ?? 'string'}
+                options={VALUE_KIND_OPTIONS}
+                onChange={(valueType) => onChange({ ...config, valueType })}
+            />
         </>
     );
 }
