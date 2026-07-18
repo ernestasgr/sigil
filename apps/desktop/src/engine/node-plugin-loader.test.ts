@@ -1808,6 +1808,215 @@ export const handler: NodeHandler = {
 
 // ─── Permission propagation (runtime override) ─────────────
 
+const SANDBOX_SURFACE_HANDLER = `
+import { randomBytes, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { isIP } from 'node:net';
+import { join } from 'node:path';
+import { format as formatUrl } from 'node:url';
+import { z } from 'zod';
+
+const ConfigSchema = z.object({});
+
+function capture(operation) {
+    try {
+        return String(operation());
+    } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+    }
+}
+
+export const descriptor = {
+    type: 'sandbox-surface-plugin' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler = {
+    async execute({ ctx }) {
+        return {
+            outputCtx: {
+                ...ctx,
+                vars: {
+                    ...ctx.vars,
+                    path: join('a', 'b'),
+                    url: formatUrl({ protocol: 'https:', host: 'example.com', pathname: '/x' }),
+                    uuidIsString: typeof randomUUID() === 'string',
+                    randomBytesType: typeof randomBytes,
+                    fsDenied: capture(() => readFileSync('/missing', { flag: 'r' })),
+                    networkDenied: capture(() => isIP('127.0.0.1')),
+                    processDenied: capture(() => execFileSync('node', ['--version'])),
+                },
+            },
+            activePort: 'out',
+        };
+    },
+};
+`;
+
+const CODE_GENERATION_STRING_HANDLER = `
+import { z } from 'zod';
+
+const generated = eval('1 + 1');
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'code-generation-string-plugin' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler = {
+    async execute({ ctx }) {
+        return { outputCtx: { ...ctx, vars: { ...ctx.vars, generated } }, activePort: 'out' };
+    },
+};
+`;
+
+const CODE_GENERATION_WASM_HANDLER = `
+import { z } from 'zod';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'code-generation-wasm-plugin' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler = {
+    async execute({ ctx }) {
+        let wasmError = '';
+        try {
+            await WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]));
+        } catch (error) {
+            wasmError = error instanceof Error ? error.message : String(error);
+        }
+        return { outputCtx: { ...ctx, vars: { ...ctx.vars, wasmError } }, activePort: 'out' };
+    },
+};
+`;
+
+describe('Plugin Sandbox Surface', () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+        tempDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-surface-'));
+    });
+
+    afterEach(() => {
+        rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it('allows zero-permission plugins to use only declared unconditional APIs', async () => {
+        const pluginDir = join(tempDir, 'surface-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.sandbox-surface',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'sandbox-surface-plugin',
+            },
+            SANDBOX_SURFACE_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('sandbox-surface-plugin'));
+        const output = await handler.execute(
+            {
+                node: {
+                    id: 'n1',
+                    type: 'sandbox-surface-plugin',
+                    pluginId: 'com.sigil.sandbox-surface',
+                    config: {},
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            },
+            {} as never,
+        );
+
+        expect(output.outputCtx.vars.path).toBe('a\\b');
+        expect(output.outputCtx.vars.url).toBe('https://example.com/x');
+        expect(output.outputCtx.vars.uuidIsString).toBe(true);
+        expect(output.outputCtx.vars.randomBytesType).toBe('undefined');
+        expect(output.outputCtx.vars.fsDenied).toContain('Permission denied');
+        expect(output.outputCtx.vars.networkDenied).toContain('Permission denied');
+        expect(output.outputCtx.vars.processDenied).toContain('Permission denied');
+    });
+
+    it('disables string code generation during plugin evaluation', async () => {
+        const pluginDir = join(tempDir, 'string-code-generation-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.code-generation-string',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'code-generation-string-plugin',
+            },
+            CODE_GENERATION_STRING_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.error.kind).toBe('worker_error');
+            if (result.error.kind === 'worker_error') {
+                expect(result.error.error).toContain('Code generation from strings disallowed');
+            }
+        }
+    });
+
+    it('disables WebAssembly code generation inside the evaluated plugin context', async () => {
+        const pluginDir = join(tempDir, 'wasm-code-generation-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.code-generation-wasm',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'code-generation-wasm-plugin',
+            },
+            CODE_GENERATION_WASM_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('code-generation-wasm-plugin'));
+        const output = await handler.execute(
+            {
+                node: {
+                    id: 'n1',
+                    type: 'code-generation-wasm-plugin',
+                    pluginId: 'com.sigil.code-generation-wasm',
+                    config: {},
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            },
+            {} as never,
+        );
+
+        expect(output.outputCtx.vars.wasmError).toContain('Wasm code generation disallowed');
+    });
+});
+
 describe('updatePluginPermissions', () => {
     let tempDir: string;
 

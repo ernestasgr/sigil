@@ -84,7 +84,7 @@ Plugin code evaluation inside `vm.Context` has a separate 5-second timeout.
 
 ### Plugins
 
-Plugins are double-sandboxed modules. Each runs in its own `worker_thread`, with plugin code evaluated inside a `vm.Context` that has no ambient `require`, `process`, `fs`, `Buffer`, `setTimeout`, `setInterval`, or `net`. Only safe globals are exposed: `JSON`, `Math`, `Date`, `Promise`, `Array`, `Object`, `String`, `Number`, `Boolean`, `Map`, `Set`, `Error`, `RegExp`, and a restricted API surface (`event.emit()`, `state.get()`, `state.set()`, `log()`).
+Plugins are double-sandboxed modules. Each runs in its own `worker_thread`, with plugin code evaluated inside a `vm.Context`. The explicit ambient surface is declared in `apps/desktop/src/engine/plugin-node-sandbox.ts`: `console`, an inert `process` (`{ env: {} }`), `global`/`globalThis`, `Buffer`, worker timers, `URL`/`URLSearchParams`, `TextEncoder`/`TextDecoder`, `structuredClone`, `btoa`, and `atob`. Standard context intrinsics such as `JSON`, `Math`, `Date`, `Promise`, `Array`, `Object`, `String`, `Number`, `Boolean`, `Map`, `Set`, `Error`, and `RegExp` remain available. `require()` resolves unconditional `node:path`, `node:url`, and `node:crypto.randomUUID` APIs, plus permission-gated `node:fs`, `node:net`, and `node:child_process` surfaces; the latter remain composed through the Capability Broker.
 
 Code generation (`eval`, `Function`, WebAssembly) is explicitly disabled. Execution has a 5-second timeout.
 
@@ -136,8 +136,8 @@ Event Bus subscriptions:
 | **Electron**          | `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`                                         |
 | **Preload**           | Only `window.sigil` API surface via `contextBridge`                                                         |
 | **Engine isolation**  | Separate `worker_thread` — independent heap, no shared state                                                |
-| **Plugin isolation**  | Own `worker_thread` + `vm.Context` with no Node.js globals                                                  |
-| **Plugin sandbox**    | Code generation disabled (`strings: false`, `wasm: false`); 5s eval timeout, 30s worker ready timeout |
+| **Plugin isolation**  | Own `worker_thread` + `vm.Context` with only registry-declared ambient globals                              |
+| **Plugin sandbox**    | Typed surface registry; code generation disabled (`codeGeneration: { strings: false, wasm: false }`); 5s eval timeout, 30s worker ready timeout |
 | **Permission model**  | Manifest declares capabilities; Bridge checks `emits`; Capability Broker checks `permissions` on every call |
 | **Schema validation** | Zod validates all data at every process boundary                                                            |
 
