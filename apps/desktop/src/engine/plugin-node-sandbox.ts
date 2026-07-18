@@ -1,11 +1,219 @@
 import type { Capability } from '@sigil/schema/manifest';
 
 export type SandboxModuleName = 'node:fs' | 'node:net' | 'node:child_process';
+export type UnconditionalSandboxModuleName = 'node:path' | 'node:url' | 'node:crypto';
 
 type StringKey<T> = Extract<keyof T, string>;
 type FsApiName = StringKey<typeof import('node:fs')>;
 type NetApiName = StringKey<typeof import('node:net')>;
 type ChildProcessApiName = StringKey<typeof import('node:child_process')>;
+type PathApiName = StringKey<typeof import('node:path')> | '_makeLong';
+type UrlApiName = StringKey<typeof import('node:url')> | 'Url' | 'resolveObject';
+type CryptoApiName = 'randomUUID';
+
+export type SandboxGlobalEntry =
+    | {
+          readonly kind: 'literal';
+          readonly value: unknown;
+          readonly rationale: string;
+      }
+    | {
+          readonly kind: 'thunk';
+          readonly create: () => unknown;
+          readonly rationale: string;
+      };
+
+type UnconditionalSandboxModuleEntryFor<TModule extends UnconditionalSandboxModuleName> =
+    TModule extends 'node:path'
+        ? {
+              readonly module: TModule;
+              readonly apiNames: readonly PathApiName[];
+              readonly rationale: string;
+          }
+        : TModule extends 'node:url'
+          ? {
+                readonly module: TModule;
+                readonly apiNames: readonly UrlApiName[];
+                readonly rationale: string;
+            }
+          : {
+                readonly module: TModule;
+                readonly apiNames: readonly CryptoApiName[];
+                readonly rationale: string;
+            };
+
+type UnconditionalSandboxModuleTable = {
+    readonly [TModule in UnconditionalSandboxModuleName]: UnconditionalSandboxModuleEntryFor<TModule>;
+};
+
+export type PluginSandboxSurfaceRuntime = {
+    readonly globalObject: Record<string, unknown>;
+    readonly resolveModule: (moduleName: string) => unknown;
+};
+
+export type PluginSandboxSurface = {
+    readonly globals: Readonly<Record<string, SandboxGlobalEntry>>;
+    readonly unconditionalModules: UnconditionalSandboxModuleTable;
+    readonly codeGeneration: {
+        readonly strings: false;
+        readonly wasm: false;
+    };
+};
+
+export type SandboxModuleLoader = (
+    moduleName: SandboxModuleName | UnconditionalSandboxModuleName,
+) => Readonly<Record<string, unknown>>;
+
+const PATH_API_NAMES = [
+    '_makeLong',
+    'basename',
+    'delimiter',
+    'dirname',
+    'extname',
+    'format',
+    'isAbsolute',
+    'join',
+    'matchesGlob',
+    'normalize',
+    'parse',
+    'posix',
+    'relative',
+    'resolve',
+    'sep',
+    'toNamespacedPath',
+    'win32',
+] satisfies readonly PathApiName[];
+
+const URL_API_NAMES = [
+    'URL',
+    'URLPattern',
+    'URLSearchParams',
+    'Url',
+    'domainToASCII',
+    'domainToUnicode',
+    'fileURLToPath',
+    'fileURLToPathBuffer',
+    'format',
+    'parse',
+    'pathToFileURL',
+    'resolve',
+    'resolveObject',
+    'urlToHttpOptions',
+] satisfies readonly UrlApiName[];
+
+const CRYPTO_API_NAMES = ['randomUUID'] satisfies readonly CryptoApiName[];
+
+function literal(value: unknown, rationale: string): SandboxGlobalEntry {
+    return { kind: 'literal', value, rationale };
+}
+
+function thunk(create: () => unknown, rationale: string): SandboxGlobalEntry {
+    return { kind: 'thunk', create, rationale };
+}
+
+export function createPluginSandboxSurface(
+    runtime: PluginSandboxSurfaceRuntime,
+): PluginSandboxSurface {
+    return {
+        globals: {
+            require: thunk(
+                () => runtime.resolveModule,
+                'Resolves only unconditional and permission-gated modules declared by the sandbox surface.',
+            ),
+            console: literal(
+                console,
+                'Provides worker-scoped diagnostics without exposing host process APIs.',
+            ),
+            process: thunk(
+                () => ({ env: {} }),
+                'Provides an inert process shape without environment, lifecycle, or host access.',
+            ),
+            global: thunk(
+                () => runtime.globalObject,
+                'Provides a sandbox self-reference without exposing the worker global object.',
+            ),
+            globalThis: thunk(
+                () => runtime.globalObject,
+                'Provides the standard sandbox self-reference without exposing the worker global object.',
+            ),
+            Buffer: thunk(
+                () => Buffer,
+                'Supports binary encoding and decoding for plugin data handling.',
+            ),
+            setTimeout: thunk(
+                () => setTimeout,
+                'Allows plugins to schedule asynchronous work inside their worker.',
+            ),
+            clearTimeout: thunk(
+                () => clearTimeout,
+                'Allows plugins to cancel timers they created inside their worker.',
+            ),
+            setInterval: thunk(
+                () => setInterval,
+                'Allows trigger plugins to schedule recurring work inside their worker.',
+            ),
+            clearInterval: thunk(
+                () => clearInterval,
+                'Allows plugins to cancel recurring timers they created inside their worker.',
+            ),
+            URL: thunk(
+                () => URL,
+                'Provides standards-based URL parsing without exposing network access.',
+            ),
+            URLSearchParams: thunk(
+                () => URLSearchParams,
+                'Provides standards-based URL query-string handling without network access.',
+            ),
+            TextEncoder: thunk(
+                () => TextEncoder,
+                'Provides standard UTF-8 encoding for plugin data handling.',
+            ),
+            TextDecoder: thunk(
+                () => TextDecoder,
+                'Provides standard UTF-8 decoding for plugin data handling.',
+            ),
+            structuredClone: thunk(
+                () => structuredClone,
+                'Provides structured data cloning without exposing host resources.',
+            ),
+            btoa: thunk(() => btoa, 'Provides standard base64 encoding for plugin data handling.'),
+            atob: thunk(() => atob, 'Provides standard base64 decoding for plugin data handling.'),
+        },
+        unconditionalModules: {
+            'node:path': {
+                module: 'node:path',
+                apiNames: PATH_API_NAMES,
+                rationale: 'Provides pure path parsing and formatting without filesystem access.',
+            },
+            'node:url': {
+                module: 'node:url',
+                apiNames: URL_API_NAMES,
+                rationale: 'Provides pure URL parsing and formatting without network access.',
+            },
+            'node:crypto': {
+                module: 'node:crypto',
+                apiNames: CRYPTO_API_NAMES,
+                rationale:
+                    'Provides opaque identifiers while withholding unrelated cryptographic APIs.',
+            },
+        },
+        codeGeneration: {
+            strings: false,
+            wasm: false,
+        },
+    };
+}
+
+export function buildSandboxGlobalObject(
+    globals: Readonly<Record<string, SandboxGlobalEntry>>,
+): Record<string, unknown> {
+    return Object.fromEntries(
+        Object.entries(globals).map(([name, entry]) => [
+            name,
+            entry.kind === 'literal' ? entry.value : entry.create(),
+        ]),
+    );
+}
 
 type PermissionDenied = (apiName: string) => string;
 
@@ -346,9 +554,54 @@ export function getSandboxModuleNames(): readonly SandboxModuleName[] {
     return [...moduleNames];
 }
 
-export type SandboxModuleLoader = (
-    moduleName: SandboxModuleName,
-) => Readonly<Record<string, unknown>>;
+function pickDeclaredModuleApis(
+    entry: UnconditionalSandboxModuleEntryFor<UnconditionalSandboxModuleName>,
+    loadModule: SandboxModuleLoader,
+): Record<string, unknown> {
+    const realModule = loadModule(entry.module);
+    const sandboxModule: Record<string, unknown> = {};
+
+    for (const apiName of entry.apiNames) {
+        if (!(apiName in realModule)) {
+            throw new Error(
+                `Sandbox surface API "${entry.module}.${apiName}" is not available in the host module.`,
+            );
+        }
+        sandboxModule[apiName] = realModule[apiName];
+    }
+
+    return sandboxModule;
+}
+
+export function buildUnconditionalSandboxModules(
+    surface: PluginSandboxSurface,
+    loadModule: SandboxModuleLoader,
+): Record<string, Record<string, unknown>> {
+    const modules: Record<string, Record<string, unknown>> = {};
+
+    for (const entry of Object.values(surface.unconditionalModules)) {
+        modules[entry.module] = pickDeclaredModuleApis(entry, loadModule);
+    }
+
+    return modules;
+}
+
+export function createSandboxRequire(
+    getModules: () => Readonly<Record<string, unknown>>,
+    permissions: ReadonlySet<Capability>,
+): (moduleName: string) => unknown {
+    return (moduleName) => {
+        const modules = getModules();
+        if (Object.hasOwn(modules, moduleName)) {
+            return modules[moduleName];
+        }
+
+        throw new Error(
+            `Module "${moduleName}" is not available in the plugin sandbox. ` +
+                `Check plugin manifest permissions (available: ${[...permissions].join(', ') || 'none'}).`,
+        );
+    };
+}
 
 export function buildPermissionGatedModule(
     moduleName: SandboxModuleName,

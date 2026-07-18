@@ -39,7 +39,12 @@ import {
 } from './plugin-node-rpc.js';
 import {
     buildPermissionGatedModule,
+    buildSandboxGlobalObject,
+    buildUnconditionalSandboxModules,
+    createPluginSandboxSurface,
+    createSandboxRequire,
     getSandboxModuleNames,
+    type PluginSandboxSurface,
     type SandboxModuleName,
 } from './plugin-node-sandbox.js';
 
@@ -560,13 +565,8 @@ function createLiveModuleProxy(getCurrent: () => Record<string, unknown>): Recor
     );
 }
 
-function buildSandboxModules(): void {
-    sandboxModules = {};
-
-    sandboxModules['node:path'] = workerRequire('node:path');
-    sandboxModules['node:url'] = workerRequire('node:url');
-    sandboxModules['node:crypto'] = { randomUUID: () => randomUUID() };
-
+function buildSandboxModules(surface: PluginSandboxSurface): void {
+    sandboxModules = buildUnconditionalSandboxModules(surface, getModuleRecord);
     rebuildPermissionGatedModules();
     for (const moduleName of getSandboxModuleNames()) {
         sandboxModules[moduleName] = createLiveModuleProxy(
@@ -642,38 +642,16 @@ async function loadHandler(): Promise<RawPluginModule> {
     });
 
     const code = result.outputFiles[0].text;
-    buildSandboxModules();
+    const vmContext: Record<string, unknown> = {};
+    const sandboxRequire = createSandboxRequire(() => sandboxModules, permissions);
+    const surface = createPluginSandboxSurface({
+        globalObject: vmContext,
+        resolveModule: sandboxRequire,
+    });
+    buildSandboxModules(surface);
+    Object.assign(vmContext, buildSandboxGlobalObject(surface.globals));
 
-    const vmContext: Record<string, unknown> = {
-        require: (id: string): unknown => {
-            const mod = sandboxModules[id];
-            if (mod) return mod;
-            throw new Error(
-                `Module "${id}" is not available in the plugin sandbox. ` +
-                    `Check plugin manifest permissions (available: ${[...permissions].join(', ') || 'none'}).`,
-            );
-        },
-        console,
-        process: { env: {} },
-        global: undefined,
-        globalThis: undefined,
-        Buffer,
-        setTimeout,
-        clearTimeout,
-        setInterval,
-        clearInterval,
-        URL,
-        URLSearchParams,
-        TextEncoder,
-        TextDecoder,
-        structuredClone,
-        btoa,
-        atob,
-    };
-    vmContext.global = vmContext;
-    vmContext.globalThis = vmContext;
-
-    const ctx = vm.createContext(vmContext);
+    const ctx = vm.createContext(vmContext, { codeGeneration: surface.codeGeneration });
 
     try {
         vm.runInContext(code, ctx, { timeout: 5000 });

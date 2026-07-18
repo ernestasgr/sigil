@@ -1,11 +1,25 @@
+import { createRequire } from 'node:module';
 import { CapabilitySchema } from '@sigil/schema/manifest';
 import { describe, expect, it } from 'vitest';
 
 import {
     buildPermissionGatedModule,
+    buildSandboxGlobalObject,
+    buildUnconditionalSandboxModules,
+    createPluginSandboxSurface,
     getSandboxModuleNames,
     SANDBOX_CAPABILITY_TABLE,
 } from './plugin-node-sandbox.js';
+
+const nodeRequire = createRequire(import.meta.url);
+
+function createTestSurface() {
+    const globalObject: Record<string, unknown> = {};
+    return createPluginSandboxSurface({
+        globalObject,
+        resolveModule: () => undefined,
+    });
+}
 
 function createFakeModules(): Record<string, Record<string, unknown>> {
     const modules: Record<string, Record<string, unknown>> = {};
@@ -24,6 +38,109 @@ function createFakeModules(): Record<string, Record<string, unknown>> {
 }
 
 describe('sandbox capability table', () => {
+    it('declares the complete ambient surface, unconditional modules, and code-generation policy', () => {
+        const surface = createTestSurface();
+
+        expect(Object.keys(surface.globals).sort()).toEqual([
+            'Buffer',
+            'TextDecoder',
+            'TextEncoder',
+            'URL',
+            'URLSearchParams',
+            'atob',
+            'btoa',
+            'clearInterval',
+            'clearTimeout',
+            'console',
+            'global',
+            'globalThis',
+            'process',
+            'require',
+            'setInterval',
+            'setTimeout',
+            'structuredClone',
+        ]);
+        expect(Object.values(surface.globals).every((entry) => entry.rationale.length > 0)).toBe(
+            true,
+        );
+        expect(
+            Object.fromEntries(
+                Object.entries(surface.globals).map(([name, entry]) => [name, entry.kind]),
+            ),
+        ).toEqual({
+            require: 'thunk',
+            console: 'literal',
+            process: 'thunk',
+            global: 'thunk',
+            globalThis: 'thunk',
+            Buffer: 'thunk',
+            setTimeout: 'thunk',
+            clearTimeout: 'thunk',
+            setInterval: 'thunk',
+            clearInterval: 'thunk',
+            URL: 'thunk',
+            URLSearchParams: 'thunk',
+            TextEncoder: 'thunk',
+            TextDecoder: 'thunk',
+            structuredClone: 'thunk',
+            btoa: 'thunk',
+            atob: 'thunk',
+        });
+        expect(Object.keys(surface.unconditionalModules).sort()).toEqual([
+            'node:crypto',
+            'node:path',
+            'node:url',
+        ]);
+        expect(
+            Object.values(surface.unconditionalModules).every(
+                (entry) => entry.rationale.length > 0,
+            ),
+        ).toBe(true);
+        expect(surface.unconditionalModules['node:crypto'].apiNames).toEqual(['randomUUID']);
+        expect(surface.codeGeneration).toEqual({ strings: false, wasm: false });
+    });
+
+    it('materializes fresh thunk globals and only the APIs declared by unconditional modules', () => {
+        const surface = createTestSurface();
+        const firstGlobals = buildSandboxGlobalObject(surface.globals);
+        const secondGlobals = buildSandboxGlobalObject(surface.globals);
+        const fakeModules: Record<string, Record<string, unknown>> = {};
+
+        for (const entry of Object.values(surface.unconditionalModules)) {
+            fakeModules[entry.module] = Object.fromEntries(
+                [...entry.apiNames, 'notDeclared'].map((apiName) => [apiName, apiName]),
+            );
+        }
+
+        const modules = buildUnconditionalSandboxModules(
+            surface,
+            (moduleName) => fakeModules[moduleName] ?? {},
+        );
+
+        expect(firstGlobals.process).not.toBe(secondGlobals.process);
+        expect(Object.keys(modules['node:crypto'] ?? {})).toEqual(['randomUUID']);
+        expect(modules['node:crypto']?.randomBytes).toBeUndefined();
+        expect(modules['node:path']?.notDeclared).toBeUndefined();
+    });
+
+    it('keeps unconditional module API allowlists synchronized with host exports', () => {
+        const surface = createTestSurface();
+
+        for (const entry of Object.values(surface.unconditionalModules)) {
+            const moduleValue: unknown = nodeRequire(entry.module);
+            if (typeof moduleValue !== 'object' || moduleValue === null) {
+                throw new Error(`Expected ${entry.module} to export an object`);
+            }
+            if (entry.module === 'node:crypto') {
+                expect(Object.keys(moduleValue)).toEqual(
+                    expect.arrayContaining([...entry.apiNames]),
+                );
+                continue;
+            }
+            expect(Object.keys(moduleValue).sort()).toEqual([...entry.apiNames].sort());
+        }
+    });
+
     it('represents every manifest capability, including capabilities without a Node module', () => {
         const capabilities = CapabilitySchema.options;
         const tableCapabilities = Object.keys(SANDBOX_CAPABILITY_TABLE);
