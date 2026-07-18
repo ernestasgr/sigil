@@ -75,6 +75,21 @@ describe('Settings Workflow State', () => {
         await user.type(input, '42');
         await user.click(screen.getByRole('button', { name: 'Save' }));
 
-        expect(sigil.setWorkflowStateKey).toHaveBeenCalledWith('wf-typed', 'count', '42');
+        await waitFor(() => {
+            expect(sigil.setWorkflowStateKey).toHaveBeenCalledWith('wf-typed', 'count', 42);
+        });
+        expect(document.querySelector('[data-value-type="number"]')).toHaveTextContent('42');
+
+        await user.click(screen.getAllByRole('button', { name: 'Edit' })[1]);
+        const booleanInput = screen.getByRole('textbox');
+        expect(booleanInput).toHaveValue('false');
+        await user.clear(booleanInput);
+        await user.type(booleanInput, 'true');
+        await user.click(screen.getByRole('button', { name: 'Save' }));
+
+        await waitFor(() => {
+            expect(sigil.setWorkflowStateKey).toHaveBeenCalledWith('wf-typed', 'enabled', true);
+        });
+        expect(document.querySelector('[data-value-type="boolean"]')).toHaveTextContent('true');
     });
 });

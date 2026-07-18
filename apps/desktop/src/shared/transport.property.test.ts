@@ -88,11 +88,23 @@ const responseArbitrary = fc.oneof(
         type: fc.constant(EngineChannel.ReadWorkflowStateResult),
         correlationId: correlationIdArbitrary,
         entries: fc.array(
-            fc.record({
-                key: fc.constantFrom('alpha', 'beta'),
-                type: fc.constant('string'),
-                value: fc.string({ minLength: 0, maxLength: 12 }),
-            }),
+            fc.oneof(
+                fc.record({
+                    key: fc.constantFrom('alpha', 'beta'),
+                    type: fc.constant('string'),
+                    value: fc.string({ minLength: 0, maxLength: 12 }),
+                }),
+                fc.record({
+                    key: fc.constantFrom('alpha', 'beta'),
+                    type: fc.constant('number'),
+                    value: fc.integer({ min: -100_000, max: 100_000 }),
+                }),
+                fc.record({
+                    key: fc.constantFrom('alpha', 'beta'),
+                    type: fc.constant('boolean'),
+                    value: fc.boolean(),
+                }),
+            ),
             { maxLength: 4 },
         ),
     }),

@@ -5,8 +5,14 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
-import { createInMemoryWorkflowStateStore, createWorkflowStateStore } from './workflow-state.js';
+import type { WorkflowStatePrimitive } from './workflow-state.js';
+import {
+    createInMemoryWorkflowStateStore,
+    createWorkflowStateStore,
+    WORKFLOW_STATE_VALUE_FORMAT,
+    WORKFLOW_STATE_VALUE_PREFIX,
+    WORKFLOW_STATE_VALUE_VERSION,
+} from './workflow-state.js';
 
 function createStore(database: Database.Database) {
     return createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
@@ -75,12 +81,12 @@ describe('createWorkflowStateStore — get/set', () => {
                 .prepare('SELECT value FROM workflow_state WHERE workflow_id = ? AND key = ?')
                 .get('wf-a', 'typed'),
         ).toEqual({
-            value: JSON.stringify({
-                format: 'sigil.workflow-state',
-                version: 1,
+            value: `${WORKFLOW_STATE_VALUE_PREFIX}${JSON.stringify({
+                format: WORKFLOW_STATE_VALUE_FORMAT,
+                version: WORKFLOW_STATE_VALUE_VERSION,
                 type: 'number',
                 value: 42,
-            }),
+            })}`,
         });
 
         store.dispose();
@@ -104,6 +110,78 @@ describe('createWorkflowStateStore — get/set', () => {
         expect(state.get('empty')).toEqual(Option.some(''));
         expect(state.get('number-looking')).toEqual(Option.some('42'));
         expect(state.get('boolean-looking')).toEqual(Option.some('false'));
+
+        store.dispose();
+        database.close();
+    });
+
+    it('migrates envelope-shaped legacy strings before decoding and preserves encoded rows', () => {
+        const database = new Database(':memory:');
+        database.exec(`
+            CREATE TABLE workflow_state (
+                workflow_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                PRIMARY KEY (workflow_id, key)
+            );
+        `);
+
+        const legacyEnvelope = JSON.stringify({
+            format: WORKFLOW_STATE_VALUE_FORMAT,
+            version: WORKFLOW_STATE_VALUE_VERSION,
+            type: 'number',
+            value: 7,
+        });
+        const encodedTypedValue = `${WORKFLOW_STATE_VALUE_PREFIX}${JSON.stringify({
+            format: WORKFLOW_STATE_VALUE_FORMAT,
+            version: WORKFLOW_STATE_VALUE_VERSION,
+            type: 'number',
+            value: 42,
+        })}`;
+        const malformedEncodedValue = `${WORKFLOW_STATE_VALUE_PREFIX}not-json`;
+        const invalidEncodedValue = `${WORKFLOW_STATE_VALUE_PREFIX}${JSON.stringify({
+            format: WORKFLOW_STATE_VALUE_FORMAT,
+            version: WORKFLOW_STATE_VALUE_VERSION,
+            type: 'number',
+            value: '42',
+        })}`;
+        const insert = database.prepare(
+            'INSERT INTO workflow_state (workflow_id, key, value) VALUES (?, ?, ?)',
+        );
+        insert.run('wf-a', 'legacy-envelope', legacyEnvelope);
+        insert.run('wf-a', 'typed', encodedTypedValue);
+        insert.run('wf-a', 'malformed', malformedEncodedValue);
+        insert.run('wf-a', 'invalid', invalidEncodedValue);
+
+        const store = createStore(database);
+        const state = store.forWorkflow('wf-a');
+
+        expect(state.get('legacy-envelope')).toEqual(Option.some(legacyEnvelope));
+        expect(state.get('typed')).toEqual(Option.some(42));
+        expect(state.get('malformed')).toEqual(Option.some(malformedEncodedValue));
+        expect(state.get('invalid')).toEqual(Option.some(invalidEncodedValue));
+        expect(
+            database
+                .prepare('SELECT value FROM workflow_state WHERE workflow_id = ? AND key = ?')
+                .get('wf-a', 'legacy-envelope'),
+        ).toEqual({
+            value: `${WORKFLOW_STATE_VALUE_PREFIX}${JSON.stringify({
+                format: WORKFLOW_STATE_VALUE_FORMAT,
+                version: WORKFLOW_STATE_VALUE_VERSION,
+                type: 'string',
+                value: legacyEnvelope,
+            })}`,
+        });
+        expect(
+            database
+                .prepare('SELECT value FROM workflow_state WHERE workflow_id = ? AND key = ?')
+                .get('wf-a', 'typed'),
+        ).toEqual({ value: encodedTypedValue });
+        expect(
+            database
+                .prepare('SELECT value FROM workflow_state_metadata WHERE key = ?')
+                .get('typed-value-envelope-v1'),
+        ).toEqual({ value: 'complete' });
 
         store.dispose();
         database.close();
@@ -138,6 +216,23 @@ describe('createWorkflowStateStore — get/set', () => {
 
         expect(store.forWorkflow('wf-a').get('empty')).toEqual(Option.some(''));
 
+        store.dispose();
+        database.close();
+    });
+
+    it('rejects non-finite numbers before persistence', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        const state = store.forWorkflow('wf-a');
+
+        state.set('invalid', Infinity as unknown as WorkflowStatePrimitive);
+        expect(() => state.flush()).toThrow('Workflow State numbers must be finite.');
+
+        state.set('invalid', Symbol('invalid') as unknown as WorkflowStatePrimitive);
+        expect(() => state.flush()).toThrow('Unhandled Workflow State value');
+
+        state.set('invalid', 'recovered');
+        state.flush();
         store.dispose();
         database.close();
     });
@@ -515,6 +610,13 @@ describe('createInMemoryWorkflowStateStore — listKeys / setKey / deleteKey', (
     it('listKeys returns an empty array when no keys exist', () => {
         const store = createInMemoryWorkflowStateStore();
         expect(store.listKeys('wf-a')).toEqual([]);
+    });
+
+    it('rejects invalid in-memory primitives at the entry boundary', () => {
+        const store = createInMemoryWorkflowStateStore();
+        store.setKey('wf-a', 'invalid', {} as unknown as WorkflowStatePrimitive);
+
+        expect(() => store.listKeys('wf-a')).toThrow('Unhandled Workflow State value');
     });
 
     it('setKey writes a key and listKeys returns it', () => {
