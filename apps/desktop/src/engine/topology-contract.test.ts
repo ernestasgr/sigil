@@ -106,7 +106,7 @@ describe('Workflow topology contract', () => {
         let activator: WorkflowActivator | undefined;
 
         try {
-            await engine.loadNodePlugins();
+            await engine.loadBuiltinPlugins();
 
             const store = createWorkflowStore(
                 storageDir,
