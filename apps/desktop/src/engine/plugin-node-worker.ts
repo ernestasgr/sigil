@@ -42,6 +42,7 @@ import {
     buildSandboxGlobalObject,
     buildUnconditionalSandboxModules,
     createPluginSandboxSurface,
+    createSandboxGlobalObject,
     createSandboxRequire,
     getSandboxModuleNames,
     type PluginSandboxSurface,
@@ -642,16 +643,18 @@ async function loadHandler(): Promise<RawPluginModule> {
     });
 
     const code = result.outputFiles[0].text;
-    const vmContext: Record<string, unknown> = {};
+    const sandboxGlobalObject = createSandboxGlobalObject();
     const sandboxRequire = createSandboxRequire(() => sandboxModules, permissions);
     const surface = createPluginSandboxSurface({
-        globalObject: vmContext,
+        globalObject: sandboxGlobalObject,
         resolveModule: sandboxRequire,
     });
     buildSandboxModules(surface);
-    Object.assign(vmContext, buildSandboxGlobalObject(surface.globals));
+    Object.assign(sandboxGlobalObject, buildSandboxGlobalObject(surface.globals));
 
-    const ctx = vm.createContext(vmContext, { codeGeneration: surface.codeGeneration });
+    const ctx = vm.createContext(sandboxGlobalObject, {
+        codeGeneration: surface.codeGeneration,
+    });
 
     try {
         vm.runInContext(code, ctx, { timeout: 5000 });

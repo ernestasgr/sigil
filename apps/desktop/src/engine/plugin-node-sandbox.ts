@@ -111,6 +111,18 @@ function thunk(create: () => unknown, rationale: string): SandboxGlobalEntry {
     return { kind: 'thunk', create, rationale };
 }
 
+export function createSandboxGlobalObject(): Record<string, unknown> {
+    const globalObject: Record<string, unknown> = {};
+    Object.setPrototypeOf(globalObject, null);
+    return globalObject;
+}
+
+function createNullPrototypeRecord(): Record<string, unknown> {
+    const record: Record<string, unknown> = {};
+    Object.setPrototypeOf(record, null);
+    return record;
+}
+
 export function createPluginSandboxSurface(
     runtime: PluginSandboxSurfaceRuntime,
 ): PluginSandboxSurface {
@@ -124,10 +136,11 @@ export function createPluginSandboxSurface(
                 console,
                 'Provides worker-scoped diagnostics without exposing host process APIs.',
             ),
-            process: thunk(
-                () => ({ env: {} }),
-                'Provides an inert process shape without environment, lifecycle, or host access.',
-            ),
+            process: thunk(() => {
+                const processValue = createNullPrototypeRecord();
+                processValue.env = createNullPrototypeRecord();
+                return processValue;
+            }, 'Provides an inert process shape without environment, lifecycle, or host access.'),
             global: thunk(
                 () => runtime.globalObject,
                 'Provides a sandbox self-reference without exposing the worker global object.',
