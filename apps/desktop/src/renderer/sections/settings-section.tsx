@@ -5,7 +5,11 @@ import { DEFAULT_PROPERTIES as ENGINE_DEFAULTS } from '@sigil/schema/properties-
 import type { ReactElement } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { WorkflowStateEntry } from '../../shared/ipc-channels.js';
+import type {
+    WorkflowStateEntry,
+    WorkflowStatePrimitive,
+    WorkflowStateValueType,
+} from '../../shared/ipc-channels.js';
 import type { PluginInfo } from '../../shared/plugin-info.js';
 import { type WorkflowSummary, workflowActivationLabel } from '../../shared/workflow.js';
 import { SectionShell } from '../components/section-shell.js';
@@ -360,6 +364,47 @@ function workflowStateEntryText(entry: WorkflowStateEntry): string {
     }
 }
 
+function workflowStateEntryFromValue(
+    key: string,
+    value: WorkflowStatePrimitive,
+): WorkflowStateEntry {
+    switch (typeof value) {
+        case 'string':
+            return { key, type: 'string', value };
+        case 'number':
+            return { key, type: 'number', value };
+        case 'boolean':
+            return { key, type: 'boolean', value };
+        default: {
+            const unreachable: never = value;
+            throw new Error(`Unhandled Workflow State value: ${JSON.stringify(unreachable)}`);
+        }
+    }
+}
+
+function parseWorkflowStateEdit(
+    type: WorkflowStateValueType,
+    text: string,
+): WorkflowStatePrimitive | undefined {
+    switch (type) {
+        case 'string':
+            return text;
+        case 'number': {
+            if (text.trim() === '') return undefined;
+            const value = Number(text);
+            return Number.isFinite(value) ? value : undefined;
+        }
+        case 'boolean':
+            if (text === 'true') return true;
+            if (text === 'false') return false;
+            return undefined;
+        default: {
+            const unreachable: never = type;
+            throw new Error(`Unhandled Workflow State value type: ${unreachable}`);
+        }
+    }
+}
+
 function WorkflowStateCard({
     workflow,
     entries,
@@ -370,11 +415,19 @@ function WorkflowStateCard({
     readonly workflow: WorkflowSummary;
     readonly entries: readonly WorkflowStateEntry[];
     readonly onRefresh: () => void;
-    readonly onSetKey: (key: string, value: string) => void;
+    readonly onSetKey: (key: string, value: WorkflowStatePrimitive) => void;
     readonly onDeleteKey: (key: string) => void;
 }): ReactElement {
     const [editingKey, setEditingKey] = useState<string | null>(null);
+    const [editingType, setEditingType] = useState<WorkflowStateValueType | null>(null);
     const [editValue, setEditValue] = useState('');
+    const [editError, setEditError] = useState<string | null>(null);
+
+    const cancelEdit = (): void => {
+        setEditingKey(null);
+        setEditingType(null);
+        setEditError(null);
+    };
 
     return (
         <div className="border-gilt/30 border p-6">
@@ -429,15 +482,34 @@ function WorkflowStateCard({
                                         <input
                                             type="text"
                                             value={editValue}
-                                            onChange={(e) => setEditValue(e.target.value)}
+                                            onChange={(e) => {
+                                                setEditValue(e.target.value);
+                                                setEditError(null);
+                                            }}
                                             className="font-data bg-obsidian-ink border-gilt/40 text-parchment w-full border px-2 py-1 text-xs outline-none"
                                         />
+                                        {editError ? (
+                                            <p className="font-ui text-old-blood text-[10px]">
+                                                {editError}
+                                            </p>
+                                        ) : null}
                                         <div className="flex gap-2">
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    onSetKey(entry.key, editValue);
-                                                    setEditingKey(null);
+                                                    if (editingType === null) return;
+                                                    const value = parseWorkflowStateEdit(
+                                                        editingType,
+                                                        editValue,
+                                                    );
+                                                    if (value === undefined) {
+                                                        setEditError(
+                                                            `Enter a valid ${editingType} value.`,
+                                                        );
+                                                        return;
+                                                    }
+                                                    onSetKey(entry.key, value);
+                                                    cancelEdit();
                                                 }}
                                                 className="font-ui text-verdigris text-[10px] tracking-widest uppercase transition-colors hover:opacity-80"
                                             >
@@ -445,7 +517,7 @@ function WorkflowStateCard({
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => setEditingKey(null)}
+                                                onClick={cancelEdit}
                                                 className="font-ui text-veil text-[10px] tracking-widest uppercase transition-colors hover:text-parchment"
                                             >
                                                 Cancel
@@ -470,7 +542,9 @@ function WorkflowStateCard({
                                                 type="button"
                                                 onClick={() => {
                                                     setEditingKey(entry.key);
+                                                    setEditingType(entry.type);
                                                     setEditValue(workflowStateEntryText(entry));
+                                                    setEditError(null);
                                                 }}
                                                 className="font-ui text-gilt hover:text-gilt/80 text-[10px] tracking-widest uppercase transition-colors"
                                             >
@@ -550,18 +624,14 @@ function WorkflowStatePanel({
     }, [loadAllState]);
 
     const handleSetKey = useCallback(
-        async (workflowId: string, key: string, value: string) => {
+        async (workflowId: string, key: string, value: WorkflowStatePrimitive) => {
             try {
                 const ok = await sigil.setWorkflowStateKey(workflowId, key, value);
                 if (ok) {
                     setStateMap((prev) => {
                         const entries = prev[workflowId] ?? [];
                         const existing = entries.findIndex((e) => e.key === key);
-                        const updatedEntry: WorkflowStateEntry = {
-                            key,
-                            type: 'string',
-                            value,
-                        };
+                        const updatedEntry = workflowStateEntryFromValue(key, value);
                         const updated =
                             existing >= 0
                                 ? entries.map((e) => (e.key === key ? updatedEntry : e))

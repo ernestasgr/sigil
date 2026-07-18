@@ -185,9 +185,7 @@ function migrateLegacyWorkflowState(database: Database): void {
     if (marker.success && marker.data.value === WORKFLOW_STATE_MIGRATION_COMPLETE) return;
 
     const migrate = database.transaction(() => {
-        const rows = database
-            .prepare('SELECT workflow_id, key, value FROM workflow_state')
-            .all();
+        const rows = database.prepare('SELECT workflow_id, key, value FROM workflow_state').all();
         const update = database.prepare(
             'UPDATE workflow_state SET value = ? WHERE workflow_id = ? AND key = ?',
         );
