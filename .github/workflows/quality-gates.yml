@@ -77,6 +77,9 @@ jobs:
             - name: Fast gate - structural rule fixtures
               run: pnpm structure:test
 
+            - name: Fast gate - agent workflow security
+              run: pnpm workflows:check
+
             - name: Advisory gate - structural findings JSON
               shell: pwsh
               run: |

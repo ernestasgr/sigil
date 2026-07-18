@@ -26,31 +26,34 @@ jobs:
             BRANCH: ${{ github.event.pull_request.head.ref }}
             BRANCH_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
             BASE_REF: ${{ github.event.pull_request.base.ref }}
-            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             GH_REPO: ${{ github.repository }}
 
         steps:
             - name: Transition labels — remove trigger + blocked, add in-progress
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   gh pr edit "$PR_NUMBER" --remove-label "agent:update-branch" || true
                   gh pr edit "$PR_NUMBER" --remove-label "agent:blocked" || true
                   gh pr edit "$PR_NUMBER" --add-label "agent:in-progress"
 
             - name: Checkout PR branch
-              uses: actions/checkout@v4
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
               with:
                   ref: ${{ github.event.pull_request.head.sha }}
                   fetch-depth: 0
+                  token: ${{ secrets.GITHUB_TOKEN }}
+                  persist-credentials: false
 
             - name: Ensure branch is checked out by name
               run: git checkout "$BRANCH" 2>/dev/null || git checkout -B "$BRANCH"
 
-            - uses: pnpm/action-setup@v4
+            - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
               with:
                   version: 11.8.0
 
             - name: Setup Node.js 22
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
               with:
                   node-version: '22'
 
@@ -58,7 +61,7 @@ jobs:
               run: pnpm install
 
             - name: Install opencode
-              run: curl -fsSL https://opencode.ai/install | bash
+              run: bash .github/scripts/install-opencode.sh
 
             - name: Configure git identity
               run: |
@@ -68,6 +71,7 @@ jobs:
             - name: Run update-branch.ts
               id: run
               env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
                   OUTPUT_DIR: ${{ runner.temp }}
               run: npx tsx .sandcastle/update-branch/update-branch.ts
@@ -75,6 +79,7 @@ jobs:
             - name: Push branch (abort cleanly if non-fast-forward)
               if: success()
               env:
+                  GH_TOKEN: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
                   SHOULD_PUSH_FILE: ${{ runner.temp }}/should_push.txt
               run: |
                   if [ ! -f "$SHOULD_PUSH_FILE" ] || [ "$(cat "$SHOULD_PUSH_FILE")" != "true" ]; then
@@ -85,7 +90,7 @@ jobs:
                   # to the branch during our run (race detection), and tolerates
                   # history-rewriting updates (rebase) when the remote is unchanged.
                   set +e
-                  git push --force-with-lease="refs/heads/$BRANCH:$BRANCH_HEAD_SHA" origin "$BRANCH" 2> push_err.txt
+                  bash .github/scripts/push-agent-branch.sh --force-with-lease="refs/heads/$BRANCH:$BRANCH_HEAD_SHA" origin "$BRANCH" 2> push_err.txt
                   status=$?
                   set -e
                   if [ $status -ne 0 ]; then
@@ -102,6 +107,7 @@ jobs:
               if: success()
               env:
                   COMMENT_FILE: ${{ runner.temp }}/comment.md
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   if [ -f "$COMMENT_FILE" ]; then
                     gh pr comment "$PR_NUMBER" --body-file "$COMMENT_FILE"
@@ -110,6 +116,7 @@ jobs:
             - name: Mark blocked on failure
               if: failure()
               env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
               run: |
                   reason="(no reason file written — check workflow logs)"
@@ -130,4 +137,6 @@ jobs:
 
             - name: Always remove in-progress label
               if: always()
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: gh pr edit "$PR_NUMBER" --remove-label "agent:in-progress" || true
