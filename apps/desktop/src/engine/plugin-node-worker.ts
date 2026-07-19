@@ -25,6 +25,11 @@ import type {
 } from './node-handlers/types.js';
 import { isTriggerHandler } from './node-handlers/types.js';
 import {
+    createPluginExecutionState,
+    type PluginExecutionState,
+    transitionPluginExecution,
+} from './plugin-execution-state.js';
+import {
     type NodePluginDepsRpcArgs,
     type NodePluginDepsRpcOperation,
     type NodePluginDepsRpcRequest,
@@ -34,6 +39,7 @@ import {
     NodePluginStateGetResultSchema,
     NodePluginStateMutationResultSchema,
     type NodePluginWorkerCallbackInvoke,
+    type NodePluginWorkerCancelRequest,
     type NodePluginWorkerExecuteRequest,
     NodePluginWorkerKind,
     type NodePluginWorkerToMain,
@@ -282,28 +288,96 @@ function send(msg: NodePluginWorkerToMain): void {
 
 // ─── RPC for deps/kernel methods ─────────────────────────────
 
-const depRpcPending = new Map<
-    string,
-    {
-        readonly operation: NodePluginDepsRpcOperation;
-        readonly resolve: (value: unknown) => void;
-        readonly reject: (err: Error) => void;
+interface ActivePluginExecution {
+    readonly requestId: string;
+    readonly controller: AbortController;
+    readonly dependencyRequestIds: Set<string>;
+    state: PluginExecutionState;
+}
+
+const activeExecutions = new Map<string, ActivePluginExecution>();
+
+interface PendingDependencyRpc {
+    readonly operation: NodePluginDepsRpcOperation;
+    readonly executeRequestId?: string;
+    readonly resolve: (value: unknown) => void;
+    readonly reject: (err: Error) => void;
+    readonly signal?: AbortSignal;
+    readonly onAbort?: () => void;
+}
+
+const depRpcPending = new Map<string, PendingDependencyRpc>();
+
+function cancellationError(signal: AbortSignal): Error {
+    const reason: unknown = signal.reason;
+    if (reason instanceof Error) return reason;
+    if (typeof reason === 'string' && reason.length > 0) return new Error(reason);
+    return new Error('Plugin execution cancelled.');
+}
+
+function removePendingDependencyRpc(requestId: string): PendingDependencyRpc | undefined {
+    const pending = depRpcPending.get(requestId);
+    if (!pending) return undefined;
+    depRpcPending.delete(requestId);
+    if (pending.executeRequestId) {
+        activeExecutions.get(pending.executeRequestId)?.dependencyRequestIds.delete(requestId);
     }
->();
+    if (pending.signal && pending.onAbort) {
+        pending.signal.removeEventListener('abort', pending.onAbort);
+    }
+    return pending;
+}
 
 function depRpcCall(
     request: NodePluginDepsRpcRequest,
     executeRequestId?: string,
+    signal?: AbortSignal,
 ): Promise<unknown> {
     return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+            reject(cancellationError(signal));
+            return;
+        }
+
+        const execution = executeRequestId ? activeExecutions.get(executeRequestId) : undefined;
+        if (executeRequestId && execution?.state.kind !== 'running') {
+            reject(
+                cancellationError(
+                    execution?.controller.signal ?? signal ?? new AbortController().signal,
+                ),
+            );
+            return;
+        }
+
         const requestId = randomUUID();
-        depRpcPending.set(requestId, { operation: request.operation, resolve, reject });
-        send({
-            kind: NodePluginWorkerKind.DepsRpc,
-            requestId,
-            ...request,
+        const onAbort = signal
+            ? (): void => {
+                  const pending = removePendingDependencyRpc(requestId);
+                  if (pending) pending.reject(cancellationError(signal));
+              }
+            : undefined;
+        depRpcPending.set(requestId, {
+            operation: request.operation,
             executeRequestId,
+            resolve,
+            reject,
+            signal,
+            onAbort,
         });
+        execution?.dependencyRequestIds.add(requestId);
+        if (signal && onAbort) signal.addEventListener('abort', onAbort, { once: true });
+
+        try {
+            send({
+                kind: NodePluginWorkerKind.DepsRpc,
+                requestId,
+                ...request,
+                executeRequestId,
+            });
+        } catch (error) {
+            const pending = removePendingDependencyRpc(requestId);
+            pending?.reject(error instanceof Error ? error : new Error(String(error)));
+        }
     });
 }
 
@@ -337,9 +411,8 @@ function decodeDependencyRpcResult(
 
 function rejectMalformedDependencyRpc(raw: unknown, error: string): void {
     if (!isRecord(raw) || typeof raw.requestId !== 'string') return;
-    const pending = depRpcPending.get(raw.requestId);
+    const pending = removePendingDependencyRpc(raw.requestId);
     if (!pending) return;
-    depRpcPending.delete(raw.requestId);
     pending.reject(new Error(`Invalid dependency RPC response: ${error}`));
 }
 
@@ -441,12 +514,15 @@ function unregisterFileWatcherSubscriber(subscriberId: string): Promise<unknown>
 // ─── Build proxied deps (NodeHandlerDeps) ───────────────────
 
 function createProxiedDeps(
-    executeRequestId: string,
+    execution: ActivePluginExecution,
     collisionSuffixStyle: NodeHandlerDeps['collisionSuffixStyle'] = undefined,
     fileManager: NodeHandlerDeps['fileManager'] = undefined,
     properties: NodeHandlerDeps['properties'] = undefined,
 ): NodeHandlerDeps {
+    const executeRequestId = execution.requestId;
     const emit = remoteCall<'event.emit', Promise<void>>('event.emit', executeRequestId);
+    const sleep: NodeHandlerDeps['sleep'] = (ms, signal = execution.controller.signal) =>
+        depRpcCall({ operation: 'sleep', args: [ms] }, executeRequestId, signal) as Promise<void>;
     const next: NodeHandlerDeps['bus']['next'] = (value: PluginBusEvent) => {
         const emission = normalizePluginBusEvent(value);
         if (Either.isLeft(emission)) {
@@ -466,7 +542,8 @@ function createProxiedDeps(
             next,
         },
         event: { emit },
-        sleep: remoteCall<'sleep', ReturnType<NodeHandlerDeps['sleep']>>('sleep', executeRequestId),
+        signal: execution.controller.signal,
+        sleep,
         resolveTemplate: remoteCall<
             'resolveTemplate',
             ReturnType<NodeHandlerDeps['resolveTemplate']>
@@ -797,11 +874,14 @@ async function main(): Promise<void> {
                 await handleActivate(msg, rawHandler);
                 break;
             }
+            case NodePluginWorkerKind.CancelRequest: {
+                cancelExecution(msg);
+                break;
+            }
             case NodePluginWorkerKind.DepsRpcResult:
             case NodePluginWorkerKind.DepsRpcError: {
-                const pending = depRpcPending.get(msg.requestId);
+                const pending = removePendingDependencyRpc(msg.requestId);
                 if (!pending) break;
-                depRpcPending.delete(msg.requestId);
                 if (msg.kind === NodePluginWorkerKind.DepsRpcResult) {
                     const decoded = decodeDependencyRpcResult(pending.operation, msg);
                     if (decoded.ok) {
@@ -847,10 +927,52 @@ function handleCallbackInvoke(msg: NodePluginWorkerCallbackInvoke): void {
     cb(...msg.args);
 }
 
+function rejectExecutionDependencies(execution: ActivePluginExecution, error: Error): void {
+    for (const requestId of [...execution.dependencyRequestIds]) {
+        const pending = removePendingDependencyRpc(requestId);
+        pending?.reject(error);
+    }
+}
+
+function cancelExecution(msg: NodePluginWorkerCancelRequest): void {
+    const execution = activeExecutions.get(msg.requestId);
+    if (!execution) return;
+
+    const reason = msg.reason ?? 'Plugin execution cancelled.';
+    const transition = transitionPluginExecution(execution.state, {
+        kind: 'cancel-requested',
+        reason,
+    });
+    if (!transition.accepted) return;
+
+    execution.state = transition.state;
+    if (!execution.controller.signal.aborted) {
+        execution.controller.abort(reason);
+    }
+    rejectExecutionDependencies(execution, cancellationError(execution.controller.signal));
+}
+
 async function handleExecute(
     msg: NodePluginWorkerExecuteRequest,
     handler: NodeHandler,
 ): Promise<void> {
+    if (activeExecutions.has(msg.requestId)) {
+        send({
+            kind: NodePluginWorkerKind.ExecuteError,
+            requestId: msg.requestId,
+            error: `Duplicate Plugin execution request "${msg.requestId}"`,
+        });
+        return;
+    }
+
+    const execution: ActivePluginExecution = {
+        requestId: msg.requestId,
+        controller: new AbortController(),
+        dependencyRequestIds: new Set(),
+        state: createPluginExecutionState(),
+    };
+    activeExecutions.set(msg.requestId, execution);
+
     const sendResult = (result: NodeRunResult): void => {
         send({
             kind: NodePluginWorkerKind.ExecuteResult,
@@ -874,6 +996,9 @@ async function handleExecute(
         for (const cap of data.manifestPermissions) {
             if (!permissions.has(cap)) {
                 sendError(`Permission denied: ${cap}`);
+                execution.state = transitionPluginExecution(execution.state, {
+                    kind: 'failed',
+                }).state;
                 return;
             }
         }
@@ -881,6 +1006,9 @@ async function handleExecute(
         const parsedContext = WorkflowContextSchema.safeParse(msg.ctx);
         if (!parsedContext.success) {
             sendError(`Invalid workflow context: ${parsedContext.error.message}`);
+            execution.state = transitionPluginExecution(execution.state, {
+                kind: 'failed',
+            }).state;
             return;
         }
 
@@ -891,15 +1019,43 @@ async function handleExecute(
             config: msg.nodeConfig,
         };
         const deps = createProxiedDeps(
-            msg.requestId,
+            execution,
             msg.deps?.collisionSuffixStyle,
             msg.deps?.fileManager,
             msg.deps?.properties,
         );
         const result = await handler.execute({ node, ctx: parsedContext.data }, deps);
+        if (execution.state.kind !== 'running') return;
         sendResult(result);
+        execution.state = transitionPluginExecution(execution.state, {
+            kind: 'completed',
+        }).state;
     } catch (err) {
-        sendError(err instanceof Error ? err.message : String(err));
+        if (execution.state.kind === 'running') {
+            sendError(err instanceof Error ? err.message : String(err));
+            execution.state = transitionPluginExecution(execution.state, {
+                kind: 'failed',
+            }).state;
+        }
+    } finally {
+        const wasCancelled = execution.state.kind === 'cancellation-requested';
+        rejectExecutionDependencies(
+            execution,
+            wasCancelled
+                ? cancellationError(execution.controller.signal)
+                : new Error('Plugin execution finished before its dependency RPC settled.'),
+        );
+        activeExecutions.delete(msg.requestId);
+
+        if (wasCancelled) {
+            execution.state = transitionPluginExecution(execution.state, {
+                kind: 'cancel-acknowledged',
+            }).state;
+            send({
+                kind: NodePluginWorkerKind.CancelAcknowledged,
+                requestId: msg.requestId,
+            });
+        }
     }
 }
 
