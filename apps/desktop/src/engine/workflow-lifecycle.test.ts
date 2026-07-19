@@ -5,6 +5,7 @@ import type { CompiledPipeline } from '@sigil/schema';
 import { Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { AtomicWriteFailure } from './atomic-file.js';
 import { createEngine } from './engine.js';
 import type { NodeRunResult, TriggerHandler } from './node-handlers/types.js';
 import { workflowTopologyOptions } from './workflow-acceptance.js';
@@ -98,7 +99,132 @@ describe('WorkflowLifecycle transitions', () => {
         expect(teardown).not.toHaveBeenCalled();
     });
 
-    it('persists enabled intent with a failed activation state when activation throws', () => {
+    it('compensates a persistence failure after enable activation', () => {
+        const teardown = vi.fn(() => {});
+        const fixture = createFixture((_config, _onEvent) => teardown);
+        fixtures.push(fixture);
+        const persistenceError = new Error('enabled state could not be persisted');
+        vi.spyOn(fixture.store, 'setEnabled').mockImplementationOnce(() => {
+            throw persistenceError;
+        });
+
+        expect(() => fixture.lifecycle.enable(fixture.workflowId)).toThrow(persistenceError);
+
+        expect(fixture.activator.isActive(fixture.workflowId)).toBe(false);
+        expect(fixture.activator.activeWorkflowIds()).toEqual([]);
+        expect(teardown).toHaveBeenCalledTimes(1);
+        expect(fixture.store.getSummary(fixture.workflowId)).toMatchObject(
+            Option.some({ enabled: false, activation: { kind: 'disabled' } }),
+        );
+    });
+
+    it('cleans a partially registered activation when activation state persistence fails', () => {
+        let onEvent: Parameters<TriggerHandler['activate']>[1] | undefined;
+        const teardown = vi.fn(() => {});
+        const fixture = createFixture((_config, callback) => {
+            onEvent = callback;
+            return teardown;
+        });
+        fixtures.push(fixture);
+        const setActivation = fixture.store.setActivation;
+        const persistenceError = new Error('active state could not be persisted');
+        vi.spyOn(fixture.store, 'setActivation')
+            .mockImplementationOnce(setActivation)
+            .mockImplementationOnce(() => {
+                throw persistenceError;
+            });
+
+        expect(fixture.activator.activate(fixture.workflowId)).toBe(false);
+
+        expect(fixture.activator.isActive(fixture.workflowId)).toBe(false);
+        expect(fixture.activator.activeWorkflowIds()).toEqual([]);
+        expect(teardown).toHaveBeenCalledTimes(1);
+        if (!onEvent) throw new Error('activation callback was not registered');
+        expect(getDeactivationHook(onEvent)).toEqual(Option.none());
+    });
+
+    it('compensates a persistence failure after disable deactivation', () => {
+        const teardowns: Array<ReturnType<typeof vi.fn>> = [];
+        const activate = vi.fn<TriggerHandler['activate']>(() => {
+            const teardown = vi.fn(() => {});
+            teardowns.push(teardown);
+            return teardown;
+        });
+        const fixture = createFixture(activate);
+        fixtures.push(fixture);
+        fixture.lifecycle.enable(fixture.workflowId);
+        const persistenceError = new Error('disabled state could not be persisted');
+        vi.spyOn(fixture.store, 'setEnabled').mockImplementationOnce(() => {
+            throw persistenceError;
+        });
+
+        expect(() => fixture.lifecycle.disable(fixture.workflowId)).toThrow(persistenceError);
+
+        expect(fixture.activator.isActive(fixture.workflowId)).toBe(true);
+        expect(fixture.activator.activeWorkflowIds()).toEqual([fixture.workflowId]);
+        expect(teardowns[0]).toHaveBeenCalledTimes(1);
+        expect(teardowns).toHaveLength(2);
+        expect(fixture.store.getSummary(fixture.workflowId)).toMatchObject(
+            Option.some({ enabled: true, activation: { kind: 'active' } }),
+        );
+    });
+
+    it('preserves the primary error when persistence compensation also fails', () => {
+        const fixture = createFixture(() => () => {});
+        fixtures.push(fixture);
+        const primaryDiagnostic: AtomicWriteFailure = {
+            kind: 'persistence',
+            operation: 'write',
+            phase: 'write',
+            path: 'workflow-1.json',
+            message: 'primary write failed',
+        };
+        const compensationDiagnostic: AtomicWriteFailure = {
+            kind: 'persistence',
+            operation: 'write',
+            phase: 'replace',
+            path: 'workflow-1.json',
+            message: 'compensation write failed',
+        };
+        const primaryError = Object.assign(new Error('primary transition failure'), {
+            kind: 'workflow_persistence' as const,
+            operation: 'set_enabled' as const,
+            workflowId: fixture.workflowId,
+            diagnostic: primaryDiagnostic,
+            diagnostics: [primaryDiagnostic],
+        });
+        const compensationError = Object.assign(new Error('compensation transition failure'), {
+            kind: 'workflow_persistence' as const,
+            operation: 'set_enabled' as const,
+            workflowId: fixture.workflowId,
+            diagnostic: compensationDiagnostic,
+            diagnostics: [compensationDiagnostic],
+        });
+        vi.spyOn(fixture.store, 'setEnabled')
+            .mockImplementationOnce(() => {
+                throw primaryError;
+            })
+            .mockImplementationOnce(() => {
+                throw compensationError;
+            });
+
+        let caught: unknown;
+        try {
+            fixture.lifecycle.enable(fixture.workflowId);
+        } catch (error) {
+            caught = error;
+        }
+
+        expect(caught).toBe(primaryError);
+        expect(caught).toMatchObject({
+            diagnostics: [primaryDiagnostic, compensationDiagnostic],
+        });
+        expect(caught).toMatchObject({
+            message: expect.stringContaining('compensation transition failure'),
+        });
+    });
+
+    it('restores disabled intent with a failed activation state when activation throws', () => {
         const fixture = createFixture(() => {
             throw new Error('permission denied');
         });
@@ -112,7 +238,7 @@ describe('WorkflowLifecycle transitions', () => {
 
         expect(Option.isSome(result)).toBe(true);
         expect(Option.getOrThrow(result)).toMatchObject({
-            enabled: true,
+            enabled: false,
             activation: { kind: 'failed', message: 'permission denied' },
         });
         expect(
@@ -120,7 +246,7 @@ describe('WorkflowLifecycle transitions', () => {
                 readFileSync(join(fixture.storageDir, `${fixture.workflowId}.json`), 'utf8'),
             ),
         ).toMatchObject({
-            enabled: true,
+            enabled: false,
             activation: { kind: 'failed', message: 'permission denied' },
         });
         expect(diagnostics).toEqual(
@@ -156,7 +282,8 @@ describe('WorkflowLifecycle transitions', () => {
             throw new Error('startup worker unavailable');
         });
         fixtures.push(fixture);
-        fixture.lifecycle.enable(fixture.workflowId);
+        expect(fixture.activator.activate(fixture.workflowId)).toBe(false);
+        expect(Option.isSome(fixture.store.setEnabled(fixture.workflowId, true))).toBe(true);
 
         const reloadedStore = createWorkflowStore(
             fixture.storageDir,
@@ -197,7 +324,7 @@ describe('WorkflowLifecycle transitions', () => {
         const second = fixture.lifecycle.retry(fixture.workflowId);
 
         expect(Option.getOrThrow(first)).toMatchObject({
-            enabled: true,
+            enabled: false,
             activation: { kind: 'failed' },
         });
         expect(Option.getOrThrow(second)).toMatchObject({
@@ -249,6 +376,84 @@ describe('WorkflowLifecycle transitions', () => {
         });
         expect(activate).toHaveBeenCalledTimes(2);
         expect(teardowns[0]).toHaveBeenCalledTimes(1);
+    });
+
+    it('restores the previous active Workflow when update reactivation fails', () => {
+        const teardowns: Array<ReturnType<typeof vi.fn>> = [];
+        let activationCount = 0;
+        const activate = vi.fn<TriggerHandler['activate']>(() => {
+            activationCount += 1;
+            if (activationCount === 2) throw new Error('updated trigger unavailable');
+            const teardown = vi.fn(() => {});
+            teardowns.push(teardown);
+            return teardown;
+        });
+        const fixture = createFixture(activate);
+        fixtures.push(fixture);
+        fixture.lifecycle.enable(fixture.workflowId);
+
+        expect(() =>
+            fixture.lifecycle.update(fixture.workflowId, () =>
+                fixture.store.save(
+                    fixture.workflowId,
+                    'Updated Workflow',
+                    testPipeline('pipeline-updated', 'workflow-1'),
+                    {},
+                ),
+            ),
+        ).toThrow('updated trigger unavailable');
+
+        expect(fixture.activator.isActive(fixture.workflowId)).toBe(true);
+        expect(fixture.store.getSummary(fixture.workflowId)).toMatchObject(
+            Option.some({
+                name: 'Test Workflow',
+                enabled: true,
+                activation: { kind: 'active' },
+            }),
+        );
+        expect(activationCount).toBe(3);
+        expect(teardowns[0]).toHaveBeenCalledTimes(1);
+        expect(teardowns).toHaveLength(2);
+    });
+
+    it('compensates a persistence failure after update reactivation', () => {
+        const teardowns: Array<ReturnType<typeof vi.fn>> = [];
+        const activate = vi.fn<TriggerHandler['activate']>(() => {
+            const teardown = vi.fn(() => {});
+            teardowns.push(teardown);
+            return teardown;
+        });
+        const fixture = createFixture(activate);
+        fixtures.push(fixture);
+        fixture.lifecycle.enable(fixture.workflowId);
+        const persistenceError = new Error('updated enabled state could not be persisted');
+        vi.spyOn(fixture.store, 'setEnabled').mockImplementationOnce(() => {
+            throw persistenceError;
+        });
+
+        expect(() =>
+            fixture.lifecycle.update(fixture.workflowId, () =>
+                fixture.store.save(
+                    fixture.workflowId,
+                    'Updated Workflow',
+                    testPipeline('pipeline-updated-persist', 'workflow-1'),
+                    {},
+                ),
+            ),
+        ).toThrow(persistenceError);
+
+        expect(fixture.activator.isActive(fixture.workflowId)).toBe(true);
+        expect(fixture.store.getSummary(fixture.workflowId)).toMatchObject(
+            Option.some({
+                name: 'Test Workflow',
+                enabled: true,
+                activation: { kind: 'active' },
+            }),
+        );
+        expect(activate).toHaveBeenCalledTimes(3);
+        expect(teardowns[0]).toHaveBeenCalledTimes(1);
+        expect(teardowns[1]).toHaveBeenCalledTimes(1);
+        expect(teardowns).toHaveLength(3);
     });
 
     it('restores enabled state and reactivates when update save throws', () => {

@@ -1,8 +1,12 @@
 import { Option } from 'effect';
 
 import type { WorkflowSummary } from '../shared/workflow.js';
+import type { AtomicWriteFailure } from './atomic-file.js';
 import type { WorkflowActivator } from './workflow-activator.js';
-import type { WorkflowStore } from './workflow-store.js';
+import { isWorkflowPersistenceError, type WorkflowStore } from './workflow-store.js';
+
+const MAX_COMPENSATION_DIAGNOSTICS = 4;
+const MAX_COMPENSATION_MESSAGE_LENGTH = 512;
 
 export interface WorkflowLifecycle {
     readonly enable: (workflowId: string) => Option.Option<WorkflowSummary>;
@@ -22,20 +26,248 @@ export function createWorkflowLifecycle(
     store: WorkflowStore,
     activator: WorkflowActivator,
 ): WorkflowLifecycle {
+    function errorMessage(error: unknown): string {
+        return error instanceof Error ? error.message : String(error);
+    }
+
+    function boundedMessage(message: string): string {
+        return message.length > MAX_COMPENSATION_MESSAGE_LENGTH
+            ? `${message.slice(0, MAX_COMPENSATION_MESSAGE_LENGTH - 1)}…`
+            : message;
+    }
+
+    function restorePreviousActivation(workflowId: string, wasActive: boolean): void {
+        if (wasActive) {
+            if (!activator.isActive(workflowId) && !activator.activate(workflowId)) {
+                throw new Error(
+                    `Workflow activation compensation returned false for ${workflowId}.`,
+                );
+            }
+            return;
+        }
+        if (activator.isActive(workflowId)) activator.deactivate(workflowId);
+        if (activator.isActive(workflowId)) {
+            throw new Error(`Workflow deactivation compensation left ${workflowId} active.`);
+        }
+    }
+
+    function collectRestoreFailures(
+        workflowId: string,
+        previousEnabled: boolean,
+        wasActive: boolean,
+    ): unknown[] {
+        const failures: unknown[] = [];
+        try {
+            restorePreviousActivation(workflowId, wasActive);
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            const restored = store.setEnabled(workflowId, previousEnabled);
+            if (Option.isNone(restored)) {
+                throw new Error(`Workflow ${workflowId} disappeared during compensation.`);
+            }
+        } catch (error) {
+            failures.push(error);
+        }
+        return failures;
+    }
+
+    function rethrowWithCompensation(
+        primary: unknown,
+        workflowId: string,
+        failures: readonly unknown[],
+    ): never {
+        const primaryError = primary instanceof Error ? primary : new Error(errorMessage(primary));
+        const context = failures
+            .slice(0, MAX_COMPENSATION_DIAGNOSTICS)
+            .map((failure) => boundedMessage(errorMessage(failure)));
+        const suffix = boundedMessage(
+            `Workflow compensation failed for ${workflowId}: ${context.join(' | ')}`,
+        );
+        primaryError.message = boundedMessage(`${primaryError.message}; ${suffix}`);
+        Object.assign(primaryError, { compensationDiagnostics: context });
+
+        if (isWorkflowPersistenceError(primaryError)) {
+            const diagnostics = failures.flatMap((failure) =>
+                isWorkflowPersistenceError(failure) ? failure.diagnostics : [],
+            );
+            Object.assign(primaryError, {
+                diagnostics: [...primaryError.diagnostics, ...diagnostics].slice(
+                    0,
+                    MAX_COMPENSATION_DIAGNOSTICS,
+                ),
+            });
+        }
+
+        throw primaryError;
+    }
+
+    function restorePreviousState(
+        workflowId: string,
+        previousEnabled: boolean,
+        wasActive: boolean,
+        primary: unknown,
+    ): never {
+        const failures = collectRestoreFailures(workflowId, previousEnabled, wasActive);
+        if (failures.length > 0) rethrowWithCompensation(primary, workflowId, failures);
+        throw primary;
+    }
+
+    function restoreFailedActivation(
+        workflowId: string,
+        previousEnabled: boolean,
+        wasActive: boolean,
+        activation: WorkflowSummary['activation'],
+    ): Option.Option<WorkflowSummary> {
+        const failures = collectRestoreFailures(workflowId, previousEnabled, wasActive);
+        if (activation.kind === 'failed') {
+            try {
+                const restored = store.setActivation(workflowId, activation);
+                if (Option.isNone(restored)) {
+                    throw new Error(`Workflow ${workflowId} disappeared during compensation.`);
+                }
+            } catch (error) {
+                failures.push(error);
+            }
+        }
+        if (failures.length > 0) {
+            rethrowWithCompensation(
+                createActivationFailure(
+                    workflowId,
+                    activation.kind === 'failed' ? activation.message : 'unknown reason',
+                ),
+                workflowId,
+                failures,
+            );
+        }
+        return store.getSummary(workflowId);
+    }
+
+    function createActivationFailure(workflowId: string, message: string): Error {
+        const diagnostic: AtomicWriteFailure = {
+            kind: 'persistence',
+            operation: 'write',
+            phase: 'write',
+            path: workflowId,
+            message,
+            code: 'workflow_activation',
+        };
+        return Object.assign(new Error(`Could not activate Workflow "${workflowId}": ${message}`), {
+            name: 'WorkflowActivationError',
+            kind: 'workflow_persistence' as const,
+            operation: 'set_activation' as const,
+            workflowId,
+            diagnostic,
+            diagnostics: [diagnostic],
+        });
+    }
+
+    function activationFailure(workflowId: string): Error {
+        const summary = store.getSummary(workflowId);
+        const message =
+            Option.isSome(summary) && summary.value.activation.kind === 'failed'
+                ? summary.value.activation.message
+                : 'Workflow activation failed.';
+        return createActivationFailure(workflowId, message);
+    }
+
+    function restoreUpdatedWorkflow(
+        workflowId: string,
+        previous: Option.Option<{
+            readonly pipeline: Parameters<WorkflowStore['save']>[2];
+            readonly name: string;
+            readonly positions: Parameters<WorkflowStore['save']>[3];
+        }>,
+        previousSummary: WorkflowSummary,
+        wasActive: boolean,
+        primary: unknown,
+    ): never {
+        const failures: unknown[] = [];
+        try {
+            if (activator.isActive(workflowId)) activator.deactivate(workflowId);
+            if (activator.isActive(workflowId)) {
+                throw new Error(`Workflow ${workflowId} remained active during update rollback.`);
+            }
+        } catch (error) {
+            failures.push(error);
+        }
+        if (Option.isSome(previous)) {
+            try {
+                store.save(
+                    workflowId,
+                    previous.value.name,
+                    previous.value.pipeline,
+                    previous.value.positions,
+                );
+            } catch (error) {
+                failures.push(error);
+            }
+        }
+        failures.push(...collectRestoreFailures(workflowId, previousSummary.enabled, wasActive));
+        if (!wasActive && previousSummary.activation.kind === 'failed') {
+            try {
+                const restored = store.setActivation(workflowId, previousSummary.activation);
+                if (Option.isNone(restored)) {
+                    throw new Error(`Workflow ${workflowId} disappeared during update rollback.`);
+                }
+            } catch (error) {
+                failures.push(error);
+            }
+        }
+        if (failures.length > 0) rethrowWithCompensation(primary, workflowId, failures);
+        throw primary;
+    }
+
     function activateAndCommitIntent(workflowId: string): Option.Option<WorkflowSummary> {
-        if (Option.isNone(store.getSummary(workflowId))) return Option.none();
+        const current = store.getSummary(workflowId);
+        if (Option.isNone(current)) return Option.none();
+
+        const wasActive = activator.isActive(workflowId);
 
         // The Trigger transition runs first. The persisted enabled intent is
         // committed only after that transition has produced either active or
         // failed activation state.
-        activator.activate(workflowId);
-        return store.setEnabled(workflowId, true);
+        try {
+            const activated = activator.activate(workflowId);
+            if (!activated) {
+                const failed = store.getSummary(workflowId);
+                const activation =
+                    Option.isSome(failed) && failed.value.activation.kind === 'failed'
+                        ? failed.value.activation
+                        : { kind: 'failed' as const, message: 'Workflow activation failed.' };
+                return restoreFailedActivation(
+                    workflowId,
+                    current.value.enabled,
+                    wasActive,
+                    activation,
+                );
+            }
+            const committed = store.setEnabled(workflowId, true);
+            if (Option.isNone(committed)) {
+                throw new Error(`Workflow ${workflowId} disappeared while enabling.`);
+            }
+            return committed;
+        } catch (error) {
+            return restorePreviousState(workflowId, current.value.enabled, wasActive, error);
+        }
     }
 
     function disableWorkflow(workflowId: string): Option.Option<WorkflowSummary> {
-        if (Option.isNone(store.getSummary(workflowId))) return Option.none();
-        activator.deactivate(workflowId);
-        return store.setEnabled(workflowId, false);
+        const current = store.getSummary(workflowId);
+        if (Option.isNone(current)) return Option.none();
+
+        const wasActive = activator.isActive(workflowId);
+        try {
+            activator.deactivate(workflowId);
+            const committed = store.setEnabled(workflowId, false);
+            if (Option.isNone(committed)) {
+                throw new Error(`Workflow ${workflowId} disappeared while disabling.`);
+            }
+            return committed;
+        } catch (error) {
+            return restorePreviousState(workflowId, current.value.enabled, wasActive, error);
+        }
     }
 
     function toggleWorkflow(workflowId: string): Option.Option<WorkflowSummary> {
@@ -67,22 +299,28 @@ export function createWorkflowLifecycle(
             if (Option.isNone(current)) return save();
 
             const wasEnabled = current.value.enabled;
-            const wasActivated = current.value.activation.kind !== 'disabled';
-            if (wasActivated) activator.deactivate(workflowId);
+            const wasActive = activator.isActive(workflowId);
+            const previous = store.get(workflowId);
 
             try {
+                if (wasActive) activator.deactivate(workflowId);
                 const saved = save();
                 if (!wasEnabled) return saved;
 
-                activator.activate(workflowId);
+                if (!activator.activate(workflowId)) throw activationFailure(workflowId);
                 const reactivated = store.setEnabled(workflowId, true);
-                return Option.isSome(reactivated) ? reactivated.value : saved;
-            } catch (error) {
-                if (wasEnabled) {
-                    activator.activate(workflowId);
-                    store.setEnabled(workflowId, true);
+                if (Option.isNone(reactivated)) {
+                    throw new Error(`Workflow ${workflowId} disappeared during update.`);
                 }
-                throw error;
+                return reactivated.value;
+            } catch (error) {
+                return restoreUpdatedWorkflow(
+                    workflowId,
+                    previous,
+                    current.value,
+                    wasActive,
+                    error,
+                );
             }
         },
 
@@ -94,25 +332,31 @@ export function createWorkflowLifecycle(
             if (Option.isNone(current)) return save();
 
             const wasEnabled = current.value.enabled;
-            const wasActivated = current.value.activation.kind !== 'disabled';
-            if (wasActivated) activator.deactivate(workflowId);
-            if (activator.hasInFlightRuns(workflowId)) {
-                await activator.waitForRuns(workflowId);
-            }
+            const wasActive = activator.isActive(workflowId);
+            const previous = store.get(workflowId);
 
             try {
+                if (wasActive) activator.deactivate(workflowId);
+                if (activator.hasInFlightRuns(workflowId)) {
+                    await activator.waitForRuns(workflowId);
+                }
                 const saved = save();
                 if (!wasEnabled) return saved;
 
-                activator.activate(workflowId);
+                if (!activator.activate(workflowId)) throw activationFailure(workflowId);
                 const reactivated = store.setEnabled(workflowId, true);
-                return Option.isSome(reactivated) ? reactivated.value : saved;
-            } catch (error) {
-                if (wasEnabled) {
-                    activator.activate(workflowId);
-                    store.setEnabled(workflowId, true);
+                if (Option.isNone(reactivated)) {
+                    throw new Error(`Workflow ${workflowId} disappeared during update.`);
                 }
-                throw error;
+                return reactivated.value;
+            } catch (error) {
+                return restoreUpdatedWorkflow(
+                    workflowId,
+                    previous,
+                    current.value,
+                    wasActive,
+                    error,
+                );
             }
         },
 

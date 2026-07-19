@@ -91,6 +91,17 @@ export function createWorkflowActivator(
         if (publishStateChange) onStateChange?.();
     }
 
+    function teardownSafely(workflowId: string, name: string, teardown: () => void): void {
+        try {
+            teardown();
+        } catch (error) {
+            emitDiagnostic(
+                `[activator] teardown failed for "${name}" (${workflowId}): ${errorMessage(error)}`,
+                'workflow_activation',
+            );
+        }
+    }
+
     function publishRunLifecycleEvent(
         event: WorkflowRunLifecycleEvent,
         supervisor: WorkflowRunSupervisor,
@@ -297,25 +308,26 @@ export function createWorkflowActivator(
                 active.delete(workflowId);
                 deactivationHooks.delete(onEvent);
                 stopRuns(workflowId, current.supervisor, reason ?? 'Trigger activation failed.');
+                teardownSafely(workflowId, data.value.name, current.teardown);
                 try {
-                    current.teardown();
-                } catch (err) {
+                    recordFailure(
+                        workflowId,
+                        reason ?? 'The Trigger worker failed during activation.',
+                        `[activator] trigger "${trigger.type}" disabled for "${data.value.name}" (${workflowId}) — activation failed in worker${reason ? `: ${reason}` : ''}`,
+                        true,
+                    );
+                } catch (failure) {
                     emitDiagnostic(
-                        `[activator] teardown failed for "${data.value.name}" (${workflowId}): ${errorMessage(err)}`,
+                        `[activator] failed to persist asynchronous activation failure for "${data.value.name}" (${workflowId}): ${errorMessage(failure)}`,
                         'workflow_activation',
                     );
                 }
-                recordFailure(
-                    workflowId,
-                    reason ?? 'The Trigger worker failed during activation.',
-                    `[activator] trigger "${trigger.type}" disabled for "${data.value.name}" (${workflowId}) — activation failed in worker${reason ? `: ${reason}` : ''}`,
-                    true,
-                );
             };
             deactivationHooks.set(onEvent, handleActivationFailure);
 
+            let teardown: (() => void) | undefined;
             try {
-                const teardown = handler.value.activate(trigger.config, onEvent);
+                teardown = handler.value.activate(trigger.config, onEvent);
                 active.set(workflowId, { token, onEvent, teardown, supervisor });
                 setActivation(workflowId, { kind: 'active' });
                 emitDiagnostic(
@@ -324,14 +336,28 @@ export function createWorkflowActivator(
                 );
                 return true;
             } catch (err) {
+                const current = active.get(workflowId);
+                active.delete(workflowId);
                 deactivationHooks.delete(onEvent);
                 stopRuns(workflowId, supervisor, 'Trigger activation failed.');
-                recordFailure(
-                    workflowId,
-                    errorMessage(err),
-                    `[activator] failed to activate trigger "${trigger.type}" for "${data.value.name}" (${workflowId}): ${errorMessage(err)}`,
-                    false,
-                );
+                if (current) {
+                    teardownSafely(workflowId, data.value.name, current.teardown);
+                } else if (teardown) {
+                    teardownSafely(workflowId, data.value.name, teardown);
+                }
+                try {
+                    recordFailure(
+                        workflowId,
+                        errorMessage(err),
+                        `[activator] failed to activate trigger "${trigger.type}" for "${data.value.name}" (${workflowId}): ${errorMessage(err)}`,
+                        false,
+                    );
+                } catch (failure) {
+                    emitDiagnostic(
+                        `[activator] failed to persist activation failure for "${data.value.name}" (${workflowId}): ${errorMessage(failure)}`,
+                        'workflow_activation',
+                    );
+                }
                 return false;
             }
         },
@@ -342,14 +368,7 @@ export function createWorkflowActivator(
                 active.delete(workflowId);
                 deactivationHooks.delete(activation.onEvent);
                 stopRuns(workflowId, activation.supervisor, 'Workflow disabled.');
-                try {
-                    activation.teardown();
-                } catch (err) {
-                    emitDiagnostic(
-                        `[activator] teardown failed for workflow ${workflowId}: ${errorMessage(err)}`,
-                        'workflow_activation',
-                    );
-                }
+                teardownSafely(workflowId, workflowId, activation.teardown);
                 setActivation(workflowId, disabledState());
                 return true;
             }
@@ -407,14 +426,7 @@ export function createWorkflowActivator(
                     active.delete(workflowId);
                     deactivationHooks.delete(activation.onEvent);
                     stopRuns(workflowId, activation.supervisor, 'Engine shutting down.');
-                    try {
-                        activation.teardown();
-                    } catch (err) {
-                        emitDiagnostic(
-                            `[activator] teardown failed for workflow ${workflowId}: ${errorMessage(err)}`,
-                            'workflow_activation',
-                        );
-                    }
+                    teardownSafely(workflowId, workflowId, activation.teardown);
                 }
                 setActivation(workflowId, disabledState());
             }
