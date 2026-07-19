@@ -13,6 +13,8 @@ import {
     NodePluginMainToWorkerSchema,
     NodePluginStateGetResultSchema,
     NodePluginStateMutationResultSchema,
+    NodePluginWorkerCancelAcknowledgedSchema,
+    NodePluginWorkerCancelRequestSchema,
     NodePluginWorkerKind,
     NodePluginWorkerToMainSchema,
 } from './plugin-node-rpc.js';
@@ -351,5 +353,36 @@ describe('NodePluginDepsRpcSchema', () => {
         } finally {
             rmSync(pluginDir, { recursive: true, force: true });
         }
+    });
+});
+
+describe('Plugin execution cancellation protocol', () => {
+    it('validates cancel and acknowledgement messages by execution request id', () => {
+        const cancel = NodePluginWorkerCancelRequestSchema.safeParse({
+            kind: NodePluginWorkerKind.CancelRequest,
+            requestId: 'execute:1',
+            reason: 'execution timed out',
+        });
+        const acknowledged = NodePluginWorkerCancelAcknowledgedSchema.safeParse({
+            kind: NodePluginWorkerKind.CancelAcknowledged,
+            requestId: 'execute:1',
+        });
+
+        expect(cancel.success).toBe(true);
+        expect(acknowledged.success).toBe(true);
+    });
+
+    it('rejects cancellation messages without a non-empty execution request id', () => {
+        const cancel = NodePluginWorkerCancelRequestSchema.safeParse({
+            kind: NodePluginWorkerKind.CancelRequest,
+            requestId: '',
+        });
+        const acknowledged = NodePluginWorkerCancelAcknowledgedSchema.safeParse({
+            kind: NodePluginWorkerKind.CancelAcknowledged,
+            requestId: '',
+        });
+
+        expect(cancel.success).toBe(false);
+        expect(acknowledged.success).toBe(false);
     });
 });

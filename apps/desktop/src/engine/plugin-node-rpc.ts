@@ -21,6 +21,8 @@ export const NodePluginWorkerKind = {
     ActivateResult: 'npw:activate_result',
     ActivateError: 'npw:activate_error',
     ActivateEvent: 'npw:activate_event',
+    CancelRequest: 'npw:cancel_req',
+    CancelAcknowledged: 'npw:cancel_ack',
     DepsRpc: 'npw:deps_rpc',
     DepsRpcResult: 'npw:deps_rpc_result',
     DepsRpcError: 'npw:deps_rpc_error',
@@ -55,6 +57,16 @@ export const NodePluginWorkerLoadErrorSchema = z.object({
     propertyError: NodePluginPropertyErrorSchema.optional(),
 });
 export type NodePluginWorkerLoadError = z.infer<typeof NodePluginWorkerLoadErrorSchema>;
+
+export const NodePluginWorkerCancelAcknowledgedSchema = z
+    .object({
+        kind: z.literal(NodePluginWorkerKind.CancelAcknowledged),
+        requestId: z.string().min(1),
+    })
+    .strict();
+export type NodePluginWorkerCancelAcknowledged = z.infer<
+    typeof NodePluginWorkerCancelAcknowledgedSchema
+>;
 
 export const NodePluginWorkerExecuteResultSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.ExecuteResult),
@@ -223,6 +235,7 @@ export const NodePluginWorkerToMainSchema = z.discriminatedUnion('kind', [
     NodePluginWorkerActivateResultSchema,
     NodePluginWorkerActivateErrorSchema,
     NodePluginWorkerActivateEventSchema,
+    NodePluginWorkerCancelAcknowledgedSchema,
     NodePluginDepsRpcSchema,
 ]);
 export type NodePluginWorkerToMain = z.infer<typeof NodePluginWorkerToMainSchema>;
@@ -258,6 +271,15 @@ export const NodePluginWorkerActivateRequestSchema = z.object({
 });
 export type NodePluginWorkerActivateRequest = z.infer<typeof NodePluginWorkerActivateRequestSchema>;
 
+export const NodePluginWorkerCancelRequestSchema = z
+    .object({
+        kind: z.literal(NodePluginWorkerKind.CancelRequest),
+        requestId: z.string().min(1),
+        reason: z.string().min(1).optional(),
+    })
+    .strict();
+export type NodePluginWorkerCancelRequest = z.infer<typeof NodePluginWorkerCancelRequestSchema>;
+
 export const NodePluginWorkerTeardownSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.Teardown),
     requestId: z.string().min(1),
@@ -282,6 +304,7 @@ export type NodePluginWorkerUpdatePermissions = z.infer<
 export const NodePluginMainToWorkerSchema = z.discriminatedUnion('kind', [
     NodePluginWorkerExecuteRequestSchema,
     NodePluginWorkerActivateRequestSchema,
+    NodePluginWorkerCancelRequestSchema,
     NodePluginDepsRpcResultSchema,
     NodePluginDepsRpcErrorSchema,
     NodePluginWorkerCallbackInvokeSchema,

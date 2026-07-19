@@ -11,8 +11,10 @@ import {
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { createBridge } from './bridge.js';
 import type { CapabilityBroker } from './capability-broker.js';
 import { createCapabilityBroker } from './capability-broker.js';
+import { type BusEvent, createEventBus } from './event-bus.js';
 import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
 import { createManifestRegistry } from './manifest-registry.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
@@ -111,6 +113,54 @@ export const handler: NodeHandler = {
 
 const SILENT_PLUGIN_HANDLER = `
 while (true) {}
+`;
+
+const COOPERATIVE_TIMEOUT_PLUGIN_HANDLER = `
+import { z } from 'zod';
+
+const ConfigSchema = z.object({ block: z.boolean() });
+
+export const descriptor = {
+    type: 'cooperative-timeout-node' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: { block: false },
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler = {
+    async execute({ node, ctx }, deps) {
+        if (node.config.block) await deps.sleep(60_000, deps.signal);
+        return { outputCtx: ctx, activePort: 'out' };
+    },
+};
+`;
+
+const NON_COOPERATIVE_TIMEOUT_PLUGIN_HANDLER = `
+import { z } from 'zod';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'non-cooperative-timeout-node' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler = {
+    async execute(_input, deps) {
+        deps.signal?.addEventListener(
+            'abort',
+            () => {
+                setTimeout(() => {
+                    void deps.event?.emit('late.output', { source: 'cancelled-execution' });
+                }, 0);
+            },
+            { once: true },
+        );
+        return new Promise(() => {});
+    },
+};
 `;
 
 const PROPERTY_PLUGIN_HANDLER = `
@@ -558,6 +608,138 @@ describe('loadNodePlugin', () => {
         expect(diagnostics).toEqual(
             expect.arrayContaining([expect.stringContaining('com.sigil.crashing')]),
         );
+    });
+
+    it('waits for a cooperative cancellation acknowledgement before accepting the next execution', async () => {
+        vi.useFakeTimers();
+
+        try {
+            const pluginDir = join(tempDir, 'cooperative-timeout-plugin');
+            writePlugin(
+                pluginDir,
+                {
+                    id: 'com.sigil.cooperative-timeout',
+                    version: '0.0.1',
+                    permissions: [],
+                    emits: ['x'],
+                    nodeType: 'cooperative-timeout-node',
+                },
+                COOPERATIVE_TIMEOUT_PLUGIN_HANDLER,
+            );
+
+            const { manifestRegistry, handlerRegistry } = createRegistries();
+            const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+
+            const handler = Option.getOrThrow(handlerRegistry.get('cooperative-timeout-node'));
+            const sleep = (_ms: number, signal?: AbortSignal): Promise<void> =>
+                new Promise<void>((_resolve, reject) => {
+                    if (signal?.aborted) {
+                        reject(new Error('sleep cancelled'));
+                        return;
+                    }
+                    signal?.addEventListener('abort', () => reject(new Error('sleep cancelled')), {
+                        once: true,
+                    });
+                });
+
+            const timedOut = handler.execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'cooperative-timeout-node',
+                        pluginId: 'com.sigil.cooperative-timeout',
+                        config: { block: true },
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                { sleep } as never,
+            );
+
+            await vi.advanceTimersByTimeAsync(30_000);
+            await expect(timedOut).rejects.toThrow('Execute request timed out after 30s');
+
+            const next = await handler.execute(
+                {
+                    node: {
+                        id: 'n2',
+                        type: 'cooperative-timeout-node',
+                        pluginId: 'com.sigil.cooperative-timeout',
+                        config: { block: false },
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                { sleep: async () => undefined } as never,
+            );
+
+            expect(next.activePort).toBe('out');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('retires a non-cooperative worker after the bounded cancellation grace period', async () => {
+        vi.useFakeTimers();
+
+        try {
+            const pluginDir = join(tempDir, 'non-cooperative-timeout-plugin');
+            writePlugin(
+                pluginDir,
+                {
+                    id: 'com.sigil.non-cooperative-timeout',
+                    version: '0.0.1',
+                    permissions: [],
+                    emits: ['x', 'late.output'],
+                    nodeType: 'non-cooperative-timeout-node',
+                },
+                NON_COOPERATIVE_TIMEOUT_PLUGIN_HANDLER,
+            );
+
+            const { manifestRegistry, handlerRegistry } = createRegistries();
+            const events: BusEvent[] = [];
+            const eventBus = createEventBus();
+            eventBus.subscribe((event) => events.push(event));
+            const diagnostics: string[] = [];
+            const result = await loadNodePlugin(pluginDir, {
+                manifestRegistry,
+                handlerRegistry,
+                bridge: createBridge(eventBus, manifestRegistry),
+                diagnostic: (message) => diagnostics.push(message),
+            });
+
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+
+            const handler = Option.getOrThrow(handlerRegistry.get('non-cooperative-timeout-node'));
+            const input = {
+                node: {
+                    id: 'n1',
+                    type: 'non-cooperative-timeout-node',
+                    pluginId: 'com.sigil.non-cooperative-timeout',
+                    config: {},
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            };
+            const timedOut = handler.execute(input, {} as never);
+            const retirement = expect(timedOut).rejects.toThrow(/did not acknowledge cancellation/);
+
+            await vi.advanceTimersByTimeAsync(30_000);
+            await vi.advanceTimersByTimeAsync(1_000);
+            await retirement;
+            await vi.runAllTimersAsync();
+            expect(events).toEqual([]);
+            expect(diagnostics).toEqual(
+                expect.arrayContaining([
+                    expect.stringContaining('did not acknowledge cancellation'),
+                ]),
+            );
+
+            await expect(handler.execute(input, {} as never)).rejects.toThrow(/worker/i);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('fails when manifest is missing', async () => {
