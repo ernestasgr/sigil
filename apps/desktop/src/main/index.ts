@@ -8,6 +8,7 @@ import { type EngineBusEventPayload, RendererChannel } from '../shared/ipc-chann
 import type { WorkflowSummary } from '../shared/workflow.js';
 import { type EngineHandle, spawnEngine } from './engine-client.js';
 import { registerIpcHandlers } from './ipc-handlers.js';
+import { createQuitCoordinator } from './quit-coordinator.js';
 import { createTray, type TrayController } from './tray.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -20,6 +21,20 @@ let mainWindow: BrowserWindow | null = null;
 let tray: TrayController | null = null;
 let workflows: readonly WorkflowSummary[] = [];
 let isQuitting = false;
+
+const quitCoordinator = createQuitCoordinator({
+    getEngine: () => engine,
+    destroyTray: () => {
+        tray?.destroy();
+        tray = null;
+    },
+    requestQuit: () => {
+        app.quit();
+    },
+    onFailure: (phase, error) => {
+        console.error(`[main] quit ${phase} failed:`, error);
+    },
+});
 
 function createWindow(): BrowserWindow {
     const window = new BrowserWindow({
@@ -178,12 +193,7 @@ app.on('window-all-closed', () => {
     }
 });
 
-app.on('before-quit', async () => {
+app.on('before-quit', (event) => {
     isQuitting = true;
-    tray?.destroy();
-    tray = null;
-    if (engine) {
-        await engine.terminate();
-        engine = null;
-    }
+    void quitCoordinator.beforeQuit(event);
 });
