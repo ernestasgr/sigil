@@ -54,8 +54,8 @@ export interface FileWatcherManager {
     readonly registerSubscriber: (
         config: SubscriberRegistration,
         onEvent: FileEventCallback,
-    ) => void;
-    readonly unregisterSubscriber: (id: string) => void;
+    ) => void | Promise<void>;
+    readonly unregisterSubscriber: (id: string) => void | Promise<void>;
     readonly getWatcherCount: () => number;
     readonly getSubscriberCount: () => number;
     readonly setDefaultIgnorePatterns: (patterns: readonly string[]) => void;

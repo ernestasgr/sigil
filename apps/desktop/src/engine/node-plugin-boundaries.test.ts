@@ -1,9 +1,11 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { CompiledPipeline } from '@sigil/schema';
 import { Either, Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { createEngine } from './engine.js';
 import { createManifestRegistry } from './manifest-registry.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
 import { isTriggerHandler, type KernelDeps } from './node-handlers/types.js';
@@ -16,6 +18,9 @@ import {
 } from './node-plugin-rpc-router.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
 import { NodePluginWorkerKind } from './plugin-node-rpc.js';
+import { workflowTopologyOptions } from './workflow-acceptance.js';
+import { createWorkflowActivator } from './workflow-activator.js';
+import { createWorkflowStore } from './workflow-store.js';
 
 const HANDLER = `
 import { z } from 'zod';
@@ -56,7 +61,9 @@ export function handler(kernel) {
                 },
                 () => {},
             );
-            return () => kernel.fileWatcherManager.unregisterSubscriber('boundary-trigger');
+            return () => {
+                kernel.fileWatcherManager.unregisterSubscriber('boundary-trigger');
+            };
         },
         async execute({ ctx }) {
             return { outputCtx: ctx, activePort: 'out' };
@@ -93,6 +100,107 @@ function writeTriggerPlugin(dir: string): void {
         }),
     );
     writeFileSync(join(dir, 'handler.ts'), TRIGGER_HANDLER);
+}
+
+const PARTIAL_REGISTRATION_FAILURE_HANDLER = `
+import { z } from 'zod';
+
+export const descriptor = {
+    type: 'partial-registration-failure-trigger',
+    configSchema: z.object({}),
+    defaultConfig: {},
+    getOutputPorts: () => ['out'],
+};
+
+export function handler(kernel) {
+    return {
+        activate(_config, _onEvent) {
+            kernel.fileWatcherManager.registerSubscriber(
+                {
+                    id: 'successful-registration',
+                    path: '/successful',
+                    recursive: false,
+                    events: ['file.created'],
+                },
+                () => {},
+            );
+            kernel.fileWatcherManager.registerSubscriber(
+                {
+                    id: 'failed-registration',
+                    path: '/failed',
+                    recursive: false,
+                    events: ['file.created'],
+                },
+                () => {},
+            );
+            return () => kernel.fileWatcherManager.unregisterSubscriber('successful-registration');
+        },
+        async execute({ ctx }) {
+            return { outputCtx: ctx, activePort: 'out' };
+        },
+    };
+}
+`;
+
+function writePartialRegistrationFailurePlugin(dir: string): void {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+        join(dir, 'plugin.manifest.json'),
+        JSON.stringify({
+            id: 'com.sigil.partial-registration-failure',
+            version: '0.0.1',
+            permissions: ['filesystem.read'],
+            emits: ['boundary.output'],
+            nodeType: 'partial-registration-failure-trigger',
+        }),
+    );
+    writeFileSync(join(dir, 'handler.ts'), PARTIAL_REGISTRATION_FAILURE_HANDLER);
+}
+
+const CONCURRENT_ACTIVATION_HANDLER = `
+import { z } from 'zod';
+
+export const descriptor = {
+    type: 'concurrent-activation-trigger',
+    configSchema: z.object({ id: z.string() }),
+    defaultConfig: { id: 'default' },
+    getOutputPorts: () => ['out'],
+};
+
+export function handler(kernel) {
+    return {
+        activate(config, _onEvent) {
+            kernel.fileWatcherManager.registerSubscriber(
+                {
+                    id: config.id,
+                    path: '/' + config.id,
+                    recursive: false,
+                    events: ['file.created'],
+                },
+                () => {},
+            );
+            return () => kernel.fileWatcherManager.unregisterSubscriber(config.id);
+        },
+        async execute({ ctx }) {
+            return { outputCtx: ctx, activePort: 'out' };
+        },
+    };
+}
+`;
+
+function writeConcurrentActivationPlugin(dir: string): void {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+        join(dir, 'plugin.manifest.json'),
+        JSON.stringify({
+            id: 'com.sigil.concurrent-activation',
+            version: '0.0.1',
+            permissions: ['filesystem.read'],
+            emits: ['boundary.output'],
+            nodeType: 'concurrent-activation-trigger',
+        }),
+    );
+    writeFileSync(join(dir, 'handler.ts'), CONCURRENT_ACTIVATION_HANDLER);
 }
 
 function createKernel(capability: KernelDeps['capabilityBroker']['request']): KernelDeps {
@@ -388,7 +496,11 @@ describe('instance-owned Plugin loader supervision', () => {
         writeTriggerPlugin(pluginDir);
         const loader = createNodePluginLoader();
         loaders = [loader];
-        const registerSubscriber = vi.fn();
+        let resolveRegistration: () => void = () => {};
+        const registration = new Promise<void>((resolve) => {
+            resolveRegistration = resolve;
+        });
+        const registerSubscriber = vi.fn(() => registration);
         const unregisterSubscriber = vi.fn();
         const result = await loader.loadNodePlugin(pluginDir, {
             manifestRegistry: createManifestRegistry(),
@@ -407,6 +519,217 @@ describe('instance-owned Plugin loader supervision', () => {
         await vi.waitFor(() => expect(registerSubscriber).toHaveBeenCalledTimes(1));
         teardown();
         teardown();
+        expect(unregisterSubscriber).not.toHaveBeenCalled();
+        resolveRegistration();
         await vi.waitFor(() => expect(unregisterSubscriber).toHaveBeenCalledTimes(1));
+    });
+
+    it('fails Workflow activation after a watcher registration failure and cleans up partial setup', async () => {
+        tempDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-loader-activation-failure-'));
+        const pluginDir = join(tempDir, 'plugin');
+        writePartialRegistrationFailurePlugin(pluginDir);
+        const loader = createNodePluginLoader();
+        loaders = [loader];
+        const engine = createEngine({ defaultDatabasePath: join(tempDir, 'engine.db') });
+        let activator: ReturnType<typeof createWorkflowActivator> | undefined;
+
+        try {
+            const registerSubscriber = vi.fn((subscriber: { readonly id: string }) => {
+                if (subscriber.id === 'failed-registration') {
+                    throw new Error('watcher registration failed');
+                }
+            });
+            const unregisterSubscriber = vi.fn();
+            const result = await loader.loadNodePlugin(pluginDir, {
+                manifestRegistry: createManifestRegistry(),
+                handlerRegistry: engine.handlerRegistry,
+                kernel: {
+                    capabilityBroker: {
+                        request: () => Either.right(undefined),
+                    },
+                    fileWatcherManager: { registerSubscriber, unregisterSubscriber },
+                },
+            });
+
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+
+            const store = createWorkflowStore(
+                join(tempDir, 'workflows'),
+                workflowTopologyOptions(engine.handlerRegistry),
+            );
+            const pipeline: CompiledPipeline = {
+                id: 'pipeline-activation-failure',
+                workflowId: 'workflow-activation-failure',
+                schemaVersion: 1,
+                nodes: [
+                    {
+                        id: 'trigger',
+                        type: 'partial-registration-failure-trigger',
+                        pluginId: 'com.sigil.partial-registration-failure',
+                        config: {},
+                    },
+                ],
+                edges: [],
+            };
+            const workflow = store.create('Activation Failure Workflow', pipeline, {});
+            activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
+
+            expect(activator.activate(workflow.id)).toBe(true);
+            await vi.waitFor(() => {
+                expect(store.getSummary(workflow.id)).toMatchObject({
+                    value: {
+                        activation: { kind: 'failed', message: 'watcher registration failed' },
+                    },
+                });
+            });
+
+            expect(activator.isActive(workflow.id)).toBe(false);
+            expect(registerSubscriber).toHaveBeenCalledTimes(2);
+            expect(unregisterSubscriber).toHaveBeenCalledTimes(1);
+            expect(unregisterSubscriber).toHaveBeenCalledWith('successful-registration');
+        } finally {
+            activator?.dispose();
+            await engine.shutdown();
+        }
+    });
+
+    it('keeps concurrent activation registration settlement isolated per request', async () => {
+        tempDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-loader-concurrent-activation-'));
+        const pluginDir = join(tempDir, 'plugin');
+        writeConcurrentActivationPlugin(pluginDir);
+        const loader = createNodePluginLoader();
+        loaders = [loader];
+        const engine = createEngine({ defaultDatabasePath: join(tempDir, 'engine.db') });
+        let activator: ReturnType<typeof createWorkflowActivator> | undefined;
+
+        try {
+            let rejectFirst: (error: Error) => void = () => {};
+            let resolveSecond: () => void = () => {};
+            const firstRegistration = new Promise<void>((_resolve, reject) => {
+                rejectFirst = reject;
+            });
+            const secondRegistration = new Promise<void>((resolve) => {
+                resolveSecond = resolve;
+            });
+            let registrationNumber = 0;
+            const registerSubscriber = vi.fn(() => {
+                registrationNumber += 1;
+                return registrationNumber === 1 ? firstRegistration : secondRegistration;
+            });
+            const unregisterSubscriber = vi.fn();
+            const result = await loader.loadNodePlugin(pluginDir, {
+                manifestRegistry: createManifestRegistry(),
+                handlerRegistry: engine.handlerRegistry,
+                kernel: {
+                    capabilityBroker: {
+                        request: () => Either.right(undefined),
+                    },
+                    fileWatcherManager: { registerSubscriber, unregisterSubscriber },
+                },
+            });
+
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+
+            const store = createWorkflowStore(
+                join(tempDir, 'workflows'),
+                workflowTopologyOptions(engine.handlerRegistry),
+            );
+            const createPipeline = (
+                pipelineId: string,
+                workflowId: string,
+                id: string,
+            ): CompiledPipeline => ({
+                id: pipelineId,
+                workflowId,
+                schemaVersion: 1,
+                nodes: [
+                    {
+                        id: 'trigger',
+                        type: 'concurrent-activation-trigger',
+                        pluginId: 'com.sigil.concurrent-activation',
+                        config: { id },
+                    },
+                ],
+                edges: [],
+            });
+            const first = store.create(
+                'First Concurrent Workflow',
+                createPipeline('pipeline-first', 'workflow-first', 'first'),
+                {},
+            );
+            const second = store.create(
+                'Second Concurrent Workflow',
+                createPipeline('pipeline-second', 'workflow-second', 'second'),
+                {},
+            );
+            activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
+
+            expect(activator.activate(first.id)).toBe(true);
+            expect(activator.activate(second.id)).toBe(true);
+            await vi.waitFor(() => expect(registerSubscriber).toHaveBeenCalledTimes(2));
+
+            resolveSecond();
+            await vi.waitFor(() => {
+                expect(store.getSummary(second.id)).toMatchObject({
+                    value: { activation: { kind: 'active' } },
+                });
+            });
+
+            rejectFirst(new Error('first registration failed'));
+            await vi.waitFor(() => {
+                expect(store.getSummary(first.id)).toMatchObject({
+                    value: { activation: { kind: 'failed', message: 'first registration failed' } },
+                });
+            });
+
+            expect(activator.isActive(first.id)).toBe(false);
+            expect(activator.isActive(second.id)).toBe(true);
+            expect(unregisterSubscriber).toHaveBeenCalledWith('first');
+        } finally {
+            activator?.dispose();
+            await engine.shutdown();
+        }
+    });
+
+    it('reports watcher unregistration failures as one bounded Plugin diagnostic', async () => {
+        tempDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-loader-unregistration-failure-'));
+        const pluginDir = join(tempDir, 'plugin');
+        writeTriggerPlugin(pluginDir);
+        const loader = createNodePluginLoader();
+        loaders = [loader];
+        const diagnostics: string[] = [];
+        const registerSubscriber = vi.fn();
+
+        const result = await loader.loadNodePlugin(pluginDir, {
+            manifestRegistry: createManifestRegistry(),
+            handlerRegistry: createNodeHandlerRegistry(createBuiltinHandlers()),
+            kernel: {
+                capabilityBroker: {
+                    request: () => Either.right(undefined),
+                },
+                fileWatcherManager: {
+                    registerSubscriber,
+                    unregisterSubscriber: vi.fn(() =>
+                        Promise.reject(new Error('watcher unregistration failed')),
+                    ),
+                },
+            },
+            diagnostic: (message) => diagnostics.push(message),
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok || !isTriggerHandler(result.handler)) return;
+
+        const teardown = result.handler.activate({}, () => {});
+        await vi.waitFor(() => expect(registerSubscriber).toHaveBeenCalledTimes(1));
+        teardown();
+
+        await vi.waitFor(() => {
+            expect(
+                diagnostics.filter((message) => message.includes('watcher unregistration failed')),
+            ).toHaveLength(1);
+        });
     });
 });

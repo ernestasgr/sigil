@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -274,6 +275,10 @@ function assertNever(value: never): never {
     throw new Error(`Unhandled plugin worker message: ${JSON.stringify(value)}`);
 }
 
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
 function getModuleRecord(moduleName: string): Record<string, unknown> {
     const moduleValue: unknown = workerRequire(moduleName);
     if (!isRecord(moduleValue)) {
@@ -465,7 +470,62 @@ function normalizePluginBusEvent(value: unknown): Either.Either<PluginEventEmiss
     return Either.right({ eventName, payload });
 }
 
+type ActivationTeardown = () => void | Promise<void>;
+
+interface ActivationState {
+    readonly requestId: string;
+    readonly pendingRegistrations: Set<Promise<unknown>>;
+    readonly pendingUnregistrations: Set<Promise<unknown>>;
+    readonly registrationFailures: Error[];
+    readonly registeredSubscriberIds: Set<string>;
+    readonly activationSettled: Promise<void>;
+    readonly settleActivation: () => void;
+    teardown?: ActivationTeardown;
+    cleanupPromise?: Promise<void>;
+    cancelled: boolean;
+}
+
+const activationScope = new AsyncLocalStorage<ActivationState>();
+const pendingActivationStates = new Map<string, ActivationState>();
 const activationTeardowns = new Map<string, () => void>();
+
+function createActivationState(requestId: string): ActivationState {
+    let settleActivation = (): void => {};
+    const activationSettled = new Promise<void>((resolve) => {
+        settleActivation = resolve;
+    });
+    return {
+        requestId,
+        pendingRegistrations: new Set(),
+        pendingUnregistrations: new Set(),
+        registrationFailures: [],
+        registeredSubscriberIds: new Set(),
+        activationSettled,
+        settleActivation,
+        cancelled: false,
+    };
+}
+
+const MAX_PLUGIN_DIAGNOSTIC_LENGTH = 512;
+const MAX_UNREGISTRATION_DIAGNOSTICS = 32;
+const reportedUnregistrationFailures = new Set<string>();
+
+function boundedPluginDiagnostic(message: string): string {
+    return message.length > MAX_PLUGIN_DIAGNOSTIC_LENGTH
+        ? `${message.slice(0, MAX_PLUGIN_DIAGNOSTIC_LENGTH - 1)}…`
+        : message;
+}
+
+function sendPluginDiagnostic(message: string): void {
+    try {
+        send({
+            kind: NodePluginWorkerKind.Diagnostic,
+            message: boundedPluginDiagnostic(message),
+        });
+    } catch {
+        // The worker may have been retired while reporting the diagnostic.
+    }
+}
 
 // ─── Callback registry (for registerSubscriber etc.) ─────────
 
@@ -478,6 +538,24 @@ function removeFileWatcherCallback(subscriberId: string, expectedCallbackId?: st
     if (!callbackId || (expectedCallbackId && callbackId !== expectedCallbackId)) return;
     callbacks.delete(callbackId);
     fileWatcherCallbackIds.delete(subscriberId);
+}
+
+function trackActivationRegistration(
+    subscriberId: string,
+    request: Promise<unknown>,
+): Promise<unknown> {
+    const activation = activationScope.getStore();
+    if (!activation) return request;
+
+    activation.pendingRegistrations.add(request);
+    const tracked = request.then(
+        () => activation.registeredSubscriberIds.add(subscriberId),
+        (error: unknown) => activation.registrationFailures.push(new Error(errorMessage(error))),
+    );
+    void tracked.finally(() => {
+        activation.pendingRegistrations.delete(request);
+    });
+    return request;
 }
 
 function registerFileWatcherSubscriber(
@@ -495,20 +573,94 @@ function registerFileWatcherSubscriber(
     void request.catch(() => {
         removeFileWatcherCallback(subscriber.id, callbackId);
     });
-    return request;
+    return trackActivationRegistration(subscriber.id, request);
 }
 
 function unregisterFileWatcherSubscriber(subscriberId: string): Promise<unknown> {
     const callbackId = fileWatcherCallbackIds.get(subscriberId);
+    const activation = activationScope.getStore();
     const request = depRpcCall({
         operation: 'fileWatcherManager.unregisterSubscriber',
         args: [subscriberId],
     });
     const removeCallback = (): void => {
         if (callbackId) removeFileWatcherCallback(subscriberId, callbackId);
+        activation?.registeredSubscriberIds.delete(subscriberId);
     };
-    void request.then(removeCallback, removeCallback);
+    if (activation) {
+        activation.pendingUnregistrations.add(request);
+        void request.then(
+            () => activation.pendingUnregistrations.delete(request),
+            () => activation.pendingUnregistrations.delete(request),
+        );
+    }
+    void request.then(removeCallback, (error: unknown) => {
+        removeCallback();
+        const failureKey = `${subscriberId}:${errorMessage(error)}`;
+        if (
+            !reportedUnregistrationFailures.has(failureKey) &&
+            reportedUnregistrationFailures.size < MAX_UNREGISTRATION_DIAGNOSTICS
+        ) {
+            reportedUnregistrationFailures.add(failureKey);
+            sendPluginDiagnostic(
+                `[plugin:${data.pluginId}] failed to unregister File Watcher subscriber "${subscriberId}": ${errorMessage(error)}`,
+            );
+        }
+    });
     return request;
+}
+
+async function settleActivationRegistrations(state: ActivationState): Promise<void> {
+    await Promise.resolve();
+    while (state.pendingRegistrations.size > 0) {
+        await Promise.allSettled([...state.pendingRegistrations]);
+        await Promise.resolve();
+    }
+
+    const failure = state.registrationFailures[0];
+    if (failure) throw failure;
+}
+
+async function settleActivationUnregistrations(state: ActivationState): Promise<void> {
+    await Promise.resolve();
+    while (state.pendingUnregistrations.size > 0) {
+        await Promise.allSettled([...state.pendingUnregistrations]);
+        await Promise.resolve();
+    }
+}
+
+async function cleanupActivation(state: ActivationState): Promise<void> {
+    if (state.cleanupPromise) return state.cleanupPromise;
+
+    state.cleanupPromise = (async (): Promise<void> => {
+        try {
+            await settleActivationRegistrations(state);
+        } catch {
+            // The activation error is reported by handleActivate; cleanup still runs.
+        }
+
+        if (state.teardown) {
+            try {
+                await activationScope.run(state, () => Promise.resolve(state.teardown?.()));
+            } catch (error) {
+                sendPluginDiagnostic(
+                    `[plugin:${data.pluginId}] failed to tear down activation "${state.requestId}": ${errorMessage(error)}`,
+                );
+            }
+        }
+
+        await settleActivationUnregistrations(state);
+
+        await activationScope.run(state, async () => {
+            await Promise.all(
+                [...state.registeredSubscriberIds].map((subscriberId) =>
+                    unregisterFileWatcherSubscriber(subscriberId).catch(() => undefined),
+                ),
+            );
+        });
+    })();
+
+    return state.cleanupPromise;
 }
 
 // ─── Build proxied deps (NodeHandlerDeps) ───────────────────
@@ -596,10 +748,17 @@ function createProxiedKernel(): KernelDeps {
                     callback(parsedEvent.data);
                 }
             };
-            void registerFileWatcherSubscriber(subscriber, onCallback).catch(() => undefined);
+            const registration = registerFileWatcherSubscriber(subscriber, onCallback).then(
+                () => undefined,
+            );
+            void registration.catch(() => undefined);
+            return registration;
         },
         unregisterSubscriber: (id: string) => {
-            void unregisterFileWatcherSubscriber(id).catch(() => undefined);
+            return unregisterFileWatcherSubscriber(id).then(
+                () => undefined,
+                () => undefined,
+            );
         },
     };
     const capabilityBroker: KernelDeps['capabilityBroker'] = {
@@ -902,9 +1061,17 @@ async function main(): Promise<void> {
             }
             case NodePluginWorkerKind.Teardown: {
                 const teardown = activationTeardowns.get(msg.requestId);
-                if (!teardown) break;
-                activationTeardowns.delete(msg.requestId);
-                teardown();
+                if (teardown) {
+                    activationTeardowns.delete(msg.requestId);
+                    teardown();
+                    break;
+                }
+                const pending = pendingActivationStates.get(msg.requestId);
+                if (!pending) break;
+                pending.cancelled = true;
+                void pending.activationSettled
+                    .then(() => cleanupActivation(pending))
+                    .catch(() => undefined);
                 break;
             }
             case NodePluginWorkerKind.UpdatePermissions: {
@@ -1072,6 +1239,18 @@ async function handleActivate(
         return;
     }
 
+    if (pendingActivationStates.has(msg.requestId) || activationTeardowns.has(msg.requestId)) {
+        send({
+            kind: NodePluginWorkerKind.ActivateError,
+            requestId: msg.requestId,
+            error: `Duplicate Plugin activation request "${msg.requestId}"`,
+        });
+        return;
+    }
+
+    const state = createActivationState(msg.requestId);
+    pendingActivationStates.set(msg.requestId, state);
+
     try {
         const onEvent = (eventCtx: WorkflowContext): void => {
             send({
@@ -1083,18 +1262,49 @@ async function handleActivate(
             });
         };
 
-        activationTeardowns.set(msg.requestId, handler.activate(msg.config, onEvent));
+        const activationResult: unknown = await activationScope.run(state, () =>
+            Promise.resolve(handler.activate(msg.config, onEvent)),
+        );
+        if (!isActivationTeardown(activationResult)) {
+            throw new Error('Plugin activate must return a teardown function');
+        }
+        state.teardown = activationResult;
+        await settleActivationRegistrations(state);
+
+        if (state.cancelled) {
+            await cleanupActivation(state);
+            return;
+        }
+
+        activationTeardowns.set(msg.requestId, () => {
+            void cleanupActivation(state).catch(() => undefined);
+        });
         send({
             kind: NodePluginWorkerKind.ActivateResult,
             requestId: msg.requestId,
         });
     } catch (err) {
-        send({
-            kind: NodePluginWorkerKind.ActivateError,
-            requestId: msg.requestId,
-            error: err instanceof Error ? err.message : String(err),
-        });
+        try {
+            await settleActivationRegistrations(state);
+        } catch {
+            // The original activation failure is the one sent to the main thread.
+        }
+        await cleanupActivation(state);
+        if (!state.cancelled) {
+            send({
+                kind: NodePluginWorkerKind.ActivateError,
+                requestId: msg.requestId,
+                error: errorMessage(err),
+            });
+        }
+    } finally {
+        pendingActivationStates.delete(msg.requestId);
+        state.settleActivation();
     }
+}
+
+function isActivationTeardown(value: unknown): value is ActivationTeardown {
+    return typeof value === 'function';
 }
 
 void main();

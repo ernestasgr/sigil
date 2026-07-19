@@ -392,6 +392,11 @@ function createWorkerNodeHandlerProxy(
             outcome: 'failed',
         });
     };
+    const publishUnregistrationFailure = (subscriberId: string, error: unknown): void => {
+        publishDiagnostic(
+            `[proxy] failed to unregister File Watcher subscriber "${subscriberId}": ${errorMessage(error)}`,
+        );
+    };
     const publishScopedDiagnostic = (
         executeRequestId: string | undefined,
         message: string,
@@ -424,11 +429,15 @@ function createWorkerNodeHandlerProxy(
         if (kernel) {
             for (const subscriberId of activeFileWatcherSubscriptions) {
                 try {
-                    kernel.fileWatcherManager.unregisterSubscriber(subscriberId);
+                    const unregistration =
+                        kernel.fileWatcherManager.unregisterSubscriber(subscriberId);
+                    if (unregistration instanceof Promise) {
+                        void unregistration.catch((error: unknown) => {
+                            publishUnregistrationFailure(subscriberId, error);
+                        });
+                    }
                 } catch (error) {
-                    publishDiagnostic(
-                        `[proxy] failed to unregister File Watcher subscriber "${subscriberId}" after worker failure: ${errorMessage(error)}`,
-                    );
+                    publishUnregistrationFailure(subscriberId, error);
                 }
             }
         }
@@ -571,10 +580,19 @@ function createWorkerNodeHandlerProxy(
                 publishDiagnostic(
                     `[proxy] activation error for Plugin "${pluginId}": ${runtimeMsg.error}`,
                 );
-                Option.getOrUndefined(getDeactivationHook(pending.onEvent))?.(runtimeMsg.error);
+                try {
+                    Option.getOrUndefined(getDeactivationHook(pending.onEvent))?.(runtimeMsg.error);
+                } catch (error) {
+                    publishDiagnostic(
+                        `[proxy] failed to settle activation after Plugin activation error: ${errorMessage(error)}`,
+                    );
+                }
                 break;
             }
             case NodePluginWorkerKind.ActivateResult:
+                break;
+            case NodePluginWorkerKind.Diagnostic:
+                publishDiagnostic(`[worker] ${runtimeMsg.message}`);
                 break;
             case NodePluginWorkerKind.ActivateEvent: {
                 const pending = pendingActivates.get(runtimeMsg.requestId);

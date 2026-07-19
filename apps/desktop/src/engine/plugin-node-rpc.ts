@@ -21,6 +21,7 @@ export const NodePluginWorkerKind = {
     ActivateResult: 'npw:activate_result',
     ActivateError: 'npw:activate_error',
     ActivateEvent: 'npw:activate_event',
+    Diagnostic: 'npw:diagnostic',
     CancelRequest: 'npw:cancel_req',
     CancelAcknowledged: 'npw:cancel_ack',
     DepsRpc: 'npw:deps_rpc',
@@ -104,6 +105,12 @@ export const NodePluginWorkerActivateEventSchema = z.object({
     vars: z.record(z.string(), z.unknown()).optional(),
 });
 export type NodePluginWorkerActivateEvent = z.infer<typeof NodePluginWorkerActivateEventSchema>;
+
+export const NodePluginWorkerDiagnosticSchema = z.object({
+    kind: z.literal(NodePluginWorkerKind.Diagnostic),
+    message: z.string().max(512),
+});
+export type NodePluginWorkerDiagnostic = z.infer<typeof NodePluginWorkerDiagnosticSchema>;
 
 const NodePluginDepsRpcEnvelopeSchema = z
     .object({
@@ -235,6 +242,7 @@ export const NodePluginWorkerToMainSchema = z.discriminatedUnion('kind', [
     NodePluginWorkerActivateResultSchema,
     NodePluginWorkerActivateErrorSchema,
     NodePluginWorkerActivateEventSchema,
+    NodePluginWorkerDiagnosticSchema,
     NodePluginWorkerCancelAcknowledgedSchema,
     NodePluginDepsRpcSchema,
 ]);
