@@ -705,8 +705,11 @@ describe('loadNodePlugin', () => {
                 { sleep } as never,
             );
 
+            const timeoutRejection = expect(timedOut).rejects.toThrow(
+                'Execute request timed out after 30s',
+            );
             await vi.advanceTimersByTimeAsync(30_000);
-            await expect(timedOut).rejects.toThrow('Execute request timed out after 30s');
+            await timeoutRejection;
 
             const next = await handler.execute(
                 {
