@@ -720,16 +720,34 @@ describe('instance-owned Plugin loader supervision', () => {
         });
 
         expect(result.ok).toBe(true);
-        if (!result.ok || !isTriggerHandler(result.handler)) return;
+        if (!result.ok) return;
+        expect(isTriggerHandler(result.handler)).toBe(true);
+        const handler = result.handler;
+        if (!isTriggerHandler(handler)) return;
 
-        const teardown = result.handler.activate({}, () => {});
-        await vi.waitFor(() => expect(registerSubscriber).toHaveBeenCalledTimes(1));
-        teardown();
+        const activateAndTeardown = async (): Promise<void> => {
+            const expectedRegistrations = registerSubscriber.mock.calls.length + 1;
+            const activationTeardown = handler.activate({}, () => {});
+            await vi.waitFor(() =>
+                expect(registerSubscriber).toHaveBeenCalledTimes(expectedRegistrations),
+            );
+            activationTeardown();
+        };
+
+        await activateAndTeardown();
 
         await vi.waitFor(() => {
             expect(
                 diagnostics.filter((message) => message.includes('watcher unregistration failed')),
             ).toHaveLength(1);
+        });
+
+        await activateAndTeardown();
+
+        await vi.waitFor(() => {
+            expect(
+                diagnostics.filter((message) => message.includes('watcher unregistration failed')),
+            ).toHaveLength(2);
         });
     });
 });

@@ -477,6 +477,7 @@ interface ActivationState {
     readonly pendingRegistrations: Set<Promise<unknown>>;
     readonly pendingUnregistrations: Set<Promise<unknown>>;
     readonly registrationFailures: Error[];
+    readonly unregistrationFailures: Set<string>;
     readonly registeredSubscriberIds: Set<string>;
     readonly activationSettled: Promise<void>;
     readonly settleActivation: () => void;
@@ -499,6 +500,7 @@ function createActivationState(requestId: string): ActivationState {
         pendingRegistrations: new Set(),
         pendingUnregistrations: new Set(),
         registrationFailures: [],
+        unregistrationFailures: new Set(),
         registeredSubscriberIds: new Set(),
         activationSettled,
         settleActivation,
@@ -508,7 +510,6 @@ function createActivationState(requestId: string): ActivationState {
 
 const MAX_PLUGIN_DIAGNOSTIC_LENGTH = 512;
 const MAX_UNREGISTRATION_DIAGNOSTICS = 32;
-const reportedUnregistrationFailures = new Set<string>();
 
 function boundedPluginDiagnostic(message: string): string {
     return message.length > MAX_PLUGIN_DIAGNOSTIC_LENGTH
@@ -597,15 +598,21 @@ function unregisterFileWatcherSubscriber(subscriberId: string): Promise<unknown>
     void request.then(removeCallback, (error: unknown) => {
         removeCallback();
         const failureKey = `${subscriberId}:${errorMessage(error)}`;
-        if (
-            !reportedUnregistrationFailures.has(failureKey) &&
-            reportedUnregistrationFailures.size < MAX_UNREGISTRATION_DIAGNOSTICS
-        ) {
-            reportedUnregistrationFailures.add(failureKey);
-            sendPluginDiagnostic(
-                `[plugin:${data.pluginId}] failed to unregister File Watcher subscriber "${subscriberId}": ${errorMessage(error)}`,
-            );
+        const diagnostic =
+            `[plugin:${data.pluginId}] failed to unregister File Watcher subscriber ` +
+            `"${subscriberId}": ${errorMessage(error)}`;
+        if (!activation) {
+            sendPluginDiagnostic(diagnostic);
+            return;
         }
+        if (
+            activation.unregistrationFailures.has(failureKey) ||
+            activation.unregistrationFailures.size >= MAX_UNREGISTRATION_DIAGNOSTICS
+        ) {
+            return;
+        }
+        activation.unregistrationFailures.add(failureKey);
+        sendPluginDiagnostic(diagnostic);
     });
     return request;
 }
