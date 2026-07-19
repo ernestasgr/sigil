@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { CompiledPipeline } from '@sigil/schema';
+import type { PipelineEdge } from '@sigil/schema/edges';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { CollisionSuffixStyle, ConflictPolicy } from '@sigil/schema/properties-file';
 import type { ExecutableWorkflow } from '@sigil/schema/topology';
@@ -243,8 +244,18 @@ export async function executeValidatedWorkflow(
         const nodeById = new Map<string, PipelineNode>(
             pipeline.nodes.map((node) => [node.id, node]),
         );
-        const order = workflow.executionOrder;
-        const topoIndex = new Map<string, number>(order.map((id, index) => [id, index]));
+        // Accepted Workflows reject implicit joins, so each reachable target has
+        // one predecessor. Preserving edge order in each source bucket makes
+        // FIFO enqueue order equivalent to the stable topological order.
+        const outgoingBySource = new Map<string, PipelineEdge[]>();
+        for (const edge of pipeline.edges) {
+            const sourceEdges = outgoingBySource.get(edge.source);
+            if (sourceEdges) {
+                sourceEdges.push(edge);
+            } else {
+                outgoingBySource.set(edge.source, [edge]);
+            }
+        }
 
         const triggerNode = nodeById.get(workflow.triggerId);
         if (!triggerNode) {
@@ -314,32 +325,25 @@ export async function executeValidatedWorkflow(
 
         const scheduled = new Set<string>([triggerNode.id]);
         const queue: { nodeId: string; ctx: WorkflowContext }[] = [];
+        let queueHead = 0;
 
         const scheduleDownstream = (sourceId: string, port: string, ctx: WorkflowContext): void => {
-            for (const edge of pipeline.edges) {
-                if (edge.source === sourceId && edge.sourcePort === port) {
-                    if (scheduled.has(edge.target)) continue;
-                    scheduled.add(edge.target);
-                    queue.push({ nodeId: edge.target, ctx });
-                }
+            for (const edge of outgoingBySource.get(sourceId) ?? []) {
+                if (edge.sourcePort !== port || scheduled.has(edge.target)) continue;
+                scheduled.add(edge.target);
+                queue.push({ nodeId: edge.target, ctx });
             }
         };
 
         scheduleDownstream(triggerNode.id, triggerResult.activePort, triggerResult.outputCtx);
 
-        while (queue.length > 0) {
+        while (queueHead < queue.length) {
             if (executionOptions.signal?.aborted) {
                 return emitCancelled(telemetry, pipeline, runPayload, executionOptions.signal);
             }
 
-            const nextIdx = queue.reduce(
-                (best, _, i) =>
-                    (topoIndex.get(queue[i].nodeId) ?? 0) < (topoIndex.get(queue[best].nodeId) ?? 0)
-                        ? i
-                        : best,
-                0,
-            );
-            const [entry] = queue.splice(nextIdx, 1);
+            const entry = queue[queueHead];
+            queueHead += 1;
             if (entry === undefined) continue;
             const node = nodeById.get(entry.nodeId);
             if (!node) continue;
