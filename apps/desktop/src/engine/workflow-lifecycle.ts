@@ -73,6 +73,16 @@ export function createWorkflowLifecycle(
         return failures;
     }
 
+    function cloneErrorWithMessage(error: Error, message: string): Error {
+        const clone = new Error(message, { cause: error });
+        Object.setPrototypeOf(clone, Object.getPrototypeOf(error));
+        for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(error))) {
+            if (key === 'cause' || key === 'message' || key === 'stack') continue;
+            Object.defineProperty(clone, key, descriptor);
+        }
+        return clone;
+    }
+
     function rethrowWithCompensation(
         primary: unknown,
         workflowId: string,
@@ -85,22 +95,31 @@ export function createWorkflowLifecycle(
         const suffix = boundedMessage(
             `Workflow compensation failed for ${workflowId}: ${context.join(' | ')}`,
         );
-        primaryError.message = boundedMessage(`${primaryError.message}; ${suffix}`);
-        Object.assign(primaryError, { compensationDiagnostics: context });
+        const compensatedError = cloneErrorWithMessage(
+            primaryError,
+            boundedMessage(`${primaryError.message}; ${suffix}`),
+        );
+        Object.defineProperty(compensatedError, 'compensationDiagnostics', {
+            configurable: true,
+            enumerable: true,
+            value: context,
+        });
 
-        if (isWorkflowPersistenceError(primaryError)) {
+        if (isWorkflowPersistenceError(compensatedError)) {
             const diagnostics = failures.flatMap((failure) =>
                 isWorkflowPersistenceError(failure) ? failure.diagnostics : [],
             );
-            Object.assign(primaryError, {
-                diagnostics: [...primaryError.diagnostics, ...diagnostics].slice(
+            Object.defineProperty(compensatedError, 'diagnostics', {
+                configurable: true,
+                enumerable: true,
+                value: [...compensatedError.diagnostics, ...diagnostics].slice(
                     0,
                     MAX_COMPENSATION_DIAGNOSTICS,
                 ),
             });
         }
 
-        throw primaryError;
+        throw compensatedError;
     }
 
     function restorePreviousState(

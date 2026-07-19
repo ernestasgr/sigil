@@ -85,6 +85,8 @@ export interface Engine {
         seedContext?: WorkflowContext,
         executionOptions?: ExecutionOptions,
     ) => Promise<WorkflowExecutionResult>;
+    /** Await plugin workers and all other engine resources during graceful shutdown. */
+    readonly shutdown: () => Promise<void>;
     readonly dispose: () => void;
 }
 
@@ -190,6 +192,29 @@ export function createEngine(options?: EngineOptions): Engine {
 
     const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
     const pluginLoader = createNodePluginLoader();
+    let resourcesDisposed = false;
+    let shutdownPromise: Promise<void> | undefined;
+
+    const disposeResources = (): void => {
+        if (resourcesDisposed) return;
+        resourcesDisposed = true;
+        fileWatcherManager.dispose();
+        workflowStateStore.dispose();
+        database.close();
+    };
+
+    const shutdown = (): Promise<void> => {
+        if (!shutdownPromise) {
+            shutdownPromise = (async (): Promise<void> => {
+                try {
+                    await pluginLoader.shutdown();
+                } finally {
+                    disposeResources();
+                }
+            })();
+        }
+        return shutdownPromise;
+    };
 
     const commitResolvedProperties = (next: {
         readonly resolved: RegisteredResolvedProperties;
@@ -323,11 +348,10 @@ export function createEngine(options?: EngineOptions): Engine {
                 executionOptions,
             );
         },
+        shutdown,
         dispose: (): void => {
-            void pluginLoader.shutdown();
-            fileWatcherManager.dispose();
-            workflowStateStore.dispose();
-            database.close();
+            void shutdown();
+            disposeResources();
         },
     };
 }

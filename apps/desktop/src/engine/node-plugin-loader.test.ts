@@ -25,6 +25,7 @@ import {
     loadNodePlugin,
     loadNodePlugins,
     type NodePluginLoader,
+    updatePluginPermissions,
 } from './node-plugin-loader.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
 import { createPermissionOverrideStore } from './permission-override-store.js';
@@ -3284,6 +3285,45 @@ describe('updatePluginPermissions', () => {
         // Real fs throws ENOENT, not permission stub
         expect((err2 as Error).message).not.toContain('Permission denied');
         expect((err2 as Error).message).toContain('ENOENT');
+    });
+
+    it('keeps the legacy module-level permission update facade connected to loaded workers', async () => {
+        const pluginDir = join(tempDir, 'legacy-perm-propagation');
+        const pluginId = 'com.sigil.legacy-perm-checker';
+        writePlugin(
+            pluginDir,
+            {
+                id: pluginId,
+                version: '0.0.1',
+                permissions: ['filesystem.read'],
+                emits: ['x'],
+                nodeType: 'perm-checker',
+            },
+            PERM_CHECK_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        updatePluginPermissions(pluginId, []);
+
+        await expect(
+            result.handler.execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'perm-checker',
+                        pluginId,
+                        config: { check: 'filesystem.read' },
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {} as never,
+            ),
+        ).rejects.toThrow('Permission denied: filesystem.read');
     });
 });
 

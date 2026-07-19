@@ -64,7 +64,8 @@ export interface NodePluginRpcRouterOptions {
     readonly post: (message: unknown) => void;
     readonly kernel?: KernelDeps;
     readonly bridge?: Pick<Bridge, 'emit'>;
-    readonly activeFileWatcherSubscriptions: Set<string>;
+    readonly trackFileWatcherSubscription: (subscriberId: string) => void;
+    readonly untrackFileWatcherSubscription: (subscriberId: string) => void;
     readonly diagnostic?: (message: string, executeRequestId?: string) => void;
 }
 
@@ -451,14 +452,14 @@ function handleFileWatcherRpc(
                         // The worker may have been retired after a non-cooperative cancellation.
                     }
                 });
-                options.activeFileWatcherSubscriptions.add(subscriber.id);
+                options.trackFileWatcherSubscription(subscriber.id);
                 postDepsRpcResult(options.post, msg.requestId, undefined);
                 return;
             }
             case 'fileWatcherManager.unregisterSubscriber': {
                 const [id] = msg.args;
                 options.kernel.fileWatcherManager.unregisterSubscriber(id);
-                options.activeFileWatcherSubscriptions.delete(id);
+                options.untrackFileWatcherSubscription(id);
                 postDepsRpcResult(options.post, msg.requestId, undefined);
                 return;
             }

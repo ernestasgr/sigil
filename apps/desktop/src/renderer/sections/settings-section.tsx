@@ -357,7 +357,7 @@ function PropertiesFilePanel({
                 by the Engine&apos;s resolution order.
             </p>
             {saveStatus ? (
-                <p role="status" className="font-data text-verdigris mb-6 text-xs">
+                <p role="status" className="font-ui text-verdigris-foreground mb-6 text-xs">
                     {propertiesSaveStatusMessage(saveStatus)}
                 </p>
             ) : null}
