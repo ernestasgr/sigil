@@ -194,6 +194,34 @@ describe('Workflow run lifecycle supervision', () => {
         }
     });
 
+    it('drains cancelled work when disable persistence needs compensation', async () => {
+        const fixture = createRunFixture(true);
+
+        try {
+            fixture.lifecycle.enable(fixture.workflowId);
+            const callback = fixture.callbacks[0];
+            if (!callback) throw new Error('Trigger callback was not registered');
+            callback(context);
+            expect(fixture.releases).toHaveLength(1);
+
+            const persistenceError = new Error('disable persistence failed');
+            vi.spyOn(fixture.store, 'setEnabled').mockImplementationOnce(() => {
+                throw persistenceError;
+            });
+
+            expect(() => fixture.lifecycle.disable(fixture.workflowId)).toThrow(persistenceError);
+            expect(fixture.activator.activeWorkflowIds()).toEqual([fixture.workflowId]);
+
+            await fixture.activator.waitForRuns(fixture.workflowId);
+
+            expect(fixture.activator.hasInFlightRuns(fixture.workflowId)).toBe(false);
+            expect(fixture.teardown).toHaveBeenCalledTimes(1);
+            expect(fixture.callbacks).toHaveLength(2);
+        } finally {
+            fixture.dispose();
+        }
+    });
+
     it('waits for a non-cooperative in-flight run before deleting the Workflow', async () => {
         const fixture = createRunFixture(false);
         const messages: unknown[] = [];
