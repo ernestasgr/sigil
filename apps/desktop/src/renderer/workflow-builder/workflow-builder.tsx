@@ -1,12 +1,11 @@
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import { ReactFlowProvider } from '@xyflow/react';
-import { type ReactElement, useEffect, useMemo, useState } from 'react';
+import { type ReactElement, useEffect, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
 import { cn } from '../lib/utils.js';
 import { useBuilderStore } from './builder-store.js';
 import { WorkflowCanvas } from './canvas/workflow-canvas.js';
-import { compileGraph } from './compile.js';
 import { CornerFlourish } from './corner-flourish.js';
 import { EVENT_CATALOG, type EventCatalog } from './event-catalog.js';
 import { PropertiesPanel } from './inspector/properties-panel.js';
@@ -130,11 +129,7 @@ export function WorkflowBuilder({
                             <CornerFlourish corner="br" />
                         </div>
                     ) : null}
-                    <ValidationBar
-                        onSave={onSave}
-                        saveState={saveState}
-                        nodeCatalog={nodeCatalog}
-                    />
+                    <ValidationBar onSave={onSave} saveState={saveState} />
                 </div>
                 <aside className="sigil-ornamental-frame relative w-80 shrink-0 overflow-hidden">
                     <PropertiesPanel nodeCatalog={nodeCatalog} eventCatalog={eventCatalog} />
@@ -149,7 +144,6 @@ export function WorkflowBuilder({
 interface ValidationBarProps {
     readonly onSave: (name: string) => Promise<void>;
     readonly saveState: WorkflowDraftSaveState;
-    readonly nodeCatalog: NodeCatalog;
 }
 
 function diagnosticTargetLabel(diagnostic: TopologyDiagnostic): string {
@@ -231,17 +225,14 @@ function assertNever(value: never): never {
     throw new Error(`Unhandled Workflow Builder state: ${JSON.stringify(value)}`);
 }
 
-function ValidationBar({ onSave, saveState, nodeCatalog }: ValidationBarProps): ReactElement {
+function ValidationBar({ onSave, saveState }: ValidationBarProps): ReactElement {
+    const compile = useBuilderStore((state) => state.compile);
     const nodes = useBuilderStore((state) => state.nodes);
     const edges = useBuilderStore((state) => state.edges);
-    const meta = useBuilderStore((state) => state.meta);
     const pipelineName = useBuilderStore((state) => state.pipelineName);
     const dirty = useBuilderStore((state) => state.dirty);
     const validation = useBuilderStore((state) => state.validation);
-    const result = useMemo(
-        () => compileGraph(nodes, edges, meta, { nodeCatalog }),
-        [nodes, edges, meta, nodeCatalog],
-    );
+    const result = compile();
     const diagnostics = validation.diagnostics;
     const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === 'error').length;
     const warningCount = diagnostics.filter(

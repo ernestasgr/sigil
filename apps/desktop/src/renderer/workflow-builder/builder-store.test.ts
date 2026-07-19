@@ -402,6 +402,96 @@ describe('useBuilderStore', () => {
         expect(useBuilderStore.getState().edges.map((edge) => edge.id)).toEqual([edgeId]);
     });
 
+    it('coalesces React Flow drag changes into one revision and one undo entry', () => {
+        const id = useBuilderStore.getState().addNode('log', { x: 0, y: 0 });
+        const revisionAfterAdd = useBuilderStore.getState().revision;
+
+        useBuilderStore
+            .getState()
+            .onNodesChange([{ id, type: 'position', position: { x: 40, y: 20 }, dragging: true }]);
+        useBuilderStore
+            .getState()
+            .onNodesChange([{ id, type: 'position', position: { x: 80, y: 40 }, dragging: true }]);
+
+        expect(useBuilderStore.getState().revision).toBe(revisionAfterAdd);
+        expect(useBuilderStore.getState().draft.activeNodeDrag).not.toBeNull();
+
+        useBuilderStore
+            .getState()
+            .onNodesChange([
+                { id, type: 'position', position: { x: 100, y: 60 }, dragging: false },
+            ]);
+
+        expect(useBuilderStore.getState().revision).toBe(revisionAfterAdd + 1);
+        expect(useBuilderStore.getState().draft.undoStack).toHaveLength(2);
+        expect(useBuilderStore.getState().draft.activeNodeDrag).toBeNull();
+
+        useBuilderStore.getState().undo();
+        expect(useBuilderStore.getState().nodes[0]?.position).toEqual({ x: 0, y: 0 });
+    });
+
+    it('reuses the compiled Workflow when only node positions change', () => {
+        const id = useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
+        const before = useBuilderStore.getState().compile();
+
+        useBuilderStore
+            .getState()
+            .onNodesChange([{ id, type: 'position', position: { x: 120, y: 80 } }]);
+
+        expect(useBuilderStore.getState().compile()).toBe(before);
+
+        useBuilderStore.getState().updateSpec(id, {
+            type: 'manual-trigger',
+            config: {
+                eventName: 'file.modified',
+                payload: { path: '/', name: 'file', ext: 'txt', size: 0, dir: '/' },
+            },
+        });
+
+        const afterConfiguration = useBuilderStore.getState().compile();
+        expect(afterConfiguration).not.toBe(before);
+
+        const target = useBuilderStore.getState().addNode('log', { x: 240, y: 0 });
+        useBuilderStore.getState().connect({
+            source: id,
+            target,
+            sourceHandle: 'out',
+            targetHandle: null,
+        });
+
+        expect(useBuilderStore.getState().compile()).not.toBe(afterConfiguration);
+    });
+
+    it('clears a pending drag when the Workflow is replaced', () => {
+        const id = useBuilderStore.getState().addNode('log', { x: 0, y: 0 });
+        useBuilderStore
+            .getState()
+            .onNodesChange([{ id, type: 'position', position: { x: 80, y: 40 }, dragging: true }]);
+
+        useBuilderStore.getState().loadPipeline(
+            {
+                id: 'pipeline-replaced',
+                workflowId: 'workflow-replaced',
+                schemaVersion: 1,
+                nodes: [
+                    {
+                        id: 'trigger',
+                        type: 'manual-trigger',
+                        config: {
+                            eventName: 'file.created',
+                            payload: { path: '/', name: 'file', ext: 'txt', size: 0, dir: '/' },
+                        },
+                    },
+                ],
+                edges: [],
+            },
+            'Replaced Workflow',
+        );
+
+        expect(useBuilderStore.getState().draft.activeNodeDrag).toBeNull();
+        expect(useBuilderStore.getState().nodes[0]?.id).toBe('trigger');
+    });
+
     it('does not create a dirty revision for selection-only changes', () => {
         const id = useBuilderStore.getState().addNode('log', { x: 0, y: 0 });
         useBuilderStore.getState().markSaved();

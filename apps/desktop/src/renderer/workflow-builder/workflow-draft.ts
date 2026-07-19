@@ -32,6 +32,10 @@ export interface WorkflowDraftSnapshot {
     readonly pipelineName: string;
 }
 
+export interface WorkflowDraftNodeDrag {
+    readonly start: WorkflowDraftSnapshot;
+}
+
 export interface WorkflowDraftSaveRequest {
     readonly name: string;
     readonly pipeline: CompiledPipeline;
@@ -106,6 +110,7 @@ export interface WorkflowDraft {
     readonly revision: number;
     readonly undoStack: readonly WorkflowDraftSnapshot[];
     readonly redoStack: readonly WorkflowDraftSnapshot[];
+    readonly activeNodeDrag: WorkflowDraftNodeDrag | null;
     readonly saveState: WorkflowDraftSaveState;
     readonly validation: WorkflowDraftValidationState;
 }
@@ -318,6 +323,83 @@ function applyCommand(
     }
 }
 
+type WorkflowDraftPositionChange = Extract<
+    NodeChange<WorkflowDraftNode>,
+    { readonly type: 'position' }
+>;
+
+function isPositionChange(
+    change: NodeChange<WorkflowDraftNode>,
+): change is WorkflowDraftPositionChange {
+    return change.type === 'position';
+}
+
+function commitWorkflowDraftSnapshot(
+    draft: WorkflowDraft,
+    snapshot: WorkflowDraftSnapshot,
+    undoSnapshot: WorkflowDraftSnapshot,
+): WorkflowDraft {
+    const next = cloneSnapshot(snapshot);
+    if (snapshotsEqual(next, undoSnapshot)) {
+        return {
+            ...draft,
+            current: next,
+            activeNodeDrag: null,
+        };
+    }
+
+    return {
+        current: next,
+        baseline: draft.baseline,
+        revision: draft.revision + 1,
+        undoStack: [...draft.undoStack, cloneSnapshot(undoSnapshot)],
+        redoStack: [],
+        activeNodeDrag: null,
+        saveState: saveStateAfterEdit(draft.saveState),
+        validation: validationAfterEdit(),
+    };
+}
+
+function applyWorkflowDraftNodeChanges(
+    draft: WorkflowDraft,
+    changes: readonly NodeChange<WorkflowDraftNode>[],
+    nodeCatalog?: NodeCatalog,
+): WorkflowDraft {
+    const applied = applyCommand(draft.current, { kind: 'nodes-change', changes }, nodeCatalog);
+    const next = cloneSnapshot(applied);
+    const positionChanges = changes.filter(isPositionChange);
+    const dragStarted = positionChanges.some((change) => change.dragging === true);
+    const dragEnded = positionChanges.some((change) => change.dragging === false);
+    const hasNodeLifecycleChange = changes.some(
+        (change) => change.type === 'add' || change.type === 'remove' || change.type === 'replace',
+    );
+
+    if (dragEnded) {
+        return commitWorkflowDraftSnapshot(
+            draft,
+            next,
+            draft.activeNodeDrag?.start ?? draft.current,
+        );
+    }
+
+    if (
+        !hasNodeLifecycleChange &&
+        (dragStarted || (draft.activeNodeDrag !== null && positionChanges.length > 0))
+    ) {
+        return {
+            ...draft,
+            current: next,
+            activeNodeDrag: draft.activeNodeDrag ?? { start: cloneSnapshot(draft.current) },
+        };
+    }
+
+    if (draft.activeNodeDrag !== null && !hasNodeLifecycleChange) {
+        return { ...draft, current: next };
+    }
+
+    return commitWorkflowDraftSnapshot(draft, next, draft.activeNodeDrag?.start ?? draft.current);
+}
+
 export function createWorkflowDraft(snapshot: WorkflowDraftSnapshot): WorkflowDraft {
     const current = cloneSnapshot(snapshot);
     return {
@@ -326,6 +408,7 @@ export function createWorkflowDraft(snapshot: WorkflowDraftSnapshot): WorkflowDr
         revision: 0,
         undoStack: [],
         redoStack: [],
+        activeNodeDrag: null,
         saveState: { status: 'idle' },
         validation: validationAfterEdit(),
     };
@@ -340,26 +423,29 @@ export function applyWorkflowDraftCommand(
     command: WorkflowDraftCommand,
     nodeCatalog?: NodeCatalog,
 ): WorkflowDraft {
-    const applied = applyCommand(draft.current, command, nodeCatalog);
-    if (applied === draft.current) return draft;
-
-    const next = cloneSnapshot(applied);
-    if (snapshotsEqual(next, draft.current)) {
-        return { ...draft, current: next };
+    if (command.kind === 'nodes-change') {
+        return applyWorkflowDraftNodeChanges(draft, command.changes, nodeCatalog);
     }
 
-    return {
-        current: next,
-        baseline: draft.baseline,
-        revision: draft.revision + 1,
-        undoStack: [...draft.undoStack, cloneSnapshot(draft.current)],
-        redoStack: [],
-        saveState: saveStateAfterEdit(draft.saveState),
-        validation: validationAfterEdit(),
-    };
+    const applied = applyCommand(draft.current, command, nodeCatalog);
+    if (applied === draft.current && draft.activeNodeDrag === null) return draft;
+
+    return commitWorkflowDraftSnapshot(
+        draft,
+        applied,
+        draft.activeNodeDrag?.start ?? draft.current,
+    );
 }
 
 export function undoWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
+    if (draft.activeNodeDrag !== null) {
+        return {
+            ...draft,
+            current: cloneSnapshot(draft.activeNodeDrag.start),
+            activeNodeDrag: null,
+        };
+    }
+
     const previous = draft.undoStack[draft.undoStack.length - 1];
     if (!previous) return draft;
 
@@ -369,12 +455,21 @@ export function undoWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
         revision: draft.revision + 1,
         undoStack: draft.undoStack.slice(0, -1),
         redoStack: [...draft.redoStack, cloneSnapshot(draft.current)],
+        activeNodeDrag: null,
         saveState: saveStateAfterEdit(draft.saveState),
         validation: validationAfterEdit(),
     };
 }
 
 export function redoWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
+    if (draft.activeNodeDrag !== null) {
+        return {
+            ...draft,
+            current: cloneSnapshot(draft.activeNodeDrag.start),
+            activeNodeDrag: null,
+        };
+    }
+
     const next = draft.redoStack[draft.redoStack.length - 1];
     if (!next) return draft;
 
@@ -384,6 +479,7 @@ export function redoWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
         revision: draft.revision + 1,
         undoStack: [...draft.undoStack, cloneSnapshot(draft.current)],
         redoStack: draft.redoStack.slice(0, -1),
+        activeNodeDrag: null,
         saveState: saveStateAfterEdit(draft.saveState),
         validation: validationAfterEdit(),
     };
@@ -393,6 +489,7 @@ export function markWorkflowDraftSaved(draft: WorkflowDraft): WorkflowDraft {
     return {
         ...draft,
         baseline: cloneSnapshot(draft.current),
+        activeNodeDrag: null,
         saveState: {
             status: 'success',
             revision: draft.revision,

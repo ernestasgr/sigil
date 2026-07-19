@@ -37,6 +37,128 @@ function logNode(id: string) {
 }
 
 describe('WorkflowDraft', () => {
+    it('keeps a drag transient and commits one undoable revision at the end', () => {
+        let draft = createWorkflowDraft({
+            ...emptySnapshot(),
+            nodes: [logNode('log-1')],
+        });
+
+        draft = applyWorkflowDraftCommand(draft, {
+            kind: 'nodes-change',
+            changes: [
+                {
+                    id: 'log-1',
+                    type: 'position',
+                    position: { x: 40, y: 20 },
+                    dragging: true,
+                },
+            ],
+        });
+        draft = applyWorkflowDraftCommand(draft, {
+            kind: 'nodes-change',
+            changes: [
+                {
+                    id: 'log-1',
+                    type: 'position',
+                    position: { x: 80, y: 40 },
+                    dragging: true,
+                },
+            ],
+        });
+
+        expect(draft.current.nodes[0]?.position).toEqual({ x: 80, y: 40 });
+        expect(draft.revision).toBe(0);
+        expect(draft.undoStack).toHaveLength(0);
+        expect(draft.activeNodeDrag).not.toBeNull();
+
+        draft = applyWorkflowDraftCommand(draft, {
+            kind: 'nodes-change',
+            changes: [
+                {
+                    id: 'log-1',
+                    type: 'position',
+                    position: { x: 100, y: 60 },
+                    dragging: false,
+                },
+            ],
+        });
+
+        expect(draft.current.nodes[0]?.position).toEqual({ x: 100, y: 60 });
+        expect(draft.revision).toBe(1);
+        expect(draft.undoStack).toHaveLength(1);
+        expect(draft.activeNodeDrag).toBeNull();
+
+        draft = undoWorkflowDraft(draft);
+        expect(draft.current.nodes[0]?.position).toEqual({ x: 0, y: 0 });
+        expect(draft.activeNodeDrag).toBeNull();
+
+        draft = redoWorkflowDraft(draft);
+        expect(draft.current.nodes[0]?.position).toEqual({ x: 100, y: 60 });
+        expect(draft.activeNodeDrag).toBeNull();
+    });
+
+    it('cancels an active drag on undo and redo and clears it on node removal', () => {
+        let draft = createWorkflowDraft({
+            ...emptySnapshot(),
+            nodes: [logNode('log-1')],
+        });
+
+        draft = applyWorkflowDraftCommand(draft, {
+            kind: 'nodes-change',
+            changes: [{ id: 'log-1', type: 'position', position: { x: 40, y: 20 } }],
+        });
+        draft = undoWorkflowDraft(draft);
+        draft = applyWorkflowDraftCommand(draft, {
+            kind: 'nodes-change',
+            changes: [
+                {
+                    id: 'log-1',
+                    type: 'position',
+                    position: { x: 80, y: 40 },
+                    dragging: true,
+                },
+            ],
+        });
+
+        draft = undoWorkflowDraft(draft);
+        expect(draft.current.nodes[0]?.position).toEqual({ x: 0, y: 0 });
+        expect(draft.activeNodeDrag).toBeNull();
+
+        draft = applyWorkflowDraftCommand(draft, {
+            kind: 'nodes-change',
+            changes: [
+                {
+                    id: 'log-1',
+                    type: 'position',
+                    position: { x: 100, y: 60 },
+                    dragging: true,
+                },
+            ],
+        });
+        draft = redoWorkflowDraft(draft);
+        expect(draft.current.nodes[0]?.position).toEqual({ x: 0, y: 0 });
+        expect(draft.activeNodeDrag).toBeNull();
+
+        draft = applyWorkflowDraftCommand(draft, {
+            kind: 'nodes-change',
+            changes: [
+                {
+                    id: 'log-1',
+                    type: 'position',
+                    position: { x: 120, y: 80 },
+                    dragging: true,
+                },
+            ],
+        });
+        draft = applyWorkflowDraftCommand(draft, {
+            kind: 'nodes-change',
+            changes: [{ id: 'log-1', type: 'remove' }],
+        });
+
+        expect(draft.current.nodes).toEqual([]);
+        expect(draft.activeNodeDrag).toBeNull();
+    });
+
     it('tracks a loaded baseline and makes an edit undoable and redoable', () => {
         let draft = createWorkflowDraft(emptySnapshot());
 
