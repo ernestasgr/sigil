@@ -439,28 +439,55 @@ function handleFileWatcherRpc(
         switch (msg.operation) {
             case 'fileWatcherManager.registerSubscriber': {
                 const [subscriber, callbackId] = msg.args;
-                options.kernel.fileWatcherManager.registerSubscriber(subscriber, (fileEvent) => {
-                    const parsedEvent = FileEventSchema.safeParse(fileEvent);
-                    if (!parsedEvent.success) return;
-                    try {
-                        options.post({
-                            kind: NodePluginWorkerKind.CallbackInvoke,
-                            callbackId,
-                            args: [parsedEvent.data],
-                        });
-                    } catch {
-                        // The worker may have been retired after a non-cooperative cancellation.
-                    }
-                });
-                options.trackFileWatcherSubscription(subscriber.id);
-                postDepsRpcResult(options.post, msg.requestId, undefined);
+                const registration = options.kernel.fileWatcherManager.registerSubscriber(
+                    subscriber,
+                    (fileEvent) => {
+                        const parsedEvent = FileEventSchema.safeParse(fileEvent);
+                        if (!parsedEvent.success) return;
+                        try {
+                            options.post({
+                                kind: NodePluginWorkerKind.CallbackInvoke,
+                                callbackId,
+                                args: [parsedEvent.data],
+                            });
+                        } catch {
+                            // The worker may have been retired after a non-cooperative cancellation.
+                        }
+                    },
+                );
+                if (registration instanceof Promise) {
+                    void registration.then(
+                        () => {
+                            options.trackFileWatcherSubscription(subscriber.id);
+                            postDepsRpcResult(options.post, msg.requestId, undefined);
+                        },
+                        (error: unknown) => {
+                            postDepsRpcError(options.post, msg.requestId, errorMessage(error));
+                        },
+                    );
+                } else {
+                    options.trackFileWatcherSubscription(subscriber.id);
+                    postDepsRpcResult(options.post, msg.requestId, undefined);
+                }
                 return;
             }
             case 'fileWatcherManager.unregisterSubscriber': {
                 const [id] = msg.args;
-                options.kernel.fileWatcherManager.unregisterSubscriber(id);
-                options.untrackFileWatcherSubscription(id);
-                postDepsRpcResult(options.post, msg.requestId, undefined);
+                const unregistration = options.kernel.fileWatcherManager.unregisterSubscriber(id);
+                if (unregistration instanceof Promise) {
+                    void unregistration.then(
+                        () => {
+                            options.untrackFileWatcherSubscription(id);
+                            postDepsRpcResult(options.post, msg.requestId, undefined);
+                        },
+                        (error: unknown) => {
+                            postDepsRpcError(options.post, msg.requestId, errorMessage(error));
+                        },
+                    );
+                } else {
+                    options.untrackFileWatcherSubscription(id);
+                    postDepsRpcResult(options.post, msg.requestId, undefined);
+                }
                 return;
             }
             default:
