@@ -186,12 +186,17 @@ describe('WorkflowLifecycle transitions', () => {
             path: 'workflow-1.json',
             message: 'compensation write failed',
         };
+        const primaryMetadata = Symbol('primaryMetadata');
         const primaryError = Object.assign(new Error('primary transition failure'), {
             kind: 'workflow_persistence' as const,
             operation: 'set_enabled' as const,
             workflowId: fixture.workflowId,
             diagnostic: primaryDiagnostic,
             diagnostics: [primaryDiagnostic],
+        });
+        Object.defineProperty(primaryError, primaryMetadata, {
+            configurable: true,
+            value: { source: 'primary' },
         });
         const compensationError = Object.assign(new Error('compensation transition failure'), {
             kind: 'workflow_persistence' as const,
@@ -219,12 +224,57 @@ describe('WorkflowLifecycle transitions', () => {
         expect(caught).toMatchObject({ cause: primaryError });
         expect(primaryError.message).toBe('primary transition failure');
         expect(primaryError.diagnostics).toEqual([primaryDiagnostic]);
+        expect(Object.getOwnPropertyDescriptor(caught as Error, primaryMetadata)?.value).toEqual({
+            source: 'primary',
+        });
         expect(caught).toMatchObject({
             diagnostics: [primaryDiagnostic, compensationDiagnostic],
         });
         expect(caught).toMatchObject({
             message: expect.stringContaining('compensation transition failure'),
         });
+    });
+
+    it('defaults malformed persistence diagnostics during compensation', () => {
+        const fixture = createFixture(() => () => {});
+        fixtures.push(fixture);
+        const diagnostic: AtomicWriteFailure = {
+            kind: 'persistence',
+            operation: 'write',
+            phase: 'write',
+            path: 'workflow-1.json',
+            message: 'write failed',
+        };
+        const primaryError = Object.assign(new Error('primary transition failure'), {
+            kind: 'workflow_persistence' as const,
+            operation: 'set_enabled' as const,
+            workflowId: fixture.workflowId,
+            diagnostic,
+            diagnostics: 'malformed',
+        });
+        const compensationError = Object.assign(new Error('compensation transition failure'), {
+            kind: 'workflow_persistence' as const,
+            operation: 'set_enabled' as const,
+            workflowId: fixture.workflowId,
+            diagnostic,
+            diagnostics: undefined,
+        });
+        vi.spyOn(fixture.store, 'setEnabled')
+            .mockImplementationOnce(() => {
+                throw primaryError;
+            })
+            .mockImplementationOnce(() => {
+                throw compensationError;
+            });
+
+        let caught: unknown;
+        try {
+            fixture.lifecycle.enable(fixture.workflowId);
+        } catch (error) {
+            caught = error;
+        }
+
+        expect(caught).toMatchObject({ diagnostics: [] });
     });
 
     it('restores disabled intent with a failed activation state when activation throws', () => {
