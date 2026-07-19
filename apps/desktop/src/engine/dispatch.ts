@@ -14,7 +14,6 @@ import {
 import type { PluginInfo } from '../shared/plugin-info.js';
 import type { Engine } from './engine.js';
 import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
-import { updatePluginPermissions } from './node-plugin-loader.js';
 import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
 import type { WorkflowActivator } from './workflow-activator.js';
 import type { WorkflowLifecycle } from './workflow-lifecycle.js';
@@ -516,7 +515,7 @@ function handleSetPermissionOverride(
         );
         return;
     }
-    updatePluginPermissions(message.pluginId, message.overrides);
+    subsystems.engine.updatePluginPermissions?.(message.pluginId, message.overrides);
     postCommandResponse(
         'setPermissionOverride',
         {

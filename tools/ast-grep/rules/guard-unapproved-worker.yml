@@ -5,7 +5,7 @@ message: Worker construction is outside the approved worker adapter seams.
 note: |
     Create workers through a reviewed adapter that owns workerData, lifecycle,
     message validation, and termination. The two current adapters are the
-    Main engine client and the Engine Plugin loader; keep this allowlist narrow.
+    Main engine client and the Engine Plugin worker supervisor; keep this allowlist narrow.
 files:
     - apps/**/src/**/*.ts
     - apps/**/src/**/*.tsx
@@ -15,7 +15,7 @@ ignores:
     - '**/*.test.tsx'
     # Approved adapters: Main -> Engine worker and Engine -> Plugin worker.
     - apps/desktop/src/main/engine-client.ts
-    - apps/desktop/src/engine/node-plugin-loader.ts
+    - apps/desktop/src/engine/node-plugin-worker-supervisor.ts
 rule:
     pattern: new Worker($$$ARGS)
 metadata:
