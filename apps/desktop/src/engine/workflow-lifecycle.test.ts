@@ -215,7 +215,10 @@ describe('WorkflowLifecycle transitions', () => {
             caught = error;
         }
 
-        expect(caught).toBe(primaryError);
+        expect(caught).not.toBe(primaryError);
+        expect(caught).toMatchObject({ cause: primaryError });
+        expect(primaryError.message).toBe('primary transition failure');
+        expect(primaryError.diagnostics).toEqual([primaryDiagnostic]);
         expect(caught).toMatchObject({
             diagnostics: [primaryDiagnostic, compensationDiagnostic],
         });

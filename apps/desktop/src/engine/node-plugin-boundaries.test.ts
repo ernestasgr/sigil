@@ -181,7 +181,8 @@ describe('typed Plugin RPC authorization router', () => {
             pendingExecutions,
             post,
             kernel: createKernel(request),
-            activeFileWatcherSubscriptions: new Set(),
+            trackFileWatcherSubscription: vi.fn(),
+            untrackFileWatcherSubscription: vi.fn(),
         });
 
         router.route({
@@ -223,7 +224,8 @@ describe('typed Plugin RPC authorization router', () => {
             ]),
             post,
             kernel: createKernel(request),
-            activeFileWatcherSubscriptions: new Set(),
+            trackFileWatcherSubscription: vi.fn(),
+            untrackFileWatcherSubscription: vi.fn(),
         });
 
         router.route({
@@ -306,6 +308,47 @@ describe('instance-owned Plugin loader supervision', () => {
         await expect(secondResult.handler.execute(input, {} as never)).resolves.toMatchObject({
             activePort: 'out',
         });
+    });
+
+    it('does not orphan a worker when duplicate loads race within one loader', async () => {
+        tempDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-loader-race-'));
+        const pluginDir = join(tempDir, 'plugin');
+        writePlugin(pluginDir);
+        const loader = createNodePluginLoader();
+        loaders = [loader];
+        const manifestRegistry = createManifestRegistry();
+        const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+        const deps = { manifestRegistry, handlerRegistry };
+
+        const [firstResult, secondResult] = await Promise.all([
+            loader.loadNodePlugin(pluginDir, deps),
+            loader.loadNodePlugin(pluginDir, deps),
+        ]);
+        const results = [firstResult, secondResult];
+        const successful = results.filter((result) => result.ok);
+        const duplicate = results.filter(
+            (result) => !result.ok && result.error.kind === 'duplicate',
+        );
+
+        expect(successful).toHaveLength(1);
+        expect(duplicate).toHaveLength(1);
+        if (successful.length !== 1 || !successful[0].ok) return;
+
+        await loader.shutdown();
+        await expect(
+            successful[0].handler.execute(
+                {
+                    node: {
+                        id: 'node',
+                        type: 'isolated-boundary-node',
+                        pluginId: 'com.sigil.boundary',
+                        config: {},
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {} as never,
+            ),
+        ).rejects.toThrow(/supervisor shut down/i);
     });
 
     it('settles loaded workers when the owning loader shuts down', async () => {

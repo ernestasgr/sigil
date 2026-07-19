@@ -45,6 +45,11 @@ export interface NodePluginWorkerLoadDependencies {
     readonly diagnosticEvent?: (event: EngineDiagnosticPayload) => void;
 }
 
+export interface NodePluginWorkerLoadOptions {
+    /** Replace an existing worker for the legacy module-level compatibility facade. */
+    readonly replaceExisting?: boolean;
+}
+
 export type NodePluginWorkerLoadResult =
     | {
           readonly ok: true;
@@ -53,14 +58,23 @@ export type NodePluginWorkerLoadResult =
           readonly isTrigger: boolean;
           readonly propertyDescriptors?: NodePluginWorkerLoaded['propertyDescriptors'];
       }
-    | ({ readonly ok: false; readonly error: string } & Partial<
-          Pick<NodePluginWorkerLoadError, 'propertyError'>
-      >);
+    | {
+          readonly ok: false;
+          readonly kind: 'already_loaded';
+          readonly error: string;
+      }
+    | {
+          readonly ok: false;
+          readonly kind: 'worker_error';
+          readonly error: string;
+          readonly propertyError?: NodePluginWorkerLoadError['propertyError'];
+      };
 
 export interface NodePluginWorkerSupervisor {
     readonly load: (
         preparation: NodePluginPreparation,
         deps: NodePluginWorkerLoadDependencies,
+        options?: NodePluginWorkerLoadOptions,
     ) => Promise<NodePluginWorkerLoadResult>;
     readonly disposePlugin: (pluginId: string) => Promise<void>;
     readonly updatePermissions: (
@@ -178,6 +192,7 @@ export function createNodePluginWorkerSupervisor(
     options: NodePluginWorkerSupervisorOptions = {},
 ): NodePluginWorkerSupervisor {
     const workers = new Map<string, ManagedWorker>();
+    const loadingPluginIds = new Set<string>();
     let isShuttingDown = false;
     let shutdownPromise: Promise<void> | undefined;
 
@@ -185,14 +200,10 @@ export function createNodePluginWorkerSupervisor(
         if (workers.get(pluginId)?.worker === worker) workers.delete(pluginId);
     };
 
-    const load = async (
+    const loadWorker = async (
         preparation: NodePluginPreparation,
         deps: NodePluginWorkerLoadDependencies,
     ): Promise<NodePluginWorkerLoadResult> => {
-        if (isShuttingDown) {
-            return { ok: false, error: 'Plugin worker supervisor is shut down.' };
-        }
-
         const worker = new Worker(preparation.workerScriptPath, {
             workerData: {
                 pluginId: preparation.pluginId,
@@ -217,13 +228,18 @@ export function createNodePluginWorkerSupervisor(
         if (isShuttingDown) {
             forgetWorker(preparation.pluginId, worker);
             await worker.terminate().catch(() => undefined);
-            return { ok: false, error: 'Plugin worker supervisor is shut down.' };
+            return {
+                ok: false,
+                kind: 'worker_error',
+                error: 'Plugin worker supervisor is shut down.',
+            };
         }
         if (loaded.kind === NodePluginWorkerKind.LoadError) {
             forgetWorker(preparation.pluginId, worker);
             await worker.terminate().catch(() => undefined);
             return {
                 ok: false,
+                kind: 'worker_error',
                 error: loaded.error,
                 ...(loaded.propertyError === undefined
                     ? {}
@@ -261,6 +277,51 @@ export function createNodePluginWorkerSupervisor(
         };
     };
 
+    const load = async (
+        preparation: NodePluginPreparation,
+        deps: NodePluginWorkerLoadDependencies,
+        loadOptions: NodePluginWorkerLoadOptions = {},
+    ): Promise<NodePluginWorkerLoadResult> => {
+        if (isShuttingDown) {
+            return {
+                ok: false,
+                kind: 'worker_error',
+                error: 'Plugin worker supervisor is shut down.',
+            };
+        }
+
+        const { pluginId } = preparation;
+        if (loadingPluginIds.has(pluginId)) {
+            return {
+                ok: false,
+                kind: 'already_loaded',
+                error: `Plugin worker "${pluginId}" is already loading.`,
+            };
+        }
+        if (workers.has(pluginId) && !loadOptions.replaceExisting) {
+            return {
+                ok: false,
+                kind: 'already_loaded',
+                error: `Plugin worker "${pluginId}" is already loaded.`,
+            };
+        }
+
+        loadingPluginIds.add(pluginId);
+        try {
+            if (workers.has(pluginId)) await disposePlugin(pluginId);
+            if (isShuttingDown) {
+                return {
+                    ok: false,
+                    kind: 'worker_error',
+                    error: 'Plugin worker supervisor is shut down.',
+                };
+            }
+            return await loadWorker(preparation, deps);
+        } finally {
+            loadingPluginIds.delete(pluginId);
+        }
+    };
+
     const disposePlugin = async (pluginId: string): Promise<void> => {
         const managed = workers.get(pluginId);
         if (!managed) return;
@@ -290,7 +351,7 @@ export function createNodePluginWorkerSupervisor(
         isShuttingDown = true;
         const managedWorkers = [...workers.values()];
         shutdownPromise = Promise.all(
-            managedWorkers.map(async (managed) => {
+            managedWorkers.map(async (managed): Promise<void> => {
                 managed.fail(new Error('Plugin worker supervisor shut down.'));
                 await managed.terminate();
             }),
@@ -404,7 +465,12 @@ function createWorkerNodeHandlerProxy(
         post: (message) => worker.postMessage(message),
         kernel,
         bridge,
-        activeFileWatcherSubscriptions,
+        trackFileWatcherSubscription: (subscriberId) => {
+            activeFileWatcherSubscriptions.add(subscriberId);
+        },
+        untrackFileWatcherSubscription: (subscriberId) => {
+            activeFileWatcherSubscriptions.delete(subscriberId);
+        },
         diagnostic: (message, executeRequestId) => {
             publishDiagnostic(message, 'authorization');
             publishScopedDiagnostic(executeRequestId, message, 'authorization');

@@ -90,6 +90,34 @@ describe('createEngine', () => {
         engine.dispose();
     });
 
+    it('awaits plugin worker termination during graceful shutdown', async () => {
+        const engine = createEngine();
+        const results = await engine.loadBuiltinPlugins();
+        const loaded = results.find((result) => result.ok);
+
+        expect(loaded).toBeDefined();
+        if (!loaded?.ok) {
+            await engine.shutdown();
+            return;
+        }
+
+        await engine.shutdown();
+        await expect(
+            loaded.handler.execute(
+                {
+                    node: {
+                        id: 'shutdown-node',
+                        type: loaded.descriptor.type,
+                        pluginId: loaded.manifest.id,
+                        config: {},
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {} as never,
+            ),
+        ).rejects.toThrow(/stopped unexpectedly|shut down/i);
+    });
+
     it('runs the sample pipeline through execute and emits log.output on the bus', async () => {
         const engine = createEngine();
         const events: BusEvent[] = [];

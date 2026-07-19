@@ -18,6 +18,7 @@ import {
 import { prepareNodePlugin } from './node-plugin-preparation.js';
 import {
     createNodePluginWorkerSupervisor,
+    type NodePluginWorkerLoadOptions,
     type NodePluginWorkerSupervisor,
 } from './node-plugin-worker-supervisor.js';
 import type { NodeHandlerRegistry } from './node-registry.js';
@@ -76,6 +77,11 @@ export interface NodePluginLoaderDeps {
     readonly allowExistingPropertyDescriptors?: boolean;
     readonly diagnostic?: (message: string) => void;
     readonly diagnosticEvent?: (event: EngineDiagnosticPayload) => void;
+}
+
+export interface NodePluginLoaderOptions {
+    /** Replace workers when using the legacy module-level compatibility facade. */
+    readonly replaceExistingWorkers?: boolean;
 }
 
 export interface NodePluginLoader {
@@ -137,6 +143,7 @@ async function loadDiscoveredPlugin(
     plugin: DiscoveredNodePlugin,
     deps: NodePluginLoaderDeps,
     supervisor: NodePluginWorkerSupervisor,
+    workerLoadOptions?: NodePluginWorkerLoadOptions,
 ): Promise<NodePluginLoadResult> {
     const { manifest, dir } = plugin;
     if (deps.manifestRegistry.has(manifest.id)) {
@@ -157,13 +164,20 @@ async function loadDiscoveredPlugin(
         permissions: effectivePermissions,
     });
 
-    const loaded = await supervisor.load(preparation, {
-        kernel: deps.kernel,
-        bridge: deps.bridge,
-        diagnostic: deps.diagnostic,
-        diagnosticEvent: deps.diagnosticEvent,
-    });
+    const loaded = await supervisor.load(
+        preparation,
+        {
+            kernel: deps.kernel,
+            bridge: deps.bridge,
+            diagnostic: deps.diagnostic,
+            diagnosticEvent: deps.diagnosticEvent,
+        },
+        workerLoadOptions,
+    );
     if (!loaded.ok) {
+        if (loaded.kind === 'already_loaded') {
+            return { ok: false, error: { kind: 'duplicate', dir, pluginId: manifest.id } };
+        }
         return loaded.propertyError
             ? propertyErrorResult(dir, loaded.propertyError)
             : { ok: false, error: { kind: 'worker_error', dir, error: loaded.error } };
@@ -236,22 +250,26 @@ async function loadNodePluginWithSupervisor(
     pluginDir: string,
     deps: NodePluginLoaderDeps,
     supervisor: NodePluginWorkerSupervisor,
+    workerLoadOptions?: NodePluginWorkerLoadOptions,
 ): Promise<NodePluginLoadResult> {
     const discovered = discoverNodePlugin(pluginDir);
     if (!discovered.ok) return discovered;
-    return loadDiscoveredPlugin(discovered.plugin, deps, supervisor);
+    return loadDiscoveredPlugin(discovered.plugin, deps, supervisor, workerLoadOptions);
 }
 
 async function loadNodePluginsWithSupervisor(
     pluginsDir: string,
     deps: NodePluginLoaderDeps,
     supervisor: NodePluginWorkerSupervisor,
+    workerLoadOptions?: NodePluginWorkerLoadOptions,
 ): Promise<readonly NodePluginLoadResult[]> {
     const discovered = discoverNodePlugins(pluginsDir);
     const results: NodePluginLoadResult[] = [];
     for (const result of discovered) {
         results.push(
-            result.ok ? await loadDiscoveredPlugin(result.plugin, deps, supervisor) : result,
+            result.ok
+                ? await loadDiscoveredPlugin(result.plugin, deps, supervisor, workerLoadOptions)
+                : result,
         );
     }
     return results;
@@ -262,33 +280,47 @@ async function loadNodePluginsWithSupervisor(
  * and cleanup behind one loader instance. Worker ownership never escapes this
  * instance.
  */
-export function createNodePluginLoader(): NodePluginLoader {
+export function createNodePluginLoader(options: NodePluginLoaderOptions = {}): NodePluginLoader {
     const supervisor = createNodePluginWorkerSupervisor();
+    const workerLoadOptions = options.replaceExistingWorkers
+        ? { replaceExisting: true }
+        : undefined;
     return {
         loadNodePlugin: (pluginDir, deps) =>
-            loadNodePluginWithSupervisor(pluginDir, deps, supervisor),
+            loadNodePluginWithSupervisor(pluginDir, deps, supervisor, workerLoadOptions),
         loadNodePlugins: (pluginsDir, deps) =>
-            loadNodePluginsWithSupervisor(pluginsDir, deps, supervisor),
+            loadNodePluginsWithSupervisor(pluginsDir, deps, supervisor, workerLoadOptions),
         updatePluginPermissions: (pluginId, permissions) =>
             supervisor.updatePermissions(pluginId, permissions),
         shutdown: () => supervisor.shutdown(),
     };
 }
 
-/** Compatibility facade for callers that only need one load operation. */
+// Keep the legacy module-level API on one loader instance. This preserves the old
+// shared worker ownership model while keeping the mutable worker registry inside
+// the loader/supervisor boundary.
+const compatibilityLoader = createNodePluginLoader({ replaceExistingWorkers: true });
+
+/** Compatibility facade for callers that use the legacy module-level API. */
 export async function loadNodePlugin(
     pluginDir: string,
     deps: NodePluginLoaderDeps,
 ): Promise<NodePluginLoadResult> {
-    const loader = createNodePluginLoader();
-    return loader.loadNodePlugin(pluginDir, deps);
+    return compatibilityLoader.loadNodePlugin(pluginDir, deps);
 }
 
-/** Compatibility facade for callers that only need one directory load. */
+/** Compatibility facade for callers that use the legacy module-level API. */
 export async function loadNodePlugins(
     pluginsDir: string,
     deps: NodePluginLoaderDeps,
 ): Promise<readonly NodePluginLoadResult[]> {
-    const loader = createNodePluginLoader();
-    return loader.loadNodePlugins(pluginsDir, deps);
+    return compatibilityLoader.loadNodePlugins(pluginsDir, deps);
+}
+
+/** Compatibility facade for callers that use the legacy module-level API. */
+export function updatePluginPermissions(
+    pluginId: string,
+    permissions: readonly Capability[],
+): void {
+    compatibilityLoader.updatePluginPermissions(pluginId, permissions);
 }

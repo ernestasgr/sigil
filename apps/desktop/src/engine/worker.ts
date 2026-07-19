@@ -177,7 +177,9 @@ function shutdown(): Promise<void> {
         shutdownPromise = (async (): Promise<void> => {
             activator.dispose();
             await activator.waitForAllRuns();
-            disposeEngine();
+            if (disposed) return;
+            disposed = true;
+            await engine.shutdown();
         })();
     }
     return shutdownPromise;
