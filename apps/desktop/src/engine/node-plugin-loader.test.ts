@@ -20,7 +20,12 @@ import type { FileEventCallback, SubscriberRegistration } from './file-watcher-m
 import { createManifestRegistry } from './manifest-registry.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
 import type { KernelDeps } from './node-handlers/types.js';
-import { loadNodePlugin, loadNodePlugins, updatePluginPermissions } from './node-plugin-loader.js';
+import {
+    createNodePluginLoader,
+    loadNodePlugin,
+    loadNodePlugins,
+    type NodePluginLoader,
+} from './node-plugin-loader.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
 import { createPermissionOverrideStore } from './permission-override-store.js';
 import { NodePluginWorkerKind } from './plugin-node-rpc.js';
@@ -3073,12 +3078,15 @@ describe('Plugin Sandbox Surface', () => {
 
 describe('updatePluginPermissions', () => {
     let tempDir: string;
+    let loader: NodePluginLoader;
 
     beforeEach(() => {
         tempDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-perm-prop-'));
+        loader = createNodePluginLoader();
     });
 
-    afterEach(() => {
+    afterEach(async () => {
+        await loader.shutdown();
         rmSync(tempDir, { recursive: true, force: true });
     });
 
@@ -3097,7 +3105,10 @@ describe('updatePluginPermissions', () => {
         );
 
         const { manifestRegistry, handlerRegistry } = createRegistries();
-        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+        const result = await loader.loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+        });
 
         expect(result.ok).toBe(true);
         if (!result.ok) return;
@@ -3121,7 +3132,7 @@ describe('updatePluginPermissions', () => {
         expect(output.activePort).toBe('out');
 
         // Revoke permissions via runtime update
-        updatePluginPermissions('com.sigil.perm-checker', []);
+        loader.updatePluginPermissions('com.sigil.perm-checker', []);
 
         // Second execution: should now be denied because the worker permissions set was updated.
         // The unbypassable handleExecute check fires before the handler is called.
@@ -3156,7 +3167,10 @@ describe('updatePluginPermissions', () => {
         );
 
         const { manifestRegistry, handlerRegistry } = createRegistries();
-        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+        const result = await loader.loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+        });
         expect(result.ok).toBe(true);
         if (!result.ok) return;
 
@@ -3182,7 +3196,7 @@ describe('updatePluginPermissions', () => {
         expect((err1 as Error).message).not.toContain('Permission denied');
 
         // Revoke filesystem.read
-        updatePluginPermissions('com.sigil.fs-plugin', []);
+        loader.updatePluginPermissions('com.sigil.fs-plugin', []);
 
         // The unbypassable handleExecute check fires before the handler runs,
         // so the error is from the infrastructure check, not the sandbox module stub.
@@ -3220,7 +3234,10 @@ describe('updatePluginPermissions', () => {
         );
 
         const { manifestRegistry, handlerRegistry } = createRegistries();
-        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+        const result = await loader.loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+        });
         expect(result.ok).toBe(true);
         if (!result.ok) return;
 
@@ -3246,7 +3263,7 @@ describe('updatePluginPermissions', () => {
         expect((err1 as Error).message).toContain('fs.readFileSync');
 
         // Grant filesystem.read at runtime
-        updatePluginPermissions('com.sigil.fs-plugin', ['filesystem.read']);
+        loader.updatePluginPermissions('com.sigil.fs-plugin', ['filesystem.read']);
 
         // Sandbox modules were rebuilt — readFileSync is now the real function
         const err2 = await Option.getOrThrow(handler)

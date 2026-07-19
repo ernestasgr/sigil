@@ -1,68 +1,37 @@
-import { randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve as resolvePath } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Worker } from 'node:worker_threads';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
-
-import { parseManifest } from '@sigil/schema/manifest';
 import type { PropertyRegistry, SerializedPropertyDescriptor } from '@sigil/schema/properties-file';
-import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
-import { Either, Option } from 'effect';
+import { Either } from 'effect';
+
 import type { Bridge } from './bridge.js';
 import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
-import { FileEventSchema } from './file-watcher-manager.js';
 import type { ManifestRegistry } from './manifest-registry.js';
-import type {
-    KernelDeps,
-    NodeHandler,
-    NodeHandlerDeps,
-    NodeRunResult,
-} from './node-handlers/types.js';
+import type { KernelDeps, NodeHandler } from './node-handlers/types.js';
+import {
+    type DiscoveredNodePlugin,
+    discoverNodePlugin,
+    discoverNodePlugins,
+    type NodePluginDiscoveryError,
+} from './node-plugin-discovery.js';
+import { prepareNodePlugin } from './node-plugin-preparation.js';
+import {
+    createNodePluginWorkerSupervisor,
+    type NodePluginWorkerSupervisor,
+} from './node-plugin-worker-supervisor.js';
 import type { NodeHandlerRegistry } from './node-registry.js';
 import type { PermissionOverrideStore } from './permission-override-store.js';
-import {
-    createPluginExecutionState,
-    type PluginExecutionState,
-    transitionPluginExecution,
-} from './plugin-execution-state.js';
-import type {
-    NodePluginDepsRpc,
-    NodePluginWorkerLoadError,
-    NodePluginWorkerLoaded,
-    NodePluginWorkerRuntimeToMain,
-} from './plugin-node-rpc.js';
-import {
-    NodePluginStateGetResultSchema,
-    NodePluginStateMutationResultSchema,
-    NodePluginWorkerKind,
-    NodePluginWorkerToMainSchema,
-} from './plugin-node-rpc.js';
-import { getDeactivationHook } from './workflow-activator.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const pluginWorkers = new Map<string, Worker>();
-const PLUGIN_WORKER_READY_TIMEOUT_MS = 30_000;
-export const PLUGIN_EXECUTION_TIMEOUT_MS = 30_000;
-export const PLUGIN_EXECUTION_CANCEL_GRACE_PERIOD_MS = 1_000;
-
-interface PendingPluginExecute {
-    readonly deps: NodeHandlerDeps;
-    readonly isRunning: () => boolean;
-    readonly requestCancellation: (reason: string) => void;
-    readonly acknowledgeCancellation: () => void;
-    readonly resolve: (result: NodeRunResult) => void;
-    readonly reject: (error: Error) => void;
-}
-
 export type NodePluginLoadError =
-    | { readonly kind: 'invalid_manifest'; readonly dir: string; readonly error: string }
-    | { readonly kind: 'missing_manifest'; readonly dir: string }
-    | { readonly kind: 'missing_handler'; readonly dir: string }
-    | { readonly kind: 'missing_node_type'; readonly dir: string }
-    | { readonly kind: 'invalid_handler_module'; readonly dir: string; readonly error: string }
+    | NodePluginDiscoveryError
+    | {
+          readonly kind: 'invalid_handler_module';
+          readonly dir: string;
+          readonly error: string;
+      }
     | {
           readonly kind: 'type_mismatch';
           readonly dir: string;
@@ -84,8 +53,8 @@ export type NodePluginLoadError =
           readonly key: string;
           readonly index?: number;
       }
-    | { readonly kind: 'import_error'; readonly dir: string; readonly error: string }
-    | { readonly kind: 'worker_error'; readonly dir: string; readonly error: string };
+    | { readonly kind: 'worker_error'; readonly dir: string; readonly error: string }
+    | { readonly kind: 'import_error'; readonly dir: string; readonly error: string };
 
 export type NodePluginLoadResult =
     | {
@@ -109,237 +78,122 @@ export interface NodePluginLoaderDeps {
     readonly diagnosticEvent?: (event: EngineDiagnosticPayload) => void;
 }
 
-function notifyDiagnostic(
-    diagnostic: ((message: string) => void) | undefined,
-    diagnosticEvent: ((event: EngineDiagnosticPayload) => void) | undefined,
-    message: string,
-    context: Omit<EngineDiagnosticPayload, 'message'> = {},
-): void {
-    try {
-        diagnostic?.(message);
-    } catch {
-        // A diagnostic subscriber must not affect plugin execution.
-    }
-    try {
-        diagnosticEvent?.({ message, ...context });
-    } catch {
-        // A diagnostic subscriber must not affect plugin execution.
-    }
+export interface NodePluginLoader {
+    readonly loadNodePlugin: (
+        pluginDir: string,
+        deps: NodePluginLoaderDeps,
+    ) => Promise<NodePluginLoadResult>;
+    readonly loadNodePlugins: (
+        pluginsDir: string,
+        deps: NodePluginLoaderDeps,
+    ) => Promise<readonly NodePluginLoadResult[]>;
+    readonly updatePluginPermissions: (
+        pluginId: string,
+        permissions: readonly Capability[],
+    ) => void;
+    readonly shutdown: () => Promise<void>;
 }
 
-function pluginCancellationReason(signal: AbortSignal): string {
-    const reason: unknown = signal.reason;
-    if (typeof reason === 'string' && reason.length > 0) return reason;
-    if (reason instanceof Error && reason.message.length > 0) return reason.message;
-    return 'Plugin execution cancelled.';
+function workerScriptPath(): string {
+    const compiledPath = join(__dirname, 'plugin-worker.js');
+    return existsSync(compiledPath)
+        ? compiledPath
+        : join(__dirname, 'plugin-node-worker-bootstrap.mjs');
 }
 
-function resolveHandlerPath(pluginDir: string): Option.Option<string> {
-    const tsPath = join(pluginDir, 'handler.ts');
-    if (existsSync(tsPath)) return Option.some(tsPath);
-    const jsPath = join(pluginDir, 'handler.js');
-    if (existsSync(jsPath)) return Option.some(jsPath);
-    return Option.none();
-}
-
-// ─── Unified plugin loader (Worker-based for all plugins) ────
-
-export async function loadNodePlugin(
-    pluginDir: string,
-    deps: NodePluginLoaderDeps,
-): Promise<NodePluginLoadResult> {
-    const manifestPath = join(pluginDir, 'plugin.manifest.json');
-    if (!existsSync(manifestPath)) {
-        return { ok: false, error: { kind: 'missing_manifest', dir: pluginDir } };
-    }
-
-    let rawManifest: unknown;
-    try {
-        rawManifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
-    } catch (err) {
+function propertyErrorResult(
+    dir: string,
+    propertyError: {
+        readonly kind: 'invalid' | 'duplicate';
+        readonly index: number;
+        readonly key?: string;
+        readonly message: string;
+    },
+): NodePluginLoadResult {
+    if (propertyError.kind === 'duplicate' && propertyError.key) {
         return {
             ok: false,
             error: {
-                kind: 'invalid_manifest',
-                dir: pluginDir,
-                error: err instanceof Error ? err.message : String(err),
+                kind: 'duplicate_property',
+                dir,
+                key: propertyError.key,
+                index: propertyError.index,
             },
         };
     }
-    const parsed = parseManifest(rawManifest);
-    if (!parsed.ok) {
-        return {
-            ok: false,
-            error: { kind: 'invalid_manifest', dir: pluginDir, error: parsed.error },
-        };
-    }
-    const manifest = parsed.value;
+    return {
+        ok: false,
+        error: {
+            kind: 'invalid_property_descriptor',
+            dir,
+            ...(propertyError.key === undefined ? {} : { key: propertyError.key }),
+            index: propertyError.index,
+            error: propertyError.message,
+        },
+    };
+}
 
-    if (!manifest.nodeType) {
-        return { ok: false, error: { kind: 'missing_node_type', dir: pluginDir } };
-    }
-
+async function loadDiscoveredPlugin(
+    plugin: DiscoveredNodePlugin,
+    deps: NodePluginLoaderDeps,
+    supervisor: NodePluginWorkerSupervisor,
+): Promise<NodePluginLoadResult> {
+    const { manifest, dir } = plugin;
     if (deps.manifestRegistry.has(manifest.id)) {
-        return { ok: false, error: { kind: 'duplicate', dir: pluginDir, pluginId: manifest.id } };
+        return { ok: false, error: { kind: 'duplicate', dir, pluginId: manifest.id } };
     }
-
     if (deps.handlerRegistry.has(manifest.nodeType)) {
         return {
             ok: false,
-            error: { kind: 'duplicate_type', dir: pluginDir, nodeType: manifest.nodeType },
+            error: { kind: 'duplicate_type', dir, nodeType: manifest.nodeType },
         };
-    }
-
-    const handlerPath = Option.getOrUndefined(resolveHandlerPath(pluginDir));
-    if (!handlerPath) {
-        return { ok: false, error: { kind: 'missing_handler', dir: pluginDir } };
     }
 
     const effectivePermissions = deps.permissionOverrides?.has(manifest.id)
         ? deps.permissionOverrides.get(manifest.id)
         : manifest.permissions;
-
-    // Spawn Worker to load and run the handler in a sandboxed context
-    // Try compiled JS first (dev/production), then use the tsx bootstrap (tests)
-    const jsPath = join(__dirname, 'plugin-worker.js');
-    const bootstrapPath = join(__dirname, 'plugin-node-worker-bootstrap.mjs');
-    const workerScriptPath = existsSync(jsPath) ? jsPath : bootstrapPath;
-
-    const worker = new Worker(workerScriptPath, {
-        workerData: {
-            pluginId: manifest.id,
-            manifestNodeType: manifest.nodeType,
-            handlerPath: resolvePath(handlerPath),
-            manifestPermissions: manifest.permissions,
-            permissions: effectivePermissions,
-        },
-        eval: false,
+    const preparation = prepareNodePlugin(plugin, {
+        workerScriptPath: workerScriptPath(),
+        permissions: effectivePermissions,
     });
 
-    pluginWorkers.set(manifest.id, worker);
-
-    const loaded = await new Promise<NodePluginWorkerLoaded | NodePluginWorkerLoadError>(
-        (resolve) => {
-            let settled = false;
-            let readinessTimer: ReturnType<typeof setTimeout> | undefined;
-
-            const cleanup = (): void => {
-                if (readinessTimer !== undefined) {
-                    clearTimeout(readinessTimer);
-                    readinessTimer = undefined;
-                }
-                worker.off('message', onMessage);
-                worker.off('error', onError);
-                worker.off('exit', onExit);
-            };
-
-            const settle = (result: NodePluginWorkerLoaded | NodePluginWorkerLoadError): void => {
-                if (settled) return;
-                settled = true;
-                cleanup();
-                resolve(result);
-            };
-
-            const settleWithError = (error: string): void => {
-                settle({ kind: NodePluginWorkerKind.LoadError, error });
-            };
-
-            const onMessage = (raw: unknown): void => {
-                const parsed = NodePluginWorkerToMainSchema.safeParse(raw);
-                if (!parsed.success) {
-                    settleWithError(`Invalid plugin worker load message: ${parsed.error.message}`);
-                    return;
-                }
-                const msg = parsed.data;
-                if (
-                    msg.kind === NodePluginWorkerKind.Loaded ||
-                    msg.kind === NodePluginWorkerKind.LoadError
-                ) {
-                    settle(msg);
-                }
-            };
-
-            const onError = (error: Error): void => {
-                settleWithError(`Worker error before sending load result: ${error.message}`);
-            };
-
-            const onExit = (code: number): void => {
-                settleWithError(`Worker exited with code ${code} before sending load result`);
-            };
-
-            worker.on('message', onMessage);
-            worker.on('error', onError);
-            worker.on('exit', onExit);
-            readinessTimer = setTimeout(() => {
-                settleWithError('Plugin worker did not become ready within 30 seconds');
-            }, PLUGIN_WORKER_READY_TIMEOUT_MS);
-        },
-    );
-
-    if (loaded.kind === NodePluginWorkerKind.LoadError) {
-        pluginWorkers.delete(manifest.id);
-        worker.terminate().catch(() => {});
-        if (loaded.propertyError?.kind === 'duplicate' && loaded.propertyError.key) {
-            return {
-                ok: false,
-                error: {
-                    kind: 'duplicate_property',
-                    dir: pluginDir,
-                    key: loaded.propertyError.key,
-                    ...(loaded.propertyError.index === undefined
-                        ? {}
-                        : { index: loaded.propertyError.index }),
-                },
-            };
-        }
-        if (loaded.propertyError) {
-            return {
-                ok: false,
-                error: {
-                    kind: 'invalid_property_descriptor',
-                    dir: pluginDir,
-                    ...(loaded.propertyError.key === undefined
-                        ? {}
-                        : { key: loaded.propertyError.key }),
-                    ...(loaded.propertyError.index === undefined
-                        ? {}
-                        : { index: loaded.propertyError.index }),
-                    error: loaded.propertyError.message,
-                },
-            };
-        }
-        return {
-            ok: false,
-            error: { kind: 'worker_error', dir: pluginDir, error: loaded.error },
-        };
+    const loaded = await supervisor.load(preparation, {
+        kernel: deps.kernel,
+        bridge: deps.bridge,
+        diagnostic: deps.diagnostic,
+        diagnosticEvent: deps.diagnosticEvent,
+    });
+    if (!loaded.ok) {
+        return loaded.propertyError
+            ? propertyErrorResult(dir, loaded.propertyError)
+            : { ok: false, error: { kind: 'worker_error', dir, error: loaded.error } };
     }
 
     const propertyDescriptors = loaded.propertyDescriptors ?? [];
     if (propertyDescriptors.length > 0 && deps.propertyRegistry === undefined) {
-        pluginWorkers.delete(manifest.id);
-        worker.terminate().catch(() => {});
+        await supervisor.disposePlugin(manifest.id);
         return {
             ok: false,
             error: {
                 kind: 'invalid_property_descriptor',
-                dir: pluginDir,
+                dir,
                 error: 'Plugin properties require a Property registry during loading.',
             },
         };
     }
+
     const propertyRegistration = deps.propertyRegistry?.registerMany(propertyDescriptors, {
         owner: manifest.id,
         allowExisting: deps.allowExistingPropertyDescriptors,
     });
     if (propertyRegistration && !propertyRegistration.ok) {
-        pluginWorkers.delete(manifest.id);
-        worker.terminate().catch(() => {});
+        await supervisor.disposePlugin(manifest.id);
         if (propertyRegistration.error.kind === 'duplicate') {
             return {
                 ok: false,
                 error: {
                     kind: 'duplicate_property',
-                    dir: pluginDir,
+                    dir,
                     key: propertyRegistration.error.key,
                 },
             };
@@ -348,7 +202,7 @@ export async function loadNodePlugin(
             ok: false,
             error: {
                 kind: 'invalid_property_descriptor',
-                dir: pluginDir,
+                dir,
                 ...(propertyRegistration.error.key === undefined
                     ? {}
                     : { key: propertyRegistration.error.key }),
@@ -359,1024 +213,82 @@ export async function loadNodePlugin(
 
     const registeredPropertyKeys =
         propertyRegistration?.ok === true ? propertyRegistration.registeredKeys : [];
-
     const registerResult = deps.manifestRegistry.register(manifest);
     if (Either.isLeft(registerResult)) {
-        pluginWorkers.delete(manifest.id);
-        worker.terminate().catch(() => {});
+        await supervisor.disposePlugin(manifest.id);
         for (const key of registeredPropertyKeys) {
             deps.propertyRegistry?.unregister(key);
         }
-        return { ok: false, error: { kind: 'duplicate', dir: pluginDir, pluginId: manifest.id } };
+        return { ok: false, error: { kind: 'duplicate', dir, pluginId: manifest.id } };
     }
 
-    const handler = createWorkerNodeHandlerProxy(
-        manifest.id,
-        worker,
-        loaded.isTrigger,
-        deps.kernel,
-        deps.bridge,
-        deps.diagnostic,
-        deps.diagnosticEvent,
-    );
-    deps.handlerRegistry.register(manifest.nodeType, handler);
-
+    deps.handlerRegistry.register(manifest.nodeType, loaded.handler);
     return {
         ok: true,
         manifest,
         descriptor: { type: loaded.descriptorType },
         propertyDescriptors,
-        handler,
+        handler: loaded.handler,
     };
 }
 
-export async function loadNodePlugins(
+async function loadNodePluginWithSupervisor(
+    pluginDir: string,
+    deps: NodePluginLoaderDeps,
+    supervisor: NodePluginWorkerSupervisor,
+): Promise<NodePluginLoadResult> {
+    const discovered = discoverNodePlugin(pluginDir);
+    if (!discovered.ok) return discovered;
+    return loadDiscoveredPlugin(discovered.plugin, deps, supervisor);
+}
+
+async function loadNodePluginsWithSupervisor(
     pluginsDir: string,
     deps: NodePluginLoaderDeps,
+    supervisor: NodePluginWorkerSupervisor,
 ): Promise<readonly NodePluginLoadResult[]> {
-    if (!existsSync(pluginsDir)) return [];
-
-    const entries = readdirSync(pluginsDir, { withFileTypes: true });
-    const pluginDirs = entries
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => join(pluginsDir, entry.name));
-
+    const discovered = discoverNodePlugins(pluginsDir);
     const results: NodePluginLoadResult[] = [];
-    for (const dir of pluginDirs) {
-        const result = await loadNodePlugin(dir, deps);
-        results.push(result);
+    for (const result of discovered) {
+        results.push(
+            result.ok ? await loadDiscoveredPlugin(result.plugin, deps, supervisor) : result,
+        );
     }
     return results;
 }
 
-// ─── Worker proxy handler ────────────────────────────────────
-
-function createWorkerNodeHandlerProxy(
-    pluginId: string,
-    worker: Worker,
-    isTrigger: boolean,
-    kernel?: KernelDeps,
-    bridge?: Pick<Bridge, 'emit'>,
-    diagnostic?: (message: string) => void,
-    diagnosticEvent?: (event: EngineDiagnosticPayload) => void,
-): NodeHandler {
-    const pendingExecutes = new Map<string, PendingPluginExecute>();
-    const pendingActivates = new Map<string, { onEvent: (ctx: WorkflowContext) => void }>();
-    const activeFileWatcherSubscriptions = new Set<string>();
-    let workerFailure: Error | undefined;
-
-    const publishDiagnostic = (message: string, kind = 'worker'): void => {
-        notifyDiagnostic(diagnostic, diagnosticEvent, message, {
-            kind,
-            source: 'plugin',
-            pluginId,
-            outcome: 'failed',
-        });
+/**
+ * Compose discovery, preparation, worker supervision, registry registration,
+ * and cleanup behind one loader instance. Worker ownership never escapes this
+ * instance.
+ */
+export function createNodePluginLoader(): NodePluginLoader {
+    const supervisor = createNodePluginWorkerSupervisor();
+    return {
+        loadNodePlugin: (pluginDir, deps) =>
+            loadNodePluginWithSupervisor(pluginDir, deps, supervisor),
+        loadNodePlugins: (pluginsDir, deps) =>
+            loadNodePluginsWithSupervisor(pluginsDir, deps, supervisor),
+        updatePluginPermissions: (pluginId, permissions) =>
+            supervisor.updatePermissions(pluginId, permissions),
+        shutdown: () => supervisor.shutdown(),
     };
-    const publishScopedDiagnostic = (
-        executeRequestId: string | undefined,
-        message: string,
-        kind: string,
-    ): void => {
-        if (executeRequestId === undefined) return;
-        const pending = pendingExecutes.get(executeRequestId);
-        const bus = pending?.deps.bus;
-        if (!bus) return;
-        void Promise.resolve(
-            bus.next({
-                name: 'engine.diagnostic',
-                payload: {
-                    message,
-                    kind,
-                    source: 'plugin',
-                    pluginId,
-                    outcome: 'failed',
-                },
-            }),
-        ).catch(() => undefined);
-    };
-    const publishOperationDiagnostic = (message: string, executeRequestId?: string): void => {
-        publishDiagnostic(message, 'authorization');
-        publishScopedDiagnostic(executeRequestId, message, 'authorization');
-    };
-
-    const failWorker = (failure: Error): void => {
-        if (workerFailure) return;
-        workerFailure = failure;
-        if (pluginWorkers.get(pluginId) === worker) pluginWorkers.delete(pluginId);
-        publishDiagnostic(`[proxy] ${failure.message}`);
-
-        if (kernel) {
-            for (const subscriberId of activeFileWatcherSubscriptions) {
-                try {
-                    kernel.fileWatcherManager.unregisterSubscriber(subscriberId);
-                } catch (err) {
-                    publishDiagnostic(
-                        `[proxy] failed to unregister File Watcher subscriber "${subscriberId}" after worker failure: ${err instanceof Error ? err.message : String(err)}`,
-                    );
-                }
-            }
-        }
-        activeFileWatcherSubscriptions.clear();
-
-        const executions = [...pendingExecutes.entries()];
-        for (const [requestId, pending] of executions) {
-            publishScopedDiagnostic(requestId, `[proxy] ${failure.message}`, 'worker');
-            pending.reject(failure);
-        }
-        pendingExecutes.clear();
-
-        const activations = [...pendingActivates.values()];
-        pendingActivates.clear();
-        for (const pending of activations) {
-            try {
-                Option.getOrUndefined(getDeactivationHook(pending.onEvent))?.(failure.message);
-            } catch (err) {
-                publishDiagnostic(
-                    `[proxy] failed to settle activation after plugin worker failure: ${err instanceof Error ? err.message : String(err)}`,
-                );
-            }
-        }
-    };
-
-    const workerFailureFor = (detail: string): Error =>
-        new Error(
-            `Plugin worker "${pluginId}" stopped unexpectedly (${detail}). Retry the Workflow or restart the plugin.`,
-        );
-
-    const retireWorker = (detail: string): void => {
-        if (workerFailure) return;
-        failWorker(workerFailureFor(detail));
-        void worker.terminate().catch(() => undefined);
-    };
-
-    worker.on('error', (error: Error) => {
-        failWorker(workerFailureFor(`error: ${error.message}`));
-    });
-    worker.on('exit', (code: number) => {
-        failWorker(workerFailureFor(`exited with code ${code}`));
-    });
-
-    worker.on('message', (raw: unknown) => {
-        if (workerFailure) return;
-        const parsed = NodePluginWorkerToMainSchema.safeParse(raw);
-        if (!parsed.success) {
-            const operation =
-                isRecord(raw) && typeof raw.operation === 'string'
-                    ? ` operation "${raw.operation}"`
-                    : '';
-            const message =
-                `[proxy] plugin "${pluginId}" sent an invalid${operation} message: ` +
-                parsed.error.message;
-            publishDiagnostic(message);
-            if (isRecord(raw) && typeof raw.requestId === 'string') {
-                postDepsRpcError(worker, raw.requestId, message);
-            }
-            return;
-        }
-        const msg = parsed.data;
-        if (
-            msg.kind === NodePluginWorkerKind.Loaded ||
-            msg.kind === NodePluginWorkerKind.LoadError
-        ) {
-            return;
-        }
-        const runtimeMsg: NodePluginWorkerRuntimeToMain = msg;
-        switch (runtimeMsg.kind) {
-            case NodePluginWorkerKind.CancelAcknowledged: {
-                const pending = pendingExecutes.get(runtimeMsg.requestId);
-                if (!pending) break;
-                pending.acknowledgeCancellation();
-                break;
-            }
-            case NodePluginWorkerKind.ExecuteResult:
-            case NodePluginWorkerKind.ExecuteError: {
-                const pending = pendingExecutes.get(runtimeMsg.requestId);
-                if (!pending?.isRunning()) break;
-                if (runtimeMsg.kind === NodePluginWorkerKind.ExecuteResult) {
-                    const outputCtx = WorkflowContextSchema.safeParse(runtimeMsg.outputCtx);
-                    if (!outputCtx.success) {
-                        pending.reject(
-                            new Error(
-                                `Plugin returned an invalid workflow context: ${outputCtx.error.message}`,
-                            ),
-                        );
-                        break;
-                    }
-                    pending.resolve({
-                        outputCtx: outputCtx.data,
-                        activePort: runtimeMsg.activePort,
-                    });
-                } else {
-                    if (
-                        runtimeMsg.error.startsWith(
-                            `[plugin:${pluginId}] denied operation "event.emit"`,
-                        )
-                    ) {
-                        publishDiagnostic(`[proxy] ${runtimeMsg.error}`, 'authorization');
-                    }
-                    pending.reject(new Error(runtimeMsg.error));
-                }
-                break;
-            }
-            case NodePluginWorkerKind.ActivateError: {
-                const pending = pendingActivates.get(runtimeMsg.requestId);
-                if (!pending) break;
-                pendingActivates.delete(runtimeMsg.requestId);
-                console.warn(
-                    `[proxy] activation error for plugin "${pluginId}": ${runtimeMsg.error}`,
-                );
-                publishDiagnostic(
-                    `[proxy] activation error for plugin "${pluginId}": ${runtimeMsg.error}`,
-                );
-                Option.getOrUndefined(getDeactivationHook(pending.onEvent))?.(runtimeMsg.error);
-                break;
-            }
-            case NodePluginWorkerKind.ActivateResult: {
-                break;
-            }
-            case NodePluginWorkerKind.ActivateEvent: {
-                const pending = pendingActivates.get(runtimeMsg.requestId);
-                if (!pending) break;
-                const parsedContext = WorkflowContextSchema.safeParse({
-                    event: runtimeMsg.event,
-                    payload: runtimeMsg.payload,
-                    vars: runtimeMsg.vars ?? {},
-                });
-                if (!parsedContext.success) {
-                    publishDiagnostic(
-                        `[proxy] plugin "${pluginId}" emitted an invalid workflow context: ${parsedContext.error.message}`,
-                    );
-                    break;
-                }
-                pending.onEvent(parsedContext.data);
-                break;
-            }
-            case NodePluginWorkerKind.DepsRpc: {
-                handleDepsRpc(
-                    runtimeMsg,
-                    pendingExecutes,
-                    worker,
-                    pluginId,
-                    kernel,
-                    bridge,
-                    activeFileWatcherSubscriptions,
-                    (message) => publishOperationDiagnostic(message, runtimeMsg.executeRequestId),
-                );
-                break;
-            }
-            default:
-                assertNever(runtimeMsg);
-        }
-    });
-
-    const handler: NodeHandler = {
-        async execute({ node, ctx }, deps): Promise<NodeRunResult> {
-            if (workerFailure) throw workerFailure;
-            if (deps.signal?.aborted) {
-                throw new Error(pluginCancellationReason(deps.signal));
-            }
-            const requestId = randomUUID();
-            return new Promise<NodeRunResult>((resolve, reject) => {
-                let state: PluginExecutionState = createPluginExecutionState();
-                let settled = false;
-                const cancellationController = new AbortController();
-                const executionDeps: NodeHandlerDeps = {
-                    ...deps,
-                    signal: cancellationController.signal,
-                };
-                let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
-                let cancellationTimer: ReturnType<typeof setTimeout> | undefined;
-                let abortListener: (() => void) | undefined;
-
-                const cleanup = (): void => {
-                    if (timeoutTimer !== undefined) {
-                        clearTimeout(timeoutTimer);
-                        timeoutTimer = undefined;
-                    }
-                    if (cancellationTimer !== undefined) {
-                        clearTimeout(cancellationTimer);
-                        cancellationTimer = undefined;
-                    }
-                    if (deps.signal && abortListener) {
-                        deps.signal.removeEventListener('abort', abortListener);
-                        abortListener = undefined;
-                    }
-                    if (!cancellationController.signal.aborted) {
-                        cancellationController.abort('Plugin execution settled.');
-                    }
-                    pendingExecutes.delete(requestId);
-                };
-
-                const resolveOnce = (result: NodeRunResult): void => {
-                    if (settled) return;
-                    settled = true;
-                    state = { kind: 'settled' };
-                    cleanup();
-                    resolve(result);
-                };
-
-                const rejectOnce = (error: Error): void => {
-                    if (settled) return;
-                    settled = true;
-                    state = { kind: 'settled' };
-                    cleanup();
-                    reject(error);
-                };
-
-                const acknowledgeCancellation = (): void => {
-                    const reason =
-                        state.kind === 'cancellation-requested'
-                            ? state.reason
-                            : 'Plugin execution cancelled.';
-                    const transition = transitionPluginExecution(state, {
-                        kind: 'cancel-acknowledged',
-                    });
-                    if (!transition.accepted) return;
-                    state = transition.state;
-                    rejectOnce(new Error(reason));
-                };
-
-                const requestCancellation = (reason: string): void => {
-                    const transition = transitionPluginExecution(state, {
-                        kind: 'cancel-requested',
-                        reason,
-                    });
-                    if (!transition.accepted) return;
-                    state = transition.state;
-                    if (!cancellationController.signal.aborted) {
-                        cancellationController.abort(reason);
-                    }
-                    if (timeoutTimer !== undefined) {
-                        clearTimeout(timeoutTimer);
-                        timeoutTimer = undefined;
-                    }
-
-                    try {
-                        worker.postMessage({
-                            kind: NodePluginWorkerKind.CancelRequest,
-                            requestId,
-                            reason,
-                        });
-                    } catch (err) {
-                        const failure = workerFailureFor(
-                            `could not accept cancellation for execution: ${err instanceof Error ? err.message : String(err)}`,
-                        );
-                        failWorker(failure);
-                        return;
-                    }
-
-                    cancellationTimer = setTimeout(() => {
-                        if (settled || state.kind !== 'cancellation-requested') return;
-                        retireWorker(
-                            `did not acknowledge cancellation for execution "${requestId}" within ${PLUGIN_EXECUTION_CANCEL_GRACE_PERIOD_MS}ms`,
-                        );
-                    }, PLUGIN_EXECUTION_CANCEL_GRACE_PERIOD_MS);
-                };
-
-                const pending: PendingPluginExecute = {
-                    deps: executionDeps,
-                    isRunning: () => !settled && state.kind === 'running',
-                    requestCancellation,
-                    acknowledgeCancellation,
-                    resolve: (result) => {
-                        const transition = transitionPluginExecution(state, {
-                            kind: 'completed',
-                        });
-                        if (!transition.accepted) return;
-                        state = transition.state;
-                        resolveOnce(result);
-                    },
-                    reject: (error) => rejectOnce(error),
-                };
-
-                pendingExecutes.set(requestId, pending);
-                timeoutTimer = setTimeout(() => {
-                    requestCancellation(
-                        `Execute request timed out after ${PLUGIN_EXECUTION_TIMEOUT_MS / 1000}s`,
-                    );
-                }, PLUGIN_EXECUTION_TIMEOUT_MS);
-
-                if (deps.signal) {
-                    const signal = deps.signal;
-                    abortListener = (): void =>
-                        requestCancellation(pluginCancellationReason(signal));
-                    signal.addEventListener('abort', abortListener, { once: true });
-                    if (signal.aborted) requestCancellation(pluginCancellationReason(signal));
-                }
-
-                if (state.kind !== 'running') {
-                    rejectOnce(
-                        new Error(
-                            state.kind === 'cancellation-requested'
-                                ? state.reason
-                                : 'Plugin execution cancelled.',
-                        ),
-                    );
-                    return;
-                }
-
-                try {
-                    worker.postMessage({
-                        kind: NodePluginWorkerKind.ExecuteRequest,
-                        requestId,
-                        nodeType: node.type,
-                        nodeConfig: node.config,
-                        ctx,
-                        deps: {
-                            collisionSuffixStyle: deps.collisionSuffixStyle,
-                            fileManager: deps.fileManager,
-                            properties: deps.properties,
-                        },
-                    });
-                } catch (err) {
-                    const failure = workerFailureFor(
-                        `could not accept an execute request: ${err instanceof Error ? err.message : String(err)}`,
-                    );
-                    pending.reject(failure);
-                    failWorker(failure);
-                }
-            });
-        },
-        ...(isTrigger
-            ? {
-                  activate: (
-                      config: unknown,
-                      onEvent: (ctx: WorkflowContext) => void,
-                  ): (() => void) => {
-                      if (workerFailure) throw workerFailure;
-                      const requestId = randomUUID();
-                      pendingActivates.set(requestId, { onEvent });
-                      try {
-                          worker.postMessage({
-                              kind: NodePluginWorkerKind.ActivateRequest,
-                              requestId,
-                              config,
-                          });
-                      } catch (err) {
-                          pendingActivates.delete(requestId);
-                          const failure = workerFailureFor(
-                              `could not accept an activation request: ${err instanceof Error ? err.message : String(err)}`,
-                          );
-                          failWorker(failure);
-                          throw failure;
-                      }
-                      let tornDown = false;
-                      return () => {
-                          if (tornDown) return;
-                          tornDown = true;
-                          pendingActivates.delete(requestId);
-                          if (workerFailure) return;
-                          try {
-                              worker.postMessage({
-                                  kind: NodePluginWorkerKind.Teardown,
-                                  requestId,
-                              });
-                          } catch (err) {
-                              failWorker(
-                                  workerFailureFor(
-                                      `could not accept a teardown request: ${err instanceof Error ? err.message : String(err)}`,
-                                  ),
-                              );
-                          }
-                      };
-                  },
-              }
-            : {}),
-    };
-
-    return handler;
 }
 
-type NodePluginHandlerDepsRpc = Extract<
-    NodePluginDepsRpc,
-    {
-        operation: 'sleep' | 'resolveTemplate' | 'evaluateCondition' | 'matchSwitchCase';
-    }
->;
-
-type NodePluginEventRpc = Extract<NodePluginDepsRpc, { operation: 'event.emit' }>;
-
-type NodePluginStateRpc = Extract<
-    NodePluginDepsRpc,
-    { operation: 'state.get' | 'state.set' | 'state.flush' }
->;
-
-type NodePluginFileWatcherRpc = Extract<
-    NodePluginDepsRpc,
-    {
-        operation:
-            | 'fileWatcherManager.registerSubscriber'
-            | 'fileWatcherManager.unregisterSubscriber';
-    }
->;
-
-type NodePluginCapabilityRpc = Extract<
-    NodePluginDepsRpc,
-    { operation: 'capabilityBroker.request' }
->;
-
-type NodePluginPrivilegedOperation =
-    | NodePluginStateRpc['operation']
-    | NodePluginFileWatcherRpc['operation'];
-
-const NODE_PLUGIN_OPERATION_CAPABILITIES = {
-    'state.get': 'state.read',
-    'state.set': 'state.write',
-    'state.flush': 'state.write',
-    'fileWatcherManager.registerSubscriber': 'filesystem.read',
-    'fileWatcherManager.unregisterSubscriber': 'filesystem.read',
-} as const satisfies Readonly<Record<NodePluginPrivilegedOperation, Capability>>;
-
-function assertNever(value: never): never {
-    throw new Error(`Unhandled node plugin message: ${JSON.stringify(value)}`);
+/** Compatibility facade for callers that only need one load operation. */
+export async function loadNodePlugin(
+    pluginDir: string,
+    deps: NodePluginLoaderDeps,
+): Promise<NodePluginLoadResult> {
+    const loader = createNodePluginLoader();
+    return loader.loadNodePlugin(pluginDir, deps);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function postDepsRpcResult(worker: Worker, requestId: string, value: unknown): void {
-    try {
-        worker.postMessage({
-            kind: NodePluginWorkerKind.DepsRpcResult,
-            requestId,
-            value,
-        });
-    } catch {
-        // The worker may have been retired after a non-cooperative cancellation.
-    }
-}
-
-function postDepsRpcError(worker: Worker, requestId: string, error: string): void {
-    try {
-        worker.postMessage({
-            kind: NodePluginWorkerKind.DepsRpcError,
-            requestId,
-            error,
-        });
-    } catch {
-        // The worker may have been retired after a non-cooperative cancellation.
-    }
-}
-
-function postDepsRpcValue(worker: Worker, requestId: string, value: unknown): void {
-    if (value instanceof Promise) {
-        void value
-            .then((resolved) => {
-                postDepsRpcResult(worker, requestId, resolved);
-            })
-            .catch((err: unknown) => {
-                postDepsRpcError(
-                    worker,
-                    requestId,
-                    err instanceof Error ? err.message : String(err),
-                );
-            });
-        return;
-    }
-    postDepsRpcResult(worker, requestId, value);
-}
-
-function postWorkflowStateRpcValue(
-    worker: Worker,
-    requestId: string,
-    operation: NodePluginStateRpc['operation'],
-    value: unknown,
-): void {
-    if (operation === 'state.get') {
-        if (!Option.isOption(value)) {
-            postDepsRpcError(worker, requestId, 'Workflow State get must return an Option value');
-            return;
-        }
-
-        const parsed = NodePluginStateGetResultSchema.safeParse({
-            kind: NodePluginWorkerKind.DepsRpcResult,
-            requestId,
-            value: Option.getOrUndefined(value),
-        });
-        if (!parsed.success) {
-            postDepsRpcError(
-                worker,
-                requestId,
-                `Invalid Workflow State get result: ${parsed.error.message}`,
-            );
-            return;
-        }
-        postDepsRpcResult(worker, requestId, parsed.data.value);
-        return;
-    }
-
-    const parsed = NodePluginStateMutationResultSchema.safeParse({
-        kind: NodePluginWorkerKind.DepsRpcResult,
-        requestId,
-        value,
-    });
-    if (!parsed.success) {
-        postDepsRpcError(
-            worker,
-            requestId,
-            `Invalid Workflow State mutation result: ${parsed.error.message}`,
-        );
-        return;
-    }
-    postDepsRpcResult(worker, requestId, parsed.data.value);
-}
-
-function handleDepsRpc(
-    msg: NodePluginDepsRpc,
-    pendingExecutes: ReadonlyMap<string, PendingPluginExecute>,
-    worker: Worker,
-    pluginId: string,
-    kernel?: KernelDeps,
-    bridge?: Pick<Bridge, 'emit'>,
-    activeFileWatcherSubscriptions?: Set<string>,
-    diagnostic?: (message: string) => void,
-): void {
-    switch (msg.operation) {
-        case 'event.emit':
-            if (!bridge) {
-                denyPluginOperation(
-                    worker,
-                    msg.requestId,
-                    pluginId,
-                    msg.operation,
-                    'Bridge dependency is unavailable',
-                    diagnostic,
-                );
-                return;
-            }
-            void handleEventEmitRpc(msg, pendingExecutes, worker, pluginId, bridge, diagnostic);
-            return;
-        case 'fileWatcherManager.registerSubscriber':
-        case 'fileWatcherManager.unregisterSubscriber':
-            if (!kernel) {
-                postDepsRpcError(
-                    worker,
-                    msg.requestId,
-                    `Kernel dependency is unavailable for "${msg.operation}"`,
-                );
-                return;
-            }
-            handleFileWatcherRpc(
-                msg,
-                worker,
-                pluginId,
-                kernel,
-                activeFileWatcherSubscriptions,
-                diagnostic,
-            );
-            return;
-        case 'capabilityBroker.request':
-            if (!kernel) {
-                postDepsRpcError(
-                    worker,
-                    msg.requestId,
-                    'Capability Broker dependency is unavailable',
-                );
-                return;
-            }
-            handleCapabilityRpc(msg, worker, kernel, pluginId, diagnostic);
-            return;
-        case 'state.get':
-        case 'state.set':
-        case 'state.flush':
-            if (!kernel) {
-                postDepsRpcError(
-                    worker,
-                    msg.requestId,
-                    'Capability Broker dependency is unavailable for Workflow State',
-                );
-                return;
-            }
-            handleStateRpc(
-                msg,
-                pendingExecutes,
-                worker,
-                pluginId,
-                kernel.capabilityBroker,
-                diagnostic,
-            );
-            return;
-        case 'sleep':
-        case 'resolveTemplate':
-        case 'evaluateCondition':
-        case 'matchSwitchCase':
-            handleNodeHandlerDepsRpc(msg, pendingExecutes, worker);
-            return;
-        default:
-            assertNever(msg);
-    }
-}
-
-function handleNodeHandlerDepsRpc(
-    msg: NodePluginHandlerDepsRpc,
-    pendingExecutes: ReadonlyMap<string, PendingPluginExecute>,
-    worker: Worker,
-): void {
-    const executeRequestId = msg.executeRequestId;
-    if (!executeRequestId) {
-        postDepsRpcError(
-            worker,
-            msg.requestId,
-            'No originating execute request for this dependency RPC',
-        );
-        return;
-    }
-
-    const pending = pendingExecutes.get(executeRequestId);
-    if (!pending) {
-        postDepsRpcError(worker, msg.requestId, 'No pending execute for this execute request');
-        return;
-    }
-    if (!pending.isRunning()) {
-        postDepsRpcError(worker, msg.requestId, 'Plugin execution cancellation requested');
-        return;
-    }
-
-    try {
-        const value = callNodeHandlerDepsMethod(pending.deps, msg, pending.deps.signal);
-        postDepsRpcValue(worker, msg.requestId, value);
-    } catch (err) {
-        postDepsRpcError(worker, msg.requestId, err instanceof Error ? err.message : String(err));
-    }
-}
-
-async function handleEventEmitRpc(
-    msg: NodePluginEventRpc,
-    pendingExecutes: ReadonlyMap<string, PendingPluginExecute>,
-    worker: Worker,
-    pluginId: string,
-    bridge: Pick<Bridge, 'emit'>,
-    diagnostic?: (message: string) => void,
-): Promise<void> {
-    const executeRequestId = msg.executeRequestId;
-    if (!executeRequestId) {
-        denyPluginOperation(
-            worker,
-            msg.requestId,
-            pluginId,
-            msg.operation,
-            'No originating execute request',
-            diagnostic,
-        );
-        return;
-    }
-
-    const pending = pendingExecutes.get(executeRequestId);
-    if (!pending) {
-        denyPluginOperation(
-            worker,
-            msg.requestId,
-            pluginId,
-            msg.operation,
-            'No pending execute request',
-            diagnostic,
-        );
-        return;
-    }
-    if (!pending.isRunning()) {
-        postDepsRpcError(worker, msg.requestId, 'Plugin execution cancellation requested');
-        return;
-    }
-
-    try {
-        const [eventName, payload] = msg.args;
-        const result = await bridge.emit(pluginId, { eventName, payload }, pending.deps.bus);
-        if (!pending.isRunning()) {
-            postDepsRpcError(worker, msg.requestId, 'Plugin execution cancellation requested');
-            return;
-        }
-        if (Either.isLeft(result)) {
-            const reason =
-                result.left.kind === 'sink_failed'
-                    ? `${result.left.kind} for event "${eventName}": ${result.left.error}`
-                    : `${result.left.kind} for event "${eventName}"`;
-            denyPluginOperation(worker, msg.requestId, pluginId, msg.operation, reason, diagnostic);
-            return;
-        }
-        postDepsRpcResult(worker, msg.requestId, undefined);
-    } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        denyPluginOperation(worker, msg.requestId, pluginId, msg.operation, reason, diagnostic);
-    }
-}
-
-function denyPluginOperation(
-    worker: Worker,
-    requestId: string,
-    pluginId: string,
-    operation: string,
-    reason: string,
-    diagnostic?: (message: string) => void,
-): void {
-    const message = `[plugin:${pluginId}] denied operation "${operation}": ${reason}`;
-    diagnostic?.(message);
-    postDepsRpcError(worker, requestId, `Permission denied: ${reason} (operation "${operation}")`);
-}
-
-function callNodeHandlerDepsMethod(
-    deps: NodeHandlerDeps,
-    msg: NodePluginHandlerDepsRpc,
-    signal?: AbortSignal,
-): unknown {
-    switch (msg.operation) {
-        case 'sleep':
-            return deps.sleep(msg.args[0], signal);
-        case 'resolveTemplate':
-            return deps.resolveTemplate(...msg.args);
-        case 'evaluateCondition':
-            return deps.evaluateCondition(...msg.args);
-        case 'matchSwitchCase':
-            return deps.matchSwitchCase(...msg.args);
-        default:
-            return assertNever(msg);
-    }
-}
-
-function handleStateRpc(
-    msg: NodePluginStateRpc,
-    pendingExecutes: ReadonlyMap<string, PendingPluginExecute>,
-    worker: Worker,
-    pluginId: string,
-    capabilityBroker: KernelDeps['capabilityBroker'],
-    diagnostic?: (message: string) => void,
-): void {
-    const executeRequestId = msg.executeRequestId;
-    if (!executeRequestId) {
-        denyPluginOperation(
-            worker,
-            msg.requestId,
-            pluginId,
-            msg.operation,
-            'No originating execute request',
-            diagnostic,
-        );
-        return;
-    }
-
-    const pending = pendingExecutes.get(executeRequestId);
-    if (!pending) {
-        denyPluginOperation(
-            worker,
-            msg.requestId,
-            pluginId,
-            msg.operation,
-            'No pending execute request',
-            diagnostic,
-        );
-        return;
-    }
-    if (!pending.isRunning()) {
-        postDepsRpcError(worker, msg.requestId, 'Plugin execution cancellation requested');
-        return;
-    }
-
-    try {
-        const permission = authorizePluginOperation(capabilityBroker, pluginId, msg.operation);
-        if (Either.isLeft(permission)) {
-            denyPluginOperation(
-                worker,
-                msg.requestId,
-                pluginId,
-                msg.operation,
-                permission.left.capability,
-                diagnostic,
-            );
-            return;
-        }
-
-        const value = callWorkflowStateMethod(pending.deps.state, msg);
-        postWorkflowStateRpcValue(worker, msg.requestId, msg.operation, value);
-    } catch (err) {
-        postDepsRpcError(worker, msg.requestId, err instanceof Error ? err.message : String(err));
-    }
-}
-
-function callWorkflowStateMethod(
-    state: NodeHandlerDeps['state'],
-    msg: NodePluginStateRpc,
-): unknown {
-    switch (msg.operation) {
-        case 'state.get':
-            return state.get(...msg.args);
-        case 'state.set':
-            return state.set(...msg.args);
-        case 'state.flush':
-            return state.flush(...msg.args);
-        default:
-            return assertNever(msg);
-    }
-}
-
-function handleFileWatcherRpc(
-    msg: NodePluginFileWatcherRpc,
-    worker: Worker,
-    pluginId: string,
-    kernel: KernelDeps,
-    activeFileWatcherSubscriptions: Set<string> | undefined,
-    diagnostic?: (message: string) => void,
-): void {
-    try {
-        const permission = authorizePluginOperation(
-            kernel.capabilityBroker,
-            pluginId,
-            msg.operation,
-        );
-        if (Either.isLeft(permission)) {
-            denyPluginOperation(
-                worker,
-                msg.requestId,
-                pluginId,
-                msg.operation,
-                permission.left.capability,
-                diagnostic,
-            );
-            return;
-        }
-
-        switch (msg.operation) {
-            case 'fileWatcherManager.registerSubscriber': {
-                const [subscriber, callbackId] = msg.args;
-                kernel.fileWatcherManager.registerSubscriber(subscriber, (fileEvent: unknown) => {
-                    const parsedEvent = FileEventSchema.safeParse(fileEvent);
-                    if (!parsedEvent.success) return;
-                    try {
-                        worker.postMessage({
-                            kind: NodePluginWorkerKind.CallbackInvoke,
-                            callbackId,
-                            args: [parsedEvent.data],
-                        });
-                    } catch {
-                        // The worker may have been retired after a non-cooperative cancellation.
-                    }
-                });
-                activeFileWatcherSubscriptions?.add(subscriber.id);
-                postDepsRpcResult(worker, msg.requestId, undefined);
-                return;
-            }
-            case 'fileWatcherManager.unregisterSubscriber': {
-                const [id] = msg.args;
-                kernel.fileWatcherManager.unregisterSubscriber(id);
-                activeFileWatcherSubscriptions?.delete(id);
-                postDepsRpcResult(worker, msg.requestId, undefined);
-                return;
-            }
-            default:
-                assertNever(msg);
-        }
-    } catch (err) {
-        postDepsRpcError(worker, msg.requestId, err instanceof Error ? err.message : String(err));
-    }
-}
-
-function authorizePluginOperation(
-    capabilityBroker: KernelDeps['capabilityBroker'],
-    pluginId: string,
-    operation: NodePluginPrivilegedOperation,
-): ReturnType<KernelDeps['capabilityBroker']['request']> {
-    return capabilityBroker.request({
-        pluginId,
-        capability: NODE_PLUGIN_OPERATION_CAPABILITIES[operation],
-    });
-}
-
-function handleCapabilityRpc(
-    msg: NodePluginCapabilityRpc,
-    worker: Worker,
-    kernel: KernelDeps,
-    pluginId: string,
-    diagnostic?: (message: string) => void,
-): void {
-    try {
-        const capability = msg.args[0];
-        const result = kernel.capabilityBroker.request({ pluginId, capability });
-        if (Either.isLeft(result)) {
-            diagnostic?.(
-                `[plugin:${pluginId}] denied operation "${msg.operation}": ${result.left.capability}`,
-            );
-        }
-        const value = Either.isRight(result)
-            ? { ok: true as const }
-            : { ok: false as const, error: result.left };
-        postDepsRpcResult(worker, msg.requestId, value);
-    } catch (err) {
-        postDepsRpcError(worker, msg.requestId, err instanceof Error ? err.message : String(err));
-    }
-}
-
-export function updatePluginPermissions(
-    pluginId: string,
-    permissions: readonly Capability[],
-): void {
-    const worker = pluginWorkers.get(pluginId);
-    if (!worker) return;
-    try {
-        worker.postMessage({
-            kind: NodePluginWorkerKind.UpdatePermissions,
-            permissions: [...permissions],
-        });
-    } catch {
-        pluginWorkers.delete(pluginId);
-    }
+/** Compatibility facade for callers that only need one directory load. */
+export async function loadNodePlugins(
+    pluginsDir: string,
+    deps: NodePluginLoaderDeps,
+): Promise<readonly NodePluginLoadResult[]> {
+    const loader = createNodePluginLoader();
+    return loader.loadNodePlugins(pluginsDir, deps);
 }

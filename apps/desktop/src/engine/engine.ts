@@ -1,5 +1,6 @@
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { Capability } from '@sigil/schema/manifest';
 import {
     createPropertyRegistry,
     loadPropertiesFile,
@@ -30,7 +31,7 @@ import { createFileWatcherManager, type FileWatcherManager } from './file-watche
 import type { ManifestRegistry } from './manifest-registry.js';
 import { createManifestRegistry } from './manifest-registry.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
-import { loadNodePlugins, type NodePluginLoadResult } from './node-plugin-loader.js';
+import { createNodePluginLoader, type NodePluginLoadResult } from './node-plugin-loader.js';
 import { createNodeHandlerRegistry, type NodeHandlerRegistry } from './node-registry.js';
 import type { PermissionOverrideStore } from './permission-override-store.js';
 import { createPermissionOverrideStore } from './permission-override-store.js';
@@ -75,6 +76,10 @@ export interface Engine {
     readonly applyProperties: (properties: PropertiesFile) => PropertyApplyResult;
     readonly registerBuiltinManifests: () => void;
     readonly loadBuiltinPlugins: () => Promise<readonly NodePluginLoadResult[]>;
+    readonly updatePluginPermissions: (
+        pluginId: string,
+        permissions: readonly Capability[],
+    ) => void;
     readonly execute: (
         pipeline: WorkflowInput,
         seedContext?: WorkflowContext,
@@ -184,6 +189,7 @@ export function createEngine(options?: EngineOptions): Engine {
     const builtinPluginsDir = resolvePath(dirname(__filename), '../../src/builtin-plugins');
 
     const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+    const pluginLoader = createNodePluginLoader();
 
     const commitResolvedProperties = (next: {
         readonly resolved: RegisteredResolvedProperties;
@@ -284,12 +290,15 @@ export function createEngine(options?: EngineOptions): Engine {
                     bus.next({ name: 'engine.diagnostic', payload: event });
                 },
             };
-            const builtinResults = await loadNodePlugins(builtinPluginsDir, {
+            const builtinResults = await pluginLoader.loadNodePlugins(builtinPluginsDir, {
                 ...deps,
                 allowExistingPropertyDescriptors: true,
             });
             refreshResolvedProperties();
             return builtinResults;
+        },
+        updatePluginPermissions: (pluginId, permissions): void => {
+            pluginLoader.updatePluginPermissions(pluginId, permissions);
         },
         execute: async (
             pipeline,
@@ -315,6 +324,7 @@ export function createEngine(options?: EngineOptions): Engine {
             );
         },
         dispose: (): void => {
+            void pluginLoader.shutdown();
             fileWatcherManager.dispose();
             workflowStateStore.dispose();
             database.close();
