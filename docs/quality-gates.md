@@ -13,8 +13,9 @@ It runs the following checks in order:
 3. `pnpm architecture:check`
 4. `pnpm structure:check`
 5. `pnpm structure:test`
-6. `pnpm typecheck`
-7. `pnpm test:fast`
+6. `pnpm workflows:check`
+7. `pnpm typecheck`
+8. `pnpm test:fast`
 
 The renderer-only DOM project is available as
 `pnpm --filter @sigil/desktop test:renderer:dom`. It runs the tests under
@@ -99,7 +100,7 @@ The `Quality gates (Windows)` job runs every required check sequentially on a fr
 
 1. install the frozen workspace dependencies with lifecycle scripts disabled;
 2. build the shared schema package;
-3. run lint, formatting, architecture, structural checks and fixtures, typecheck, pure schema/renderer tests, and the dedicated renderer DOM interaction tests;
+3. run lint, formatting, architecture, structural checks and fixtures, workflow validation, typecheck, and `pnpm test:fast`, whose composed renderer test command runs the renderer unit and DOM projects;
 4. prepare and preflight `better-sqlite3`;
 5. run the schema, desktop, and renderer test projects with coverage;
 6. enforce the measured project baselines and per-file seam thresholds;
