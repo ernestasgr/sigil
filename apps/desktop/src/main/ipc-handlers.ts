@@ -10,6 +10,7 @@ import {
 import {
     PersistenceDiagnosticSchema,
     type PersistenceWriteOutcome,
+    type PropertiesSaveOutcome,
 } from '../shared/persistence.js';
 import type { EngineHandle } from './engine-client.js';
 import { ipcHandleCommand } from './ipc-handle.js';
@@ -49,6 +50,22 @@ function persistenceFailure(error: unknown, fallbackPath: string): PersistenceWr
     const message = errorMessage(error);
     return {
         ok: false,
+        error: message,
+        diagnostic: {
+            kind: 'persistence',
+            operation: 'write',
+            phase: 'write',
+            path: fallbackPath,
+            message,
+        },
+    };
+}
+
+function propertiesSaveFailure(error: unknown, fallbackPath: string): PropertiesSaveOutcome {
+    const message = errorMessage(error);
+    return {
+        ok: false,
+        kind: 'write',
         error: message,
         diagnostic: {
             kind: 'persistence',
@@ -274,12 +291,12 @@ export function registerIpcHandlers(ctx: IpcHandlerContext): void {
             properties: RendererRequest<'saveProperties'>,
         ): Promise<RendererResponse<'saveProperties'>> => {
             const engine = h.getEngine();
-            if (!engine) return persistenceFailure(new Error('Engine not ready'), 'engine');
+            if (!engine) return propertiesSaveFailure(new Error('Engine not ready'), 'engine');
             try {
                 return await engine.saveProperties({ properties });
             } catch (err) {
                 console.error('[main] saveProperties failed:', err);
-                return persistenceFailure(err, 'sigil.properties.json');
+                return propertiesSaveFailure(err, 'sigil.properties.json');
             }
         },
     );

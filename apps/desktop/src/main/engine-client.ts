@@ -218,11 +218,37 @@ function toWorkflowGetOutcome(
 }
 
 function toPersistenceWriteOutcome(
-    response: EngineResponse<'setPermissionOverride'> | EngineResponse<'saveProperties'>,
+    response: EngineResponse<'setPermissionOverride'>,
 ): RendererResponse<'setPermissionOverride'> {
     if (response.ok) return { ok: true };
     return {
         ok: false,
+        error: response.error,
+        diagnostic: response.diagnostic,
+    };
+}
+
+function toPropertiesSaveOutcome(
+    response: EngineResponse<'saveProperties'>,
+): RendererResponse<'saveProperties'> {
+    if (response.ok) {
+        return {
+            ok: true,
+            applied: response.applied,
+            restartRequired: response.restartRequired,
+        };
+    }
+    if (response.kind === 'validation') {
+        return {
+            ok: false,
+            kind: 'validation',
+            error: response.error,
+            issues: response.issues,
+        };
+    }
+    return {
+        ok: false,
+        kind: 'write',
         error: response.error,
         diagnostic: response.diagnostic,
     };
@@ -487,7 +513,7 @@ export function spawnEngine(): EngineHandle {
         saveProperties(
             payload: EngineRequestPayload<'saveProperties'>,
         ): Promise<RendererResponse<'saveProperties'>> {
-            return client.request('saveProperties', payload).then(toPersistenceWriteOutcome);
+            return client.request('saveProperties', payload).then(toPropertiesSaveOutcome);
         },
         readWorkflowState(
             workflowId: EngineRequestPayload<'readWorkflowState'>['workflowId'],

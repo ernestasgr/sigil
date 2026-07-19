@@ -112,6 +112,7 @@ const responseArbitrary = fc.oneof(
         type: fc.constant(EngineChannel.SavePropertiesResult),
         correlationId: correlationIdArbitrary,
         ok: fc.constant(false),
+        kind: fc.constant('write'),
         error: fc.constant('generated replacement failure'),
         diagnostic: fc.constant({
             kind: 'persistence',

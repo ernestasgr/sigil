@@ -42,6 +42,8 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
     broadcastWorkflowsList: ReturnType<typeof vi.fn>;
     engine: {
         execute: ReturnType<typeof vi.fn>;
+        validateProperties: ReturnType<typeof vi.fn>;
+        applyProperties: ReturnType<typeof vi.fn>;
         registry: { all: ReturnType<typeof vi.fn> };
         propertyRegistry?: { defaults: ReturnType<typeof vi.fn> };
         permissionOverrides: {
@@ -69,6 +71,8 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
         deactivate: ReturnType<typeof vi.fn>;
     };
 } {
+    readPropertiesFileMock.mockClear();
+    writePropertiesFileMock.mockClear();
     readPropertiesFileMock.mockReturnValue(Effect.succeed({ loadedKey: 'loadedValue' }));
     writePropertiesFileMock.mockReturnValue(Either.right(undefined));
     const postMessage = vi.fn();
@@ -76,6 +80,11 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
     const broadcastWorkflowsList = vi.fn();
     const execute = vi.fn().mockResolvedValue(undefined);
     const registryAll = vi.fn().mockReturnValue([]);
+    const validateProperties = vi.fn((properties: Readonly<Record<string, unknown>>) => ({
+        ok: true as const,
+        properties,
+    }));
+    const applyProperties = vi.fn(() => ({ applied: {}, restartRequired: [] as string[] }));
     const propertyRegistry =
         propertyDefaults === undefined
             ? undefined
@@ -101,6 +110,8 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
             postMessage,
             engine: {
                 execute,
+                validateProperties,
+                applyProperties,
                 registry: { all: registryAll },
                 ...(propertyRegistry === undefined ? {} : { propertyRegistry }),
                 permissionOverrides: {
@@ -136,6 +147,8 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
         broadcastWorkflowsList,
         engine: {
             execute,
+            validateProperties,
+            applyProperties,
             registry: { all: registryAll },
             ...(propertyRegistry === undefined ? {} : { propertyRegistry }),
             permissionOverrides: { has: permissionHas, get: permissionGet, set: permissionSet },
@@ -827,7 +840,7 @@ describe('dispatch', () => {
     });
 
     it('routes SaveProperties and posts ok:true result', () => {
-        const { subsystems, postMessage } = createFakeSubsystems();
+        const { subsystems, postMessage, engine } = createFakeSubsystems();
 
         const message: EngineSaveProperties = {
             type: EngineChannel.SaveProperties,
@@ -840,11 +853,42 @@ describe('dispatch', () => {
             type: EngineChannel.SavePropertiesResult,
             correlationId: 'corr-9',
             ok: true,
+            applied: {},
+            restartRequired: [],
         });
+        expect(engine.applyProperties).toHaveBeenCalledWith(message.properties);
+    });
+
+    it('returns a validation failure before attempting a durable write', () => {
+        const { subsystems, postMessage, engine } = createFakeSubsystems();
+        const validation = {
+            ok: false as const,
+            kind: 'validation' as const,
+            error: 'notifyOnWorkflowError: expected boolean',
+            issues: ['notifyOnWorkflowError: expected boolean'],
+        };
+        engine.validateProperties.mockReturnValue(validation);
+
+        dispatch(
+            {
+                type: EngineChannel.SaveProperties,
+                correlationId: 'corr-properties-validation-failed',
+                properties: { notifyOnWorkflowError: 'no' },
+            },
+            subsystems,
+        );
+
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.SavePropertiesResult,
+            correlationId: 'corr-properties-validation-failed',
+            ...validation,
+        });
+        expect(writePropertiesFileMock).not.toHaveBeenCalled();
+        expect(engine.applyProperties).not.toHaveBeenCalled();
     });
 
     it('returns a diagnostic when saving properties fails', () => {
-        const { subsystems, postMessage, log } = createFakeSubsystems();
+        const { subsystems, postMessage, log, engine } = createFakeSubsystems();
         const diagnostic = {
             kind: 'persistence',
             operation: 'write',
@@ -868,9 +912,11 @@ describe('dispatch', () => {
             type: EngineChannel.SavePropertiesResult,
             correlationId: 'corr-properties-save-failed',
             ok: false,
+            kind: 'write',
             error: expect.stringContaining('disk full'),
             diagnostic,
         });
+        expect(engine.applyProperties).not.toHaveBeenCalled();
     });
 
     it('awaits shutdown before acknowledging the Engine shutdown command', async () => {

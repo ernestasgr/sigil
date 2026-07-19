@@ -42,6 +42,43 @@ export const PersistenceWriteOutcomeSchema = z.union([
 
 export type PersistenceWriteOutcome = z.infer<typeof PersistenceWriteOutcomeSchema>;
 
+export const PropertiesApplyStatusSchema = z
+    .object({
+        /** Hot-applicable values that changed in the running Engine. */
+        applied: z.record(z.string(), z.unknown()).readonly(),
+        /** Persisted values that will take effect after an Engine restart. */
+        restartRequired: z.array(z.string()).readonly(),
+    })
+    .readonly();
+export type PropertiesApplyStatus = z.infer<typeof PropertiesApplyStatusSchema>;
+
+export const PropertiesSaveSuccessFieldsSchema = z.object({
+    ok: z.literal(true),
+    applied: z.record(z.string(), z.unknown()).readonly(),
+    restartRequired: z.array(z.string()).readonly(),
+});
+
+export const PropertiesValidationFailureFieldsSchema = z.object({
+    ok: z.literal(false),
+    kind: z.literal('validation'),
+    error: z.string(),
+    issues: z.array(z.string()).readonly(),
+});
+
+export const PropertiesWriteFailureFieldsSchema = z.object({
+    ok: z.literal(false),
+    kind: z.literal('write'),
+    error: z.string(),
+    diagnostic: PersistenceDiagnosticSchema,
+});
+
+export const PropertiesSaveOutcomeSchema = z.union([
+    PropertiesSaveSuccessFieldsSchema.readonly(),
+    PropertiesValidationFailureFieldsSchema.readonly(),
+    PropertiesWriteFailureFieldsSchema.readonly(),
+]);
+export type PropertiesSaveOutcome = z.infer<typeof PropertiesSaveOutcomeSchema>;
+
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

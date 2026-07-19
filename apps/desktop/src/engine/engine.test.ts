@@ -225,6 +225,58 @@ describe('createEngine', () => {
         expect(engine.settings.notifyOnWorkflowError).toBe(true);
     });
 
+    it('validates Properties before applying hot values to the running Engine', () => {
+        const engine = createEngine({ properties: { notifyOnWorkflowError: true } });
+
+        const validation = engine.validateProperties({ notifyOnWorkflowError: false });
+        expect(validation).toMatchObject({ ok: true });
+        expect(engine.settings.notifyOnWorkflowError).toBe(true);
+
+        if (!validation.ok) throw new Error(validation.error);
+        const status = engine.applyProperties(validation.properties);
+
+        expect(status).toEqual({
+            applied: { notifyOnWorkflowError: false },
+            restartRequired: [],
+        });
+        expect(engine.settings.notifyOnWorkflowError).toBe(false);
+        engine.dispose();
+    });
+
+    it('keeps restart-required values unchanged in-process while reporting them', () => {
+        const engine = createEngine({ properties: { databasePath: ':memory:' } });
+
+        const validation = engine.validateProperties({
+            databasePath: 'C:/sigil-after-restart.db',
+            notifyOnWorkflowError: false,
+        });
+        expect(validation.ok).toBe(true);
+        if (!validation.ok) throw new Error(validation.error);
+
+        const status = engine.applyProperties(validation.properties);
+
+        expect(status).toEqual({
+            applied: { notifyOnWorkflowError: false },
+            restartRequired: ['databasePath'],
+        });
+        expect(engine.settings.notifyOnWorkflowError).toBe(false);
+        expect(engine.settings.properties?.databasePath).toBe(':memory:');
+        engine.dispose();
+    });
+
+    it('reports invalid Properties without changing the running Engine', () => {
+        const engine = createEngine({ properties: { notifyOnWorkflowError: true } });
+
+        const validation = engine.validateProperties({ notifyOnWorkflowError: 'not-a-boolean' });
+
+        expect(validation).toMatchObject({
+            ok: false,
+            kind: 'validation',
+        });
+        expect(engine.settings.notifyOnWorkflowError).toBe(true);
+        engine.dispose();
+    });
+
     it('uses :memory: for the database when no databasePath is provided', () => {
         const engine = createEngine();
         expect(engine.workflowStateStore).toBeDefined();

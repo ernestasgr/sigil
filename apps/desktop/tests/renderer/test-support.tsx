@@ -32,7 +32,11 @@ export function createMockSigil(): SigilAdapter {
         listPlugins: vi.fn(async () => []),
         setPermissionOverride: vi.fn(async () => ({ ok: true as const })),
         readProperties: vi.fn(async () => ({ properties: {} })),
-        saveProperties: vi.fn(async () => ({ ok: true as const })),
+        saveProperties: vi.fn(async () => ({
+            ok: true as const,
+            applied: {},
+            restartRequired: [],
+        })),
         openFileDialog: vi.fn(async () => null),
         fireManualTrigger: vi.fn(async () => ({ ok: true as const })),
         readWorkflowState: vi.fn(async () => []),

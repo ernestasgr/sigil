@@ -559,7 +559,24 @@ function handleSaveProperties(
     message: EngineRequest<'saveProperties'>,
     subsystems: DispatchSubsystems,
 ): void {
-    const result = writePropertiesFile(subsystems.propertiesPath, message.properties);
+    const validation = subsystems.engine.validateProperties(message.properties);
+    if (!validation.ok) {
+        postCommandResponse(
+            'saveProperties',
+            {
+                type: EngineChannel.SavePropertiesResult,
+                correlationId: message.correlationId,
+                ok: false,
+                kind: 'validation',
+                error: validation.error,
+                issues: validation.issues,
+            },
+            subsystems,
+        );
+        return;
+    }
+
+    const result = writePropertiesFile(subsystems.propertiesPath, validation.properties);
     if (Either.isLeft(result)) {
         const detail = formatPersistenceDiagnostic(result.left);
         subsystems.log(`Failed to save properties: ${detail}`);
@@ -569,6 +586,7 @@ function handleSaveProperties(
                 type: EngineChannel.SavePropertiesResult,
                 correlationId: message.correlationId,
                 ok: false,
+                kind: 'write',
                 error: detail,
                 diagnostic: result.left,
             },
@@ -576,12 +594,16 @@ function handleSaveProperties(
         );
         return;
     }
+
+    const status = subsystems.engine.applyProperties(validation.properties);
     postCommandResponse(
         'saveProperties',
         {
             type: EngineChannel.SavePropertiesResult,
             correlationId: message.correlationId,
             ok: true,
+            applied: status.applied,
+            restartRequired: status.restartRequired,
         },
         subsystems,
     );

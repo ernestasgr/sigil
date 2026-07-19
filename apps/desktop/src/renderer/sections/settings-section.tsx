@@ -10,6 +10,7 @@ import type {
     WorkflowStatePrimitive,
     WorkflowStateValueType,
 } from '../../shared/ipc-channels.js';
+import type { PropertiesSaveOutcome } from '../../shared/persistence.js';
 import type { PluginInfo } from '../../shared/plugin-info.js';
 import { type WorkflowSummary, workflowActivationLabel } from '../../shared/workflow.js';
 import { SectionShell } from '../components/section-shell.js';
@@ -42,6 +43,20 @@ function persistenceErrorMessage(
     diagnostic: { readonly phase: string; readonly path: string },
 ): string {
     return `${error} [${diagnostic.phase}] ${diagnostic.path}`;
+}
+
+type PropertiesSaveSuccess = Extract<PropertiesSaveOutcome, { readonly ok: true }>;
+
+function propertiesSaveStatusMessage(status: PropertiesSaveSuccess): string {
+    const applied = Object.entries(status.applied).map(
+        ([key, value]) => `${key} = ${JSON.stringify(value)}`,
+    );
+    const messages: string[] = [];
+    if (applied.length > 0) messages.push(`Applied now: ${applied.join(', ')}`);
+    if (status.restartRequired.length > 0) {
+        messages.push(`Restart required: ${status.restartRequired.join(', ')}`);
+    }
+    return messages.length > 0 ? messages.join(' · ') : 'Properties saved; no runtime changes.';
 }
 
 function capabilityLabel(cap: Capability): string {
@@ -323,11 +338,13 @@ function PropertiesFilePanel({
     onCancel,
     properties,
     defaults,
+    saveStatus,
 }: {
     readonly properties: Record<string, unknown>;
     readonly defaults: Readonly<Record<string, unknown>>;
     readonly onSave: (props: Record<string, unknown>) => void;
     readonly onCancel: () => void;
+    readonly saveStatus: PropertiesSaveSuccess | null;
 }): ReactElement {
     return (
         <div>
@@ -339,6 +356,11 @@ function PropertiesFilePanel({
                 <code className="font-data text-gilt">sigil.properties.json</code> and are picked up
                 by the Engine&apos;s resolution order.
             </p>
+            {saveStatus ? (
+                <p role="status" className="font-data text-verdigris mb-6 text-xs">
+                    {propertiesSaveStatusMessage(saveStatus)}
+                </p>
+            ) : null}
             <PropertiesEditor
                 properties={properties}
                 defaults={defaults}
@@ -706,6 +728,9 @@ export function SettingsSection(): ReactElement {
         useState<Readonly<Record<string, unknown>>>(ENGINE_DEFAULTS);
     const [propertiesLoading, setPropertiesLoading] = useState(true);
     const [persistenceError, setPersistenceError] = useState<string | null>(null);
+    const [propertiesSaveStatus, setPropertiesSaveStatus] = useState<PropertiesSaveSuccess | null>(
+        null,
+    );
     const [activeTab, setActiveTab] = useState<'permissions' | 'properties' | 'workflow-state'>(
         'permissions',
     );
@@ -714,6 +739,7 @@ export function SettingsSection(): ReactElement {
 
     const loadData = useCallback(() => {
         setPersistenceError(null);
+        setPropertiesSaveStatus(null);
         setPluginsLoading(true);
         setPropertiesLoading(true);
         sigil
@@ -779,20 +805,23 @@ export function SettingsSection(): ReactElement {
                 .then((result) => {
                     if (result.ok) {
                         setPersistenceError(null);
+                        setPropertiesSaveStatus(result);
                         setProperties(props);
                     } else {
+                        setPropertiesSaveStatus(null);
                         setPersistenceError(
-                            persistenceErrorMessage(result.error, result.diagnostic),
+                            result.kind === 'validation'
+                                ? `Validation error: ${result.error}`
+                                : `Write failure: ${persistenceErrorMessage(result.error, result.diagnostic)}`,
                         );
-                        console.error(
-                            'Failed to save properties:',
-                            result.error,
-                            result.diagnostic,
-                        );
+                        console.error('Failed to save properties:', result);
                     }
                 })
                 .catch((err: unknown) => {
-                    setPersistenceError(err instanceof Error ? err.message : String(err));
+                    setPropertiesSaveStatus(null);
+                    setPersistenceError(
+                        `Write failure: ${err instanceof Error ? err.message : String(err)}`,
+                    );
                     console.error('Failed to save properties:', err);
                 });
         },
@@ -864,6 +893,7 @@ export function SettingsSection(): ReactElement {
                             defaults={propertyDefaults}
                             onSave={handlePropertiesSave}
                             onCancel={handlePropertiesCancel}
+                            saveStatus={propertiesSaveStatus}
                         />
                     )
                 ) : (
