@@ -46,7 +46,7 @@
         "zustand": "5.0.14"
     },
     "devDependencies": {
-        "@electron/rebuild": "4.0.4",
+        "@electron/rebuild": "4.2.0",
         "@playwright/test": "1.55.0",
         "fast-check": "3.23.2",
         "@tailwindcss/vite": "4.3.1",
