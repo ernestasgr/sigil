@@ -10,7 +10,11 @@ import {
     type EngineWorkflowsList,
 } from '../shared/ipc-channels.js';
 
-import { createRpcClient, type RpcClientProps } from './engine-client.js';
+import {
+    createRpcClient,
+    type RpcClientProps,
+    toPermissionOverrideOutcome,
+} from './engine-client.js';
 
 function buildProps(): { props: RpcClientProps; sent: unknown[] } {
     const sent: unknown[] = [];
@@ -171,6 +175,54 @@ describe('rpc', () => {
             receivedAt: Date.now(),
         };
         expect(() => client.dispatch(lateResponse)).not.toThrow();
+    });
+});
+
+describe('permission override outcome mapping', () => {
+    it('keeps an unknown Plugin rejection typed and diagnostic-free', () => {
+        expect(
+            toPermissionOverrideOutcome({
+                type: EngineChannel.SetPermissionOverrideResult,
+                correlationId: 'corr-unknown-plugin',
+                ok: false,
+                kind: 'domain',
+                code: 'unknown_plugin',
+                pluginId: 'plugin-ghost',
+                error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
+            }),
+        ).toEqual({
+            ok: false,
+            kind: 'domain',
+            code: 'unknown_plugin',
+            pluginId: 'plugin-ghost',
+            error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
+        });
+    });
+
+    it('preserves a registered Plugin persistence diagnostic', () => {
+        const diagnostic = {
+            kind: 'persistence',
+            operation: 'write',
+            phase: 'replace',
+            path: 'C:/permission-overrides.json',
+            message: 'replacement denied',
+        } as const;
+
+        expect(
+            toPermissionOverrideOutcome({
+                type: EngineChannel.SetPermissionOverrideResult,
+                correlationId: 'corr-persistence-failed',
+                ok: false,
+                kind: 'persistence',
+                error: '[persistence:replace] C:/permission-overrides.json: replacement denied',
+                diagnostic,
+            }),
+        ).toEqual({
+            ok: false,
+            kind: 'persistence',
+            error: '[persistence:replace] C:/permission-overrides.json: replacement denied',
+            diagnostic,
+        });
     });
 });
 

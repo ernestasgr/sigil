@@ -42,6 +42,32 @@ export const PersistenceWriteOutcomeSchema = z.union([
 
 export type PersistenceWriteOutcome = z.infer<typeof PersistenceWriteOutcomeSchema>;
 
+export const PermissionOverrideSuccessFieldsSchema = z.object({
+    ok: z.literal(true),
+});
+
+export const PermissionOverrideDomainFailureFieldsSchema = z.object({
+    ok: z.literal(false),
+    kind: z.literal('domain'),
+    code: z.literal('unknown_plugin'),
+    pluginId: z.string().min(1),
+    error: z.string().min(1),
+});
+
+export const PermissionOverridePersistenceFailureFieldsSchema = z.object({
+    ok: z.literal(false),
+    kind: z.literal('persistence'),
+    error: z.string().min(1),
+    diagnostic: PersistenceDiagnosticSchema,
+});
+
+export const PermissionOverrideOutcomeSchema = z.union([
+    PermissionOverrideSuccessFieldsSchema.readonly(),
+    PermissionOverrideDomainFailureFieldsSchema.readonly(),
+    PermissionOverridePersistenceFailureFieldsSchema.readonly(),
+]);
+export type PermissionOverrideOutcome = z.infer<typeof PermissionOverrideOutcomeSchema>;
+
 export const PropertiesApplyStatusSchema = z
     .object({
         /** Hot-applicable values that changed in the running Engine. */

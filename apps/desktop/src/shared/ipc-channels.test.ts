@@ -121,6 +121,29 @@ describe('EngineToMainMessageSchema', () => {
         }
     });
 
+    it('preserves unknown Plugin domain failures without a persistence diagnostic', () => {
+        const result = EngineToMainMessageSchema.safeParse({
+            type: EngineChannel.SetPermissionOverrideResult,
+            correlationId: 'corr-unknown-plugin',
+            ok: false,
+            kind: 'domain',
+            code: 'unknown_plugin',
+            pluginId: 'plugin-ghost',
+            error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data).toMatchObject({
+                ok: false,
+                kind: 'domain',
+                code: 'unknown_plugin',
+                pluginId: 'plugin-ghost',
+            });
+            expect('diagnostic' in result.data).toBe(false);
+        }
+    });
+
     it('does not strip a Workflow toggle persistence failure as a success response', () => {
         const result = EngineToMainMessageSchema.safeParse({
             type: EngineChannel.ToggleWorkflowResult,

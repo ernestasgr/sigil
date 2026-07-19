@@ -498,6 +498,23 @@ function handleSetPermissionOverride(
     message: EngineRequest<'setPermissionOverride'>,
     subsystems: DispatchSubsystems,
 ): void {
+    if (!subsystems.engine.registry.has(message.pluginId)) {
+        postCommandResponse(
+            'setPermissionOverride',
+            {
+                type: EngineChannel.SetPermissionOverrideResult,
+                correlationId: message.correlationId,
+                ok: false,
+                kind: 'domain',
+                code: 'unknown_plugin',
+                pluginId: message.pluginId,
+                error: `Plugin "${message.pluginId}" is not registered in the Manifest Registry.`,
+            },
+            subsystems,
+        );
+        return;
+    }
+
     const result = subsystems.engine.permissionOverrides.set(message.pluginId, message.overrides);
     if (Either.isLeft(result)) {
         const detail = formatPersistenceDiagnostic(result.left);
@@ -508,6 +525,7 @@ function handleSetPermissionOverride(
                 type: EngineChannel.SetPermissionOverrideResult,
                 correlationId: message.correlationId,
                 ok: false,
+                kind: 'persistence',
                 error: detail,
                 diagnostic: result.left,
             },

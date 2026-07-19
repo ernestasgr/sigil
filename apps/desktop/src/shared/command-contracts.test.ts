@@ -228,4 +228,36 @@ describe('CommandContracts', () => {
             }).success,
         ).toBe(true);
     });
+
+    it('distinguishes permission override domain rejection from persistence failure', () => {
+        const domainFailure = {
+            ok: false,
+            kind: 'domain',
+            code: 'unknown_plugin',
+            pluginId: 'plugin-ghost',
+            error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
+        } as const;
+        const persistenceFailure = {
+            ok: false,
+            kind: 'persistence',
+            error: 'replacement denied',
+            diagnostic: {
+                kind: 'persistence',
+                operation: 'write',
+                phase: 'replace',
+                path: 'C:/permission-overrides.json',
+                message: 'replacement denied',
+            },
+        } as const;
+
+        expect(
+            RendererCommandContracts.setPermissionOverride.responseSchema.safeParse(domainFailure)
+                .success,
+        ).toBe(true);
+        expect(
+            RendererCommandContracts.setPermissionOverride.responseSchema.safeParse(
+                persistenceFailure,
+            ).success,
+        ).toBe(true);
+    });
 });

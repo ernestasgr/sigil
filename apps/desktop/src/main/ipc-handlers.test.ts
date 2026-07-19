@@ -5,6 +5,8 @@ import type { BrowserWindow } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RendererChannel } from '../shared/ipc-channels.js';
+import type { PermissionOverrideOutcome } from '../shared/persistence.js';
+import type { EngineHandle } from './engine-client.js';
 import type { IpcHandlerContext } from './ipc-handlers.js';
 import { registerIpcHandlers } from './ipc-handlers.js';
 import type { NativeDialogAdapter } from './native-dialog.js';
@@ -72,5 +74,48 @@ describe('registerIpcHandlers native dialog seam', () => {
             dir: temporaryDirectory,
         });
         expect(nativeDialog.showOpenFileDialog).toHaveBeenCalledWith(mainWindow);
+    });
+
+    it.each([
+        {
+            ok: false,
+            kind: 'domain',
+            code: 'unknown_plugin',
+            pluginId: 'plugin-ghost',
+            error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
+        },
+        {
+            ok: false,
+            kind: 'persistence',
+            error: 'replacement denied',
+            diagnostic: {
+                kind: 'persistence',
+                operation: 'write',
+                phase: 'replace',
+                path: 'C:/permission-overrides.json',
+                message: 'replacement denied',
+            },
+        },
+    ] as const satisfies readonly PermissionOverrideOutcome[])('passes through the $kind permission override outcome without reshaping it', async (outcome) => {
+        const engine = {
+            setPermissionOverride: vi.fn().mockResolvedValue(outcome),
+        } as unknown as EngineHandle;
+        const context: IpcHandlerContext = {
+            getEngine: () => engine,
+            getMainWindow: () => null,
+            onRendererReady: () => undefined,
+        };
+
+        registerIpcHandlers(context);
+
+        const handler = handlers.get(RendererChannel.SetPermissionOverride);
+        expect(handler).toBeDefined();
+        const response = await handler?.({}, 'plugin-ghost', []);
+
+        expect(response).toEqual(outcome);
+        expect(engine.setPermissionOverride).toHaveBeenCalledWith({
+            pluginId: 'plugin-ghost',
+            overrides: [],
+        });
     });
 });

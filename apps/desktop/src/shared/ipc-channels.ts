@@ -3,6 +3,9 @@ import { CapabilitySchema, ManifestSchema } from '@sigil/schema/manifest';
 import { TopologyDiagnosticSchema } from '@sigil/schema/topology';
 import { z } from 'zod';
 import {
+    PermissionOverrideDomainFailureFieldsSchema,
+    PermissionOverridePersistenceFailureFieldsSchema,
+    PermissionOverrideSuccessFieldsSchema,
     PersistenceDiagnosticSchema,
     PropertiesSaveSuccessFieldsSchema,
     PropertiesValidationFailureFieldsSchema,
@@ -11,8 +14,16 @@ import {
 import { EventTelemetrySchema } from './telemetry.js';
 import { WorkflowIdSchema, WorkflowSummarySchema } from './workflow.js';
 
-export type { PersistenceDiagnostic, PropertiesSaveOutcome } from './persistence.js';
-export { PersistenceDiagnosticSchema, PropertiesSaveOutcomeSchema } from './persistence.js';
+export type {
+    PermissionOverrideOutcome,
+    PersistenceDiagnostic,
+    PropertiesSaveOutcome,
+} from './persistence.js';
+export {
+    PermissionOverrideOutcomeSchema,
+    PersistenceDiagnosticSchema,
+    PropertiesSaveOutcomeSchema,
+} from './persistence.js';
 export { WorkflowIdSchema } from './workflow.js';
 
 const WorkflowWriteDiagnosticSchema = z.union([
@@ -471,21 +482,24 @@ export const EngineSetPermissionOverrideSchema = z.object({
 });
 export type EngineSetPermissionOverride = z.infer<typeof EngineSetPermissionOverrideSchema>;
 
-const EngineSetPermissionOverrideSuccessSchema = z.object({
+const EngineSetPermissionOverrideSuccessSchema = PermissionOverrideSuccessFieldsSchema.extend({
     type: z.literal(EngineChannel.SetPermissionOverrideResult),
     correlationId: CorrelationIdSchema,
-    ok: z.literal(true),
 });
-const EngineSetPermissionOverrideFailureSchema = z.object({
-    type: z.literal(EngineChannel.SetPermissionOverrideResult),
-    correlationId: CorrelationIdSchema,
-    ok: z.literal(false),
-    error: z.string(),
-    diagnostic: PersistenceDiagnosticSchema,
-});
+const EngineSetPermissionOverrideDomainFailureSchema =
+    PermissionOverrideDomainFailureFieldsSchema.extend({
+        type: z.literal(EngineChannel.SetPermissionOverrideResult),
+        correlationId: CorrelationIdSchema,
+    });
+const EngineSetPermissionOverridePersistenceFailureSchema =
+    PermissionOverridePersistenceFailureFieldsSchema.extend({
+        type: z.literal(EngineChannel.SetPermissionOverrideResult),
+        correlationId: CorrelationIdSchema,
+    });
 export const EngineSetPermissionOverrideResultSchema = z.union([
     EngineSetPermissionOverrideSuccessSchema,
-    EngineSetPermissionOverrideFailureSchema,
+    EngineSetPermissionOverrideDomainFailureSchema,
+    EngineSetPermissionOverridePersistenceFailureSchema,
 ]);
 export type EngineSetPermissionOverrideResult = z.infer<
     typeof EngineSetPermissionOverrideResultSchema

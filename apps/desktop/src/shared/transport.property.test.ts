@@ -122,6 +122,29 @@ const responseArbitrary = fc.oneof(
             message: 'replacement interrupted',
         }),
     }),
+    fc.constant({
+        type: EngineChannel.SetPermissionOverrideResult,
+        correlationId: 'corr-unknown-plugin',
+        ok: false as const,
+        kind: 'domain' as const,
+        code: 'unknown_plugin' as const,
+        pluginId: 'plugin-ghost',
+        error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
+    }),
+    fc.constant({
+        type: EngineChannel.SetPermissionOverrideResult,
+        correlationId: 'corr-permission-failed',
+        ok: false as const,
+        kind: 'persistence' as const,
+        error: '[persistence:replace] C:/permission-overrides.json: replacement interrupted',
+        diagnostic: {
+            kind: 'persistence' as const,
+            operation: 'write' as const,
+            phase: 'replace' as const,
+            path: 'C:/permission-overrides.json',
+            message: 'replacement interrupted',
+        },
+    }),
 );
 
 const pluginEnvelopeArbitrary = fc.constantFrom(
