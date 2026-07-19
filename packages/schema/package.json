@@ -9,103 +9,128 @@
     "exports": {
         ".": {
             "types": "./dist/pipeline.d.ts",
-            "import": "./dist/pipeline.js"
+            "import": "./dist/pipeline.js",
+            "default": "./dist/pipeline.js"
         },
         "./operators": {
             "types": "./dist/operators.d.ts",
-            "import": "./dist/operators.js"
+            "import": "./dist/operators.js",
+            "default": "./dist/operators.js"
         },
         "./file-event-payload": {
             "types": "./dist/file-event-payload.d.ts",
-            "import": "./dist/file-event-payload.js"
+            "import": "./dist/file-event-payload.js",
+            "default": "./dist/file-event-payload.js"
         },
         "./event-catalog": {
             "types": "./dist/event-catalog.d.ts",
-            "import": "./dist/event-catalog.js"
+            "import": "./dist/event-catalog.js",
+            "default": "./dist/event-catalog.js"
         },
         "./workflow-context": {
             "types": "./dist/workflow-context.d.ts",
-            "import": "./dist/workflow-context.js"
+            "import": "./dist/workflow-context.js",
+            "default": "./dist/workflow-context.js"
         },
         "./conditions": {
             "types": "./dist/conditions.d.ts",
-            "import": "./dist/conditions.js"
+            "import": "./dist/conditions.js",
+            "default": "./dist/conditions.js"
         },
         "./nodes": {
             "types": "./dist/nodes/index.d.ts",
-            "import": "./dist/nodes/index.js"
+            "import": "./dist/nodes/index.js",
+            "default": "./dist/nodes/index.js"
         },
         "./nodes/log": {
             "types": "./dist/nodes/log.d.ts",
-            "import": "./dist/nodes/log.js"
+            "import": "./dist/nodes/log.js",
+            "default": "./dist/nodes/log.js"
         },
         "./nodes/delay": {
             "types": "./dist/nodes/delay.d.ts",
-            "import": "./dist/nodes/delay.js"
+            "import": "./dist/nodes/delay.js",
+            "default": "./dist/nodes/delay.js"
         },
         "./nodes/notification": {
             "types": "./dist/nodes/notification.d.ts",
-            "import": "./dist/nodes/notification.js"
+            "import": "./dist/nodes/notification.js",
+            "default": "./dist/nodes/notification.js"
         },
         "./nodes/file-manager": {
             "types": "./dist/nodes/file-manager.d.ts",
-            "import": "./dist/nodes/file-manager.js"
+            "import": "./dist/nodes/file-manager.js",
+            "default": "./dist/nodes/file-manager.js"
         },
         "./nodes/file-watcher": {
             "types": "./dist/nodes/file-watcher.d.ts",
-            "import": "./dist/nodes/file-watcher.js"
+            "import": "./dist/nodes/file-watcher.js",
+            "default": "./dist/nodes/file-watcher.js"
         },
         "./nodes/manual-trigger": {
             "types": "./dist/nodes/manual-trigger.d.ts",
-            "import": "./dist/nodes/manual-trigger.js"
+            "import": "./dist/nodes/manual-trigger.js",
+            "default": "./dist/nodes/manual-trigger.js"
         },
         "./nodes/if-else": {
             "types": "./dist/nodes/if-else.d.ts",
-            "import": "./dist/nodes/if-else.js"
+            "import": "./dist/nodes/if-else.js",
+            "default": "./dist/nodes/if-else.js"
         },
         "./nodes/switch": {
             "types": "./dist/nodes/switch.d.ts",
-            "import": "./dist/nodes/switch.js"
+            "import": "./dist/nodes/switch.js",
+            "default": "./dist/nodes/switch.js"
         },
         "./nodes/state-get": {
             "types": "./dist/nodes/state-get.d.ts",
-            "import": "./dist/nodes/state-get.js"
+            "import": "./dist/nodes/state-get.js",
+            "default": "./dist/nodes/state-get.js"
         },
         "./nodes/state-set": {
             "types": "./dist/nodes/state-set.d.ts",
-            "import": "./dist/nodes/state-set.js"
+            "import": "./dist/nodes/state-set.js",
+            "default": "./dist/nodes/state-set.js"
         },
         "./nodes/common": {
             "types": "./dist/nodes/common.d.ts",
-            "import": "./dist/nodes/common.js"
+            "import": "./dist/nodes/common.js",
+            "default": "./dist/nodes/common.js"
         },
         "./nodes/types": {
             "types": "./dist/nodes/types.d.ts",
-            "import": "./dist/nodes/types.js"
+            "import": "./dist/nodes/types.js",
+            "default": "./dist/nodes/types.js"
         },
         "./edges": {
             "types": "./dist/edges.d.ts",
-            "import": "./dist/edges.js"
+            "import": "./dist/edges.js",
+            "default": "./dist/edges.js"
         },
         "./topology": {
             "types": "./dist/topology.d.ts",
-            "import": "./dist/topology.js"
+            "import": "./dist/topology.js",
+            "default": "./dist/topology.js"
         },
         "./samples": {
             "types": "./dist/samples.d.ts",
-            "import": "./dist/samples.js"
+            "import": "./dist/samples.js",
+            "default": "./dist/samples.js"
         },
         "./manifest": {
             "types": "./dist/manifest.d.ts",
-            "import": "./dist/manifest.js"
+            "import": "./dist/manifest.js",
+            "default": "./dist/manifest.js"
         },
         "./properties-file": {
             "types": "./dist/properties-file.d.ts",
-            "import": "./dist/properties-file.js"
+            "import": "./dist/properties-file.js",
+            "default": "./dist/properties-file.js"
         },
         "./workflow-id": {
             "types": "./dist/workflow-id.d.ts",
-            "import": "./dist/workflow-id.js"
+            "import": "./dist/workflow-id.js",
+            "default": "./dist/workflow-id.js"
         }
     },
     "files": [
