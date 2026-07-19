@@ -76,8 +76,10 @@ export function createWorkflowLifecycle(
     function cloneErrorWithMessage(error: Error, message: string): Error {
         const clone = new Error(message, { cause: error });
         Object.setPrototypeOf(clone, Object.getPrototypeOf(error));
-        for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(error))) {
+        for (const key of Reflect.ownKeys(error)) {
             if (key === 'cause' || key === 'message' || key === 'stack') continue;
+            const descriptor = Object.getOwnPropertyDescriptor(error, key);
+            if (descriptor === undefined) continue;
             Object.defineProperty(clone, key, descriptor);
         }
         return clone;
@@ -106,13 +108,18 @@ export function createWorkflowLifecycle(
         });
 
         if (isWorkflowPersistenceError(compensatedError)) {
+            const compensatedDiagnostics = Array.isArray(compensatedError.diagnostics)
+                ? compensatedError.diagnostics
+                : [];
             const diagnostics = failures.flatMap((failure) =>
-                isWorkflowPersistenceError(failure) ? failure.diagnostics : [],
+                isWorkflowPersistenceError(failure) && Array.isArray(failure.diagnostics)
+                    ? failure.diagnostics
+                    : [],
             );
             Object.defineProperty(compensatedError, 'diagnostics', {
                 configurable: true,
                 enumerable: true,
-                value: [...compensatedError.diagnostics, ...diagnostics].slice(
+                value: [...compensatedDiagnostics, ...diagnostics].slice(
                     0,
                     MAX_COMPENSATION_DIAGNOSTICS,
                 ),
