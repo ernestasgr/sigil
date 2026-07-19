@@ -39,6 +39,7 @@ import { getDeactivationHook } from './workflow-activator.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const pluginWorkers = new Map<string, Worker>();
+const PLUGIN_WORKER_READY_TIMEOUT_MS = 30_000;
 
 export type NodePluginLoadError =
     | { readonly kind: 'invalid_manifest'; readonly dir: string; readonly error: string }
@@ -195,14 +196,35 @@ export async function loadNodePlugin(
     pluginWorkers.set(manifest.id, worker);
 
     const loaded = await new Promise<NodePluginWorkerLoaded | NodePluginWorkerLoadError>(
-        (resolve, reject) => {
+        (resolve) => {
+            let settled = false;
+            let readinessTimer: ReturnType<typeof setTimeout> | undefined;
+
+            const cleanup = (): void => {
+                if (readinessTimer !== undefined) {
+                    clearTimeout(readinessTimer);
+                    readinessTimer = undefined;
+                }
+                worker.off('message', onMessage);
+                worker.off('error', onError);
+                worker.off('exit', onExit);
+            };
+
+            const settle = (result: NodePluginWorkerLoaded | NodePluginWorkerLoadError): void => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(result);
+            };
+
+            const settleWithError = (error: string): void => {
+                settle({ kind: NodePluginWorkerKind.LoadError, error });
+            };
+
             const onMessage = (raw: unknown): void => {
                 const parsed = NodePluginWorkerToMainSchema.safeParse(raw);
                 if (!parsed.success) {
-                    worker.off('message', onMessage);
-                    reject(
-                        new Error(`Invalid plugin worker load message: ${parsed.error.message}`),
-                    );
+                    settleWithError(`Invalid plugin worker load message: ${parsed.error.message}`);
                     return;
                 }
                 const msg = parsed.data;
@@ -210,17 +232,24 @@ export async function loadNodePlugin(
                     msg.kind === NodePluginWorkerKind.Loaded ||
                     msg.kind === NodePluginWorkerKind.LoadError
                 ) {
-                    worker.off('message', onMessage);
-                    resolve(msg);
+                    settle(msg);
                 }
             };
+
+            const onError = (error: Error): void => {
+                settleWithError(`Worker error before sending load result: ${error.message}`);
+            };
+
+            const onExit = (code: number): void => {
+                settleWithError(`Worker exited with code ${code} before sending load result`);
+            };
+
             worker.on('message', onMessage);
-            worker.on('error', (err) => {
-                reject(err);
-            });
-            worker.on('exit', (code) => {
-                reject(new Error(`Worker exited with code ${code} before sending load result`));
-            });
+            worker.on('error', onError);
+            worker.on('exit', onExit);
+            readinessTimer = setTimeout(() => {
+                settleWithError('Plugin worker did not become ready within 30 seconds');
+            }, PLUGIN_WORKER_READY_TIMEOUT_MS);
         },
     );
 

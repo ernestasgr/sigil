@@ -109,6 +109,10 @@ export const handler: NodeHandler = {
 };
 `;
 
+const SILENT_PLUGIN_HANDLER = `
+while (true) {}
+`;
+
 const PROPERTY_PLUGIN_HANDLER = `
 import { z } from 'zod';
 
@@ -832,6 +836,54 @@ describe('loadNodePlugins', () => {
         expect(successes).toHaveLength(1);
         expect(failures).toHaveLength(1);
         expect(handlerRegistry.has('greet')).toBe(true);
+    });
+
+    it('times out a silent worker and continues loading the next Plugin', async () => {
+        vi.useFakeTimers();
+
+        try {
+            writePlugin(
+                join(tempDir, '01-silent-plugin'),
+                {
+                    id: 'com.sigil.silent',
+                    version: '0.0.1',
+                    permissions: [],
+                    emits: ['silent.event'],
+                    nodeType: 'silent-node',
+                },
+                SILENT_PLUGIN_HANDLER,
+            );
+            writePlugin(
+                join(tempDir, '02-good-plugin'),
+                {
+                    id: 'com.sigil.after-silent',
+                    version: '0.0.1',
+                    permissions: [],
+                    emits: ['greet.output'],
+                    nodeType: 'greet',
+                },
+                GREET_PLUGIN_HANDLER,
+            );
+
+            const { manifestRegistry, handlerRegistry } = createRegistries();
+            const loading = loadNodePlugins(tempDir, { manifestRegistry, handlerRegistry });
+
+            await vi.advanceTimersByTimeAsync(30_000);
+            const results = await loading;
+
+            expect(results).toHaveLength(2);
+            expect(results[0]).toMatchObject({
+                ok: false,
+                error: {
+                    kind: 'worker_error',
+                    error: 'Plugin worker did not become ready within 30 seconds',
+                },
+            });
+            expect(results[1].ok).toBe(true);
+            expect(handlerRegistry.has('greet')).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
 
