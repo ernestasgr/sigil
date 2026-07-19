@@ -217,12 +217,22 @@ function toWorkflowGetOutcome(
     };
 }
 
-function toPersistenceWriteOutcome(
+export function toPermissionOverrideOutcome(
     response: EngineResponse<'setPermissionOverride'>,
 ): RendererResponse<'setPermissionOverride'> {
     if (response.ok) return { ok: true };
+    if (response.kind === 'domain') {
+        return {
+            ok: false,
+            kind: 'domain',
+            code: response.code,
+            pluginId: response.pluginId,
+            error: response.error,
+        };
+    }
     return {
         ok: false,
+        kind: 'persistence',
         error: response.error,
         diagnostic: response.diagnostic,
     };
@@ -500,7 +510,9 @@ export function spawnEngine(): EngineHandle {
         setPermissionOverride(
             payload: EngineRequestPayload<'setPermissionOverride'>,
         ): Promise<RendererResponse<'setPermissionOverride'>> {
-            return client.request('setPermissionOverride', payload).then(toPersistenceWriteOutcome);
+            return client
+                .request('setPermissionOverride', payload)
+                .then(toPermissionOverrideOutcome);
         },
         readProperties(
             timeoutMs = EngineCommandContracts.readProperties.timeoutMs,

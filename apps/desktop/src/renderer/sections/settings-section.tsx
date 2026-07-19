@@ -779,6 +779,9 @@ export function SettingsSection(): ReactElement {
                                     : p,
                             ),
                         );
+                    } else if (result.kind === 'domain') {
+                        setPersistenceError(`Permission override rejected: ${result.error}`);
+                        console.error('Failed to set permission override:', result);
                     } else {
                         setPersistenceError(
                             persistenceErrorMessage(result.error, result.diagnostic),

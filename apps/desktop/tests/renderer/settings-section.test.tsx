@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { propertiesTemplateFromDefaults } from '../../src/renderer/sections/properties-template.js';
 import { SettingsSection } from '../../src/renderer/sections/settings-section.js';
 import { useAppStore } from '../../src/renderer/store/app-store.js';
+import type { PluginInfo } from '../../src/shared/plugin-info.js';
 import { createMockSigil, withSigil } from './test-support.js';
 
 afterEach(() => {
@@ -102,6 +103,100 @@ describe('Settings Properties File template', () => {
         await user.click(screen.getByRole('button', { name: 'Save' }));
 
         await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(expected));
+    });
+});
+
+describe('Settings Plugin Permissions', () => {
+    const pluginInfo = {
+        manifest: {
+            id: 'plugin-1',
+            version: '1.0.0',
+            permissions: ['filesystem.read'],
+            emits: [],
+        },
+        grantedPermissions: ['filesystem.read'],
+    } satisfies PluginInfo;
+
+    async function submitPermissionOverride(
+        result:
+            | {
+                  readonly ok: true;
+              }
+            | {
+                  readonly ok: false;
+                  readonly kind: 'domain';
+                  readonly code: 'unknown_plugin';
+                  readonly pluginId: string;
+                  readonly error: string;
+              }
+            | {
+                  readonly ok: false;
+                  readonly kind: 'persistence';
+                  readonly error: string;
+                  readonly diagnostic: {
+                      readonly kind: 'persistence';
+                      readonly operation: 'write';
+                      readonly phase: 'replace';
+                      readonly path: string;
+                      readonly message: string;
+                  };
+              },
+    ): Promise<void> {
+        const sigil = createMockSigil();
+        vi.mocked(sigil.listPlugins).mockResolvedValue([pluginInfo]);
+        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {} });
+        vi.mocked(sigil.setPermissionOverride).mockResolvedValue(result);
+
+        render(withSigil(<SettingsSection />, sigil));
+        const user = userEvent.setup();
+
+        await waitFor(() => expect(screen.getByText('plugin-1')).toBeInTheDocument());
+        await user.click(screen.getByRole('button', { name: 'Override' }));
+        await user.click(screen.getByRole('button', { name: 'Save' }));
+
+        await waitFor(() =>
+            expect(sigil.setPermissionOverride).toHaveBeenCalledWith('plugin-1', [
+                'filesystem.read',
+            ]),
+        );
+    }
+
+    it('reports an unknown Plugin rejection without labeling it as a write failure', async () => {
+        await submitPermissionOverride({
+            ok: false,
+            kind: 'domain',
+            code: 'unknown_plugin',
+            pluginId: 'plugin-1',
+            error: 'Plugin "plugin-1" is not registered in the Manifest Registry.',
+        });
+
+        await waitFor(() =>
+            expect(screen.getByRole('alert')).toHaveTextContent(
+                'Permission override rejected: Plugin "plugin-1" is not registered in the Manifest Registry.',
+            ),
+        );
+        expect(screen.getByRole('alert')).not.toHaveTextContent('Write failure');
+    });
+
+    it('reports a registered Plugin persistence failure with its diagnostic', async () => {
+        await submitPermissionOverride({
+            ok: false,
+            kind: 'persistence',
+            error: 'replacement denied',
+            diagnostic: {
+                kind: 'persistence',
+                operation: 'write',
+                phase: 'replace',
+                path: 'C:/permission-overrides.json',
+                message: 'replacement denied',
+            },
+        });
+
+        await waitFor(() =>
+            expect(screen.getByRole('alert')).toHaveTextContent(
+                'replacement denied [replace] C:/permission-overrides.json',
+            ),
+        );
     });
 });
 

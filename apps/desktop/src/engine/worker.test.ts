@@ -44,7 +44,8 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
         execute: ReturnType<typeof vi.fn>;
         validateProperties: ReturnType<typeof vi.fn>;
         applyProperties: ReturnType<typeof vi.fn>;
-        registry: { all: ReturnType<typeof vi.fn> };
+        registry: { all: ReturnType<typeof vi.fn>; has: ReturnType<typeof vi.fn> };
+        updatePluginPermissions: ReturnType<typeof vi.fn>;
         propertyRegistry?: { defaults: ReturnType<typeof vi.fn> };
         permissionOverrides: {
             has: ReturnType<typeof vi.fn>;
@@ -92,6 +93,8 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
     const permissionHas = vi.fn();
     const permissionGet = vi.fn();
     const permissionSet = vi.fn().mockReturnValue(Either.right(undefined));
+    const registryHas = vi.fn().mockReturnValue(true);
+    const updatePluginPermissions = vi.fn();
     const listKeys = vi.fn().mockReturnValue([]);
     const setKey = vi.fn();
     const deleteKey = vi.fn();
@@ -112,7 +115,8 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
                 execute,
                 validateProperties,
                 applyProperties,
-                registry: { all: registryAll },
+                registry: { all: registryAll, has: registryHas },
+                updatePluginPermissions,
                 ...(propertyRegistry === undefined ? {} : { propertyRegistry }),
                 permissionOverrides: {
                     has: permissionHas,
@@ -149,7 +153,8 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
             execute,
             validateProperties,
             applyProperties,
-            registry: { all: registryAll },
+            registry: { all: registryAll, has: registryHas },
+            updatePluginPermissions,
             ...(propertyRegistry === undefined ? {} : { propertyRegistry }),
             permissionOverrides: { has: permissionHas, get: permissionGet, set: permissionSet },
             workflowStateStore: { listKeys, setKey, deleteKey, deleteWorkflow },
@@ -741,11 +746,41 @@ describe('dispatch', () => {
         };
         dispatch(message, subsystems);
 
+        expect(engine.registry.has).toHaveBeenCalledWith('plugin-a');
         expect(engine.permissionOverrides.set).toHaveBeenCalledWith('plugin-a', []);
+        expect(engine.updatePluginPermissions).toHaveBeenCalledWith('plugin-a', []);
         expect(postMessage).toHaveBeenCalledWith({
             type: EngineChannel.SetPermissionOverrideResult,
             correlationId: 'corr-7',
             ok: true,
+        });
+    });
+
+    it('rejects an unknown Plugin before persistence or worker permission updates', () => {
+        const { subsystems, postMessage, engine } = createFakeSubsystems();
+        engine.registry.has.mockReturnValue(false);
+
+        dispatch(
+            {
+                type: EngineChannel.SetPermissionOverride,
+                correlationId: 'corr-unknown-plugin',
+                pluginId: 'plugin-ghost',
+                overrides: [],
+            },
+            subsystems,
+        );
+
+        expect(engine.registry.has).toHaveBeenCalledWith('plugin-ghost');
+        expect(engine.permissionOverrides.set).not.toHaveBeenCalled();
+        expect(engine.updatePluginPermissions).not.toHaveBeenCalled();
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.SetPermissionOverrideResult,
+            correlationId: 'corr-unknown-plugin',
+            ok: false,
+            kind: 'domain',
+            code: 'unknown_plugin',
+            pluginId: 'plugin-ghost',
+            error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
         });
     });
 
@@ -774,9 +809,11 @@ describe('dispatch', () => {
             type: EngineChannel.SetPermissionOverrideResult,
             correlationId: 'corr-permission-failed',
             ok: false,
+            kind: 'persistence',
             error: '[persistence:write] C:/permission-overrides.json: disk full',
             diagnostic,
         });
+        expect(engine.updatePluginPermissions).not.toHaveBeenCalled();
     });
 
     it('routes ReadProperties and posts the loaded properties', () => {

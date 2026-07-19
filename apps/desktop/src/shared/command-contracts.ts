@@ -53,7 +53,7 @@ import {
     WorkflowStatePrimitiveSchema,
     WorkflowWriteOutcomeSchema,
 } from './ipc-channels.js';
-import { PersistenceWriteOutcomeSchema, PropertiesSaveOutcomeSchema } from './persistence.js';
+import { PermissionOverrideOutcomeSchema, PropertiesSaveOutcomeSchema } from './persistence.js';
 
 export { CommandCorrelationIdSchema, CorrelationIdSchema } from './ipc-channels.js';
 export { EngineToMainMessageSchema, MainToEngineMessageSchema };
@@ -363,7 +363,7 @@ const rendererCommands = {
         direction: 'renderer-to-main',
         channel: RendererChannel.SetPermissionOverride,
         requestSchema: z.tuple([z.string(), z.array(CapabilitySchema).readonly()]),
-        responseSchema: PersistenceWriteOutcomeSchema,
+        responseSchema: PermissionOverrideOutcomeSchema,
     },
     readProperties: {
         direction: 'renderer-to-main',

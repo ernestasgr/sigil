@@ -8,8 +8,8 @@ import {
     type RendererResponse,
 } from '../shared/command-contracts.js';
 import {
+    type PermissionOverrideOutcome,
     PersistenceDiagnosticSchema,
-    type PersistenceWriteOutcome,
     type PropertiesSaveOutcome,
 } from '../shared/persistence.js';
 import type { EngineHandle } from './engine-client.js';
@@ -31,7 +31,7 @@ function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
-function persistenceFailure(error: unknown, fallbackPath: string): PersistenceWriteOutcome {
+function persistenceFailure(error: unknown, fallbackPath: string): PermissionOverrideOutcome {
     const record = isRecord(error) ? error : undefined;
     const diagnostics = record?.diagnostics;
     if (Array.isArray(diagnostics)) {
@@ -41,6 +41,7 @@ function persistenceFailure(error: unknown, fallbackPath: string): PersistenceWr
         if (diagnostic?.success) {
             return {
                 ok: false,
+                kind: 'persistence',
                 error: errorMessage(error),
                 diagnostic: diagnostic.data,
             };
@@ -50,6 +51,7 @@ function persistenceFailure(error: unknown, fallbackPath: string): PersistenceWr
     const message = errorMessage(error);
     return {
         ok: false,
+        kind: 'persistence',
         error: message,
         diagnostic: {
             kind: 'persistence',
