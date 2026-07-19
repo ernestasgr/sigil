@@ -89,11 +89,8 @@ jobs:
             - name: Fast gate - typecheck
               run: pnpm typecheck
 
-            - name: Fast gate - pure schema and renderer tests
+            - name: Fast gate - schema and renderer tests
               run: pnpm test:fast
-
-            - name: Fast gate - renderer DOM interaction tests
-              run: pnpm --filter @sigil/desktop test:renderer:dom
 
             - name: Bootstrap - prepare native SQLite runtime
               run: pnpm setup:native
@@ -159,7 +156,7 @@ jobs:
                       '',
                       "- **Status:** $env:JOB_STATUS",
                       "- **Runner:** $env:RUNNER_OS",
-                      '- **Commands:** `pnpm lint`, `pnpm format:check`, `pnpm architecture:check`, `pnpm structure:check`, `pnpm structure:test`, `pnpm structure:check:json`, `pnpm typecheck`, `pnpm test:fast`, `pnpm --filter @sigil/desktop test:renderer:dom`, native setup/check, `pnpm test:coverage` (schema, desktop, and renderer projects), `pnpm coverage:check`, `pnpm build`, `pnpm --filter @sigil/desktop test:e2e`, and `pnpm verify:production`',
+                      '- **Commands:** `pnpm lint`, `pnpm format:check`, `pnpm architecture:check`, `pnpm structure:check`, `pnpm structure:test`, `pnpm structure:check:json`, `pnpm workflows:check`, `pnpm typecheck`, `pnpm test:fast` (including the composed renderer unit and DOM tests), native setup/check, `pnpm test:coverage` (schema, desktop, and renderer projects), `pnpm coverage:check`, `pnpm build`, `pnpm --filter @sigil/desktop test:e2e`, and `pnpm verify:production`',
                       '- **Bootstrap ownership:** Node.js, pnpm, Python, Visual Studio C++ prerequisites, dependency installation, ast-grep CLI preparation, schema build, and native SQLite setup.',
                       '- **Product ownership:** static checks, pure tests, native tests, coverage baseline, production build, artifact completeness, and Electron startup.',
                       '- **Native isolation:** dependency lifecycle scripts are disabled during install; native setup runs explicitly after the fast checks.'
