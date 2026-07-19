@@ -101,6 +101,7 @@ describe('EngineToMainMessageSchema', () => {
             type: EngineChannel.SavePropertiesResult,
             correlationId: 'corr-persistence',
             ok: false,
+            kind: 'write',
             error: 'replacement denied',
             diagnostic: {
                 kind: 'persistence',

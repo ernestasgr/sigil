@@ -2,12 +2,17 @@ import { CompiledPipelineSchema } from '@sigil/schema';
 import { CapabilitySchema, ManifestSchema } from '@sigil/schema/manifest';
 import { TopologyDiagnosticSchema } from '@sigil/schema/topology';
 import { z } from 'zod';
-import { PersistenceDiagnosticSchema } from './persistence.js';
+import {
+    PersistenceDiagnosticSchema,
+    PropertiesSaveSuccessFieldsSchema,
+    PropertiesValidationFailureFieldsSchema,
+    PropertiesWriteFailureFieldsSchema,
+} from './persistence.js';
 import { EventTelemetrySchema } from './telemetry.js';
 import { WorkflowIdSchema, WorkflowSummarySchema } from './workflow.js';
 
-export type { PersistenceDiagnostic } from './persistence.js';
-export { PersistenceDiagnosticSchema } from './persistence.js';
+export type { PersistenceDiagnostic, PropertiesSaveOutcome } from './persistence.js';
+export { PersistenceDiagnosticSchema, PropertiesSaveOutcomeSchema } from './persistence.js';
 export { WorkflowIdSchema } from './workflow.js';
 
 const WorkflowWriteDiagnosticSchema = z.union([
@@ -507,21 +512,22 @@ export const EngineSavePropertiesSchema = z.object({
 });
 export type EngineSaveProperties = z.infer<typeof EngineSavePropertiesSchema>;
 
-const EngineSavePropertiesSuccessSchema = z.object({
+const EngineSavePropertiesSuccessSchema = PropertiesSaveSuccessFieldsSchema.extend({
     type: z.literal(EngineChannel.SavePropertiesResult),
     correlationId: CorrelationIdSchema,
-    ok: z.literal(true),
 });
-const EngineSavePropertiesFailureSchema = z.object({
+const EngineSavePropertiesValidationFailureSchema = PropertiesValidationFailureFieldsSchema.extend({
     type: z.literal(EngineChannel.SavePropertiesResult),
     correlationId: CorrelationIdSchema,
-    ok: z.literal(false),
-    error: z.string(),
-    diagnostic: PersistenceDiagnosticSchema,
+});
+const EngineSavePropertiesWriteFailureSchema = PropertiesWriteFailureFieldsSchema.extend({
+    type: z.literal(EngineChannel.SavePropertiesResult),
+    correlationId: CorrelationIdSchema,
 });
 export const EngineSavePropertiesResultSchema = z.union([
     EngineSavePropertiesSuccessSchema,
-    EngineSavePropertiesFailureSchema,
+    EngineSavePropertiesValidationFailureSchema,
+    EngineSavePropertiesWriteFailureSchema,
 ]);
 export type EngineSavePropertiesResult = z.infer<typeof EngineSavePropertiesResultSchema>;
 

@@ -104,7 +104,10 @@ const engineFixtures = {
         response: { ok: true },
     },
     readProperties: { request: {}, response: { properties: {} } },
-    saveProperties: { request: { properties: {} }, response: { ok: true } },
+    saveProperties: {
+        request: { properties: {} },
+        response: { ok: true, applied: {}, restartRequired: [] },
+    },
     fireManualTrigger: { request: { pipeline }, response: { ok: true } },
     readWorkflowState: { request: { workflowId: 'wf-1' }, response: { entries: [] } },
     setWorkflowStateKey: {

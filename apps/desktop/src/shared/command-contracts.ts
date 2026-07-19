@@ -53,7 +53,7 @@ import {
     WorkflowStatePrimitiveSchema,
     WorkflowWriteOutcomeSchema,
 } from './ipc-channels.js';
-import { PersistenceWriteOutcomeSchema } from './persistence.js';
+import { PersistenceWriteOutcomeSchema, PropertiesSaveOutcomeSchema } from './persistence.js';
 
 export { CommandCorrelationIdSchema, CorrelationIdSchema } from './ipc-channels.js';
 export { EngineToMainMessageSchema, MainToEngineMessageSchema };
@@ -380,7 +380,7 @@ const rendererCommands = {
         direction: 'renderer-to-main',
         channel: RendererChannel.SaveProperties,
         requestSchema: z.record(z.string(), z.unknown()).readonly(),
-        responseSchema: PersistenceWriteOutcomeSchema,
+        responseSchema: PropertiesSaveOutcomeSchema,
     },
     openFileDialog: {
         direction: 'renderer-to-main',

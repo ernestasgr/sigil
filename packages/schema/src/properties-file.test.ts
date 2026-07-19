@@ -24,10 +24,13 @@ describe('Property registry', () => {
             'example-plugin.enabled',
             z.object({ enabled: z.boolean() }),
             { enabled: false },
+            'hot',
         );
         const serialized = serializePropertyDescriptor(descriptor);
         const registry = createPropertyRegistry([]);
 
+        expect(descriptor.apply).toBe('hot');
+        expect(serialized.apply).toBe('hot');
         const registration = registry.register(serialized);
 
         expect(registration).toMatchObject({
@@ -44,17 +47,33 @@ describe('Property registry', () => {
     it('reports invalid descriptor inputs without changing the registry', () => {
         const registry = createPropertyRegistry([]);
 
-        expect(registry.register({ key: '', schema: z.string(), fallback: 'value' })).toMatchObject(
-            {
-                ok: false,
-                error: { kind: 'invalid_descriptor' },
+        expect(
+            registry.register({
+                key: 'missing.apply',
+                schema: z.string(),
+                fallback: 'value',
+            } as never),
+        ).toMatchObject({
+            ok: false,
+            error: {
+                kind: 'invalid_descriptor',
+                key: 'missing.apply',
+                message: expect.stringContaining('apply mode'),
             },
-        );
+        });
+
+        expect(
+            registry.register({ key: '', schema: z.string(), fallback: 'value', apply: 'hot' }),
+        ).toMatchObject({
+            ok: false,
+            error: { kind: 'invalid_descriptor' },
+        });
         expect(
             registry.register({
                 key: 'invalid.schema',
                 schema: 42 as never,
                 fallback: 'value',
+                apply: 'hot',
             }),
         ).toMatchObject({
             ok: false,
@@ -68,6 +87,7 @@ describe('Property registry', () => {
                 key: 'invalid.json-schema',
                 schema: { type: 'not-a-json-schema' },
                 fallback: 'value',
+                apply: 'hot',
             }),
         ).toMatchObject({
             ok: false,
@@ -81,6 +101,7 @@ describe('Property registry', () => {
                 key: 'invalid.fallback',
                 schema: z.string(),
                 fallback: 42 as never,
+                apply: 'hot',
             }),
         ).toMatchObject({
             ok: false,
@@ -95,6 +116,7 @@ describe('Property registry', () => {
                 key: 'invalid.fallback',
                 schema: z.string(),
                 fallback: 42 as never,
+                apply: 'hot',
             }),
         ).toThrow(/does not match its schema/);
     });
@@ -103,7 +125,12 @@ describe('Property registry', () => {
         const registry = createPropertyRegistry([]);
 
         expect(
-            registry.register({ key: '__proto__', schema: z.string(), fallback: 'value' }),
+            registry.register({
+                key: '__proto__',
+                schema: z.string(),
+                fallback: 'value',
+                apply: 'hot',
+            }),
         ).toMatchObject({
             ok: false,
             error: { kind: 'invalid_descriptor', key: '__proto__' },
@@ -115,6 +142,7 @@ describe('Property registry', () => {
                 key: 'serialized.invalid-fallback',
                 schema: { type: 'string' },
                 fallback: undefined,
+                apply: 'hot',
             }).success,
         ).toBe(false);
         expect(
@@ -122,6 +150,7 @@ describe('Property registry', () => {
                 key: 'invalid.json-fallback',
                 schema: z.bigint(),
                 fallback: 1n,
+                apply: 'hot',
             }),
         ).toMatchObject({
             ok: false,
@@ -136,13 +165,19 @@ describe('Property registry', () => {
                 key: 'invalid.json-fallback',
                 schema: z.bigint(),
                 fallback: 1n,
+                apply: 'hot',
             }),
         ).toThrow('must be JSON-safe');
     });
 
     it('only accepts an exact descriptor when allowing an existing key', () => {
         const registry = createPropertyRegistry([]);
-        const descriptor = definePropertyDescriptor('example-plugin.mode', z.string(), 'safe');
+        const descriptor = definePropertyDescriptor(
+            'example-plugin.mode',
+            z.string(),
+            'safe',
+            'hot',
+        );
 
         expect(registry.register(descriptor)).toMatchObject({ ok: true, registered: true });
         expect(registry.register(descriptor)).toMatchObject({
@@ -155,7 +190,7 @@ describe('Property registry', () => {
         });
         expect(
             registry.register(
-                definePropertyDescriptor('example-plugin.mode', z.string(), 'unsafe'),
+                definePropertyDescriptor('example-plugin.mode', z.string(), 'unsafe', 'hot'),
                 { allowExisting: true },
             ),
         ).toMatchObject({
@@ -163,9 +198,12 @@ describe('Property registry', () => {
             error: { kind: 'duplicate', key: 'example-plugin.mode' },
         });
         expect(
-            registry.register(definePropertyDescriptor('example-plugin.mode', z.number(), 1), {
-                allowExisting: true,
-            }),
+            registry.register(
+                definePropertyDescriptor('example-plugin.mode', z.number(), 1, 'hot'),
+                {
+                    allowExisting: true,
+                },
+            ),
         ).toMatchObject({
             ok: false,
             error: { kind: 'duplicate', key: 'example-plugin.mode' },
@@ -173,8 +211,8 @@ describe('Property registry', () => {
     });
 
     it('rolls back a batch when a later descriptor is invalid or duplicated', () => {
-        const first = definePropertyDescriptor('example-plugin.first', z.string(), 'first');
-        const second = definePropertyDescriptor('example-plugin.second', z.number(), 2);
+        const first = definePropertyDescriptor('example-plugin.first', z.string(), 'first', 'hot');
+        const second = definePropertyDescriptor('example-plugin.second', z.number(), 2, 'hot');
         const registry = createPropertyRegistry([]);
 
         expect(
@@ -184,6 +222,7 @@ describe('Property registry', () => {
                     key: 'example-plugin.invalid',
                     schema: z.string(),
                     fallback: 42 as never,
+                    apply: 'hot',
                 },
             ]),
         ).toMatchObject({
@@ -216,7 +255,7 @@ describe('Property registry', () => {
 
     it('resolves a registered key through explicit, file, caller fallback, and descriptor fallback values', () => {
         const registry = createPropertyRegistry([
-            definePropertyDescriptor('example-plugin.mode', z.string(), 'hardcoded'),
+            definePropertyDescriptor('example-plugin.mode', z.string(), 'hardcoded', 'hot'),
         ]);
 
         expect(
@@ -244,7 +283,12 @@ describe('Property registry', () => {
 
     it('refreshes its schema and defaults when a descriptor is removed', () => {
         const registry = createPropertyRegistry([]);
-        const descriptor = definePropertyDescriptor('example-plugin.enabled', z.boolean(), false);
+        const descriptor = definePropertyDescriptor(
+            'example-plugin.enabled',
+            z.boolean(),
+            false,
+            'hot',
+        );
 
         registry.register(descriptor);
         expect(registry.schema().safeParse({ 'example-plugin.enabled': true }).success).toBe(true);
@@ -257,7 +301,12 @@ describe('Property registry', () => {
     });
 
     it('rejects invalid or duplicate initial descriptors', () => {
-        const descriptor = definePropertyDescriptor('example-plugin.mode', z.string(), 'safe');
+        const descriptor = definePropertyDescriptor(
+            'example-plugin.mode',
+            z.string(),
+            'safe',
+            'hot',
+        );
 
         expect(() => createPropertyRegistry([descriptor, descriptor])).toThrow(
             `Duplicate property "${descriptor.key}"`,
@@ -268,6 +317,7 @@ describe('Property registry', () => {
                     key: 'example-plugin.invalid',
                     schema: z.string(),
                     fallback: 42 as never,
+                    apply: 'hot',
                 },
             ]),
         ).toThrow(/does not match its schema/);
@@ -278,6 +328,7 @@ describe('Property registry', () => {
             'example-plugin.global-enabled',
             z.boolean(),
             false,
+            'hot',
         );
 
         try {
@@ -298,7 +349,7 @@ describe('Properties resolution', () => {
     it('registers a Plugin descriptor into validation and default resolution', () => {
         const registry = createPropertyRegistry();
         const registration = registry.register(
-            definePropertyDescriptor('example-plugin.enabled', z.boolean(), false),
+            definePropertyDescriptor('example-plugin.enabled', z.boolean(), false, 'hot'),
         );
 
         expect(registration.ok).toBe(true);

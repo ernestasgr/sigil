@@ -123,7 +123,7 @@ export const descriptor = {
     configSchema: ConfigSchema,
     defaultConfig: {},
     getOutputPorts: () => ['out'] as const,
-    properties: [{ key: 'property-node.message', schema: z.string(), fallback: 'hello' }],
+    properties: [{ key: 'property-node.message', schema: z.string(), fallback: 'hello', apply: 'hot' }],
 };
 
 export const handler = {
@@ -143,12 +143,12 @@ export const descriptor = {
     configSchema: ConfigSchema,
     defaultConfig: {},
     getOutputPorts: () => ['out'] as const,
-    properties: [{ key: 'all-property-sources.descriptor', schema: z.string(), fallback: 'descriptor' }],
-    propertyDescriptors: [{ key: 'all-property-sources.propertyDescriptors', schema: z.boolean(), fallback: false }],
+    properties: [{ key: 'all-property-sources.descriptor', schema: z.string(), fallback: 'descriptor', apply: 'hot' }],
+    propertyDescriptors: [{ key: 'all-property-sources.propertyDescriptors', schema: z.boolean(), fallback: false, apply: 'hot' }],
 };
 
 export const properties = [
-    { key: 'all-property-sources.module', schema: z.number(), fallback: 3 },
+    { key: 'all-property-sources.module', schema: z.number(), fallback: 3, apply: 'hot' },
 ];
 
 export const handler = {
@@ -287,8 +287,8 @@ describe('loadNodePlugin', () => {
     it('reports duplicate declarations from one plugin before registration', async () => {
         const pluginDir = join(tempDir, 'duplicate-declared-property-plugin');
         const duplicateHandler = PROPERTY_PLUGIN_HANDLER.replace(
-            "properties: [{ key: 'property-node.message', schema: z.string(), fallback: 'hello' }],",
-            "properties: [{ key: 'property-node.message', schema: z.string(), fallback: 'hello' }, { key: 'property-node.message', schema: z.string(), fallback: 'again' }],",
+            "properties: [{ key: 'property-node.message', schema: z.string(), fallback: 'hello', apply: 'hot' }],",
+            "properties: [{ key: 'property-node.message', schema: z.string(), fallback: 'hello', apply: 'hot' }, { key: 'property-node.message', schema: z.string(), fallback: 'again', apply: 'hot' }],",
         );
         writePlugin(
             pluginDir,
@@ -331,8 +331,8 @@ describe('loadNodePlugin', () => {
                 nodeType: 'invalid-property-node',
             },
             PROPERTY_PLUGIN_HANDLER.replace(
-                "key: 'property-node.message', schema: z.string(), fallback: 'hello'",
-                "key: 'invalid-property.message', schema: z.string(), fallback: 42",
+                "key: 'property-node.message', schema: z.string(), fallback: 'hello', apply: 'hot'",
+                "key: 'invalid-property.message', schema: z.string(), fallback: 42, apply: 'hot'",
             ).replaceAll('property-node', 'invalid-property-node'),
         );
 
@@ -457,8 +457,8 @@ describe('loadNodePlugin', () => {
                 'property-node',
                 'manifest-race-property-node',
             ).replace(
-                `properties: [{ key: '${existingPropertyKey}', schema: z.string(), fallback: 'hello' }],`,
-                `properties: [{ key: '${existingPropertyKey}', schema: z.string(), fallback: 'hello' }, { key: '${newPropertyKey}', schema: z.boolean(), fallback: false }],`,
+                `properties: [{ key: '${existingPropertyKey}', schema: z.string(), fallback: 'hello', apply: 'hot' }],`,
+                `properties: [{ key: '${existingPropertyKey}', schema: z.string(), fallback: 'hello', apply: 'hot' }, { key: '${newPropertyKey}', schema: z.boolean(), fallback: false, apply: 'hot' }],`,
             ),
         );
 
@@ -471,7 +471,7 @@ describe('loadNodePlugin', () => {
         const propertyRegistry = createPropertyRegistry();
         expect(
             propertyRegistry.register(
-                definePropertyDescriptor(existingPropertyKey, z.string(), 'hello'),
+                definePropertyDescriptor(existingPropertyKey, z.string(), 'hello', 'hot'),
                 { owner: manifestId },
             ),
         ).toMatchObject({ ok: true, registered: true });

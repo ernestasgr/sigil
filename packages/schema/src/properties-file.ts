@@ -13,6 +13,9 @@ export const DEFAULT_IGNORE_PATTERNS: readonly string[] = [
     '*.download',
 ];
 
+export const PropertyApplyModeSchema = z.enum(['hot', 'restart-required']);
+export type PropertyApplyMode = z.infer<typeof PropertyApplyModeSchema>;
+
 export interface PropertyDescriptor<
     TKey extends string = string,
     TSchema extends z.ZodType = z.ZodType,
@@ -20,6 +23,7 @@ export interface PropertyDescriptor<
     readonly key: TKey;
     readonly schema: TSchema;
     readonly fallback: z.output<TSchema>;
+    readonly apply: PropertyApplyMode;
 }
 
 export type AnyPropertyDescriptor = PropertyDescriptor<string, z.ZodType>;
@@ -29,6 +33,7 @@ export interface SerializedPropertyDescriptor {
     readonly key: string;
     readonly schema: PropertySchemaJson;
     readonly fallback: unknown;
+    readonly apply: PropertyApplyMode;
 }
 
 function isJsonSafe(value: unknown, seen = new Set<object>()): boolean {
@@ -77,6 +82,7 @@ export const SerializedPropertyDescriptorSchema = z
             }),
         schema: z.union([z.boolean(), z.record(z.string(), z.unknown())]),
         fallback: JsonSafeFallbackSchema,
+        apply: PropertyApplyModeSchema,
     })
     .strict();
 
@@ -84,32 +90,52 @@ export function definePropertyDescriptor<TKey extends string, TSchema extends z.
     key: TKey,
     schema: TSchema,
     fallback: z.output<TSchema>,
+    apply: PropertyApplyMode,
 ): PropertyDescriptor<TKey, TSchema> {
-    return { key, schema, fallback };
+    return {
+        key,
+        schema,
+        fallback,
+        apply,
+    };
 }
 
 export const PROPERTY_DESCRIPTORS = {
-    notifyOnWorkflowError: definePropertyDescriptor('notifyOnWorkflowError', z.boolean(), true),
-    databasePath: definePropertyDescriptor('databasePath', z.string(), ':memory:'),
+    notifyOnWorkflowError: definePropertyDescriptor(
+        'notifyOnWorkflowError',
+        z.boolean(),
+        true,
+        'hot',
+    ),
+    databasePath: definePropertyDescriptor(
+        'databasePath',
+        z.string(),
+        ':memory:',
+        'restart-required',
+    ),
     collisionSuffixStyle: definePropertyDescriptor(
         'collisionSuffixStyle',
         CollisionSuffixStyleSchema,
         'windows',
+        'hot',
     ),
     'file-watcher.ignorePatterns': definePropertyDescriptor(
         'file-watcher.ignorePatterns',
         z.array(z.string()).readonly(),
         DEFAULT_IGNORE_PATTERNS,
+        'hot',
     ),
     'file-manager.defaultOnConflict': definePropertyDescriptor(
         'file-manager.defaultOnConflict',
         ConflictPolicySchema,
         'error',
+        'hot',
     ),
     'file-manager.collisionSuffixStyle': definePropertyDescriptor(
         'file-manager.collisionSuffixStyle',
         CollisionSuffixStyleSchema,
         'windows',
+        'hot',
     ),
 } as const satisfies Readonly<Record<string, PropertyDescriptor<string, z.ZodType>>>;
 
@@ -211,11 +237,18 @@ export function serializePropertyDescriptor(
     if (!isJsonSafe(fallback.data)) {
         throw new Error(`Fallback for property "${descriptor.key}" must be JSON-safe.`);
     }
+    const apply = PropertyApplyModeSchema.safeParse(descriptor.apply);
+    if (!apply.success) {
+        throw new Error(
+            `Property "${descriptor.key}" must declare an apply mode of "hot" or "restart-required".`,
+        );
+    }
 
     return {
         key: descriptor.key,
         schema: z.toJSONSchema(descriptor.schema),
         fallback: fallback.data,
+        apply: apply.data,
     };
 }
 
@@ -285,12 +318,21 @@ function normalizeDescriptor(
         return invalidDescriptor('Property descriptor fallback must be JSON-safe.', key);
     }
 
+    const apply = PropertyApplyModeSchema.safeParse(input.apply);
+    if (!apply.success) {
+        return invalidDescriptor(
+            'Property descriptor must explicitly declare an apply mode of "hot" or "restart-required".',
+            key,
+        );
+    }
+
     return {
         ok: true,
         descriptor: {
             key,
             schema,
             fallback: fallback.data,
+            apply: apply.data,
         },
     };
 }
@@ -304,6 +346,7 @@ function schemaFingerprint(schema: z.ZodType): string | undefined {
 }
 
 function descriptorsMatch(first: AnyPropertyDescriptor, second: AnyPropertyDescriptor): boolean {
+    if (first.apply !== second.apply) return false;
     const firstSchema = schemaFingerprint(first.schema);
     const secondSchema = schemaFingerprint(second.schema);
     if (firstSchema === undefined || firstSchema !== secondSchema) return false;

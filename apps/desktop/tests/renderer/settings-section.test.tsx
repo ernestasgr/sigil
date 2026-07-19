@@ -1,5 +1,5 @@
 import { createPropertyRegistry, definePropertyDescriptor } from '@sigil/schema/properties-file';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -15,7 +15,9 @@ afterEach(() => {
 describe('Settings Properties File template', () => {
     it('uses the registered Engine defaults supplied with the Properties snapshot', async () => {
         const registry = createPropertyRegistry();
-        registry.register(definePropertyDescriptor('example-plugin.enabled', z.boolean(), false));
+        registry.register(
+            definePropertyDescriptor('example-plugin.enabled', z.boolean(), false, 'hot'),
+        );
         const defaults = registry.defaults();
 
         const sigil = createMockSigil();
@@ -32,6 +34,74 @@ describe('Settings Properties File template', () => {
         const template = screen.getByRole('textbox') as HTMLTextAreaElement;
         expect(template).toHaveValue(propertiesTemplateFromDefaults(defaults));
         expect(registry.schema().safeParse(JSON.parse(template.value)).success).toBe(true);
+    });
+
+    it('reports hot-applied values and restart-required values separately', async () => {
+        const sigil = createMockSigil();
+        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {} });
+        vi.mocked(sigil.saveProperties).mockResolvedValue({
+            ok: true,
+            applied: { notifyOnWorkflowError: false },
+            restartRequired: ['databasePath'],
+        });
+
+        render(withSigil(<SettingsSection />, sigil));
+        const user = userEvent.setup();
+        await waitFor(() => expect(sigil.readProperties).toHaveBeenCalled());
+        await user.click(screen.getByRole('button', { name: 'Properties File' }));
+
+        const editor = screen.getByRole('textbox');
+        fireEvent.change(editor, {
+            target: { value: '{"notifyOnWorkflowError":false,"databasePath":"next.db"}' },
+        });
+        await user.click(screen.getByRole('button', { name: 'Save' }));
+
+        await waitFor(() => expect(sigil.saveProperties).toHaveBeenCalled());
+        expect(screen.getByRole('status')).toHaveTextContent('Applied now');
+        expect(screen.getByRole('status')).toHaveTextContent('Restart required: databasePath');
+    });
+
+    it.each([
+        {
+            kind: 'validation' as const,
+            error: 'notifyOnWorkflowError: expected boolean',
+            issues: ['notifyOnWorkflowError: expected boolean'],
+            expected: 'Validation error',
+        },
+        {
+            kind: 'write' as const,
+            error: 'disk full',
+            diagnostic: {
+                kind: 'persistence' as const,
+                operation: 'write' as const,
+                phase: 'replace' as const,
+                path: 'sigil.properties.json',
+                message: 'disk full',
+            },
+            expected: 'Write failure',
+        },
+    ])('labels $kind failures distinctly', async ({
+        kind,
+        error,
+        diagnostic,
+        issues,
+        expected,
+    }) => {
+        const sigil = createMockSigil();
+        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {} });
+        vi.mocked(sigil.saveProperties).mockResolvedValue(
+            kind === 'validation'
+                ? { ok: false, kind, error, issues }
+                : { ok: false, kind, error, diagnostic },
+        );
+
+        render(withSigil(<SettingsSection />, sigil));
+        const user = userEvent.setup();
+        await waitFor(() => expect(sigil.readProperties).toHaveBeenCalled());
+        await user.click(screen.getByRole('button', { name: 'Properties File' }));
+        await user.click(screen.getByRole('button', { name: 'Save' }));
+
+        await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(expected));
     });
 });
 

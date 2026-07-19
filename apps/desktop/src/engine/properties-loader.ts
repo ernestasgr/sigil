@@ -49,7 +49,7 @@ export function readPropertiesFile(
 
 export function writePropertiesFile(
     filePath: string,
-    properties: Record<string, unknown>,
+    properties: Readonly<Record<string, unknown>>,
     writer: AtomicFileWriter = atomicFileWriter,
 ): WriteResult {
     let contents: string;

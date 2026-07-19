@@ -8,6 +8,7 @@ import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
 import type { PluginPipelineNode } from '@sigil/schema/nodes';
 import {
     type AnyPropertyDescriptor,
+    PropertyApplyModeSchema,
     serializePropertyDescriptor,
 } from '@sigil/schema/properties-file';
 import { type WorkflowContext, WorkflowContextSchema } from '@sigil/schema/workflow-context';
@@ -213,6 +214,19 @@ function serializePluginProperties(mod: RawPluginModule):
                 },
             };
         }
+        const apply = PropertyApplyModeSchema.safeParse(value.apply);
+        if (!apply.success) {
+            return {
+                ok: false,
+                error: {
+                    kind: 'invalid',
+                    index,
+                    key: value.key,
+                    message:
+                        'Plugin property descriptors require an apply mode of "hot" or "restart-required".',
+                },
+            };
+        }
         if (keys.has(value.key)) {
             return {
                 ok: false,
@@ -231,6 +245,7 @@ function serializePluginProperties(mod: RawPluginModule):
                 key: value.key,
                 schema: value.schema,
                 fallback: value.fallback,
+                apply: apply.data,
             };
             descriptors.push(serializePropertyDescriptor(descriptor));
         } catch (error) {
