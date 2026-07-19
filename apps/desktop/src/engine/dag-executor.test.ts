@@ -275,6 +275,47 @@ describe('dag-executor', () => {
                 .map((event) => (event.name === 'log.output' ? event.payload.message : ''));
             expect(messages).toEqual(['A', 'B', 'C']);
         });
+
+        it('preserves interleaved-depth execution order across fan-out branches', async () => {
+            const bus = createEventBus();
+            const events = captureEvents(bus);
+
+            await executePipeline(
+                pipeline(
+                    [
+                        trigger(),
+                        log('first', 'first'),
+                        log('second', 'second'),
+                        log('first-deep', 'first-deep'),
+                        log('second-deep', 'second-deep'),
+                        log('first-deeper', 'first-deeper'),
+                        log('second-deeper', 'second-deeper'),
+                    ],
+                    [
+                        edge('t-to-first', 'trigger', 'first', 'out'),
+                        edge('t-to-second', 'trigger', 'second', 'out'),
+                        edge('first-to-deep', 'first', 'first-deep', 'out'),
+                        edge('first-deep-to-deeper', 'first-deep', 'first-deeper', 'out'),
+                        edge('second-to-deep', 'second', 'second-deep', 'out'),
+                        edge('second-deep-to-deeper', 'second-deep', 'second-deeper', 'out'),
+                    ],
+                ),
+                bus,
+                handlerRegistry,
+            );
+
+            const messages = events
+                .filter((event) => event.name === 'log.output')
+                .map((event) => (event.name === 'log.output' ? event.payload.message : ''));
+            expect(messages).toEqual([
+                'first',
+                'second',
+                'first-deep',
+                'second-deep',
+                'first-deeper',
+                'second-deeper',
+            ]);
+        });
     });
 
     describe('executePipeline — delay', () => {
