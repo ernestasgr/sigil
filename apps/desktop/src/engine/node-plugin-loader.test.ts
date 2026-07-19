@@ -866,10 +866,18 @@ describe('loadNodePlugins', () => {
             );
 
             const { manifestRegistry, handlerRegistry } = createRegistries();
-            const loading = loadNodePlugins(tempDir, { manifestRegistry, handlerRegistry });
-
+            const silentPromise = loadNodePlugin(join(tempDir, '01-silent-plugin'), {
+                manifestRegistry,
+                handlerRegistry,
+            });
             await vi.advanceTimersByTimeAsync(30_000);
-            const results = await loading;
+            const results = [
+                await silentPromise,
+                await loadNodePlugin(join(tempDir, '02-good-plugin'), {
+                    manifestRegistry,
+                    handlerRegistry,
+                }),
+            ];
 
             expect(results).toHaveLength(2);
             expect(results[0]).toMatchObject({
