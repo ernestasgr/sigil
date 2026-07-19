@@ -98,7 +98,13 @@ export interface RunningElectronApplication {
     readonly application: ElectronApplication;
     readonly window: Page;
     readonly applicationLog: () => string;
-    readonly close: () => Promise<void>;
+    readonly close: () => Promise<ElectronApplicationExit>;
+}
+
+export interface ElectronApplicationExit {
+    readonly code: number | null;
+    readonly signal: NodeJS.Signals | null;
+    readonly forced: boolean;
 }
 
 export interface LaunchElectronOptions {
@@ -129,13 +135,38 @@ async function assertProductionEntry(entry: string): Promise<void> {
     }
 }
 
-async function closeQuietly(application: ElectronApplication): Promise<void> {
+function waitForProcessExit(process: ChildProcess): Promise<ElectronApplicationExit> {
+    if (process.exitCode !== null || process.signalCode !== null) {
+        return Promise.resolve({
+            code: process.exitCode,
+            signal: process.signalCode,
+            forced: false,
+        });
+    }
+
+    return new Promise((resolve) => {
+        process.once('exit', (code, signal) => {
+            resolve({ code, signal, forced: false });
+        });
+    });
+}
+
+async function closeQuietly(application: ElectronApplication): Promise<ElectronApplicationExit> {
+    const process = application.process();
+    const exit = waitForProcessExit(process);
+    let forced = false;
+
     try {
         await application.close();
     } catch {
-        const process = application.process();
-        if (process.exitCode === null && process.signalCode === null) process.kill();
+        if (process.exitCode === null && process.signalCode === null) {
+            forced = true;
+            process.kill();
+        }
     }
+
+    const result = await exit;
+    return { ...result, forced };
 }
 
 export async function launchElectron(
@@ -172,6 +203,8 @@ export async function launchElectron(
         output.append(`electron-console:${message.type()}`, message.text());
     });
 
+    let closePromise: Promise<ElectronApplicationExit> | undefined;
+
     try {
         await waitForEngineReady(
             process,
@@ -196,7 +229,10 @@ export async function launchElectron(
             application,
             window,
             applicationLog: output.text,
-            close: () => closeQuietly(application),
+            close: () => {
+                closePromise ??= closeQuietly(application);
+                return closePromise;
+            },
         };
     } catch (error) {
         await closeQuietly(application);
