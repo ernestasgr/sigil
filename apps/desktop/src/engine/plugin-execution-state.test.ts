@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { createPluginExecutionState, transitionPluginExecution } from './plugin-execution-state.js';
+import {
+    createPluginExecutionState,
+    type PluginExecutionEvent,
+    transitionPluginExecution,
+} from './plugin-execution-state.js';
 
 describe('Plugin execution cancellation state machine', () => {
     it('requires cancellation acknowledgement before a cancelled execution settles', () => {
@@ -35,5 +39,31 @@ describe('Plugin execution cancellation state machine', () => {
                 reason: 'late timeout',
             }),
         ).toEqual({ accepted: false, state: settled.state });
+    });
+
+    it('rejects cancellation acknowledgement and duplicate terminal transitions in the wrong state', () => {
+        const running = createPluginExecutionState();
+        const cancellationAcknowledgement: PluginExecutionEvent = {
+            kind: 'cancel-acknowledged',
+        };
+        expect(transitionPluginExecution(running, cancellationAcknowledgement)).toEqual({
+            accepted: false,
+            state: running,
+        });
+
+        const cancelling = transitionPluginExecution(running, {
+            kind: 'cancel-requested',
+            reason: 'execution timed out',
+        }).state;
+        for (const event of [
+            { kind: 'cancel-requested', reason: 'duplicate timeout' },
+            { kind: 'completed' },
+            { kind: 'failed' },
+        ] satisfies readonly PluginExecutionEvent[]) {
+            expect(transitionPluginExecution(cancelling, event)).toEqual({
+                accepted: false,
+                state: cancelling,
+            });
+        }
     });
 });

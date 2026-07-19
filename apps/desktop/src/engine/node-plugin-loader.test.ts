@@ -16,6 +16,7 @@ import type { CapabilityBroker } from './capability-broker.js';
 import { createCapabilityBroker } from './capability-broker.js';
 import { type BusEvent, createEventBus } from './event-bus.js';
 import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
+import type { FileEventCallback, SubscriberRegistration } from './file-watcher-manager.js';
 import { createManifestRegistry } from './manifest-registry.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
 import type { KernelDeps } from './node-handlers/types.js';
@@ -159,6 +160,46 @@ export const handler = {
             { once: true },
         );
         return new Promise(() => {});
+    },
+};
+`;
+
+const EVENT_THEN_BLOCK_PLUGIN_HANDLER = `
+import { z } from 'zod';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'event-then-block-node' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler = {
+    async execute(_input, deps) {
+        await deps.event.emit('delayed.output', { source: 'delayed-execution' });
+        return new Promise(() => {});
+    },
+};
+`;
+
+const RESOLVE_TEMPLATE_PLUGIN_HANDLER = `
+import { z } from 'zod';
+
+const ConfigSchema = z.object({});
+
+export const descriptor = {
+    type: 'resolve-template-node' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: {},
+    getOutputPorts: () => ['out'] as const,
+};
+
+export const handler = {
+    async execute({ ctx }, deps) {
+        const resolved = await deps.resolveTemplate('value', ctx);
+        return { outputCtx: { ...ctx, vars: { ...ctx.vars, resolved } }, activePort: 'out' };
     },
 };
 `;
@@ -680,6 +721,211 @@ describe('loadNodePlugin', () => {
         }
     });
 
+    it('rejects an execution whose caller signal is already aborted', async () => {
+        const pluginDir = join(tempDir, 'already-cancelled-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.already-cancelled',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'greet',
+            },
+            GREET_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('greet'));
+        const input = {
+            node: {
+                id: 'n1',
+                type: 'greet',
+                pluginId: 'com.sigil.already-cancelled',
+                config: { name: 'world' },
+            },
+            ctx: { event: '', payload: {}, vars: {} },
+        };
+
+        const stringReason = new AbortController();
+        stringReason.abort('caller cancelled');
+        await expect(
+            handler.execute(input, { signal: stringReason.signal } as never),
+        ).rejects.toThrow('caller cancelled');
+
+        const errorReason = new AbortController();
+        errorReason.abort(new Error('caller failed'));
+        await expect(
+            handler.execute(input, { signal: errorReason.signal } as never),
+        ).rejects.toThrow('caller failed');
+
+        let dispatchAborted = false;
+        const dispatchSignal = {
+            get aborted(): boolean {
+                return dispatchAborted;
+            },
+            reason: 'dispatch cancelled',
+            addEventListener(_type: string, listener: () => void): void {
+                dispatchAborted = true;
+                listener();
+            },
+            removeEventListener: (): void => undefined,
+        } as unknown as AbortSignal;
+        await expect(handler.execute(input, { signal: dispatchSignal } as never)).rejects.toThrow(
+            'dispatch cancelled',
+        );
+    });
+
+    it('cancels cooperative work from the caller signal and reuses the worker', async () => {
+        const pluginDir = join(tempDir, 'signal-cancellation-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.signal-cancellation',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'cooperative-timeout-node',
+            },
+            COOPERATIVE_TIMEOUT_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('cooperative-timeout-node'));
+        const controller = new AbortController();
+        let resolveSleepStarted: (() => void) | undefined;
+        const sleepStarted = new Promise<void>((resolve) => {
+            resolveSleepStarted = resolve;
+        });
+        const sleep = (_ms: number, signal?: AbortSignal): Promise<void> =>
+            new Promise<void>((_resolve, reject) => {
+                resolveSleepStarted?.();
+                if (signal?.aborted) {
+                    reject(new Error('sleep cancelled'));
+                    return;
+                }
+                signal?.addEventListener('abort', () => reject(new Error('sleep cancelled')), {
+                    once: true,
+                });
+            });
+
+        const execution = handler.execute(
+            {
+                node: {
+                    id: 'n1',
+                    type: 'cooperative-timeout-node',
+                    pluginId: 'com.sigil.signal-cancellation',
+                    config: { block: true },
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            },
+            { signal: controller.signal, sleep } as never,
+        );
+
+        await sleepStarted;
+        controller.abort('caller cancelled');
+        await expect(execution).rejects.toThrow('caller cancelled');
+
+        const next = await handler.execute(
+            {
+                node: {
+                    id: 'n2',
+                    type: 'cooperative-timeout-node',
+                    pluginId: 'com.sigil.signal-cancellation',
+                    config: { block: false },
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            },
+            { sleep: async () => undefined } as never,
+        );
+
+        expect(next.activePort).toBe('out');
+    });
+
+    it('normalizes a non-Error dependency rejection from a cooperative handler', async () => {
+        const pluginDir = join(tempDir, 'string-dependency-error-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.string-dependency-error',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'cooperative-timeout-node',
+            },
+            COOPERATIVE_TIMEOUT_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('cooperative-timeout-node'));
+        await expect(
+            handler.execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'cooperative-timeout-node',
+                        pluginId: 'com.sigil.string-dependency-error',
+                        config: { block: true },
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                { sleep: async () => Promise.reject('string dependency failure') } as never,
+            ),
+        ).rejects.toThrow('string dependency failure');
+    });
+
+    it('returns synchronous dependency results through the Plugin RPC bridge', async () => {
+        const pluginDir = join(tempDir, 'resolve-template-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.resolve-template',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['x'],
+                nodeType: 'resolve-template-node',
+            },
+            RESOLVE_TEMPLATE_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('resolve-template-node'));
+        const output = await handler.execute(
+            {
+                node: {
+                    id: 'n1',
+                    type: 'resolve-template-node',
+                    pluginId: 'com.sigil.resolve-template',
+                    config: {},
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            },
+            { resolveTemplate: () => 'resolved' } as never,
+        );
+
+        expect(output.outputCtx.vars.resolved).toBe('resolved');
+    });
+
     it('retires a non-cooperative worker after the bounded cancellation grace period', async () => {
         vi.useFakeTimers();
 
@@ -722,10 +968,12 @@ describe('loadNodePlugin', () => {
                 },
                 ctx: { event: '', payload: {}, vars: {} },
             };
-            const timedOut = handler.execute(input, {} as never);
+            const controller = new AbortController();
+            const timedOut = handler.execute(input, { signal: controller.signal } as never);
             const retirement = expect(timedOut).rejects.toThrow(/did not acknowledge cancellation/);
 
             await vi.advanceTimersByTimeAsync(30_000);
+            controller.abort('caller cancelled after timeout');
             await vi.advanceTimersByTimeAsync(1_000);
             await retirement;
             await vi.runAllTimersAsync();
@@ -740,6 +988,147 @@ describe('loadNodePlugin', () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it('suppresses an event response that completes after cancellation', async () => {
+        const pluginDir = join(tempDir, 'event-then-block-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.event-then-block',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['delayed.output'],
+                nodeType: 'event-then-block-node',
+            },
+            EVENT_THEN_BLOCK_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const eventBus = createEventBus();
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            bridge: createBridge(eventBus, manifestRegistry),
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const controller = new AbortController();
+        let resolveSinkStarted: (() => void) | undefined;
+        let resolveSink: (() => void) | undefined;
+        const sinkStarted = new Promise<void>((resolve) => {
+            resolveSinkStarted = resolve;
+        });
+        const sink = {
+            next: () =>
+                new Promise<void>((resolve) => {
+                    resolveSink = resolve;
+                    resolveSinkStarted?.();
+                }),
+        };
+        const handler = Option.getOrThrow(handlerRegistry.get('event-then-block-node'));
+        const execution = handler.execute(
+            {
+                node: {
+                    id: 'n1',
+                    type: 'event-then-block-node',
+                    pluginId: 'com.sigil.event-then-block',
+                    config: {},
+                },
+                ctx: { event: '', payload: {}, vars: {} },
+            },
+            { signal: controller.signal, bus: sink } as never,
+        );
+
+        await sinkStarted;
+        controller.abort('caller cancelled during event delivery');
+        resolveSink?.();
+
+        await expect(execution).rejects.toThrow('caller cancelled during event delivery');
+    });
+
+    it('rejects event dependencies when no bridge is configured', async () => {
+        const pluginDir = join(tempDir, 'event-without-bridge-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.event-without-bridge',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['delayed.output'],
+                nodeType: 'event-then-block-node',
+            },
+            EVENT_THEN_BLOCK_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('event-then-block-node'));
+        await expect(
+            handler.execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'event-then-block-node',
+                        pluginId: 'com.sigil.event-without-bridge',
+                        config: {},
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {} as never,
+            ),
+        ).rejects.toThrow('Bridge dependency is unavailable');
+    });
+
+    it('normalizes a non-Error bridge failure from an event dependency', async () => {
+        const pluginDir = join(tempDir, 'string-bridge-error-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.string-bridge-error',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['delayed.output'],
+                nodeType: 'event-then-block-node',
+            },
+            EVENT_THEN_BLOCK_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            bridge: {
+                emit: async () => {
+                    throw 'string bridge failure';
+                },
+            } as never,
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('event-then-block-node'));
+        await expect(
+            handler.execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'event-then-block-node',
+                        pluginId: 'com.sigil.string-bridge-error',
+                        config: {},
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {} as never,
+            ),
+        ).rejects.toThrow('string bridge failure');
     });
 
     it('fails when manifest is missing', async () => {
@@ -1396,6 +1785,120 @@ describe('Workflow State authorization for Node Plugins', () => {
         expect(state.get).toHaveBeenCalledWith('secret');
     });
 
+    it('rejects a malformed Workflow State read result before it reaches the worker', async () => {
+        const pluginId = 'com.sigil.state-malformed-read';
+        const pluginDir = join(tempDir, 'state-malformed-read');
+        writePlugin(
+            pluginDir,
+            {
+                id: pluginId,
+                version: '0.0.1',
+                permissions: ['state.read'],
+                emits: ['x'],
+                nodeType: 'state-access',
+            },
+            STATE_ACCESS_HANDLER,
+        );
+
+        const manifestRegistry = createManifestRegistry();
+        const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+        const capabilityBroker: CapabilityBroker = {
+            request: vi.fn().mockReturnValue(Either.right(undefined)),
+        };
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            kernel: createKernel(capabilityBroker),
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('state-access'));
+        const get = vi
+            .fn()
+            .mockReturnValueOnce('not an Option')
+            .mockReturnValueOnce(Option.some({ invalid: true }))
+            .mockImplementation(() => {
+                throw 'string state failure';
+            });
+        const state = {
+            get,
+            set: vi.fn(),
+            flush: vi.fn(),
+        };
+        const input = {
+            node: {
+                id: 'n1',
+                type: 'state-access',
+                pluginId,
+                config: { operation: 'get' },
+            },
+            ctx: { event: '', payload: {}, vars: {} },
+        };
+        await expect(handler.execute(input, { state } as never)).rejects.toThrow(
+            'Workflow State get must return an Option value',
+        );
+        await expect(handler.execute(input, { state } as never)).rejects.toThrow(
+            'Invalid Workflow State get result',
+        );
+        await expect(handler.execute(input, { state } as never)).rejects.toThrow(
+            'string state failure',
+        );
+    });
+
+    it('rejects a malformed Workflow State mutation result', async () => {
+        const pluginId = 'com.sigil.state-malformed-mutation';
+        const pluginDir = join(tempDir, 'state-malformed-mutation');
+        writePlugin(
+            pluginDir,
+            {
+                id: pluginId,
+                version: '0.0.1',
+                permissions: ['state.write'],
+                emits: ['x'],
+                nodeType: 'state-access',
+            },
+            STATE_ACCESS_HANDLER,
+        );
+
+        const manifestRegistry = createManifestRegistry();
+        const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+        const capabilityBroker: CapabilityBroker = {
+            request: vi.fn().mockReturnValue(Either.right(undefined)),
+        };
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            kernel: createKernel(capabilityBroker),
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('state-access'));
+        await expect(
+            handler.execute(
+                {
+                    node: {
+                        id: 'n1',
+                        type: 'state-access',
+                        pluginId,
+                        config: { operation: 'set' },
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {
+                    state: {
+                        get: vi.fn(),
+                        set: vi.fn().mockReturnValue('unexpected result'),
+                        flush: vi.fn(),
+                    },
+                } as never,
+            ),
+        ).rejects.toThrow('Invalid Workflow State mutation result');
+    });
+
     it('round-trips typed Workflow State values through the real Plugin Bridge path', async () => {
         const pluginId = 'com.sigil.typed-state-round-trip';
         const pluginDir = join(tempDir, 'typed-state-round-trip');
@@ -2016,6 +2519,59 @@ describe('unbypassable enforcement', () => {
         });
         expect(registerSubscriber).toHaveBeenCalledTimes(1);
         expect(unregisterSubscriber).toHaveBeenCalledWith('forged-subscription');
+    });
+
+    it('ignores malformed file watcher events before invoking a Plugin callback', async () => {
+        const pluginId = 'com.sigil.file-watcher-malformed-event';
+        const pluginDir = join(tempDir, 'file-watcher-malformed-event');
+        writePlugin(
+            pluginDir,
+            {
+                id: pluginId,
+                version: '0.0.1',
+                permissions: ['filesystem.read'],
+                emits: ['file.created'],
+                nodeType: 'evil-watcher',
+            },
+            MALICIOUS_REGISTER_SUBSCRIBER_HANDLER,
+        );
+
+        const manifestRegistry = createManifestRegistry();
+        const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+        const capabilityBroker: CapabilityBroker = {
+            request: vi.fn().mockReturnValue(Either.right(undefined)),
+        };
+        let watcherCallback: FileEventCallback | undefined;
+        const registerSubscriber = vi.fn(
+            (_subscriber: SubscriberRegistration, callback: FileEventCallback) => {
+                watcherCallback = callback;
+            },
+        );
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            kernel: {
+                capabilityBroker,
+                fileWatcherManager: {
+                    registerSubscriber,
+                    unregisterSubscriber: vi.fn(),
+                },
+            },
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('evil-watcher')) as unknown as {
+            activate: (config: unknown, onEvent: (ctx: unknown) => void) => () => void;
+        };
+        const events: unknown[] = [];
+        const teardown = handler.activate({}, (ctx) => events.push(ctx));
+        await vi.waitFor(() => expect(watcherCallback).toBeDefined());
+
+        watcherCallback?.({ malformed: true } as never);
+        expect(events).toEqual([]);
+        teardown();
     });
 });
 
