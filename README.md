@@ -244,14 +244,22 @@ The repository follows Electron 42.4.1's embedded Node 24 runtime. Run `pnpm che
 ```bash
 pnpm check:node
 pnpm install
-pnpm dev          # builds @sigil/schema, then launches the Electron app with HMR
+pnpm dev          # builds the schema, then watches it alongside Electron with HMR
 ```
+
+`pnpm dev` completes the initial schema build before starting the schema
+TypeScript watcher and the Electron development server together. Changes in
+`packages/schema` rebuild its `dist` output and reach the desktop app without
+restarting the command. If either long-running process exits unexpectedly, the
+other is stopped and `pnpm dev` returns a non-zero status. Pressing Ctrl+C
+stops both process trees, including nested TypeScript and Electron processes on
+Windows.
 
 ### Scripts (root)
 
 | Script              | What it does                                              |
 | ------------------- | --------------------------------------------------------- |
-| `pnpm dev`          | Build `@sigil/schema`, then run the desktop app with HMR. |
+| `pnpm dev`          | Build `@sigil/schema` once, then watch it alongside the desktop app with HMR. |
 | `pnpm build`        | Build `@sigil/schema` and the desktop app for production. |
 | `pnpm preview`      | Preview the built desktop app.                            |
 | `pnpm typecheck`    | Run `tsc --noEmit` across every workspace package.        |
