@@ -13,6 +13,7 @@ import {
 } from '../../src/main/engine-startup-diagnostics.js';
 
 export const DEFAULT_ENGINE_STARTUP_TIMEOUT_MS = 30_000;
+export const DEFAULT_ENGINE_SHUTDOWN_TIMEOUT_MS = 10_000;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -151,18 +152,47 @@ function waitForProcessExit(process: ChildProcess): Promise<ElectronApplicationE
     });
 }
 
+async function closeWithTimeout(
+    application: ElectronApplication,
+    timeoutMs: number,
+): Promise<void> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+        return await Promise.race([
+            application.close(),
+            new Promise<never>((_, reject) => {
+                timeout = setTimeout(
+                    () => reject(new Error('Timed out waiting for Electron to close')),
+                    timeoutMs,
+                );
+            }),
+        ]);
+    } finally {
+        if (timeout !== undefined) clearTimeout(timeout);
+    }
+}
+
+function killProcessIfRunning(process: ChildProcess): boolean {
+    if (process.exitCode !== null || process.signalCode !== null) return false;
+
+    try {
+        process.kill('SIGKILL');
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 async function closeQuietly(application: ElectronApplication): Promise<ElectronApplicationExit> {
     const process = application.process();
     const exit = waitForProcessExit(process);
     let forced = false;
 
     try {
-        await application.close();
+        await closeWithTimeout(application, DEFAULT_ENGINE_SHUTDOWN_TIMEOUT_MS);
     } catch {
-        if (process.exitCode === null && process.signalCode === null) {
-            forced = true;
-            process.kill();
-        }
+        forced = killProcessIfRunning(process);
     }
 
     const result = await exit;
