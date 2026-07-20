@@ -3,7 +3,7 @@ import { Either } from 'effect';
 import {
     EventPayloadSchemaRegistry,
     safeParsePayload,
-} from '../../engine/event-payload-schemas.js';
+} from '../../shared/event-payload-schemas.js';
 import { redactTelemetrySummary, redactTelemetryText } from '../../shared/telemetry-safety.js';
 import type { BusEventEntry } from '../store/app-store.js';
 

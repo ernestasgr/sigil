@@ -79,12 +79,10 @@ The committed `sigil.properties.json` is a small example configuration and remai
 - Engine or Preload imports from Renderer; and
 - shared schema imports from the desktop application.
 
-Two existing relationships are intentionally visible as warnings rather than hidden:
+One existing relationship is intentionally visible as a warning rather than hidden:
 
 - `engine.ts → node-plugin-loader.ts → workflow-activator.ts → engine.ts` is a type-only Engine contract cycle. Engine construction owns activation, while activation receives the Engine contract to publish diagnostics.
-- `renderer/lib/event-display.ts → engine/event-payload-schemas.ts` uses the Engine's pure event metadata registry. It remains a one-file exception until that registry has a neutral home.
-
-Both exceptions are encoded narrowly in [`.dependency-cruiser.json`](../.dependency-cruiser.json), so unrelated cycles or process-boundary imports still fail the check.
+- This exception is encoded narrowly in [`.dependency-cruiser.json`](../.dependency-cruiser.json), so unrelated cycles or process-boundary imports still fail the check.
 
 ## Coverage policy
 

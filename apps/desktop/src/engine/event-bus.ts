@@ -1,8 +1,5 @@
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import { Subject } from 'rxjs';
-
-import type { EventTelemetry } from '../shared/telemetry.js';
-
 import {
     type EngineDiagnosticPayload,
     EngineDiagnosticPayloadSchema,
@@ -28,7 +25,8 @@ import {
     WorkflowRunPayloadSchema,
     type WorkflowRunPolicyPayload,
     WorkflowRunPolicyPayloadSchema,
-} from './event-payload-schemas.js';
+} from '../shared/event-payload-schemas.js';
+import type { EventTelemetry } from '../shared/telemetry.js';
 
 // Re-export derived types for consumers
 export type {

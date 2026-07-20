@@ -8,6 +8,10 @@ import {
     MainToEngineMessageSchema,
 } from '../shared/command-contracts.js';
 import {
+    createEngineDiagnostic,
+    type EngineDiagnosticPayload,
+} from '../shared/event-payload-schemas.js';
+import {
     type EngineBusEvent,
     EngineChannel,
     type EngineLog,
@@ -20,7 +24,6 @@ import {
 } from '../shared/persistence.js';
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
 import { createEngine } from './engine.js';
-import { createEngineDiagnostic, type EngineDiagnosticPayload } from './event-payload-schemas.js';
 import { readPropertiesFile } from './properties-loader.js';
 import { workflowTopologyOptions } from './workflow-acceptance.js';
 import { createWorkflowActivator } from './workflow-activator.js';
