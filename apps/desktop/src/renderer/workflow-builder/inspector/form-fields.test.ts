@@ -8,16 +8,15 @@ import {
 } from './number-input.js';
 
 describe('NumberInput', () => {
-    it.each([
-        '-',
-        '1e',
-        '',
-    ])('keeps partial or invalid draft value %j without emitting it', (rawValue) => {
-        expect(getNumberInputChange(rawValue)).toEqual({
-            draftValue: rawValue,
-            value: null,
-        });
-    });
+    it.each(['-', '1e', ''])(
+        'keeps partial or invalid draft value %j without emitting it',
+        (rawValue) => {
+            expect(getNumberInputChange(rawValue)).toEqual({
+                draftValue: rawValue,
+                value: null,
+            });
+        },
+    );
 
     it('emits finite values while retaining their draft text', () => {
         expect(getNumberInputChange('12.5')).toEqual({

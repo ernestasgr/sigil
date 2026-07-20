@@ -96,26 +96,29 @@ describe('registerIpcHandlers native dialog seam', () => {
                 message: 'replacement denied',
             },
         },
-    ] as const satisfies readonly PermissionOverrideOutcome[])('passes through the $kind permission override outcome without reshaping it', async (outcome) => {
-        const engine = {
-            setPermissionOverride: vi.fn().mockResolvedValue(outcome),
-        } as unknown as EngineHandle;
-        const context: IpcHandlerContext = {
-            getEngine: () => engine,
-            getMainWindow: () => null,
-            onRendererReady: () => undefined,
-        };
+    ] as const satisfies readonly PermissionOverrideOutcome[])(
+        'passes through the $kind permission override outcome without reshaping it',
+        async (outcome) => {
+            const engine = {
+                setPermissionOverride: vi.fn().mockResolvedValue(outcome),
+            } as unknown as EngineHandle;
+            const context: IpcHandlerContext = {
+                getEngine: () => engine,
+                getMainWindow: () => null,
+                onRendererReady: () => undefined,
+            };
 
-        registerIpcHandlers(context);
+            registerIpcHandlers(context);
 
-        const handler = handlers.get(RendererChannel.SetPermissionOverride);
-        expect(handler).toBeDefined();
-        const response = await handler?.({}, 'plugin-ghost', []);
+            const handler = handlers.get(RendererChannel.SetPermissionOverride);
+            expect(handler).toBeDefined();
+            const response = await handler?.({}, 'plugin-ghost', []);
 
-        expect(response).toEqual(outcome);
-        expect(engine.setPermissionOverride).toHaveBeenCalledWith({
-            pluginId: 'plugin-ghost',
-            overrides: [],
-        });
-    });
+            expect(response).toEqual(outcome);
+            expect(engine.setPermissionOverride).toHaveBeenCalledWith({
+                pluginId: 'plugin-ghost',
+                overrides: [],
+            });
+        },
+    );
 });

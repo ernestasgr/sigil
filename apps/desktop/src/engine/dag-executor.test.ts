@@ -571,62 +571,60 @@ describe('dag-executor', () => {
         it.each([
             { valueType: 'number' as const, template: '42', matchValue: '042', expected: 42 },
             { valueType: 'boolean' as const, template: 'true', matchValue: 'true', expected: true },
-        ])('routes a real $valueType state-set -> state-get value through Switch matching', async ({
-            valueType,
-            template,
-            matchValue,
-            expected,
-        }) => {
-            const database = new Database(':memory:');
-            const store = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
-            const bus = createEventBus();
-            const events = captureEvents(bus);
+        ])(
+            'routes a real $valueType state-set -> state-get value through Switch matching',
+            async ({ valueType, template, matchValue, expected }) => {
+                const database = new Database(':memory:');
+                const store = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
+                const bus = createEventBus();
+                const events = captureEvents(bus);
 
-            await executePipeline(
-                pipeline(
-                    [
-                        trigger(),
-                        stateSet('set', 'stored-value', template, valueType),
-                        stateGet('get', 'stored-value', 'remembered'),
-                        {
-                            id: 'switch',
-                            type: 'switch',
-                            config: {
-                                target: 'vars',
-                                field: 'remembered',
-                                cases: [{ id: 'typed-match', value: matchValue }],
+                await executePipeline(
+                    pipeline(
+                        [
+                            trigger(),
+                            stateSet('set', 'stored-value', template, valueType),
+                            stateGet('get', 'stored-value', 'remembered'),
+                            {
+                                id: 'switch',
+                                type: 'switch',
+                                config: {
+                                    target: 'vars',
+                                    field: 'remembered',
+                                    cases: [{ id: 'typed-match', value: matchValue }],
+                                },
                             },
-                        },
-                        log('matched', 'typed match'),
-                        log('default', 'default branch'),
-                    ],
-                    [
-                        edge('trigger-to-set', 'trigger', 'set', 'out'),
-                        edge('set-to-get', 'set', 'get', 'out'),
-                        edge('get-to-switch', 'get', 'switch', 'out'),
-                        edge('switch-to-match', 'switch', 'matched', 'typed-match'),
-                        edge('switch-to-default', 'switch', 'default', 'default'),
-                    ],
-                ),
-                bus,
-                handlerRegistry,
-                undefined,
-                undefined,
-                store,
-            );
+                            log('matched', 'typed match'),
+                            log('default', 'default branch'),
+                        ],
+                        [
+                            edge('trigger-to-set', 'trigger', 'set', 'out'),
+                            edge('set-to-get', 'set', 'get', 'out'),
+                            edge('get-to-switch', 'get', 'switch', 'out'),
+                            edge('switch-to-match', 'switch', 'matched', 'typed-match'),
+                            edge('switch-to-default', 'switch', 'default', 'default'),
+                        ],
+                    ),
+                    bus,
+                    handlerRegistry,
+                    undefined,
+                    undefined,
+                    store,
+                );
 
-            const messages = events
-                .filter((event) => event.name === 'log.output')
-                .map((event) => (event.name === 'log.output' ? event.payload.message : ''));
-            expect(messages).toContain('typed match');
-            expect(messages).not.toContain('default branch');
-            expect(store.forWorkflow('test-workflow').get('stored-value')).toEqual(
-                Option.some(expected),
-            );
+                const messages = events
+                    .filter((event) => event.name === 'log.output')
+                    .map((event) => (event.name === 'log.output' ? event.payload.message : ''));
+                expect(messages).toContain('typed match');
+                expect(messages).not.toContain('default branch');
+                expect(store.forWorkflow('test-workflow').get('stored-value')).toEqual(
+                    Option.some(expected),
+                );
 
-            store.dispose();
-            database.close();
-        });
+                store.dispose();
+                database.close();
+            },
+        );
 
         it('compares a real typed numeric state value in an If/Else branch', async () => {
             const database = new Database(':memory:');

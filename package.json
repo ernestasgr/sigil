@@ -56,7 +56,7 @@
     "devDependencies": {
         "@ai-hero/sandcastle": "^0.10.0",
         "@ast-grep/cli": "0.44.1",
-        "@biomejs/biome": "^2.5.3",
+        "@biomejs/biome": "^2.5.4",
         "@types/node": "26.1.1",
         "@vitest/ui": "4.1.9",
         "dependency-cruiser": "18.0.0",
