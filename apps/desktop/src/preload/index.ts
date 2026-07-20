@@ -1,4 +1,5 @@
 import { contextBridge, type IpcRendererEvent, ipcRenderer } from 'electron';
+import { z } from 'zod';
 import {
     type RendererCommandArguments,
     RendererCommandContracts,
@@ -6,8 +7,13 @@ import {
     type RendererCommandName,
     type RendererResponse,
 } from '../shared/command-contracts.js';
-import { type EngineBusEventPayload, RendererChannel } from '../shared/ipc-channels.js';
+import {
+    type EngineBusEventPayload,
+    EngineBusEventPayloadSchema,
+    RendererChannel,
+} from '../shared/ipc-channels.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
+import { WorkflowSummarySchema } from '../shared/workflow.js';
 
 type RendererEventMethods = {
     readonly onEngineLog: (handler: (line: string) => void) => () => void;
@@ -16,6 +22,10 @@ type RendererEventMethods = {
     ) => () => void;
     readonly onBusEvent: (handler: (event: EngineBusEventPayload) => void) => () => void;
 };
+
+function reportInvalidPushPayload(channel: string, payload: unknown): void {
+    console.error(`[preload] invalid ${channel} payload`, payload);
+}
 
 async function invokeRendererCommand<C extends RendererCommandName>(
     command: C,
@@ -73,23 +83,42 @@ const api = {
     deleteWorkflowStateKey: (...args: RendererCommandArguments<'deleteWorkflowStateKey'>) =>
         invokeRendererCommand('deleteWorkflowStateKey', ...args),
     onEngineLog: (handler: (line: string) => void): (() => void) => {
-        const listener = (_event: IpcRendererEvent, line: string): void => handler(line);
+        const listener = (_event: IpcRendererEvent, raw: unknown): void => {
+            const parsed = z.string().safeParse(raw);
+            if (!parsed.success) {
+                reportInvalidPushPayload(RendererChannel.EngineLog, raw);
+                return;
+            }
+            handler(parsed.data);
+        };
         ipcRenderer.on(RendererChannel.EngineLog, listener);
         return () => {
             ipcRenderer.off(RendererChannel.EngineLog, listener);
         };
     },
     onWorkflowsList: (handler: (workflows: readonly WorkflowSummary[]) => void): (() => void) => {
-        const listener = (_event: IpcRendererEvent, workflows: WorkflowSummary[]): void =>
-            handler(workflows);
+        const listener = (_event: IpcRendererEvent, raw: unknown): void => {
+            const parsed = z.array(WorkflowSummarySchema).readonly().safeParse(raw);
+            if (!parsed.success) {
+                reportInvalidPushPayload(RendererChannel.WorkflowsList, raw);
+                return;
+            }
+            handler(parsed.data);
+        };
         ipcRenderer.on(RendererChannel.WorkflowsList, listener);
         return () => {
             ipcRenderer.off(RendererChannel.WorkflowsList, listener);
         };
     },
     onBusEvent: (handler: (event: EngineBusEventPayload) => void): (() => void) => {
-        const listener = (_event: IpcRendererEvent, event: EngineBusEventPayload): void =>
-            handler(event);
+        const listener = (_event: IpcRendererEvent, raw: unknown): void => {
+            const parsed = EngineBusEventPayloadSchema.safeParse(raw);
+            if (!parsed.success) {
+                reportInvalidPushPayload(RendererChannel.BusEvent, raw);
+                return;
+            }
+            handler(parsed.data);
+        };
         ipcRenderer.on(RendererChannel.BusEvent, listener);
         return () => {
             ipcRenderer.off(RendererChannel.BusEvent, listener);
