@@ -1,9 +1,9 @@
 import type { ReactElement } from 'react';
-
 import { cn } from '../lib/utils.js';
 import { SECTIONS } from '../sections.js';
 import { type Section, useAppStore } from '../store/app-store.js';
 import { useBuilderStore } from '../workflow-builder/builder-store.js';
+import { SigilFrame } from './sigil-frame.js';
 import { WorkflowStatus } from './workflow-status.js';
 
 export function Nav(): ReactElement {
@@ -20,7 +20,7 @@ export function Nav(): ReactElement {
     };
 
     return (
-        <nav className="border-gilt/40 flex w-60 flex-col border-r">
+        <SigilFrame as="nav" className="w-60 shrink-0">
             <div className="border-gilt/40 border-b px-6 py-6">
                 <h1 className="font-display text-gilt text-xl tracking-[0.3em] uppercase">Sigil</h1>
             </div>
@@ -43,6 +43,6 @@ export function Nav(): ReactElement {
                 ))}
             </ul>
             <WorkflowStatus />
-        </nav>
+        </SigilFrame>
     );
 }

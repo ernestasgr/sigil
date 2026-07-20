@@ -1,10 +1,8 @@
 import { Handle, type NodeProps, Position } from '@xyflow/react';
 import type { ReactElement } from 'react';
-
 import { cn } from '../../lib/utils.js';
 import type { BuilderRFNode } from '../builder-store.js';
 import { useBuilderStore } from '../builder-store.js';
-import { CornerFlourish } from '../corner-flourish.js';
 import {
     CATEGORY_TEXT,
     CATEGORY_TOP_ACCENT,
@@ -15,7 +13,11 @@ import {
     resolveNodeCatalogEntry,
 } from '../node-catalog.js';
 
-const NODE_BASE_CLASS = 'relative min-w-52 border border-veil/40 bg-obsidian-ink/95 font-ui';
+// A single small top-left chamfer — repeated per node, so it stays light:
+// no nested ring, just a clipped corner (see components/sigil-frame.tsx for
+// the heavier structural-panel version of the same idea).
+const NODE_BASE_CLASS =
+    'relative min-w-52 border border-veil/40 bg-obsidian-ink/95 font-ui [clip-path:polygon(8px_0,100%_0,100%_100%,0_100%,0_8px)]';
 
 export function PipelineNodeCard({
     id,
@@ -48,7 +50,6 @@ export function PipelineNodeCard({
                 selected && 'border-gilt',
             )}
         >
-            <CornerFlourish corner="tl" size={10} inset={4} opacity={0.55} />
             {showInput ? (
                 <Handle type="target" position={Position.Left} aria-label={`${def.label} input`} />
             ) : null}

@@ -1,6 +1,21 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/*
+ * Self-hosted, not linked from Google Fonts: the CSP is `default-src 'self'`,
+ * so an external @import here would just be dropped and every font in
+ * `@theme` below would silently fall back to system serif/sans-serif.
+ */
+@import "@fontsource/cinzel/500.css";
+@import "@fontsource/cinzel/600.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/spectral/400.css";
+@import "@fontsource/spectral/400-italic.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
 @theme {
     --color-obsidian-ink: #0e0c10;
     --color-parchment: #e8e1cc;
@@ -61,10 +76,23 @@ body {
     background: transparent;
 }
 
-.sigil-ornamental-frame {
-    position: relative;
-    border: 1px solid color-mix(in oklab, var(--color-gilt) 55%, transparent);
-    box-shadow:
-        inset 0 0 0 3px var(--color-obsidian-ink),
-        inset 0 0 0 4px color-mix(in oklab, var(--color-gilt) 28%, transparent);
+@keyframes sigil-glyph-breathe {
+    0%,
+    100% {
+        opacity: 0.55;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+.sigil-glyph-running {
+    animation: sigil-glyph-breathe 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sigil-glyph-running {
+        animation: none;
+        opacity: 1;
+    }
 }

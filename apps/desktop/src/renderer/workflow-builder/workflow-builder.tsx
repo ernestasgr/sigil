@@ -2,11 +2,11 @@ import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import { ReactFlowProvider } from '@xyflow/react';
 import { type ReactElement, useEffect, useState } from 'react';
 
+import { SigilFrame } from '../components/sigil-frame.js';
 import { Button } from '../components/ui/button.js';
 import { cn } from '../lib/utils.js';
 import { useBuilderStore } from './builder-store.js';
 import { WorkflowCanvas } from './canvas/workflow-canvas.js';
-import { CornerFlourish } from './corner-flourish.js';
 import { EVENT_CATALOG, type EventCatalog } from './event-catalog.js';
 import { PropertiesPanel } from './inspector/properties-panel.js';
 import { VariableInspector } from './inspector/variable-inspector.js';
@@ -108,11 +108,9 @@ export function WorkflowBuilder({
                 </button>
             </div>
             <div className="flex flex-1 gap-2 overflow-hidden">
-                <aside className="sigil-ornamental-frame relative w-60 shrink-0 overflow-hidden">
+                <SigilFrame as="aside" className="w-60 shrink-0">
                     <NodePalette catalog={nodeCatalog} />
-                    <CornerFlourish corner="tl" />
-                    <CornerFlourish corner="br" />
-                </aside>
+                </SigilFrame>
                 <div className="flex flex-1 flex-col overflow-hidden">
                     <div className="flex-1 overflow-hidden">
                         <ReactFlowProvider>
@@ -120,22 +118,19 @@ export function WorkflowBuilder({
                         </ReactFlowProvider>
                     </div>
                     {showInspector ? (
-                        <div
+                        <SigilFrame
                             id="workflow-variable-inspector"
-                            className="sigil-ornamental-frame relative mt-2 h-48 shrink-0 overflow-hidden"
+                            className="mt-2 h-48 shrink-0"
+                            chamfer={14}
                         >
                             <VariableInspector workflowId={meta.workflowId} />
-                            <CornerFlourish corner="tl" />
-                            <CornerFlourish corner="br" />
-                        </div>
+                        </SigilFrame>
                     ) : null}
                     <ValidationBar onSave={onSave} saveState={saveState} />
                 </div>
-                <aside className="sigil-ornamental-frame relative w-80 shrink-0 overflow-hidden">
+                <SigilFrame as="aside" className="w-80 shrink-0">
                     <PropertiesPanel nodeCatalog={nodeCatalog} eventCatalog={eventCatalog} />
-                    <CornerFlourish corner="tl" />
-                    <CornerFlourish corner="br" />
-                </aside>
+                </SigilFrame>
             </div>
         </div>
     );

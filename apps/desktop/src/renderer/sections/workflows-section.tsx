@@ -2,8 +2,10 @@ import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import { type ReactElement, useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { PluginInfo } from '../../shared/plugin-info.js';
-import { type WorkflowSummary, workflowActivationLabel } from '../../shared/workflow.js';
+import { sigilGlyphState, workflowActivationLabel } from '../../shared/workflow.js';
 import { SectionShell } from '../components/section-shell.js';
+import { SigilFrame } from '../components/sigil-frame.js';
+import { SigilGlyph } from '../components/sigil-glyph.js';
 import { Button } from '../components/ui/button.js';
 import { useSigil } from '../lib/use-sigil.js';
 import { useAppStore } from '../store/app-store.js';
@@ -27,25 +29,6 @@ function diagnosticTargetLabel(diagnostic: TopologyDiagnostic): string {
             return `Node ${diagnostic.target.nodeId}`;
         case 'edge':
             return `Edge ${diagnostic.target.edgeId}`;
-    }
-}
-
-function assertNever(value: never): never {
-    throw new Error(`Unhandled Workflow activation state: ${JSON.stringify(value)}`);
-}
-
-function activationIndicatorClass(workflow: WorkflowSummary): string {
-    switch (workflow.activation.kind) {
-        case 'disabled':
-            return 'bg-veil';
-        case 'activating':
-            return 'bg-gilt';
-        case 'active':
-            return 'bg-verdigris';
-        case 'failed':
-            return 'bg-old-blood';
-        default:
-            return assertNever(workflow.activation);
     }
 }
 
@@ -254,102 +237,109 @@ export function WorkflowsSection(): ReactElement {
                 )}
 
                 {!loading && workflows.length > 0 && (
-                    <div className="divide-gilt/30 border-gilt/40 divide-y border">
-                        {workflows.map((workflow) => (
-                            <div
-                                key={workflow.id}
-                                className="flex items-center justify-between px-4 py-3"
-                            >
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex min-w-0 items-center gap-3">
-                                        <span className="font-ui text-parchment truncate text-sm">
-                                            {workflow.name}
-                                        </span>
-                                        <span
-                                            className={`inline-block h-2 w-2 shrink-0 ${
-                                                workflow.diagnostics?.some(
-                                                    (diagnostic) => diagnostic.severity === 'error',
-                                                )
-                                                    ? 'bg-old-blood'
-                                                    : activationIndicatorClass(workflow)
-                                            }`}
-                                            title={
-                                                workflow.diagnostics?.some(
-                                                    (diagnostic) => diagnostic.severity === 'error',
-                                                )
-                                                    ? 'Needs repair'
-                                                    : `${workflow.enabled ? 'Enabled intent' : 'Disabled'} · ${workflowActivationLabel(workflow.activation)}`
-                                            }
-                                        />
-                                    </div>
-                                    {workflow.diagnostics?.length ? (
-                                        <div className="mt-1 space-y-1 pr-4 font-data text-[10px]">
-                                            {workflow.diagnostics.map((diagnostic) => (
-                                                <p
-                                                    key={`${diagnostic.severity}-${diagnostic.code}-${diagnostic.target.kind}-${diagnostic.message}`}
-                                                    className={
-                                                        diagnostic.severity === 'error'
-                                                            ? 'text-old-blood'
-                                                            : 'text-gilt'
+                    <SigilFrame bodyClassName="divide-gilt/30 divide-y">
+                        {workflows.map((workflow) => {
+                            const hasError = workflow.diagnostics?.some(
+                                (diagnostic) => diagnostic.severity === 'error',
+                            );
+                            return (
+                                <div
+                                    key={workflow.id}
+                                    className="flex items-center justify-between px-4 py-3"
+                                >
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex min-w-0 items-center gap-3">
+                                            <span className="font-ui text-parchment truncate text-sm">
+                                                {workflow.name}
+                                            </span>
+                                            <span
+                                                className="shrink-0"
+                                                title={
+                                                    hasError
+                                                        ? 'Needs repair'
+                                                        : `${workflow.enabled ? 'Enabled intent' : 'Disabled'} · ${workflowActivationLabel(workflow.activation)}`
+                                                }
+                                            >
+                                                <SigilGlyph
+                                                    seed={workflow.id}
+                                                    state={
+                                                        hasError
+                                                            ? 'error'
+                                                            : sigilGlyphState(workflow.activation)
                                                     }
-                                                >
-                                                    <span className="text-parchment">
-                                                        {diagnosticTargetLabel(diagnostic)}
-                                                    </span>{' '}
-                                                    {diagnostic.message}
-                                                </p>
-                                            ))}
+                                                    size={18}
+                                                />
+                                            </span>
                                         </div>
-                                    ) : null}
-                                    {workflow.activation.kind === 'failed' ? (
-                                        <p className="text-old-blood mt-1 pr-4 font-data text-[10px]">
-                                            {workflow.activation.message}
-                                        </p>
-                                    ) : null}
-                                </div>
-                                <div className="flex shrink-0 items-center gap-2">
-                                    <Button
-                                        size="sm"
-                                        variant={workflow.enabled ? 'default' : 'ghost'}
-                                        disabled={workflow.diagnostics?.some(
-                                            (diagnostic) => diagnostic.severity === 'error',
-                                        )}
-                                        onClick={() => handleToggle(workflow.id)}
-                                    >
-                                        {workflow.enabled ? 'Disable' : 'Enable'}
-                                    </Button>
-                                    {workflow.activation.kind === 'failed' ? (
+                                        {workflow.diagnostics?.length ? (
+                                            <div className="mt-1 space-y-1 pr-4 font-data text-[10px]">
+                                                {workflow.diagnostics.map((diagnostic) => (
+                                                    <p
+                                                        key={`${diagnostic.severity}-${diagnostic.code}-${diagnostic.target.kind}-${diagnostic.message}`}
+                                                        className={
+                                                            diagnostic.severity === 'error'
+                                                                ? 'text-old-blood'
+                                                                : 'text-gilt'
+                                                        }
+                                                    >
+                                                        <span className="text-parchment">
+                                                            {diagnosticTargetLabel(diagnostic)}
+                                                        </span>{' '}
+                                                        {diagnostic.message}
+                                                    </p>
+                                                ))}
+                                            </div>
+                                        ) : null}
+                                        {workflow.activation.kind === 'failed' ? (
+                                            <p className="text-old-blood mt-1 pr-4 font-data text-[10px]">
+                                                {workflow.activation.message}
+                                            </p>
+                                        ) : null}
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-2">
                                         <Button
                                             size="sm"
+                                            variant={workflow.enabled ? 'default' : 'ghost'}
                                             disabled={workflow.diagnostics?.some(
                                                 (diagnostic) => diagnostic.severity === 'error',
                                             )}
-                                            onClick={() => handleRetry(workflow.id)}
+                                            onClick={() => handleToggle(workflow.id)}
                                         >
-                                            Retry
+                                            {workflow.enabled ? 'Disable' : 'Enable'}
                                         </Button>
-                                    ) : null}
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        disabled={workflow.diagnostics?.some(
-                                            (diagnostic) => diagnostic.severity === 'error',
-                                        )}
-                                        onClick={() => handleEdit(workflow.id)}
-                                    >
-                                        Edit
-                                    </Button>
-                                    <Button
-                                        size="sm"
-                                        variant="destructive"
-                                        onClick={() => handleDelete(workflow.id)}
-                                    >
-                                        Delete
-                                    </Button>
+                                        {workflow.activation.kind === 'failed' ? (
+                                            <Button
+                                                size="sm"
+                                                disabled={workflow.diagnostics?.some(
+                                                    (diagnostic) => diagnostic.severity === 'error',
+                                                )}
+                                                onClick={() => handleRetry(workflow.id)}
+                                            >
+                                                Retry
+                                            </Button>
+                                        ) : null}
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            disabled={workflow.diagnostics?.some(
+                                                (diagnostic) => diagnostic.severity === 'error',
+                                            )}
+                                            onClick={() => handleEdit(workflow.id)}
+                                        >
+                                            Edit
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="destructive"
+                                            onClick={() => handleDelete(workflow.id)}
+                                        >
+                                            Delete
+                                        </Button>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
+                            );
+                        })}
+                    </SigilFrame>
                 )}
             </div>
         </SectionShell>

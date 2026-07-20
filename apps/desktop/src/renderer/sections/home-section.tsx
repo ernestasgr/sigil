@@ -1,6 +1,9 @@
 import type { ReactElement } from 'react';
-import { isWorkflowActive } from '../../shared/workflow.js';
+import { isWorkflowActive, sigilGlyphState } from '../../shared/workflow.js';
+import { PanelHeading } from '../components/panel-heading.js';
 import { SectionShell } from '../components/section-shell.js';
+import { SigilFrame } from '../components/sigil-frame.js';
+import { SigilGlyph } from '../components/sigil-glyph.js';
 import {
     eventColor,
     eventNameLabel,
@@ -20,12 +23,10 @@ export function HomeSection(): ReactElement {
     return (
         <SectionShell title="Home" subtitle="The working table — active sigils and recent echoes.">
             <div className="flex flex-col gap-6">
-                <div className="border-gilt/40 border">
-                    <h2 className="border-gilt/40 border-b font-ui text-veil px-4 py-2 text-xs tracking-widest uppercase">
-                        Active sigils — {activeWorkflows.length}
-                    </h2>
+                <SigilFrame>
+                    <PanelHeading>Active sigils — {activeWorkflows.length}</PanelHeading>
                     {activeWorkflows.length === 0 ? (
-                        <p className="font-manuscript text-veil px-4 py-3 text-sm italic">
+                        <p className="font-manuscript text-veil px-4 pt-2 pb-3 text-sm italic">
                             No live workflows active — enable one from the Workflows section, or
                             retry any failed activations.
                         </p>
@@ -36,20 +37,23 @@ export function HomeSection(): ReactElement {
                                     key={wf.id}
                                     className="flex items-center gap-3 px-4 py-2 text-sm"
                                 >
-                                    <span className="bg-verdigris inline-block h-2 w-2 shrink-0" />
+                                    <SigilGlyph
+                                        seed={wf.id}
+                                        state={sigilGlyphState(wf.activation)}
+                                        size={20}
+                                        className="shrink-0"
+                                    />
                                     <span className="text-parchment truncate">{wf.name}</span>
                                 </li>
                             ))}
                         </ul>
                     )}
-                </div>
+                </SigilFrame>
 
-                <div className="border-gilt/40 border">
-                    <h2 className="border-gilt/40 border-b font-ui text-veil px-4 py-2 text-xs tracking-widest uppercase">
-                        Recent echoes
-                    </h2>
+                <SigilFrame>
+                    <PanelHeading>Recent echoes</PanelHeading>
                     {recentEvents.length === 0 && logs.length === 0 ? (
-                        <p className="font-manuscript text-veil px-4 py-3 text-sm italic">
+                        <p className="font-manuscript text-veil px-4 pt-2 pb-3 text-sm italic">
                             No events yet — fire the trigger or toggle a workflow from the tray.
                         </p>
                     ) : (
@@ -83,7 +87,7 @@ export function HomeSection(): ReactElement {
                                   ))}
                         </ul>
                     )}
-                </div>
+                </SigilFrame>
             </div>
         </SectionShell>
     );

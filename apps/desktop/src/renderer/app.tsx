@@ -31,7 +31,7 @@ function AppInner(): ReactElement {
     }, [setWorkflows, appendLog, appendBusEvent, sigil]);
 
     return (
-        <div className="flex h-full">
+        <div className="flex h-full gap-2 p-2">
             <Nav />
             <main className="flex-1 overflow-hidden">
                 <SectionRouter />

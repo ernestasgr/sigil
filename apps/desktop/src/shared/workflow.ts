@@ -34,6 +34,25 @@ export function isWorkflowActive(workflow: Pick<WorkflowSummary, 'activation'>):
     return workflow.activation.kind === 'active';
 }
 
+/** The four rendering states of a Workflow's sigil-glyph — see UI_STYLE_GUIDANCE.md. */
+export type SigilGlyphState = 'dormant' | 'active' | 'running' | 'error';
+
+/** Derives glyph state from activation so Home, Workflows, and the tray never disagree. */
+export function sigilGlyphState(activation: WorkflowActivationState): SigilGlyphState {
+    switch (activation.kind) {
+        case 'disabled':
+            return 'dormant';
+        case 'activating':
+            return 'running';
+        case 'active':
+            return 'active';
+        case 'failed':
+            return 'error';
+        default:
+            return assertNever(activation);
+    }
+}
+
 export function workflowActivationLabel(activation: WorkflowActivationState): string {
     switch (activation.kind) {
         case 'disabled':
