@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { app } from 'electron';
 import { z } from 'zod';
+import { EventPayloadSchemaRegistry, safeParsePayload } from '../engine/event-payload-schemas.js';
 import {
     CorrelationIdSchema,
     EngineCommandContracts,
@@ -387,6 +388,19 @@ export function createRpcClient(props: RpcClientProps): RpcClient {
                 for (const handler of [...workflowsListHandlers]) handler(message.workflows);
                 break;
             case EngineChannel.BusEvent:
+                if (Object.hasOwn(EventPayloadSchemaRegistry, message.event.name)) {
+                    const parsedPayload = safeParsePayload(
+                        message.event.name,
+                        message.event.payload,
+                    );
+                    if (parsedPayload._tag === 'Left') {
+                        console.error(`[engine] invalid bus-event payload: ${parsedPayload.left}`);
+                        return;
+                    }
+                    const event = { ...message.event, payload: parsedPayload.right };
+                    for (const handler of [...busEventHandlers]) handler(event);
+                    break;
+                }
                 for (const handler of [...busEventHandlers]) handler(message.event);
                 break;
             default:

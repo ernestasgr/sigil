@@ -385,6 +385,39 @@ describe('dispatch', () => {
         expect(handler).toHaveBeenCalledWith(bus.event);
     });
 
+    it('rejects malformed payloads for registered bus events', () => {
+        const { props } = buildProps();
+        const client = createRpcClient(props);
+        const handler = vi.fn();
+        const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        props.busEventHandlers.add(handler);
+
+        client.dispatch({
+            type: EngineChannel.BusEvent,
+            event: { name: 'log.output', payload: { message: 42 } },
+        });
+
+        expect(handler).not.toHaveBeenCalled();
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('invalid bus-event payload'));
+        error.mockRestore();
+    });
+
+    it('forwards unknown bus events with opaque payloads', () => {
+        const { props } = buildProps();
+        const client = createRpcClient(props);
+        const handler = vi.fn();
+        props.busEventHandlers.add(handler);
+        const event = {
+            name: 'plugin.future-event',
+            payload: { arbitrary: ['data'] },
+            timestamp: 1700000000000,
+        };
+
+        client.dispatch({ type: EngineChannel.BusEvent, event });
+
+        expect(handler).toHaveBeenCalledWith(event);
+    });
+
     it('does not throw on an unsolicited response from worker', () => {
         const { props } = buildProps();
         const client = createRpcClient(props);
