@@ -156,7 +156,7 @@ export type CorrelationId = z.infer<typeof CorrelationIdSchema>;
 export const CommandCorrelationIdSchema = CorrelationIdSchema;
 export type CommandCorrelationId = CorrelationId;
 
-const EngineBusEventPayloadSchema = z
+export const EngineBusEventPayloadSchema = z
     .object({
         name: z.string(),
         payload: z.unknown(),
