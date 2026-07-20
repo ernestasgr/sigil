@@ -1,7 +1,7 @@
 import type { NodeType } from '@sigil/schema/nodes';
 import { Option } from 'effect';
 
-import type { NodeHandler } from './node-handlers/types.js';
+import type { NodeHandler } from '../node-handlers/types.js';
 
 export interface NodeHandlerRegistry {
     readonly register: (type: string, handler: NodeHandler) => void;

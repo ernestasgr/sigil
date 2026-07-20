@@ -5,16 +5,15 @@ import type { CompiledPipeline } from '@sigil/schema';
 import Database from 'better-sqlite3';
 import { Effect, Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-
-import type { AtomicFileWriter } from './atomic-file.js';
-import { createPermissionOverrideStore } from './permission-override-store.js';
-import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
+import { readPropertiesFile, writePropertiesFile } from '../core/properties-loader.js';
 import {
     createInMemoryWorkflowStateStore,
     createWorkflowStateStore,
     type WorkflowStateStore,
-} from './workflow-state.js';
-import { createWorkflowStore } from './workflow-store.js';
+} from '../workflow/workflow-state.js';
+import { createWorkflowStore } from '../workflow/workflow-store.js';
+import type { AtomicFileWriter } from './atomic-file.js';
+import { createPermissionOverrideStore } from './permission-override-store.js';
 
 const contractPipeline: CompiledPipeline = {
     id: 'pipeline-contract',

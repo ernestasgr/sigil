@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RendererChannel } from '../shared/ipc-channels.js';
 import type { PermissionOverrideOutcome } from '../shared/persistence.js';
 import type { EngineHandle } from './engine-client.js';
-import type { IpcHandlerContext } from './ipc-handlers.js';
-import { registerIpcHandlers } from './ipc-handlers.js';
+import type { IpcHandlerContext } from './ipc/ipc-handlers.js';
+import { registerIpcHandlers } from './ipc/ipc-handlers.js';
 import type { NativeDialogAdapter } from './native-dialog.js';
 
 type RegisteredHandler = (event: unknown, ...args: unknown[]) => Promise<unknown>;

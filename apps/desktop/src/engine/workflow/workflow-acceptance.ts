@@ -7,9 +7,8 @@ import {
     type WorkflowTopologyResult,
 } from '@sigil/schema/topology';
 import { Option } from 'effect';
-
-import { isTriggerHandler } from './node-handlers/types.js';
-import type { NodeHandlerRegistry } from './node-registry.js';
+import type { NodeHandlerRegistry } from '../execution/node-registry.js';
+import { isTriggerHandler } from '../node-handlers/types.js';
 
 export type WorkflowInput = CompiledPipeline | ExecutableWorkflow;
 

@@ -4,13 +4,13 @@ import {
     type PersistenceDiagnostic,
     type PersistencePhase,
     persistenceErrorCode,
-} from '../shared/persistence.js';
+} from '../../shared/persistence.js';
 import {
     type AtomicFileWriter,
     type AtomicWriteResult,
     atomicFileWriter,
     createAtomicWriteFailure,
-} from './atomic-file.js';
+} from '../persistence/atomic-file.js';
 
 export type WriteResult = AtomicWriteResult;
 

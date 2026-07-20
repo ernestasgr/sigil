@@ -6,24 +6,26 @@ import type { CollisionSuffixStyle, ConflictPolicy } from '@sigil/schema/propert
 import type { ExecutableWorkflow } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Either, Option } from 'effect';
-
-import type { CapabilityBroker } from './capability-broker.js';
-import { evaluateCondition, matchSwitchCase } from './condition-evaluator.js';
-import type { EventBus, WorkflowRunPayload } from './event-bus.js';
-import type { NodeHandlerDeps, NodeRunResult, Sleep } from './node-handlers/types.js';
-import type { NodeHandlerRegistry } from './node-registry.js';
+import type { EventBus, WorkflowRunPayload } from '../events/event-bus.js';
 import {
     createRunTelemetry,
     type NodeTelemetryIdentity,
     nodeTelemetryIdentity,
     type RunTelemetry,
     safeTelemetryMessage,
-} from './telemetry.js';
+} from '../events/telemetry.js';
+import type { NodeHandlerDeps, NodeRunResult, Sleep } from '../node-handlers/types.js';
+import type { CapabilityBroker } from '../persistence/capability-broker.js';
+import { acceptWorkflow } from '../workflow/workflow-acceptance.js';
+import type { WorkflowRunOutcome } from '../workflow/workflow-run-supervisor.js';
+import {
+    createInMemoryWorkflowStateStore,
+    type WorkflowStateStore,
+} from '../workflow/workflow-state.js';
+import { createWorkflowTopologyError } from '../workflow/workflow-topology-error.js';
+import { evaluateCondition, matchSwitchCase } from './condition-evaluator.js';
+import type { NodeHandlerRegistry } from './node-registry.js';
 import { resolveTemplate } from './template.js';
-import { acceptWorkflow } from './workflow-acceptance.js';
-import type { WorkflowRunOutcome } from './workflow-run-supervisor.js';
-import { createInMemoryWorkflowStateStore, type WorkflowStateStore } from './workflow-state.js';
-import { createWorkflowTopologyError } from './workflow-topology-error.js';
 
 export interface ExecutorSettings {
     readonly notifyOnWorkflowError: boolean;

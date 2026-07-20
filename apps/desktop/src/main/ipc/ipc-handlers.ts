@@ -6,15 +6,15 @@ import {
     type RendererCommandName,
     type RendererRequest,
     type RendererResponse,
-} from '../shared/command-contracts.js';
+} from '../../shared/command-contracts.js';
 import {
     type PermissionOverrideOutcome,
     PersistenceDiagnosticSchema,
     type PropertiesSaveOutcome,
-} from '../shared/persistence.js';
-import type { EngineHandle } from './engine-client.js';
+} from '../../shared/persistence.js';
+import type { EngineHandle } from '../engine-client.js';
+import { electronNativeDialogAdapter, type NativeDialogAdapter } from '../native-dialog.js';
 import { ipcHandleCommand } from './ipc-handle.js';
-import { electronNativeDialogAdapter, type NativeDialogAdapter } from './native-dialog.js';
 
 export interface IpcHandlerContext {
     readonly getEngine: () => EngineHandle | null;

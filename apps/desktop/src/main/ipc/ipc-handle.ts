@@ -5,7 +5,7 @@ import type {
     RendererCommandName,
     RendererRequest,
     RendererResponse,
-} from '../shared/command-contracts.js';
+} from '../../shared/command-contracts.js';
 
 export function ipcHandle<T extends z.ZodTypeAny>(
     channel: string,

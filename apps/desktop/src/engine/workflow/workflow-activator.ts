@@ -1,11 +1,11 @@
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
 
-import type { WorkflowActivationState } from '../shared/workflow.js';
-import type { Engine } from './engine.js';
-import { isTriggerHandler } from './node-handlers/types.js';
-import type { NodeHandlerRegistry } from './node-registry.js';
-import { createRunTelemetry } from './telemetry.js';
+import type { WorkflowActivationState } from '../../shared/workflow.js';
+import type { Engine } from '../core/engine.js';
+import { createRunTelemetry } from '../events/telemetry.js';
+import type { NodeHandlerRegistry } from '../execution/node-registry.js';
+import { isTriggerHandler } from '../node-handlers/types.js';
 import { acceptWorkflow } from './workflow-acceptance.js';
 import {
     createWorkflowRunSupervisor,

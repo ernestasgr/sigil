@@ -2,14 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
 import { type WorkflowContext, WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
-import type { EngineDiagnosticPayload } from '../shared/event-payload-schemas.js';
-import type { Bridge } from './bridge.js';
+import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
+import type { Bridge } from '../events/bridge.js';
 import type {
     KernelDeps,
     NodeHandler,
     NodeHandlerDeps,
     NodeRunResult,
-} from './node-handlers/types.js';
+} from '../node-handlers/types.js';
+import { getDeactivationHook } from '../workflow/workflow-activator.js';
 import type { NodePluginPreparation } from './node-plugin-preparation.js';
 import {
     createNodePluginRpcRouter,
@@ -26,7 +27,6 @@ import type {
     NodePluginWorkerRuntimeToMain,
 } from './plugin-node-rpc.js';
 import { NodePluginWorkerKind, NodePluginWorkerToMainSchema } from './plugin-node-rpc.js';
-import { getDeactivationHook } from './workflow-activator.js';
 
 export const PLUGIN_WORKER_READY_TIMEOUT_MS = 30_000;
 export const PLUGIN_EXECUTION_TIMEOUT_MS = 30_000;

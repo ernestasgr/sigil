@@ -1,9 +1,9 @@
 import type { Capability } from '@sigil/schema/manifest';
 import { Either, Option } from 'effect';
 
-import type { Bridge } from './bridge.js';
+import type { Bridge } from '../events/bridge.js';
+import type { KernelDeps, NodeHandlerDeps } from '../node-handlers/types.js';
 import { FileEventSchema } from './file-watcher-manager.js';
-import type { KernelDeps, NodeHandlerDeps } from './node-handlers/types.js';
 import {
     type NodePluginDepsRpc,
     NodePluginDepsRpcSchema,

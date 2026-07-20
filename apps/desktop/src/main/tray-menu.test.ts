@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { WorkflowSummary } from '../shared/workflow.js';
 
-import { buildTrayMenu } from './tray-menu.js';
+import { buildTrayMenu } from './tray/tray-menu.js';
 
 const workflow = (id: string, name: string, enabled: boolean): WorkflowSummary => ({
     id,

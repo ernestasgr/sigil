@@ -1,7 +1,7 @@
 import { Either, Option } from 'effect';
 import { z } from 'zod';
+import type { ManifestRegistry } from '../plugins/manifest-registry.js';
 import type { BusEvent, EventBus, EventSink } from './event-bus.js';
-import type { ManifestRegistry } from './manifest-registry.js';
 
 export type EmissionError =
     | { readonly kind: 'malformed'; readonly error: string; readonly eventName: string }

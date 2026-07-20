@@ -1,4 +1,4 @@
-import type { WorkflowSummary } from '../shared/workflow.js';
+import type { WorkflowSummary } from '../../shared/workflow.js';
 
 export type WorkflowRegistryState = readonly Pick<WorkflowSummary, 'id' | 'name' | 'enabled'>[];
 

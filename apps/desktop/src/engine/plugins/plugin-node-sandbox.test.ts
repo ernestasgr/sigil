@@ -84,7 +84,7 @@ function renderSandboxSurfaceDocumentation(surface: ReturnType<typeof createTest
 }
 
 function readmeText(): string {
-    return readFileSync(new URL('../../../../README.md', import.meta.url), 'utf8').replace(
+    return readFileSync(new URL('../../../../../README.md', import.meta.url), 'utf8').replace(
         /\r\n/g,
         '\n',
     );

@@ -1,8 +1,8 @@
 import { Match } from 'effect';
 import { Menu, nativeImage, Tray } from 'electron';
 
-import type { WorkflowSummary } from '../shared/workflow.js';
-import { isWorkflowActive, workflowActivationLabel } from '../shared/workflow.js';
+import type { WorkflowSummary } from '../../shared/workflow.js';
+import { isWorkflowActive, workflowActivationLabel } from '../../shared/workflow.js';
 import { solidColorPngDataUrl } from './tray-icon.js';
 import { buildTrayMenu, type TrayMenuItem } from './tray-menu.js';
 

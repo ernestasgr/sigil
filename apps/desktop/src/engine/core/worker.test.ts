@@ -20,10 +20,9 @@ import {
     type EngineSetWorkflowStateKey,
     type EngineToggleWorkflow,
     type EngineUpdateWorkflow,
-} from '../shared/ipc-channels.js';
-
+} from '../../shared/ipc-channels.js';
+import { createWorkflowTopologyError } from '../workflow/workflow-topology-error.js';
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
-import { createWorkflowTopologyError } from './workflow-topology-error.js';
 
 const { readPropertiesFileMock, writePropertiesFileMock } = vi.hoisted(() => ({
     readPropertiesFileMock: vi.fn(),

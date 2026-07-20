@@ -5,21 +5,21 @@ import type {
     EngineCommandRequest,
     EngineRequest,
     EngineResponse,
-} from '../shared/command-contracts.js';
-import type { EngineDiagnosticPayload } from '../shared/event-payload-schemas.js';
-import { EngineChannel } from '../shared/ipc-channels.js';
+} from '../../shared/command-contracts.js';
+import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
+import { EngineChannel } from '../../shared/ipc-channels.js';
 import {
     formatPersistenceDiagnostic,
     isExpectedMissingFileDiagnostic,
-} from '../shared/persistence.js';
-import type { PluginInfo } from '../shared/plugin-info.js';
+} from '../../shared/persistence.js';
+import type { PluginInfo } from '../../shared/plugin-info.js';
+import type { WorkflowActivator } from '../workflow/workflow-activator.js';
+import type { WorkflowLifecycle } from '../workflow/workflow-lifecycle.js';
+import type { WorkflowStore } from '../workflow/workflow-store.js';
+import { isWorkflowPersistenceError } from '../workflow/workflow-store.js';
+import { isWorkflowTopologyError } from '../workflow/workflow-topology-error.js';
 import type { Engine } from './engine.js';
 import { readPropertiesFile, writePropertiesFile } from './properties-loader.js';
-import type { WorkflowActivator } from './workflow-activator.js';
-import type { WorkflowLifecycle } from './workflow-lifecycle.js';
-import type { WorkflowStore } from './workflow-store.js';
-import { isWorkflowPersistenceError } from './workflow-store.js';
-import { isWorkflowTopologyError } from './workflow-topology-error.js';
 
 export interface DispatchSubsystems {
     readonly postMessage: (msg: unknown) => void;

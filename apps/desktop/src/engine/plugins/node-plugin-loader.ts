@@ -4,10 +4,12 @@ import { fileURLToPath } from 'node:url';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
 import type { PropertyRegistry, SerializedPropertyDescriptor } from '@sigil/schema/properties-file';
 import { Either } from 'effect';
-import type { EngineDiagnosticPayload } from '../shared/event-payload-schemas.js';
-import type { Bridge } from './bridge.js';
+import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
+import type { Bridge } from '../events/bridge.js';
+import type { NodeHandlerRegistry } from '../execution/node-registry.js';
+import type { KernelDeps, NodeHandler } from '../node-handlers/types.js';
+import type { PermissionOverrideStore } from '../persistence/permission-override-store.js';
 import type { ManifestRegistry } from './manifest-registry.js';
-import type { KernelDeps, NodeHandler } from './node-handlers/types.js';
 import {
     type DiscoveredNodePlugin,
     discoverNodePlugin,
@@ -20,8 +22,6 @@ import {
     type NodePluginWorkerLoadOptions,
     type NodePluginWorkerSupervisor,
 } from './node-plugin-worker-supervisor.js';
-import type { NodeHandlerRegistry } from './node-registry.js';
-import type { PermissionOverrideStore } from './permission-override-store.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

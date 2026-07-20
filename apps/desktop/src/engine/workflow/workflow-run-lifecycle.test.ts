@@ -6,10 +6,10 @@ import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 
-import { EngineChannel } from '../shared/ipc-channels.js';
-import { type DispatchSubsystems, dispatch } from './dispatch.js';
-import { createEngine } from './engine.js';
-import type { NodeRunResult, TriggerHandler } from './node-handlers/types.js';
+import { EngineChannel } from '../../shared/ipc-channels.js';
+import { type DispatchSubsystems, dispatch } from '../core/dispatch.js';
+import { createEngine } from '../core/engine.js';
+import type { NodeRunResult, TriggerHandler } from '../node-handlers/types.js';
 import { workflowTopologyOptions } from './workflow-acceptance.js';
 import { createWorkflowActivator } from './workflow-activator.js';
 import { createWorkflowLifecycle } from './workflow-lifecycle.js';

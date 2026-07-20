@@ -4,10 +4,9 @@ import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
 import { Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
-import type { AtomicWriteFailure } from './atomic-file.js';
-import { createEngine } from './engine.js';
-import type { NodeRunResult, TriggerHandler } from './node-handlers/types.js';
+import { createEngine } from '../core/engine.js';
+import type { NodeRunResult, TriggerHandler } from '../node-handlers/types.js';
+import type { AtomicWriteFailure } from '../persistence/atomic-file.js';
 import { workflowTopologyOptions } from './workflow-acceptance.js';
 import { createWorkflowActivator, getDeactivationHook } from './workflow-activator.js';
 import { createWorkflowLifecycle } from './workflow-lifecycle.js';

@@ -6,7 +6,7 @@ import {
     type PersistenceDiagnostic,
     type PersistencePhase,
     persistenceErrorCode,
-} from '../shared/persistence.js';
+} from '../../shared/persistence.js';
 import {
     type AtomicFileWriter,
     type AtomicWriteResult,

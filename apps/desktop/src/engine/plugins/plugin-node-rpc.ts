@@ -8,7 +8,7 @@ import {
 } from '@sigil/schema/properties-file';
 import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { z } from 'zod';
-import { WorkflowStatePrimitiveSchema } from '../shared/ipc-channels.js';
+import { WorkflowStatePrimitiveSchema } from '../../shared/ipc-channels.js';
 import { SubscriberRegistrationSchema } from './file-watcher-manager.js';
 
 export const NodePluginWorkerKind = {

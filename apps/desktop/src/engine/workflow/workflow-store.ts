@@ -35,14 +35,14 @@ import {
     type WorkflowActivationState,
     WorkflowActivationStateSchema,
     type WorkflowSummary,
-} from '../shared/workflow.js';
+} from '../../shared/workflow.js';
 import {
     type AtomicFileWriter,
     type AtomicWriteFailure,
     type AtomicWriteResult,
     atomicFileWriter,
     createAtomicWriteFailure,
-} from './atomic-file.js';
+} from '../persistence/atomic-file.js';
 import { createWorkflowTopologyError } from './workflow-topology-error.js';
 
 export interface StoredWorkflow {

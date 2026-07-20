@@ -15,16 +15,16 @@ import {
 import { type WorkflowContext, WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
-import type { CapabilityResult } from './capability-broker.js';
-import type { FileEventCallback, SubscriberRegistration } from './file-watcher-manager.js';
-import { FileEventSchema } from './file-watcher-manager.js';
 import type {
     KernelDeps,
     NodeHandler,
     NodeHandlerDeps,
     NodeRunResult,
-} from './node-handlers/types.js';
-import { isTriggerHandler } from './node-handlers/types.js';
+} from '../node-handlers/types.js';
+import { isTriggerHandler } from '../node-handlers/types.js';
+import type { CapabilityResult } from '../persistence/capability-broker.js';
+import type { FileEventCallback, SubscriberRegistration } from './file-watcher-manager.js';
+import { FileEventSchema } from './file-watcher-manager.js';
 import {
     createPluginExecutionState,
     type PluginExecutionState,

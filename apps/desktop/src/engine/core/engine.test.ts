@@ -7,9 +7,9 @@ import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BusEvent } from '../events/event-bus.js';
+import { isTriggerHandler } from '../node-handlers/types.js';
 import { createEngine, type Engine } from './engine.js';
-import type { BusEvent } from './event-bus.js';
-import { isTriggerHandler } from './node-handlers/types.js';
 
 async function activateFileWatcher(
     engine: Engine,

@@ -1,4 +1,4 @@
-import { isWorkflowActive, type WorkflowSummary } from '../shared/workflow.js';
+import { isWorkflowActive, type WorkflowSummary } from '../../shared/workflow.js';
 
 export type TrayMenuItem =
     | { readonly kind: 'workflow-toggle'; readonly workflow: WorkflowSummary }

@@ -7,8 +7,8 @@ import type { CollisionSuffixStyle } from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Either } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
-import type { CapabilityBroker } from '../capability-broker.js';
-import { createEventBus } from '../event-bus.js';
+import { createEventBus } from '../events/event-bus.js';
+import type { CapabilityBroker } from '../persistence/capability-broker.js';
 import type { NodeHandlerDeps } from './types.js';
 
 function tmpDir(): string {

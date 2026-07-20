@@ -10,7 +10,7 @@ import type {
     WorkflowStatePrimitive,
     WorkflowStateValue,
     WorkflowStateValueType,
-} from '../shared/ipc-channels.js';
+} from '../../shared/ipc-channels.js';
 
 export type {
     WorkflowStateEntry,

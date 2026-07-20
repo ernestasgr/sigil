@@ -1,10 +1,10 @@
 import type { Manifest } from '@sigil/schema/manifest';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
+import { createManifestRegistry } from '../plugins/manifest-registry.js';
 import { createBridge } from './bridge.js';
 import type { BusEvent } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
-import { createManifestRegistry } from './manifest-registry.js';
 import { createRunTelemetry } from './telemetry.js';
 
 const stubPingManifest: Manifest = {

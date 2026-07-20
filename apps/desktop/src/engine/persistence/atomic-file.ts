@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { Either } from 'effect';
-import type { PersistenceDiagnostic, PersistencePhase } from '../shared/persistence.js';
+import type { PersistenceDiagnostic, PersistencePhase } from '../../shared/persistence.js';
 
 export type AtomicFileDescriptor = number;
 

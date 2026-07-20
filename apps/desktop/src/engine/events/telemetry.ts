@@ -5,8 +5,8 @@ import type {
     TelemetryKind,
     TelemetryOutcome,
     TelemetrySeverity,
-} from '../shared/telemetry.js';
-import { isSensitiveTelemetryKey, redactTelemetryText } from '../shared/telemetry-safety.js';
+} from '../../shared/telemetry.js';
+import { isSensitiveTelemetryKey, redactTelemetryText } from '../../shared/telemetry-safety.js';
 import type {
     BusEvent,
     EventBus,

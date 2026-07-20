@@ -13,30 +13,36 @@ import {
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import Database from 'better-sqlite3';
-import type { EngineDiagnosticPayload } from '../shared/event-payload-schemas.js';
-import type { Bridge } from './bridge.js';
-import { createBridge } from './bridge.js';
-import type { CapabilityBroker } from './capability-broker.js';
-import { createCapabilityBroker } from './capability-broker.js';
+import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
+import type { Bridge } from '../events/bridge.js';
+import { createBridge } from '../events/bridge.js';
+import type { EventBus } from '../events/event-bus.js';
+import { createEventBus } from '../events/event-bus.js';
 import {
     type ExecutionOptions,
     type ExecutorSettings,
     executeValidatedWorkflow,
     type WorkflowExecutionResult,
-} from './dag-executor.js';
-import type { EventBus } from './event-bus.js';
-import { createEventBus } from './event-bus.js';
-import { createFileWatcherManager, type FileWatcherManager } from './file-watcher-manager.js';
-import type { ManifestRegistry } from './manifest-registry.js';
-import { createManifestRegistry } from './manifest-registry.js';
-import { createBuiltinHandlers } from './node-handlers/registry.js';
-import { createNodePluginLoader, type NodePluginLoadResult } from './node-plugin-loader.js';
-import { createNodeHandlerRegistry, type NodeHandlerRegistry } from './node-registry.js';
-import type { PermissionOverrideStore } from './permission-override-store.js';
-import { createPermissionOverrideStore } from './permission-override-store.js';
-import { acceptWorkflow, type WorkflowInput } from './workflow-acceptance.js';
-import { createWorkflowStateStore, type WorkflowStateStore } from './workflow-state.js';
-import { createWorkflowTopologyError } from './workflow-topology-error.js';
+} from '../execution/dag-executor.js';
+import { createNodeHandlerRegistry, type NodeHandlerRegistry } from '../execution/node-registry.js';
+import { createBuiltinHandlers } from '../node-handlers/registry.js';
+import type { CapabilityBroker } from '../persistence/capability-broker.js';
+import { createCapabilityBroker } from '../persistence/capability-broker.js';
+import type { PermissionOverrideStore } from '../persistence/permission-override-store.js';
+import { createPermissionOverrideStore } from '../persistence/permission-override-store.js';
+import {
+    createFileWatcherManager,
+    type FileWatcherManager,
+} from '../plugins/file-watcher-manager.js';
+import type { ManifestRegistry } from '../plugins/manifest-registry.js';
+import { createManifestRegistry } from '../plugins/manifest-registry.js';
+import {
+    createNodePluginLoader,
+    type NodePluginLoadResult,
+} from '../plugins/node-plugin-loader.js';
+import { acceptWorkflow, type WorkflowInput } from '../workflow/workflow-acceptance.js';
+import { createWorkflowStateStore, type WorkflowStateStore } from '../workflow/workflow-state.js';
+import { createWorkflowTopologyError } from '../workflow/workflow-topology-error.js';
 
 export interface EngineOptions {
     readonly properties?: unknown;
@@ -186,7 +192,7 @@ export function createEngine(options?: EngineOptions): Engine {
     );
 
     const __filename = fileURLToPath(import.meta.url);
-    const builtinPluginsDir = resolvePath(dirname(__filename), '../../src/builtin-plugins');
+    const builtinPluginsDir = resolvePath(dirname(__filename), '../../builtin-plugins');
 
     const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
     const pluginLoader = createNodePluginLoader();

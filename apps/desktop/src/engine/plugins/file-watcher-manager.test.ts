@@ -5,9 +5,9 @@ import type { Manifest } from '@sigil/schema/manifest';
 import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
-import { createBridge } from './bridge.js';
-import type { BusEvent } from './event-bus.js';
-import { createEventBus } from './event-bus.js';
+import { createBridge } from '../events/bridge.js';
+import type { BusEvent } from '../events/event-bus.js';
+import { createEventBus } from '../events/event-bus.js';
 import { FILE_WATCHER_PLUGIN_ID } from './plugin-ids.js';
 
 const fileWatcherManifest: Manifest = {

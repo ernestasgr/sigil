@@ -12,7 +12,7 @@ import {
     createWorkflowStateStore,
     type WorkflowStatePrimitive,
     type WorkflowStateStore,
-} from './workflow-state.js';
+} from '../workflow/workflow-state.js';
 
 const PROPERTY_OPTIONS = {
     numRuns: 60,

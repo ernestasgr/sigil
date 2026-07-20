@@ -5,11 +5,11 @@ import type { CompiledPipeline } from '@sigil/schema';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 
-import { compileGraph } from '../renderer/workflow-builder/compile.js';
-import { createEngine } from './engine.js';
-import { workflowTopologyOptions } from './workflow-acceptance.js';
-import { createWorkflowActivator, type WorkflowActivator } from './workflow-activator.js';
-import { createWorkflowStore } from './workflow-store.js';
+import { compileGraph } from '../../renderer/workflow-builder/compile.js';
+import { createEngine } from '../core/engine.js';
+import { workflowTopologyOptions } from '../workflow/workflow-acceptance.js';
+import { createWorkflowActivator, type WorkflowActivator } from '../workflow/workflow-activator.js';
+import { createWorkflowStore } from '../workflow/workflow-store.js';
 
 describe('Workflow topology contract', () => {
     it('reports the same empty-Pipeline rule from renderer compilation and Engine acceptance', async () => {

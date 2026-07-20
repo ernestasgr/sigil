@@ -6,29 +6,29 @@ import { z } from 'zod';
 import {
     type EngineCommandRequest,
     MainToEngineMessageSchema,
-} from '../shared/command-contracts.js';
+} from '../../shared/command-contracts.js';
 import {
     createEngineDiagnostic,
     type EngineDiagnosticPayload,
-} from '../shared/event-payload-schemas.js';
+} from '../../shared/event-payload-schemas.js';
 import {
     type EngineBusEvent,
     EngineChannel,
     type EngineLog,
     type EngineWorkflowsList,
-} from '../shared/ipc-channels.js';
+} from '../../shared/ipc-channels.js';
 import {
     formatPersistenceDiagnostic,
     isExpectedMissingFileDiagnostic,
     type PersistenceDiagnostic,
-} from '../shared/persistence.js';
+} from '../../shared/persistence.js';
+import { workflowTopologyOptions } from '../workflow/workflow-acceptance.js';
+import { createWorkflowActivator } from '../workflow/workflow-activator.js';
+import { createWorkflowLifecycle } from '../workflow/workflow-lifecycle.js';
+import { createWorkflowStore } from '../workflow/workflow-store.js';
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
 import { createEngine } from './engine.js';
 import { readPropertiesFile } from './properties-loader.js';
-import { workflowTopologyOptions } from './workflow-acceptance.js';
-import { createWorkflowActivator } from './workflow-activator.js';
-import { createWorkflowLifecycle } from './workflow-lifecycle.js';
-import { createWorkflowStore } from './workflow-store.js';
 
 if (!parentPort) {
     throw new Error('engine worker must be spawned as a worker_thread');

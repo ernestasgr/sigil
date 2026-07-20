@@ -11,15 +11,18 @@ import {
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { EngineDiagnosticPayload } from '../shared/event-payload-schemas.js';
-import { createBridge } from './bridge.js';
-import type { CapabilityBroker } from './capability-broker.js';
-import { createCapabilityBroker } from './capability-broker.js';
-import { type BusEvent, createEventBus } from './event-bus.js';
+import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
+import { createBridge } from '../events/bridge.js';
+import { type BusEvent, createEventBus } from '../events/event-bus.js';
+import { createNodeHandlerRegistry } from '../execution/node-registry.js';
+import { createBuiltinHandlers } from '../node-handlers/registry.js';
+import type { KernelDeps } from '../node-handlers/types.js';
+import type { CapabilityBroker } from '../persistence/capability-broker.js';
+import { createCapabilityBroker } from '../persistence/capability-broker.js';
+import { createPermissionOverrideStore } from '../persistence/permission-override-store.js';
+import { createInMemoryWorkflowStateStore } from '../workflow/workflow-state.js';
 import type { FileEventCallback, SubscriberRegistration } from './file-watcher-manager.js';
 import { createManifestRegistry } from './manifest-registry.js';
-import { createBuiltinHandlers } from './node-handlers/registry.js';
-import type { KernelDeps } from './node-handlers/types.js';
 import {
     createNodePluginLoader,
     loadNodePlugin,
@@ -27,10 +30,7 @@ import {
     type NodePluginLoader,
     updatePluginPermissions,
 } from './node-plugin-loader.js';
-import { createNodeHandlerRegistry } from './node-registry.js';
-import { createPermissionOverrideStore } from './permission-override-store.js';
 import { NodePluginWorkerKind } from './plugin-node-rpc.js';
-import { createInMemoryWorkflowStateStore } from './workflow-state.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -3412,7 +3412,7 @@ describe('builtin plugins integration', () => {
     });
 
     it('loads file-manager and file-watcher from the builtin-plugins directory', async () => {
-        const builtinPluginsDir = resolve(__dirname, '../builtin-plugins');
+        const builtinPluginsDir = resolve(__dirname, '../../builtin-plugins');
         expect(existsSync(builtinPluginsDir)).toBe(true);
 
         const { manifestRegistry, handlerRegistry } = createRegistries();

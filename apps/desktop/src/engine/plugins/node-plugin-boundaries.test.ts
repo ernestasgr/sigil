@@ -5,10 +5,14 @@ import type { CompiledPipeline } from '@sigil/schema';
 import { Either, Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createEngine } from './engine.js';
+import { createEngine } from '../core/engine.js';
+import { createNodeHandlerRegistry } from '../execution/node-registry.js';
+import { createBuiltinHandlers } from '../node-handlers/registry.js';
+import { isTriggerHandler, type KernelDeps } from '../node-handlers/types.js';
+import { workflowTopologyOptions } from '../workflow/workflow-acceptance.js';
+import { createWorkflowActivator } from '../workflow/workflow-activator.js';
+import { createWorkflowStore } from '../workflow/workflow-store.js';
 import { createManifestRegistry } from './manifest-registry.js';
-import { createBuiltinHandlers } from './node-handlers/registry.js';
-import { isTriggerHandler, type KernelDeps } from './node-handlers/types.js';
 import { discoverNodePlugin, discoverNodePlugins } from './node-plugin-discovery.js';
 import { createNodePluginLoader, type NodePluginLoader } from './node-plugin-loader.js';
 import { prepareNodePlugin } from './node-plugin-preparation.js';
@@ -16,11 +20,7 @@ import {
     createNodePluginRpcRouter,
     NODE_PLUGIN_OPERATION_CAPABILITIES,
 } from './node-plugin-rpc-router.js';
-import { createNodeHandlerRegistry } from './node-registry.js';
 import { NodePluginWorkerKind } from './plugin-node-rpc.js';
-import { workflowTopologyOptions } from './workflow-acceptance.js';
-import { createWorkflowActivator } from './workflow-activator.js';
-import { createWorkflowStore } from './workflow-store.js';
 
 const HANDLER = `
 import { z } from 'zod';

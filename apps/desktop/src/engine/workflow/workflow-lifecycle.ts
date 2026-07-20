@@ -1,7 +1,7 @@
 import { Option } from 'effect';
 
-import type { WorkflowSummary } from '../shared/workflow.js';
-import type { AtomicWriteFailure } from './atomic-file.js';
+import type { WorkflowSummary } from '../../shared/workflow.js';
+import type { AtomicWriteFailure } from '../persistence/atomic-file.js';
 import type { WorkflowActivator } from './workflow-activator.js';
 import { isWorkflowPersistenceError, type WorkflowStore } from './workflow-store.js';
 

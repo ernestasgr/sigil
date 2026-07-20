@@ -1,8 +1,8 @@
 import type { Manifest } from '@sigil/schema/manifest';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
+import { createManifestRegistry } from '../plugins/manifest-registry.js';
 import { createCapabilityBroker } from './capability-broker.js';
-import { createManifestRegistry } from './manifest-registry.js';
 import { createPermissionOverrideStore } from './permission-override-store.js';
 
 const manifestWithRead: Manifest = {

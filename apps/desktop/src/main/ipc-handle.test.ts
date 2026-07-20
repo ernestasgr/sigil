@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { RendererCommandContracts, type RendererResponse } from '../shared/command-contracts.js';
-import { ipcHandle, ipcHandleCommand } from './ipc-handle.js';
+import { ipcHandle, ipcHandleCommand } from './ipc/ipc-handle.js';
 
 const mockHandle = vi.hoisted(() => vi.fn());
 vi.mock('electron', () => ({

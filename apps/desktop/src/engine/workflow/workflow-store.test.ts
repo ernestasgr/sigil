@@ -7,7 +7,7 @@ import { isPluginNode } from '@sigil/schema/nodes';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AtomicFileWriter, AtomicWriteFailure } from './atomic-file.js';
+import type { AtomicFileWriter, AtomicWriteFailure } from '../persistence/atomic-file.js';
 import {
     createWorkflowStore,
     isWorkflowIdentityError,

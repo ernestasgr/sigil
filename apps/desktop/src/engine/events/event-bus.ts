@@ -25,8 +25,8 @@ import {
     WorkflowRunPayloadSchema,
     type WorkflowRunPolicyPayload,
     WorkflowRunPolicyPayloadSchema,
-} from '../shared/event-payload-schemas.js';
-import type { EventTelemetry } from '../shared/telemetry.js';
+} from '../../shared/event-payload-schemas.js';
+import type { EventTelemetry } from '../../shared/telemetry.js';
 
 // Re-export derived types for consumers
 export type {

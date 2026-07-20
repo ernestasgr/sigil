@@ -8,10 +8,9 @@ import {
     PROPERTY_DESCRIPTORS,
 } from '@sigil/schema/properties-file';
 import { Either } from 'effect';
-
-import type { CapabilityBroker } from '../../engine/capability-broker.js';
 import type { NodeHandler, NodeRunResult } from '../../engine/node-handlers/types.js';
 import { narrowNode } from '../../engine/node-handlers/types.js';
+import type { CapabilityBroker } from '../../engine/persistence/capability-broker.js';
 
 const FILE_MANAGER_PLUGIN_ID = 'com.sigil.file-manager';
 

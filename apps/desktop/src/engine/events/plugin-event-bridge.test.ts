@@ -3,13 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Option } from 'effect';
 import { describe, expect, it } from 'vitest';
-
+import { createNodeHandlerRegistry } from '../execution/node-registry.js';
+import { createBuiltinHandlers } from '../node-handlers/registry.js';
+import { createManifestRegistry } from '../plugins/manifest-registry.js';
+import { loadNodePlugin } from '../plugins/node-plugin-loader.js';
 import { createBridge } from './bridge.js';
 import { type BusEvent, createEventBus } from './event-bus.js';
-import { createManifestRegistry } from './manifest-registry.js';
-import { createBuiltinHandlers } from './node-handlers/registry.js';
-import { loadNodePlugin } from './node-plugin-loader.js';
-import { createNodeHandlerRegistry } from './node-registry.js';
 
 const NODE_TYPE = 'plugin-event-test';
 

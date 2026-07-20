@@ -1,7 +1,7 @@
 import type { StateSetValueType } from '@sigil/schema/nodes';
 import { Either } from 'effect';
 
-import type { WorkflowStatePrimitive } from '../shared/ipc-channels.js';
+import type { WorkflowStatePrimitive } from '../../shared/ipc-channels.js';
 
 export type WorkflowStateValueParseResult = Either.Either<
     WorkflowStatePrimitive,

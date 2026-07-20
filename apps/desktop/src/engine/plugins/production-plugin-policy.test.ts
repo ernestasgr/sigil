@@ -8,10 +8,10 @@ import {
     EngineChannel,
     EngineListPluginsResultSchema,
     EngineReadySchema,
-} from '../shared/ipc-channels.js';
+} from '../../shared/ipc-channels.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const workerBootstrapPath = resolve(__dirname, 'test-support/engine-worker-bootstrap.mjs');
+const workerBootstrapPath = resolve(__dirname, '../test-support/engine-worker-bootstrap.mjs');
 
 const EXTERNAL_PLUGIN_HANDLER = `
 import { z } from 'zod';

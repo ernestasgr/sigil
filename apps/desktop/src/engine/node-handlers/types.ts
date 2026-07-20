@@ -7,10 +7,10 @@ import type {
     PropertyDescriptor,
 } from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import type { CapabilityBroker } from '../capability-broker.js';
-import type { BusEvent } from '../event-bus.js';
-import type { FileWatcherManager } from '../file-watcher-manager.js';
-import type { WorkflowState } from '../workflow-state.js';
+import type { BusEvent } from '../events/event-bus.js';
+import type { CapabilityBroker } from '../persistence/capability-broker.js';
+import type { FileWatcherManager } from '../plugins/file-watcher-manager.js';
+import type { WorkflowState } from '../workflow/workflow-state.js';
 
 export interface NodeRunResult {
     readonly outputCtx: WorkflowContext;

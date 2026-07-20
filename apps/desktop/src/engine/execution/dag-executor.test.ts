@@ -10,14 +10,13 @@ import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import Database from 'better-sqlite3';
 import { Either, Option } from 'effect';
 import { beforeEach, describe, expect, it } from 'vitest';
-
-import type { CapabilityBroker } from './capability-broker.js';
+import type { BusEvent } from '../events/event-bus.js';
+import { createEventBus } from '../events/event-bus.js';
+import { createBuiltinHandlers } from '../node-handlers/registry.js';
+import type { CapabilityBroker } from '../persistence/capability-broker.js';
+import { createWorkflowStateStore } from '../workflow/workflow-state.js';
 import { type ExecutorSettings, executePipeline } from './dag-executor.js';
-import type { BusEvent } from './event-bus.js';
-import { createEventBus } from './event-bus.js';
-import { createBuiltinHandlers } from './node-handlers/registry.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
-import { createWorkflowStateStore } from './workflow-state.js';
 
 function captureEvents(bus: ReturnType<typeof createEventBus>): BusEvent[] {
     const events: BusEvent[] = [];
@@ -903,7 +902,7 @@ describe('dag-executor', () => {
     describe('executePipeline — file-manager', () => {
         beforeEach(async () => {
             if (!handlerRegistry.has('file-manager')) {
-                const mod = await import('../builtin-plugins/file-manager/handler.js');
+                const mod = await import('../../builtin-plugins/file-manager/handler.js');
                 handlerRegistry.register('file-manager', mod.handler);
             }
         });

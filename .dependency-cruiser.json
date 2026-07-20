@@ -24,7 +24,7 @@
             "to": {
                 "circular": true,
                 "viaOnly": {
-                    "pathNot": "^apps/desktop/src/engine/engine\\.ts$"
+                    "pathNot": "^apps/desktop/src/engine/core/engine\\.ts$"
                 }
             }
         },
@@ -38,7 +38,7 @@
             "to": {
                 "circular": true,
                 "via": {
-                    "path": "^apps/desktop/src/engine/engine\\.ts$"
+                    "path": "^apps/desktop/src/engine/core/engine\\.ts$"
                 }
             }
         },

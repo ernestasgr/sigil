@@ -3,7 +3,7 @@ import { CapabilitySchema } from '@sigil/schema/manifest';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
 
-import type { ManifestRegistry } from './manifest-registry.js';
+import type { ManifestRegistry } from '../plugins/manifest-registry.js';
 import type { PermissionOverrideStore } from './permission-override-store.js';
 
 export type { Capability, Manifest };
