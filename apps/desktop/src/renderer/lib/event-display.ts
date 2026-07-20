@@ -1,4 +1,9 @@
-import { EventPayloadSchemaRegistry } from '../../engine/event-payload-schemas.js';
+import { Either } from 'effect';
+
+import {
+    EventPayloadSchemaRegistry,
+    safeParsePayload,
+} from '../../engine/event-payload-schemas.js';
 import { redactTelemetrySummary, redactTelemetryText } from '../../shared/telemetry-safety.js';
 import type { BusEventEntry } from '../store/app-store.js';
 
@@ -25,7 +30,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
 }
 
-export function payloadPreview(payload: unknown): string {
+function formatPayloadPreview(payload: unknown): string {
     if (!isRecord(payload)) return String(payload);
     const obj = payload;
 
@@ -47,27 +52,42 @@ export function payloadPreview(payload: unknown): string {
     return parts.join(', ');
 }
 
-export function telemetryEntryPreview(entry: BusEventEntry): string {
-    if (entry.telemetry) return redactTelemetrySummary(entry.telemetry.summary);
-    if (entry.name === 'engine.diagnostic' && isRecord(entry.payload)) {
-        const message = entry.payload.message;
-        if (typeof message === 'string') return redactTelemetryText(message);
+export function payloadPreview(payload: unknown): string;
+export function payloadPreview(name: string, payload: unknown): string;
+export function payloadPreview(
+    ...args: [payload: unknown] | [name: string, payload: unknown]
+): string {
+    if (args.length === 1) {
+        return formatPayloadPreview(args[0]);
     }
-    return payloadPreview(entry.payload);
+
+    const [name, payload] = args;
+    const parsed = safeParsePayload(name, payload);
+    return Either.isRight(parsed)
+        ? formatPayloadPreview(parsed.right)
+        : formatPayloadPreview(payload);
 }
 
-function diagnosticField(entry: BusEventEntry, key: string): string | undefined {
-    if (entry.name !== 'engine.diagnostic' || !isRecord(entry.payload)) return undefined;
-    const value = entry.payload[key];
-    return typeof value === 'string' && value.length > 0 ? value : undefined;
+export function telemetryEntryPreview(entry: BusEventEntry): string {
+    if (entry.telemetry) return redactTelemetrySummary(entry.telemetry.summary);
+    if (entry.name === 'engine.diagnostic') {
+        const parsed = safeParsePayload('engine.diagnostic', entry.payload);
+        if (Either.isRight(parsed)) return redactTelemetryText(parsed.right.message);
+    }
+    return payloadPreview(entry.name, entry.payload);
 }
 
 export function telemetryEntryContext(entry: BusEventEntry): string {
-    const workflowId = entry.telemetry?.workflowId ?? diagnosticField(entry, 'workflowId');
-    const runId = entry.telemetry?.runId ?? diagnosticField(entry, 'runId');
-    const pluginId = entry.telemetry?.pluginId ?? diagnosticField(entry, 'pluginId');
-    const outcome = entry.telemetry?.outcome ?? diagnosticField(entry, 'outcome');
-    const source = diagnosticField(entry, 'source');
+    const parsed =
+        entry.name === 'engine.diagnostic'
+            ? safeParsePayload('engine.diagnostic', entry.payload)
+            : undefined;
+    const diagnostic = parsed !== undefined && Either.isRight(parsed) ? parsed.right : undefined;
+    const workflowId = entry.telemetry?.workflowId ?? diagnostic?.workflowId;
+    const runId = entry.telemetry?.runId ?? diagnostic?.runId;
+    const pluginId = entry.telemetry?.pluginId ?? diagnostic?.pluginId;
+    const outcome = entry.telemetry?.outcome ?? diagnostic?.outcome;
+    const source = diagnostic?.source;
     return [
         workflowId === undefined ? undefined : `workflow=${workflowId}`,
         runId === undefined ? undefined : `run=${runId}`,
@@ -79,10 +99,28 @@ export function telemetryEntryContext(entry: BusEventEntry): string {
         .join(' · ');
 }
 
-export function extractPluginId(payload: unknown): string | undefined {
+function extractPluginIdFromPayload(payload: unknown): string | undefined {
     if (isRecord(payload)) {
         const obj = payload;
         if (typeof obj.pluginId === 'string') return obj.pluginId;
+    }
+    return undefined;
+}
+
+export function extractPluginId(payload: unknown): string | undefined;
+export function extractPluginId(name: string, payload: unknown): string | undefined;
+export function extractPluginId(
+    ...args: [payload: unknown] | [name: string, payload: unknown]
+): string | undefined {
+    if (args.length === 1) {
+        return extractPluginIdFromPayload(args[0]);
+    }
+
+    const [name, payload] = args;
+    const parsed = safeParsePayload(name, payload);
+    if (Either.isRight(parsed)) return extractPluginIdFromPayload(parsed.right);
+    if (!Object.hasOwn(EventPayloadSchemaRegistry, name)) {
+        return extractPluginIdFromPayload(payload);
     }
     return undefined;
 }

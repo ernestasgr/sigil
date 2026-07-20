@@ -1,9 +1,11 @@
+import { Either } from 'effect';
+
+import {
+    type EngineDiagnosticPayload,
+    safeParsePayload,
+} from '../../engine/event-payload-schemas.js';
 import type { EngineBusEventPayload } from '../../shared/ipc-channels.js';
-import type {
-    EventTelemetry,
-    TelemetryDiagnosticSource,
-    TelemetryOutcome,
-} from '../../shared/telemetry.js';
+import type { EventTelemetry, TelemetryDiagnosticSource } from '../../shared/telemetry.js';
 import { redactTelemetrySummary, redactTelemetryText } from '../../shared/telemetry-safety.js';
 
 /** The renderer keeps recent telemetry only; older entries are evicted first. */
@@ -54,8 +56,7 @@ export function isTelemetryFailure(entry: TelemetryEntry): boolean {
         entry.telemetry?.severity === 'error' ||
         entry.telemetry?.outcome === 'failed' ||
         (entry.name === 'engine.diagnostic' &&
-            isRecord(entry.payload) &&
-            entry.payload.outcome === 'failed')
+            parseDiagnosticPayload(entry.payload)?.outcome === 'failed')
     );
 }
 
@@ -63,42 +64,31 @@ export function isTelemetryDiagnostic(entry: TelemetryEntry): boolean {
     return entry.name === 'engine.diagnostic' || entry.telemetry?.kind === 'diagnostic';
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
+function boundedString(value: string | undefined): string | undefined {
+    return value !== undefined && value.length > 0 ? value.slice(0, 128) : undefined;
 }
 
-function boundedString(value: unknown): string | undefined {
-    return typeof value === 'string' && value.length > 0 ? value.slice(0, 128) : undefined;
-}
-
-function diagnosticSource(value: unknown): TelemetryDiagnosticSource | undefined {
-    return value === 'engine' || value === 'worker' || value === 'plugin' ? value : undefined;
-}
-
-function diagnosticOutcome(value: unknown): TelemetryOutcome | undefined {
-    return value === 'queued' ||
-        value === 'running' ||
-        value === 'succeeded' ||
-        value === 'failed' ||
-        value === 'cancelled' ||
-        value === 'dropped'
-        ? value
-        : undefined;
+function parseDiagnosticPayload(payload: unknown): EngineDiagnosticPayload | undefined {
+    const parsed = safeParsePayload('engine.diagnostic', payload);
+    return Either.isRight(parsed) ? parsed.right : undefined;
 }
 
 function diagnosticMetadata(entry: TelemetryEntry): Partial<SupportTelemetryRecord> {
-    if (entry.name !== 'engine.diagnostic' || !isRecord(entry.payload)) return {};
+    if (entry.name !== 'engine.diagnostic') return {};
 
-    const message = boundedString(entry.payload.message);
-    const source = diagnosticSource(entry.payload.source);
-    const kind = boundedString(entry.payload.kind);
-    const pluginId = boundedString(entry.payload.pluginId);
-    const workflowId = boundedString(entry.payload.workflowId);
-    const pipelineId = boundedString(entry.payload.pipelineId);
-    const runId = boundedString(entry.payload.runId);
-    const nodeId = boundedString(entry.payload.nodeId);
-    const nodeType = boundedString(entry.payload.nodeType);
-    const outcome = diagnosticOutcome(entry.payload.outcome);
+    const diagnostic = parseDiagnosticPayload(entry.payload);
+    if (diagnostic === undefined) return {};
+
+    const message = boundedString(diagnostic.message);
+    const source = diagnostic.source;
+    const kind = boundedString(diagnostic.kind);
+    const pluginId = boundedString(diagnostic.pluginId);
+    const workflowId = boundedString(diagnostic.workflowId);
+    const pipelineId = boundedString(diagnostic.pipelineId);
+    const runId = boundedString(diagnostic.runId);
+    const nodeId = boundedString(diagnostic.nodeId);
+    const nodeType = boundedString(diagnostic.nodeType);
+    const outcome = diagnostic.outcome;
 
     return {
         ...(message === undefined ? {} : { summary: redactTelemetryText(message) }),
