@@ -33,6 +33,12 @@ export const EventCatalogEntrySchema = z
     .readonly();
 export type EventCatalogEntry = z.infer<typeof EventCatalogEntrySchema>;
 
+export interface EventCatalogSuggestion {
+    readonly value: string;
+    readonly label: string;
+    readonly description: string;
+}
+
 export type BuiltinEventCatalogEntry = Omit<EventCatalogEntry, 'name' | 'source'> & {
     readonly name: FileEventName;
     readonly source: 'builtin';
@@ -193,6 +199,26 @@ export function findEventField(
     eventName?: string,
 ): EventFieldMetadata | undefined {
     return getEventPayloadFields(catalog, eventName).find((field) => field.path === fieldPath);
+}
+
+export function eventCatalogSuggestions(
+    catalog: EventCatalog = DEFAULT_EVENT_CATALOG,
+): readonly EventCatalogSuggestion[] {
+    return catalog.entries.map((entry) => ({
+        value: entry.name,
+        label: entry.label,
+        description: entry.description,
+    }));
+}
+
+export function eventPayloadFieldSuggestions(
+    catalog: EventCatalog = DEFAULT_EVENT_CATALOG,
+): readonly EventCatalogSuggestion[] {
+    return getEventPayloadFields(catalog).map((field) => ({
+        value: field.path,
+        label: `${field.label} · ${field.kind}`,
+        description: field.description,
+    }));
 }
 
 export const DEFAULT_EVENT_CATALOG = createEventCatalog();

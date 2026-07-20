@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
     createEventCatalog,
+    eventCatalogSuggestions,
+    eventPayloadFieldSuggestions,
     FILE_EVENT_FIELDS,
     findEvent,
     getEventPayloadFields,
@@ -9,6 +11,20 @@ import {
 import { FileEventPayloadSchema } from './file-event-payload.js';
 
 describe('Event catalog', () => {
+    it('provides display suggestions from the shared catalog seam', () => {
+        const catalog = createEventCatalog();
+
+        expect(eventCatalogSuggestions(catalog)).toContainEqual({
+            value: 'file.created',
+            label: 'File created',
+            description: 'A file was created in a watched path.',
+        });
+        expect(eventPayloadFieldSuggestions(catalog)).toContainEqual({
+            value: 'size',
+            label: 'Size · number',
+            description: 'The file size in bytes.',
+        });
+    });
     it('exposes the built-in file Event fields through the catalog seam', () => {
         const catalog = createEventCatalog();
 
