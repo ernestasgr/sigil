@@ -6,6 +6,7 @@ import {
     createTelemetryEntry,
     createTelemetryIndex,
     formatTelemetryExport,
+    isTelemetryFailure,
 } from './telemetry-index.js';
 
 const correlatedEvent: EngineBusEventPayload = {
@@ -143,6 +144,19 @@ describe('telemetry index', () => {
         expect(output).not.toContain('payload-secret');
         expect(output).not.toContain('summary-secret');
         expect(output).not.toContain('raw-secret');
+    });
+
+    it('does not index diagnostic fields from an invalid registered payload', () => {
+        const entry = createTelemetryEntry(1, {
+            name: 'engine.diagnostic',
+            payload: { message: 42, source: 'worker', outcome: 'failed' },
+        });
+
+        expect(isTelemetryFailure(entry)).toBe(false);
+        const output = formatTelemetryExport([entry]);
+        expect(output).toContain('[PAYLOAD_OMITTED]');
+        expect(output).not.toContain('"source": "worker"');
+        expect(output).not.toContain('"outcome": "failed"');
     });
 
     it('keeps unscoped worker diagnostics in the same bounded history', () => {

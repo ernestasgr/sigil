@@ -74,7 +74,7 @@ export function EventsSection(): ReactElement {
     const pluginIds = useMemo(() => {
         const ids = new Set<string>();
         for (const e of scopedEvents) {
-            const pid = e.telemetry?.pluginId ?? extractPluginId(e.payload);
+            const pid = e.telemetry?.pluginId ?? extractPluginId(e.name, e.payload);
             if (pid) ids.add(pid);
         }
         return ['', ...ids];
@@ -87,7 +87,9 @@ export function EventsSection(): ReactElement {
         }
         if (filter.pluginId) {
             result = result.filter(
-                (e) => (e.telemetry?.pluginId ?? extractPluginId(e.payload)) === filter.pluginId,
+                (e) =>
+                    (e.telemetry?.pluginId ?? extractPluginId(e.name, e.payload)) ===
+                    filter.pluginId,
             );
         }
         if (filter.view === 'failures') {
