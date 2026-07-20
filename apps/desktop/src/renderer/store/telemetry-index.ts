@@ -3,7 +3,7 @@ import { Either } from 'effect';
 import {
     type EngineDiagnosticPayload,
     safeParsePayload,
-} from '../../engine/event-payload-schemas.js';
+} from '../../shared/event-payload-schemas.js';
 import type { EngineBusEventPayload } from '../../shared/ipc-channels.js';
 import type { EventTelemetry, TelemetryDiagnosticSource } from '../../shared/telemetry.js';
 import { redactTelemetrySummary, redactTelemetryText } from '../../shared/telemetry-safety.js';

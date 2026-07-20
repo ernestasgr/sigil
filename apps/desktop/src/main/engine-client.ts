@@ -5,11 +5,6 @@ import { Worker } from 'node:worker_threads';
 import { app } from 'electron';
 import { z } from 'zod';
 import {
-    createEngineDiagnostic,
-    EventPayloadSchemaRegistry,
-    safeParsePayload,
-} from '../engine/event-payload-schemas.js';
-import {
     CorrelationIdSchema,
     EngineCommandContracts,
     type EngineCommandName,
@@ -20,6 +15,11 @@ import {
     EngineToMainMessageSchema,
     type RendererResponse,
 } from '../shared/command-contracts.js';
+import {
+    createEngineDiagnostic,
+    EventPayloadSchemaRegistry,
+    safeParsePayload,
+} from '../shared/event-payload-schemas.js';
 import type { EngineBusEventPayload, EngineToMainMessage } from '../shared/ipc-channels.js';
 import { EngineChannel } from '../shared/ipc-channels.js';
 import { redactTelemetryText } from '../shared/telemetry-safety.js';

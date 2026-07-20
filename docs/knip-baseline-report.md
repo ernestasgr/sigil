@@ -38,9 +38,9 @@
 | NODE_TYPES                              | apps/desktop/src/renderer/workflow-builder/node-registry.ts:43:5           | warn     |
 | TELEMETRY_EVENT_CAP                     | apps/desktop/src/renderer/store/telemetry-index.ts:10:14                   | warn     |
 | DEFAULT_WORKFLOW_RUN_POLICY             | apps/desktop/src/engine/workflow-run-supervisor.ts:9:14                    | warn     |
-| TelemetryDiagnosticSourceSchema         | apps/desktop/src/engine/event-payload-schemas.ts:10:5                      | warn     |
-| TelemetryOutcomeSchema                  | apps/desktop/src/engine/event-payload-schemas.ts:11:5                      | warn     |
-| EventTelemetrySchema                    | apps/desktop/src/engine/event-payload-schemas.ts:9:5                       | warn     |
+| TelemetryDiagnosticSourceSchema         | apps/desktop/src/shared/event-payload-schemas.ts:10:5                      | warn     |
+| TelemetryOutcomeSchema                  | apps/desktop/src/shared/event-payload-schemas.ts:11:5                      | warn     |
+| EventTelemetrySchema                    | apps/desktop/src/shared/event-payload-schemas.ts:9:5                       | warn     |
 | isExecutableWorkflow                    | apps/desktop/src/engine/workflow-acceptance.ts:16:17                       | warn     |
 | payloadPreview                          | apps/desktop/src/renderer/lib/event-display.ts:28:17                       | warn     |
 | EngineReadySchema                       | apps/desktop/src/shared/command-contracts.ts:288:10                        | warn     |
@@ -129,10 +129,10 @@
 | WorkflowRunIdentity                | apps/desktop/src/engine/workflow-run-supervisor.ts:28:18                   | warn     |
 | WorkflowRunExecutor                | apps/desktop/src/engine/workflow-run-supervisor.ts:39:13                   | warn     |
 | WorkflowRun                        | apps/desktop/src/engine/workflow-run-supervisor.ts:34:18                   | warn     |
-| EventPayloadSchemaEntry            | apps/desktop/src/engine/event-payload-schemas.ts:174:18                    | warn     |
-| EventPayloadMetadata               | apps/desktop/src/engine/event-payload-schemas.ts:169:18                    | warn     |
+| EventPayloadSchemaEntry            | apps/desktop/src/shared/event-payload-schemas.ts:174:18                    | warn     |
+| EventPayloadMetadata               | apps/desktop/src/shared/event-payload-schemas.ts:169:18                    | warn     |
 | SandboxCapabilityEntry             | apps/desktop/src/engine/plugin-node-sandbox.ts:154:13                      | warn     |
-| EventTelemetry                     | apps/desktop/src/engine/event-payload-schemas.ts:7:15                      | warn     |
+| EventTelemetry                     | apps/desktop/src/shared/event-payload-schemas.ts:7:15                      | warn     |
 | WatcherHandle                      | apps/desktop/src/engine/file-watcher-manager.ts:10:18                      | warn     |
 | EvaluateCondition                  | apps/desktop/src/engine/node-handlers/types.ts:26:13                       | warn     |
 | NodeHandlerInput                   | apps/desktop/src/engine/node-handlers/types.ts:44:18                       | warn     |

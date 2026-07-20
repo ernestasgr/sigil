@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { Either } from 'effect';
 import { app, BrowserWindow, Notification } from 'electron';
 
-import { safeParsePayload } from '../engine/event-payload-schemas.js';
+import { safeParsePayload } from '../shared/event-payload-schemas.js';
 import { type EngineBusEventPayload, RendererChannel } from '../shared/ipc-channels.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 import { type EngineHandle, spawnEngine } from './engine-client.js';

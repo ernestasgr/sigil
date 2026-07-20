@@ -2,14 +2,14 @@ import { type FileEventPayload, FileEventPayloadSchema } from '@sigil/schema/fil
 import { Either } from 'effect';
 import { z } from 'zod';
 
-import { TelemetryDiagnosticSourceSchema, TelemetryOutcomeSchema } from '../shared/telemetry.js';
+import { TelemetryDiagnosticSourceSchema, TelemetryOutcomeSchema } from './telemetry.js';
 
-export type { EventTelemetry } from '../shared/telemetry.js';
+export type { EventTelemetry } from './telemetry.js';
 export {
     EventTelemetrySchema,
     TelemetryDiagnosticSourceSchema,
     TelemetryOutcomeSchema,
-} from '../shared/telemetry.js';
+} from './telemetry.js';
 
 export const WorkflowRunPayloadSchema = z
     .object({

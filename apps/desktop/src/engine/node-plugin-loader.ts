@@ -4,9 +4,8 @@ import { fileURLToPath } from 'node:url';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
 import type { PropertyRegistry, SerializedPropertyDescriptor } from '@sigil/schema/properties-file';
 import { Either } from 'effect';
-
+import type { EngineDiagnosticPayload } from '../shared/event-payload-schemas.js';
 import type { Bridge } from './bridge.js';
-import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 import type { KernelDeps, NodeHandler } from './node-handlers/types.js';
 import {

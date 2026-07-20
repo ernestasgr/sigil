@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     createEngineDiagnostic,
     EngineDiagnosticPayloadSchema,
-} from '../engine/event-payload-schemas.js';
+} from '../shared/event-payload-schemas.js';
 
 import {
     type EngineBusEvent,

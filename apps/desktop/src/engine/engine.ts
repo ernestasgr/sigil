@@ -13,7 +13,7 @@ import {
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import Database from 'better-sqlite3';
-
+import type { EngineDiagnosticPayload } from '../shared/event-payload-schemas.js';
 import type { Bridge } from './bridge.js';
 import { createBridge } from './bridge.js';
 import type { CapabilityBroker } from './capability-broker.js';
@@ -26,7 +26,6 @@ import {
 } from './dag-executor.js';
 import type { EventBus } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
-import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
 import { createFileWatcherManager, type FileWatcherManager } from './file-watcher-manager.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 import { createManifestRegistry } from './manifest-registry.js';

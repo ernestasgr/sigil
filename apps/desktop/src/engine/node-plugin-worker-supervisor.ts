@@ -2,9 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
 import { type WorkflowContext, WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
-
+import type { EngineDiagnosticPayload } from '../shared/event-payload-schemas.js';
 import type { Bridge } from './bridge.js';
-import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
 import type {
     KernelDeps,
     NodeHandler,

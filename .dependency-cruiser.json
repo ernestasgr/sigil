@@ -44,11 +44,10 @@
         },
         {
             "name": "renderer-does-not-import-engine",
-            "comment": "The Renderer talks to the desktop runtime through the preload bridge and must not import Engine modules directly, except for the one documented metadata registry below.",
+            "comment": "The Renderer talks to the desktop runtime through the preload bridge and must not import Engine modules directly.",
             "severity": "error",
             "from": {
-                "path": "^apps/desktop/src/renderer/",
-                "pathNot": "^apps/desktop/src/renderer/lib/event-display\\.ts$"
+                "path": "^apps/desktop/src/renderer/"
             },
             "to": {
                 "path": "^apps/desktop/src/engine/",
@@ -65,17 +64,6 @@
             "to": {
                 "path": "^apps/desktop/src/(main|preload)/",
                 "dependencyTypesNot": ["type-only"]
-            }
-        },
-        {
-            "name": "renderer-event-payload-metadata-exception",
-            "comment": "Intentional narrow exception: the Renderer currently consumes the Engine's pure event metadata registry. Keep this visible until the registry has a neutral home.",
-            "severity": "warn",
-            "from": {
-                "path": "^apps/desktop/src/renderer/lib/event-display\\.ts$"
-            },
-            "to": {
-                "path": "^apps/desktop/src/engine/event-payload-schemas\\.ts$"
             }
         },
         {

@@ -11,11 +11,11 @@ import {
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import type { EngineDiagnosticPayload } from '../shared/event-payload-schemas.js';
 import { createBridge } from './bridge.js';
 import type { CapabilityBroker } from './capability-broker.js';
 import { createCapabilityBroker } from './capability-broker.js';
 import { type BusEvent, createEventBus } from './event-bus.js';
-import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
 import type { FileEventCallback, SubscriberRegistration } from './file-watcher-manager.js';
 import { createManifestRegistry } from './manifest-registry.js';
 import { createBuiltinHandlers } from './node-handlers/registry.js';
