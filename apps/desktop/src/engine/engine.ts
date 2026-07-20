@@ -74,7 +74,6 @@ export interface Engine {
         properties: Readonly<Record<string, unknown>>,
     ) => PropertyValidationResult;
     readonly applyProperties: (properties: PropertiesFile) => PropertyApplyResult;
-    readonly registerBuiltinManifests: () => void;
     readonly loadBuiltinPlugins: () => Promise<readonly NodePluginLoadResult[]>;
     readonly updatePluginPermissions: (
         pluginId: string,
@@ -299,9 +298,6 @@ export function createEngine(options?: EngineOptions): Engine {
         },
         fileWatcherManager,
         handlerRegistry,
-        registerBuiltinManifests: (): void => {
-            /* builtin manifests are now loaded as part of loadBuiltinPlugins */
-        },
         loadBuiltinPlugins: async (): Promise<readonly NodePluginLoadResult[]> => {
             const kernel = { fileWatcherManager, capabilityBroker };
             const deps = {
