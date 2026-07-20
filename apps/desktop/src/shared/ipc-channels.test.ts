@@ -167,34 +167,34 @@ describe('EngineToMainMessageSchema', () => {
         }
     });
 
-    it.each([
-        EngineChannel.ToggleWorkflowResult,
-        EngineChannel.RetryWorkflowResult,
-    ])('rejects a %s success response with unknown fields', (type) => {
-        const result = EngineToMainMessageSchema.safeParse({
-            type,
-            correlationId: 'corr-action-extra',
-            summary: null,
-            extra: true,
-        });
+    it.each([EngineChannel.ToggleWorkflowResult, EngineChannel.RetryWorkflowResult])(
+        'rejects a %s success response with unknown fields',
+        (type) => {
+            const result = EngineToMainMessageSchema.safeParse({
+                type,
+                correlationId: 'corr-action-extra',
+                summary: null,
+                extra: true,
+            });
 
-        expect(result.success).toBe(false);
-    });
+            expect(result.success).toBe(false);
+        },
+    );
 
-    it.each([
-        EngineChannel.ToggleWorkflowResult,
-        EngineChannel.RetryWorkflowResult,
-    ])('rejects a %s failure when its diagnostics are invalid', (type) => {
-        const result = EngineToMainMessageSchema.safeParse({
-            type,
-            correlationId: 'corr-action-invalid',
-            summary: null,
-            error: 42,
-            diagnostics: [],
-        });
+    it.each([EngineChannel.ToggleWorkflowResult, EngineChannel.RetryWorkflowResult])(
+        'rejects a %s failure when its diagnostics are invalid',
+        (type) => {
+            const result = EngineToMainMessageSchema.safeParse({
+                type,
+                correlationId: 'corr-action-invalid',
+                summary: null,
+                error: 42,
+                diagnostics: [],
+            });
 
-        expect(result.success).toBe(false);
-    });
+            expect(result.success).toBe(false);
+        },
+    );
 
     it('does not let an invalid delete failure fall through to not-found', () => {
         const result = EngineToMainMessageSchema.safeParse({
@@ -335,14 +335,12 @@ describe('WorkflowIdSchema', () => {
         expect(result.success).toBe(false);
     });
 
-    it.each([
-        '../outside',
-        '..\\outside',
-        '/tmp/outside',
-        'C:\\tmp\\outside',
-    ])('rejects a path-shaped identifier: %s', (id) => {
-        expect(WorkflowIdSchema.safeParse(id).success).toBe(false);
-    });
+    it.each(['../outside', '..\\outside', '/tmp/outside', 'C:\\tmp\\outside'])(
+        'rejects a path-shaped identifier: %s',
+        (id) => {
+            expect(WorkflowIdSchema.safeParse(id).success).toBe(false);
+        },
+    );
 });
 
 describe('Workflow State schemas', () => {

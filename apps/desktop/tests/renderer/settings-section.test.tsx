@@ -81,29 +81,26 @@ describe('Settings Properties File template', () => {
             },
             expected: 'Write failure',
         },
-    ])('labels $kind failures distinctly', async ({
-        kind,
-        error,
-        diagnostic,
-        issues,
-        expected,
-    }) => {
-        const sigil = createMockSigil();
-        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {} });
-        vi.mocked(sigil.saveProperties).mockResolvedValue(
-            kind === 'validation'
-                ? { ok: false, kind, error, issues }
-                : { ok: false, kind, error, diagnostic },
-        );
+    ])(
+        'labels $kind failures distinctly',
+        async ({ kind, error, diagnostic, issues, expected }) => {
+            const sigil = createMockSigil();
+            vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {} });
+            vi.mocked(sigil.saveProperties).mockResolvedValue(
+                kind === 'validation'
+                    ? { ok: false, kind, error, issues }
+                    : { ok: false, kind, error, diagnostic },
+            );
 
-        render(withSigil(<SettingsSection />, sigil));
-        const user = userEvent.setup();
-        await waitFor(() => expect(sigil.readProperties).toHaveBeenCalled());
-        await user.click(screen.getByRole('button', { name: 'Properties File' }));
-        await user.click(screen.getByRole('button', { name: 'Save' }));
+            render(withSigil(<SettingsSection />, sigil));
+            const user = userEvent.setup();
+            await waitFor(() => expect(sigil.readProperties).toHaveBeenCalled());
+            await user.click(screen.getByRole('button', { name: 'Properties File' }));
+            await user.click(screen.getByRole('button', { name: 'Save' }));
 
-        await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(expected));
-    });
+            await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(expected));
+        },
+    );
 });
 
 describe('Settings Plugin Permissions', () => {

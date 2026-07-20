@@ -378,17 +378,14 @@ describe('WorkflowStore', () => {
         rmSync(externalPath, { force: true });
     });
 
-    it.each([
-        '',
-        '../outside',
-        '..\\outside',
-        '/tmp/outside',
-        'C:\\tmp\\outside',
-    ])('rejects unsafe Workflow ids at the persistence seam: %s', (id) => {
-        expect(() => store.get(id)).toThrow();
-        expect(() => store.getSummary(id)).toThrow();
-        expect(() => store.remove(id)).toThrow();
-    });
+    it.each(['', '../outside', '..\\outside', '/tmp/outside', 'C:\\tmp\\outside'])(
+        'rejects unsafe Workflow ids at the persistence seam: %s',
+        (id) => {
+            expect(() => store.get(id)).toThrow();
+            expect(() => store.getSummary(id)).toThrow();
+            expect(() => store.remove(id)).toThrow();
+        },
+    );
 
     it('rejects an unsafe Pipeline workflowId when creating a Workflow', () => {
         const unsafePipeline = { ...samplePipeline, workflowId: '../outside' };

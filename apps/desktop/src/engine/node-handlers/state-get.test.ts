@@ -85,16 +85,19 @@ describe('state-get handler', () => {
         expect(result.outputCtx.vars.existing).toBe('keep-me');
     });
 
-    it.each([
-        42,
-        false,
-    ])('preserves a primitive Workflow State value in vars (%s)', async (value) => {
-        const state = { ...buildDeps().state, get: vi.fn().mockReturnValue(Option.some(value)) };
-        const deps = { ...buildDeps(), state };
+    it.each([42, false])(
+        'preserves a primitive Workflow State value in vars (%s)',
+        async (value) => {
+            const state = {
+                ...buildDeps().state,
+                get: vi.fn().mockReturnValue(Option.some(value)),
+            };
+            const deps = { ...buildDeps(), state };
 
-        const { stateGetHandler } = await import('./state-get.js');
-        const result = await stateGetHandler.execute({ node: stateGetNode, ctx }, deps);
+            const { stateGetHandler } = await import('./state-get.js');
+            const result = await stateGetHandler.execute({ node: stateGetNode, ctx }, deps);
 
-        expect(result.outputCtx.vars.counter).toBe(value);
-    });
+            expect(result.outputCtx.vars.counter).toBe(value);
+        },
+    );
 });
