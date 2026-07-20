@@ -20,7 +20,7 @@ import {
 } from '../shared/persistence.js';
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
 import { createEngine } from './engine.js';
-import type { EngineDiagnosticPayload } from './event-payload-schemas.js';
+import { createEngineDiagnostic, type EngineDiagnosticPayload } from './event-payload-schemas.js';
 import { readPropertiesFile } from './properties-loader.js';
 import { workflowTopologyOptions } from './workflow-acceptance.js';
 import { createWorkflowActivator } from './workflow-activator.js';
@@ -57,7 +57,7 @@ const engine = createEngine({
 });
 
 function log(message: string, context: Omit<EngineDiagnosticPayload, 'message'> = {}): void {
-    engine.bus.next({ name: 'engine.diagnostic', payload: { message, ...context } });
+    engine.bus.next(createEngineDiagnostic({ message, ...context }));
 }
 
 if (propertiesDiagnostic && !isExpectedMissingFileDiagnostic(propertiesDiagnostic)) {
