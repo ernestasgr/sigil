@@ -148,6 +148,18 @@ export const EngineDiagnosticPayloadSchema = z
     .readonly();
 export type EngineDiagnosticPayload = z.infer<typeof EngineDiagnosticPayloadSchema>;
 
+export type EngineDiagnosticEvent = {
+    readonly name: 'engine.diagnostic';
+    readonly payload: EngineDiagnosticPayload;
+};
+
+export function createEngineDiagnostic(payload: EngineDiagnosticPayload): EngineDiagnosticEvent {
+    return {
+        name: 'engine.diagnostic',
+        payload: EngineDiagnosticPayloadSchema.parse(payload),
+    };
+}
+
 type EventPayloadMap = {
     'workflow.started': WorkflowRunPayload;
     'workflow.completed': WorkflowRunPayload;

@@ -4,7 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { app } from 'electron';
 import { z } from 'zod';
-import { EventPayloadSchemaRegistry, safeParsePayload } from '../engine/event-payload-schemas.js';
+import {
+    createEngineDiagnostic,
+    EventPayloadSchemaRegistry,
+    safeParsePayload,
+} from '../engine/event-payload-schemas.js';
 import {
     CorrelationIdSchema,
     EngineCommandContracts,
@@ -142,16 +146,15 @@ void ({
     shutdown: true,
 } satisfies Record<EngineCommandName, true>);
 
-function workerDiagnosticEvent(message: string): EngineBusEventPayload {
+export function workerDiagnosticEvent(message: string): EngineBusEventPayload {
     const timestamp = Date.now();
     return {
-        name: 'engine.diagnostic',
-        payload: {
+        ...createEngineDiagnostic({
             message,
             kind: 'engine-worker',
             source: 'worker',
             outcome: 'failed',
-        },
+        }),
         timestamp,
         telemetry: {
             eventId: randomUUID(),

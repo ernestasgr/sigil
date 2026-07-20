@@ -2,6 +2,7 @@ import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import {
+    createEngineDiagnostic,
     EngineDiagnosticPayloadSchema,
     EventPayloadSchemaRegistry,
     LogOutputPayloadSchema,
@@ -481,6 +482,26 @@ describe('EngineDiagnosticPayloadSchema', () => {
                 outcome: 'failed',
             });
         }
+    });
+
+    it('constructs a schema-validated diagnostic event through the shared helper', () => {
+        const event = createEngineDiagnostic({
+            message: '[worker] engine worker error: native binding failed',
+            kind: 'engine-worker',
+            source: 'worker',
+            outcome: 'failed',
+        });
+
+        expect(event).toEqual({
+            name: 'engine.diagnostic',
+            payload: {
+                message: '[worker] engine worker error: native binding failed',
+                kind: 'engine-worker',
+                source: 'worker',
+                outcome: 'failed',
+            },
+        });
+        expect(EngineDiagnosticPayloadSchema.safeParse(event.payload).success).toBe(true);
     });
 
     it('rejects a missing message', () => {

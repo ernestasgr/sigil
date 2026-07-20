@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+    createEngineDiagnostic,
+    EngineDiagnosticPayloadSchema,
+} from '../engine/event-payload-schemas.js';
+
+import {
     type EngineBusEvent,
     EngineChannel,
     type EngineGetWorkflowResult,
@@ -14,6 +19,7 @@ import {
     createRpcClient,
     type RpcClientProps,
     toPermissionOverrideOutcome,
+    workerDiagnosticEvent,
 } from './engine-client.js';
 
 function buildProps(): { props: RpcClientProps; sent: unknown[] } {
@@ -30,6 +36,31 @@ function buildProps(): { props: RpcClientProps; sent: unknown[] } {
         },
     };
 }
+
+describe('worker failure diagnostics', () => {
+    it('keeps the engine and main worker diagnostic payloads schema-valid and equivalent', () => {
+        const message = '[worker] engine worker error: native binding failed';
+        const engineEvent = createEngineDiagnostic({
+            message,
+            kind: 'engine-worker',
+            source: 'worker',
+            outcome: 'failed',
+        });
+        const mainEvent = workerDiagnosticEvent(message);
+
+        expect(EngineDiagnosticPayloadSchema.safeParse(engineEvent.payload).success).toBe(true);
+        expect(EngineDiagnosticPayloadSchema.safeParse(mainEvent.payload).success).toBe(true);
+        expect(mainEvent).toMatchObject({
+            name: 'engine.diagnostic',
+            payload: engineEvent.payload,
+            telemetry: {
+                kind: 'diagnostic',
+                severity: 'error',
+                summary: message,
+            },
+        });
+    });
+});
 
 describe('rpc', () => {
     beforeEach(() => {
