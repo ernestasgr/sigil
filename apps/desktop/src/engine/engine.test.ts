@@ -86,7 +86,6 @@ describe('createEngine', () => {
         expect(engine.bus).toBeDefined();
         expect(engine.bridge).toBeDefined();
         expect(engine.capabilityBroker).toBeDefined();
-        engine.registerBuiltinManifests();
         engine.dispose();
     });
 
