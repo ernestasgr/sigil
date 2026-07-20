@@ -4,10 +4,12 @@ import {
     createPluginEventCatalogEntries,
     DEFAULT_EVENT_CATALOG,
     type EventCatalog,
+    type EventCatalogSuggestion,
     type EventFieldMetadata,
+    eventCatalogSuggestions,
+    eventPayloadFieldSuggestions,
     type FileEventName,
     findEventField,
-    getEventPayloadFields,
 } from '@sigil/schema/event-catalog';
 import type { Manifest } from '@sigil/schema/manifest';
 
@@ -16,6 +18,7 @@ export type {
     EventCatalogEntry,
     EventCatalogEntryInput,
     EventCatalogSource,
+    EventCatalogSuggestion,
     EventFieldKind,
     EventFieldMetadata,
 } from '@sigil/schema/event-catalog';
@@ -24,11 +27,9 @@ export const EVENT_CATALOG = DEFAULT_EVENT_CATALOG;
 
 export type EventCatalogManifest = Pick<Manifest, 'id' | 'emits'>;
 
-export interface CatalogSuggestion {
-    readonly value: string;
-    readonly label: string;
-    readonly description: string;
-}
+export type { EventCatalogSuggestion as CatalogSuggestion } from '@sigil/schema/event-catalog';
+
+type CatalogSuggestion = EventCatalogSuggestion;
 
 export const EVENT_NAME_OPTIONS: readonly {
     readonly value: FileEventName;
@@ -57,25 +58,13 @@ export function createBuilderEventCatalogFromManifests(
 export function eventNameSuggestions(
     catalog: EventCatalog = EVENT_CATALOG,
 ): readonly CatalogSuggestion[] {
-    return catalog.entries.map((entry) => ({
-        value: entry.name,
-        label: entry.label,
-        description: entry.description,
-    }));
+    return eventCatalogSuggestions(catalog);
 }
 
 export function payloadFieldSuggestions(
     catalog: EventCatalog = EVENT_CATALOG,
 ): readonly CatalogSuggestion[] {
-    return getEventPayloadFields(catalog).map((field) => fieldSuggestion(field));
-}
-
-function fieldSuggestion(field: EventFieldMetadata): CatalogSuggestion {
-    return {
-        value: field.path,
-        label: `${field.label} · ${field.kind}`,
-        description: field.description,
-    };
+    return eventPayloadFieldSuggestions(catalog);
 }
 
 export function payloadFieldMetadata(
