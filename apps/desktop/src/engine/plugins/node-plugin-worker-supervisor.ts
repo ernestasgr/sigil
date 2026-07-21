@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
+import type { SerializableNodeContract } from '@sigil/schema/node-contract';
 import { type WorkflowContext, WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
 import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
@@ -55,6 +56,7 @@ export type NodePluginWorkerLoadResult =
           readonly handler: NodeHandler;
           readonly descriptorType: string;
           readonly isTrigger: boolean;
+          readonly contract?: SerializableNodeContract;
           readonly propertyDescriptors?: NodePluginWorkerLoaded['propertyDescriptors'];
       }
     | {
@@ -66,6 +68,7 @@ export type NodePluginWorkerLoadResult =
           readonly ok: false;
           readonly kind: 'worker_error';
           readonly error: string;
+          readonly contractError?: string;
           readonly propertyError?: NodePluginWorkerLoadError['propertyError'];
       };
 
@@ -207,6 +210,9 @@ export function createNodePluginWorkerSupervisor(
             workerData: {
                 pluginId: preparation.pluginId,
                 manifestNodeType: preparation.manifestNodeType,
+                ...(preparation.nodeContract === undefined
+                    ? {}
+                    : { nodeContract: preparation.nodeContract }),
                 handlerPath: preparation.handlerPath,
                 manifestPermissions: preparation.manifestPermissions,
                 permissions: preparation.permissions,
@@ -240,6 +246,9 @@ export function createNodePluginWorkerSupervisor(
                 ok: false,
                 kind: 'worker_error',
                 error: loaded.error,
+                ...(loaded.contractError === undefined
+                    ? {}
+                    : { contractError: loaded.contractError }),
                 ...(loaded.propertyError === undefined
                     ? {}
                     : { propertyError: loaded.propertyError }),
@@ -270,6 +279,7 @@ export function createNodePluginWorkerSupervisor(
             handler: proxy.handler,
             descriptorType: loaded.descriptorType,
             isTrigger: loaded.isTrigger,
+            ...(loaded.contract === undefined ? {} : { contract: loaded.contract }),
             ...(loaded.propertyDescriptors === undefined
                 ? {}
                 : { propertyDescriptors: loaded.propertyDescriptors }),

@@ -93,6 +93,26 @@ const engineFixtures = {
                         version: '1.0.0',
                         permissions: [],
                         emits: ['plugin.event'],
+                        nodeType: 'fixture-node',
+                        nodeContract: {
+                            identity: {
+                                namespace: 'plugin',
+                                pluginId: 'plugin-1',
+                                type: 'fixture-node',
+                            },
+                            version: 1,
+                            role: 'action',
+                            defaultConfig: {},
+                            outputPorts: {
+                                kind: 'fixed',
+                                ports: [{ id: 'out', label: 'Output' }],
+                            },
+                            display: {
+                                label: 'Fixture Node',
+                                description: 'A transport fixture.',
+                                category: 'utility',
+                            },
+                        },
                     },
                     grantedPermissions: [],
                 },

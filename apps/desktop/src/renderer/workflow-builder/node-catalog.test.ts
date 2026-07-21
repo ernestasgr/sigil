@@ -149,4 +149,63 @@ describe('Workflow Builder Node catalog', () => {
         });
         expect(catalog.findPlugin('com.example.undeclared', 'undeclared-node')).toBeUndefined();
     });
+
+    it('uses a validated manifest contract as the Plugin port and trigger authority', () => {
+        const adapter = createPluginNodeCatalogEntry({
+            pluginId: 'com.example.contract',
+            type: 'contract-trigger',
+            label: 'Adapter Label',
+            category: 'utility',
+            description: 'Adapter description.',
+            defaultConfig: { enabled: false },
+            configSchema: z.object({ enabled: z.boolean() }),
+            isTrigger: false,
+            outputPorts: () => ['wrong-port'],
+            Form: () => null,
+        });
+        const catalog = createNodeCatalogFromManifests(
+            [
+                {
+                    id: 'com.example.contract',
+                    nodeType: 'contract-trigger',
+                    nodeContract: {
+                        identity: {
+                            namespace: 'plugin',
+                            pluginId: 'com.example.contract',
+                            type: 'contract-trigger',
+                        },
+                        version: 1,
+                        role: 'trigger',
+                        defaultConfig: { enabled: true },
+                        outputPorts: {
+                            kind: 'fixed',
+                            ports: [{ id: 'declared', label: 'Declared output' }],
+                        },
+                        display: {
+                            label: 'Contract Trigger',
+                            description: 'Contract description.',
+                            category: 'trigger',
+                        },
+                    },
+                },
+            ],
+            [adapter],
+        );
+
+        const spec = {
+            type: 'contract-trigger',
+            pluginId: 'com.example.contract',
+            config: { enabled: true },
+        };
+        expect(resolveNodeCatalogEntry(spec, catalog)).toMatchObject({
+            label: 'Adapter Label',
+            category: 'utility',
+            isTrigger: true,
+            outputPorts: ['declared'],
+        });
+        expect(nodeOutputPorts(spec, catalog)).toEqual(['declared']);
+        expect(nodeOutputPorts({ ...spec, config: { enabled: false } }, catalog)).toEqual([
+            'declared',
+        ]);
+    });
 });

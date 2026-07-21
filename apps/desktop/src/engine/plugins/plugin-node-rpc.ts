@@ -1,5 +1,6 @@
 import { PipelineConditionSchema } from '@sigil/schema/conditions';
 import { CapabilitySchema } from '@sigil/schema/manifest';
+import { NodeContractSnapshotSchema } from '@sigil/schema/node-contract';
 import { SwitchConfigSchema } from '@sigil/schema/nodes/switch';
 import {
     CollisionSuffixStyleSchema,
@@ -38,6 +39,7 @@ export const NodePluginWorkerLoadedSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.Loaded),
     descriptorType: z.string(),
     isTrigger: z.boolean(),
+    contract: NodeContractSnapshotSchema.optional(),
     propertyDescriptors: z.array(SerializedPropertyDescriptorSchema).readonly().optional(),
 });
 export type NodePluginWorkerLoaded = z.infer<typeof NodePluginWorkerLoadedSchema>;
@@ -55,6 +57,7 @@ export type NodePluginPropertyError = z.infer<typeof NodePluginPropertyErrorSche
 export const NodePluginWorkerLoadErrorSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.LoadError),
     error: z.string(),
+    contractError: z.string().optional(),
     propertyError: NodePluginPropertyErrorSchema.optional(),
 });
 export type NodePluginWorkerLoadError = z.infer<typeof NodePluginWorkerLoadErrorSchema>;

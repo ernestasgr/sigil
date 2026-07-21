@@ -319,6 +319,7 @@ export function createEngine(options?: EngineOptions): Engine {
             const kernel = { fileWatcherManager, capabilityBroker };
             const deps = {
                 manifestRegistry: registry,
+                contractRegistry,
                 handlerRegistry,
                 kernel,
                 bridge,
@@ -358,7 +359,7 @@ export function createEngine(options?: EngineOptions): Engine {
                 workflowStateStore,
                 capabilityBroker,
                 seedContext,
-                executionOptions,
+                { ...executionOptions, contractRegistry },
             );
         },
         shutdown,

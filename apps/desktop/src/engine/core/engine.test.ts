@@ -7,6 +7,8 @@ import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { compileGraph } from '../../renderer/workflow-builder/compile.js';
+import { createNodeCatalogFromManifests } from '../../renderer/workflow-builder/node-catalog.js';
 import type { BusEvent } from '../events/event-bus.js';
 import { isTriggerHandler } from '../node-handlers/types.js';
 import { createEngine, type Engine } from './engine.js';
@@ -131,6 +133,130 @@ describe('createEngine', () => {
         expect(logEvent?.name === 'log.output' && logEvent.payload.message).toBe(
             'Manual trigger fired for report.pdf (2048576 bytes)',
         );
+    });
+
+    it('compiles and executes a bundled Trigger Plugin into a built-in Node through its contract', async () => {
+        const tempDir = mkdtempSync(join(tmpdir(), 'sigil-bundled-trigger-contract-'));
+        const engine = createEngine();
+
+        try {
+            await engine.loadBuiltinPlugins();
+            const catalog = createNodeCatalogFromManifests(engine.registry.all());
+            const compiled = compileGraph(
+                [
+                    {
+                        id: 'watcher',
+                        data: {
+                            type: 'file-watcher',
+                            pluginId: 'com.sigil.file-watcher',
+                            config: {
+                                path: tempDir,
+                                recursive: false,
+                                events: ['file.created'],
+                            },
+                        },
+                    },
+                    {
+                        id: 'log',
+                        data: { type: 'log', config: { message: 'bundled watcher event' } },
+                    },
+                ],
+                [{ id: 'watcher-log', source: 'watcher', target: 'log', sourceHandle: 'out' }],
+                { id: 'bundled-trigger', workflowId: 'bundled-trigger' },
+                { nodeCatalog: catalog },
+            );
+
+            expect(compiled.ok).toBe(true);
+            if (!compiled.ok) return;
+
+            const events: BusEvent[] = [];
+            engine.bus.subscribe((event) => events.push(event));
+            const result = await engine.execute(compiled.value, {
+                event: 'file.created',
+                payload: {
+                    path: join(tempDir, 'created.txt'),
+                    name: 'created.txt',
+                    ext: 'txt',
+                    size: 0,
+                    dir: tempDir,
+                },
+                vars: {},
+            });
+
+            expect(result.outcome).toBe('succeeded');
+            expect(events).toContainEqual(
+                expect.objectContaining({
+                    name: 'log.output',
+                    payload: { message: 'bundled watcher event' },
+                }),
+            );
+        } finally {
+            await engine.shutdown();
+            rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    it('executes a bundled Action Plugin after a built-in Trigger through its contract', async () => {
+        const tempDir = mkdtempSync(join(tmpdir(), 'sigil-bundled-action-contract-'));
+        const sourceDir = join(tempDir, 'source');
+        const destinationDir = join(tempDir, 'destination');
+        mkdirSync(sourceDir);
+        mkdirSync(destinationDir);
+        const sourcePath = join(sourceDir, 'bundled.txt');
+        writeFileSync(sourcePath, 'bundled action');
+        const engine = createEngine();
+
+        try {
+            await engine.loadBuiltinPlugins();
+            const pipeline: CompiledPipeline = {
+                id: 'bundled-action',
+                workflowId: 'bundled-action',
+                schemaVersion: 1,
+                nodes: [
+                    {
+                        id: 'trigger',
+                        type: 'manual-trigger',
+                        config: {
+                            eventName: 'file.created',
+                            payload: {
+                                path: sourcePath,
+                                name: 'bundled.txt',
+                                ext: 'txt',
+                                size: 14,
+                                dir: sourceDir,
+                            },
+                        },
+                    },
+                    {
+                        id: 'file-manager',
+                        type: 'file-manager',
+                        pluginId: 'com.sigil.file-manager',
+                        config: {
+                            action: 'move',
+                            destination: destinationDir,
+                            onConflict: 'overwrite',
+                        },
+                    },
+                ],
+                edges: [
+                    {
+                        id: 'trigger-file-manager',
+                        source: 'trigger',
+                        target: 'file-manager',
+                        sourcePort: 'out',
+                    },
+                ],
+            };
+
+            const result = await engine.execute(pipeline);
+
+            expect(result.outcome).toBe('succeeded');
+            expect(existsSync(sourcePath)).toBe(false);
+            expect(existsSync(join(destinationDir, 'bundled.txt'))).toBe(true);
+        } finally {
+            await engine.shutdown();
+            rmSync(tempDir, { recursive: true, force: true });
+        }
     });
 
     it('rejects an invalid topology at the Engine acceptance seam', async () => {

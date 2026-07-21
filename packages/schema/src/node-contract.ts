@@ -20,6 +20,27 @@ import type { NodeDescriptor } from './nodes/types.js';
 export const NodeNamespaceSchema = z.enum(['builtin', 'plugin']);
 export type NodeNamespace = z.infer<typeof NodeNamespaceSchema>;
 
+export const CURRENT_NODE_CONTRACT_VERSION = 1 as const;
+
+export type SerializableJsonValue =
+    | string
+    | number
+    | boolean
+    | null
+    | SerializableJsonValue[]
+    | { readonly [key: string]: SerializableJsonValue };
+
+export const SerializableJsonValueSchema: z.ZodType<SerializableJsonValue> = z.lazy(() =>
+    z.union([
+        z.string(),
+        z.number().finite(),
+        z.boolean(),
+        z.null(),
+        z.array(SerializableJsonValueSchema),
+        z.record(z.string(), SerializableJsonValueSchema),
+    ]),
+);
+
 const BuiltinNodeIdentitySchema = z
     .object({
         namespace: z.literal('builtin'),
@@ -107,6 +128,7 @@ export const NodeContractSchema = z
         outputPorts: NodeOutputPortSpecSchema,
         display: NodeContractDisplaySchema,
     })
+    .strict()
     .superRefine((contract, ctx) => {
         if (contract.outputPorts.kind !== 'fixed') return;
 
@@ -124,6 +146,80 @@ export const NodeContractSchema = z
     })
     .readonly();
 export type NodeContract = z.infer<typeof NodeContractSchema>;
+
+/**
+ * The contract representation that may cross a worker or Electron Bridge.
+ * Runtime config schemas, output-port functions, and UI components are
+ * intentionally not part of this value.
+ */
+export const SerializableNodeContractSchema = NodeContractSchema.superRefine((contract, ctx) => {
+    const parsedDefault = SerializableJsonValueSchema.safeParse(contract.defaultConfig);
+    if (!parsedDefault.success) {
+        ctx.addIssue({
+            code: 'custom',
+            path: ['defaultConfig'],
+            message: 'Node Contract defaultConfig must contain JSON-serializable data only.',
+        });
+    }
+});
+export type SerializableNodeContract = z.infer<typeof SerializableNodeContractSchema>;
+export const NodeContractSnapshotSchema = SerializableNodeContractSchema;
+export type NodeContractSnapshot = SerializableNodeContract;
+export const NodeContractSnapshotListSchema = z.array(NodeContractSnapshotSchema).readonly();
+
+export type PluginNodeContractValidation =
+    | { readonly ok: true; readonly contract: SerializableNodeContract }
+    | { readonly ok: false; readonly error: string };
+
+export function validatePluginNodeContract(
+    unknown: unknown,
+    pluginId: string,
+    nodeType: string,
+): PluginNodeContractValidation {
+    const parsed = SerializableNodeContractSchema.safeParse(unknown);
+    if (!parsed.success) {
+        return {
+            ok: false,
+            error: parsed.error.issues
+                .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+                .join('; '),
+        };
+    }
+
+    const { identity } = parsed.data;
+    if (identity.namespace !== 'plugin') {
+        return {
+            ok: false,
+            error: 'Plugin Node Contracts must use the "plugin" identity namespace.',
+        };
+    }
+    if (identity.pluginId !== pluginId) {
+        return {
+            ok: false,
+            error:
+                `Plugin Node Contract identity pluginId "${identity.pluginId}" does not match ` +
+                `manifest id "${pluginId}".`,
+        };
+    }
+    if (identity.type !== nodeType) {
+        return {
+            ok: false,
+            error:
+                `Plugin Node Contract identity type "${identity.type}" does not match ` +
+                `manifest nodeType "${nodeType}".`,
+        };
+    }
+    if (identity.namespace === 'plugin' && parsed.data.version > CURRENT_NODE_CONTRACT_VERSION) {
+        return {
+            ok: false,
+            error:
+                `Plugin Node Contract version ${parsed.data.version} is not supported; ` +
+                `the current supported version is ${CURRENT_NODE_CONTRACT_VERSION}.`,
+        };
+    }
+
+    return { ok: true, contract: parsed.data };
+}
 
 export const NodeContractIssueCodeSchema = z.enum(['invalid_configuration', 'invalid_contract']);
 export type NodeContractIssueCode = z.infer<typeof NodeContractIssueCodeSchema>;
@@ -171,6 +267,7 @@ export interface NodeContractRegistration<TSchema extends z.ZodType = z.ZodType>
 
 export interface NodeContractRegistry {
     readonly register: (registration: NodeContractRegistration) => void;
+    readonly unregister: (identity: NodeIdentity) => void;
     readonly get: (identity: NodeIdentity) => NodeContract | undefined;
     readonly has: (identity: NodeIdentity) => boolean;
     readonly all: () => readonly NodeContract[];
@@ -423,6 +520,9 @@ export function createNodeContractRegistry(
 
     return {
         register,
+        unregister: (identity) => {
+            byIdentity.delete(nodeIdentityKey(identity));
+        },
         get: (identity) => byIdentity.get(nodeIdentityKey(identity))?.contract,
         has: (identity) => byIdentity.has(nodeIdentityKey(identity)),
         all: () =>
@@ -430,6 +530,17 @@ export function createNodeContractRegistry(
         resolve: (node) => resolveIdentity(nodeIdentityForNode(node), node.config),
         resolveIdentity,
     };
+}
+
+/** Register a validated serializable contract without importing a runtime config schema. */
+export function registerSerializableNodeContract(
+    registry: NodeContractRegistry,
+    contract: SerializableNodeContract,
+): void {
+    registry.register({
+        contract,
+        configSchema: z.unknown(),
+    });
 }
 
 export function resolveNodeContract(

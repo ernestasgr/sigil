@@ -17,12 +17,15 @@ export type {
     NodeContractRegistration,
     NodeContractRegistry,
     NodeContractResolution,
+    NodeContractSnapshot,
     NodeIdentity,
     NodeNamespace,
     NodeOutputPort,
     NodeOutputPortSpec,
     NodeRole,
     NodeType,
+    SerializableJsonValue,
+    SerializableNodeContract,
 } from '../node-contract.js';
 export {
     adaptNodeDescriptor,
@@ -31,6 +34,7 @@ export {
     BUILTIN_NODE_DESCRIPTORS,
     BUILTIN_NODE_TYPE_VALUES,
     builtinNodeIdentity,
+    CURRENT_NODE_CONTRACT_VERSION,
     createBuiltinNodeContractRegistry,
     createNodeContractRegistry,
     fixedOutputPort,
@@ -42,6 +46,8 @@ export {
     NodeContractIssueCodeSchema,
     NodeContractIssueSchema,
     NodeContractSchema,
+    NodeContractSnapshotListSchema,
+    NodeContractSnapshotSchema,
     NodeIdentitySchema,
     NodeNamespaceSchema,
     NodeOutputPortSchema,
@@ -52,8 +58,12 @@ export {
     outputPortDescriptorsForNode,
     outputPortIdsForNode,
     pluginNodeIdentity,
+    registerSerializableNodeContract,
     resolveNodeContract,
+    SerializableJsonValueSchema,
+    SerializableNodeContractSchema,
     switchOutputPortSpec,
+    validatePluginNodeContract,
 } from '../node-contract.js';
 export type { DelayConfig } from './delay.js';
 export type { FileManagerConfig } from './file-manager.js';

@@ -15,6 +15,7 @@ import {
     NodePluginWorkerCancelAcknowledgedSchema,
     NodePluginWorkerCancelRequestSchema,
     NodePluginWorkerKind,
+    NodePluginWorkerLoadedSchema,
     NodePluginWorkerToMainSchema,
 } from './plugin-node-rpc.js';
 
@@ -92,6 +93,47 @@ const validCalls = [
     },
     { operation: 'fileWatcherManager.unregisterSubscriber', args: ['subscriber'] },
 ] as const;
+
+describe('NodePluginWorker contract transport', () => {
+    it('accepts a plain-data contract snapshot and rejects runtime functions', () => {
+        const contract = {
+            identity: {
+                namespace: 'plugin' as const,
+                pluginId: 'com.sigil.transport',
+                type: 'transport-node',
+            },
+            version: 1,
+            role: 'action' as const,
+            defaultConfig: { enabled: true },
+            outputPorts: {
+                kind: 'fixed' as const,
+                ports: [{ id: 'out', label: 'Output' }],
+            },
+            display: {
+                label: 'Transport Node',
+                description: 'A transport fixture.',
+                category: 'utility' as const,
+            },
+        };
+        const loaded = {
+            kind: NodePluginWorkerKind.Loaded,
+            descriptorType: 'transport-node',
+            isTrigger: false,
+            contract,
+        };
+
+        expect(NodePluginWorkerLoadedSchema.safeParse(loaded).success).toBe(true);
+        expect(
+            NodePluginWorkerLoadedSchema.safeParse({
+                ...loaded,
+                contract: {
+                    ...contract,
+                    defaultConfig: { validate: () => true },
+                },
+            }).success,
+        ).toBe(false);
+    });
+});
 
 describe('NodePluginDepsRpcSchema', () => {
     it.each(validCalls)('accepts the closed $operation operation', (call) => {

@@ -84,6 +84,68 @@ describe('ManifestSchema', () => {
         expect(result.success).toBe(true);
     });
 
+    it('accepts a serializable Plugin Node Contract tied to the manifest identity', () => {
+        const result = ManifestSchema.safeParse({
+            id: 'com.sigil.my-plugin',
+            version: '0.0.1',
+            permissions: [],
+            emits: ['my.event'],
+            nodeType: 'my-plugin-node',
+            nodeContract: {
+                identity: {
+                    namespace: 'plugin',
+                    pluginId: 'com.sigil.my-plugin',
+                    type: 'my-plugin-node',
+                },
+                version: 1,
+                role: 'action',
+                defaultConfig: { enabled: true },
+                outputPorts: {
+                    kind: 'fixed',
+                    ports: [{ id: 'out', label: 'Output' }],
+                },
+                display: {
+                    label: 'My Plugin Node',
+                    description: 'A test Plugin Node.',
+                    category: 'utility',
+                },
+            },
+        });
+
+        expect(result.success).toBe(true);
+    });
+
+    it('rejects a Plugin Contract that is not serializable or does not match its manifest', () => {
+        expect(
+            ManifestSchema.safeParse({
+                id: 'com.sigil.my-plugin',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['my.event'],
+                nodeType: 'my-plugin-node',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: 'com.sigil.other',
+                        type: 'my-plugin-node',
+                    },
+                    version: 1,
+                    role: 'action',
+                    defaultConfig: { callback: () => undefined },
+                    outputPorts: {
+                        kind: 'fixed',
+                        ports: [{ id: 'out', label: 'Output' }],
+                    },
+                    display: {
+                        label: 'My Plugin Node',
+                        description: 'A test Plugin Node.',
+                        category: 'utility',
+                    },
+                },
+            }).success,
+        ).toBe(false);
+    });
+
     it('accepts a manifest without a nodeType (non-node plugin)', () => {
         const result = ManifestSchema.safeParse({
             id: 'com.sigil.stub-ping',

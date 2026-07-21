@@ -3,9 +3,13 @@ import { describe, expect, it } from 'vitest';
 import {
     adaptNodeDescriptor,
     createBuiltinNodeContractRegistry,
+    createNodeContractRegistry,
+    fixedOutputPortSpec,
     type NodeContractInput,
     pluginNodeIdentity,
+    registerSerializableNodeContract,
     resolveNodeContract,
+    validatePluginNodeContract,
 } from './node-contract.js';
 import { LogDescriptor } from './nodes/log.js';
 
@@ -139,5 +143,68 @@ describe('Node Contract Registry', () => {
             identity: { namespace: 'plugin', pluginId: 'com.example.missing', type: 'log' },
             reason: 'unregistered',
         });
+    });
+
+    it('registers a serializable Plugin contract without importing runtime functions', () => {
+        const validation = validatePluginNodeContract(
+            {
+                identity: pluginNodeIdentity('com.example.file', 'file-node'),
+                version: 1,
+                role: 'action',
+                defaultConfig: { path: '/tmp' },
+                outputPorts: fixedOutputPortSpec([{ id: 'out', label: 'Output' }]),
+                display: { label: 'File Node', description: 'Moves a file.', category: 'system' },
+            },
+            'com.example.file',
+            'file-node',
+        );
+
+        expect(validation).toMatchObject({ ok: true });
+        if (!validation.ok) return;
+
+        const registry = createNodeContractRegistry();
+        registerSerializableNodeContract(registry, validation.contract);
+
+        expect(
+            resolveNodeContract(
+                { type: 'file-node', pluginId: 'com.example.file', config: { path: '/tmp' } },
+                registry,
+            ),
+        ).toMatchObject({
+            status: 'available',
+            outputPorts: [{ id: 'out', label: 'Output' }],
+        });
+    });
+
+    it('rejects a Plugin contract whose identity or version is incompatible', () => {
+        expect(
+            validatePluginNodeContract(
+                {
+                    identity: pluginNodeIdentity('com.example.other', 'file-node'),
+                    version: 1,
+                    role: 'action',
+                    defaultConfig: {},
+                    outputPorts: fixedOutputPortSpec(['out']),
+                    display: { label: 'File Node', description: '', category: 'system' },
+                },
+                'com.example.file',
+                'file-node',
+            ),
+        ).toMatchObject({ ok: false, error: expect.stringContaining('pluginId') });
+
+        expect(
+            validatePluginNodeContract(
+                {
+                    identity: pluginNodeIdentity('com.example.file', 'file-node'),
+                    version: 2,
+                    role: 'action',
+                    defaultConfig: {},
+                    outputPorts: fixedOutputPortSpec(['out']),
+                    display: { label: 'File Node', description: '', category: 'system' },
+                },
+                'com.example.file',
+                'file-node',
+            ),
+        ).toMatchObject({ ok: false, error: expect.stringContaining('version') });
     });
 });
