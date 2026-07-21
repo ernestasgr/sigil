@@ -4,7 +4,7 @@ import {
     NodePluginDepsRpcSchema,
     NodePluginWorkerKind,
     NodePluginWorkerToMainSchema,
-} from '../engine/plugin-node-rpc.js';
+} from '../engine/plugins/plugin-node-rpc.js';
 import {
     EngineChannel,
     EngineToMainMessageSchema,

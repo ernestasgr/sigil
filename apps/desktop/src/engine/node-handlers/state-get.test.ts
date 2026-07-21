@@ -3,7 +3,7 @@ import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createEventBus } from '../event-bus.js';
+import { createEventBus } from '../events/event-bus.js';
 import type { NodeHandlerDeps } from './types.js';
 
 const ctx: WorkflowContext = {

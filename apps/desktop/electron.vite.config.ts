@@ -13,8 +13,8 @@ export default defineConfig({
             lib: {
                 entry: {
                     index: resolve(__dirname, 'src/main/index.ts'),
-                    worker: resolve(__dirname, 'src/engine/worker.ts'),
-                    'plugin-worker': resolve(__dirname, 'src/engine/plugin-node-worker.ts'),
+                    worker: resolve(__dirname, 'src/engine/core/worker.ts'),
+                    'plugin-worker': resolve(__dirname, 'src/engine/plugins/plugin-node-worker.ts'),
                 },
                 formats: ['es'],
             },

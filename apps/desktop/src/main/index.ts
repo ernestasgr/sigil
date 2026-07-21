@@ -7,9 +7,9 @@ import { safeParsePayload } from '../shared/event-payload-schemas.js';
 import { type EngineBusEventPayload, RendererChannel } from '../shared/ipc-channels.js';
 import type { WorkflowSummary } from '../shared/workflow.js';
 import { type EngineHandle, spawnEngine } from './engine-client.js';
-import { registerIpcHandlers } from './ipc-handlers.js';
+import { registerIpcHandlers } from './ipc/ipc-handlers.js';
 import { createQuitCoordinator } from './quit-coordinator.js';
-import { createTray, type TrayController } from './tray.js';
+import { createTray, type TrayController } from './tray/tray.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

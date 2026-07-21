@@ -2,8 +2,8 @@ import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 
 import type { PipelineNode } from '@sigil/schema/nodes';
 import { describe, expect, it, vi } from 'vitest';
-import type { BusEvent } from '../event-bus.js';
-import { createEventBus } from '../event-bus.js';
+import type { BusEvent } from '../events/event-bus.js';
+import { createEventBus } from '../events/event-bus.js';
 import type { NodeHandlerDeps } from './types.js';
 
 const payload: FileEventPayload = {

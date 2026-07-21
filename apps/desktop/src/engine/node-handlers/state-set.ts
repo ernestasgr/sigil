@@ -1,5 +1,5 @@
 import { Either } from 'effect';
-import { parseWorkflowStateValue } from '../workflow-state-value.js';
+import { parseWorkflowStateValue } from '../workflow/workflow-state-value.js';
 import type { NodeHandler, NodeRunResult } from './types.js';
 import { narrowNode } from './types.js';
 

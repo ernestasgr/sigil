@@ -31,39 +31,39 @@ export const schemaCoverageThresholds = {
 
 export const desktopCoverageThresholds = {
     // Plugin authentication and command dispatch.
-    'src/engine/capability-broker.ts': {
+    'src/engine/persistence/capability-broker.ts': {
         statements: 100,
         branches: 100,
         functions: 100,
         lines: 100,
     },
-    'src/engine/dispatch.ts': {
+    'src/engine/core/dispatch.ts': {
         statements: 80,
         branches: 68,
         functions: 95,
         lines: 81,
     },
     // Workflow persistence.
-    'src/engine/workflow-state.ts': {
+    'src/engine/workflow/workflow-state.ts': {
         statements: 98,
         branches: 100,
         functions: 96,
         lines: 98,
     },
-    'src/engine/workflow-store.ts': {
+    'src/engine/workflow/workflow-store.ts': {
         statements: 93,
         branches: 85,
         functions: 100,
         lines: 94,
     },
     // Workflow lifecycle admission and run supervision.
-    'src/engine/workflow-lifecycle.ts': {
+    'src/engine/workflow/workflow-lifecycle.ts': {
         statements: 47,
         branches: 29,
         functions: 62,
         lines: 55,
     },
-    'src/engine/workflow-run-supervisor.ts': {
+    'src/engine/workflow/workflow-run-supervisor.ts': {
         statements: 84,
         branches: 70,
         functions: 87,
