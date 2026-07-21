@@ -1,16 +1,60 @@
 import { z } from 'zod';
-import { DelayDescriptor } from './delay.js';
-import { FileManagerDescriptor } from './file-manager.js';
-import { FileWatcherDescriptor } from './file-watcher.js';
-import { IfElseDescriptor } from './if-else.js';
-import { LogDescriptor } from './log.js';
-import { ManualTriggerDescriptor } from './manual-trigger.js';
-import { NotificationDescriptor } from './notification.js';
-import { StateGetDescriptor } from './state-get.js';
-import { StateSetDescriptor } from './state-set.js';
-import { SwitchDescriptor, switchPortLabel } from './switch.js';
+import {
+    BUILTIN_NODE_DESCRIPTORS,
+    BUILTIN_NODE_TYPE_VALUES,
+    outputPortIdsForNode,
+    outputPortLabelForNode as resolveOutputPortLabel,
+} from '../node-contract.js';
 import type { NodeDescriptor } from './types.js';
 
+export type {
+    NodeCategory,
+    NodeContract,
+    NodeContractDisplay,
+    NodeContractInput,
+    NodeContractIssue,
+    NodeContractIssueCode,
+    NodeContractRegistration,
+    NodeContractRegistry,
+    NodeContractResolution,
+    NodeIdentity,
+    NodeNamespace,
+    NodeOutputPort,
+    NodeOutputPortSpec,
+    NodeRole,
+    NodeType,
+} from '../node-contract.js';
+export {
+    adaptNodeDescriptor,
+    BUILTIN_NODE_CONTRACT_REGISTRATIONS,
+    BUILTIN_NODE_CONTRACT_REGISTRY,
+    BUILTIN_NODE_DESCRIPTORS,
+    BUILTIN_NODE_TYPE_VALUES,
+    builtinNodeIdentity,
+    createBuiltinNodeContractRegistry,
+    createNodeContractRegistry,
+    fixedOutputPort,
+    fixedOutputPortSpec,
+    formatNodeIdentity,
+    getBuiltinNodeContract,
+    NodeCategorySchema,
+    NodeContractDisplaySchema,
+    NodeContractIssueCodeSchema,
+    NodeContractIssueSchema,
+    NodeContractSchema,
+    NodeIdentitySchema,
+    NodeNamespaceSchema,
+    NodeOutputPortSchema,
+    NodeOutputPortSpecSchema,
+    NodeRoleSchema,
+    nodeIdentityForNode,
+    nodeIdentityKey,
+    outputPortDescriptorsForNode,
+    outputPortIdsForNode,
+    pluginNodeIdentity,
+    resolveNodeContract,
+    switchOutputPortSpec,
+} from '../node-contract.js';
 export type { DelayConfig } from './delay.js';
 export type { FileManagerConfig } from './file-manager.js';
 export type { FileWatcherConfig } from './file-watcher.js';
@@ -36,47 +80,16 @@ export type { NodeDescriptor, UnknownNodeDescriptor } from './types.js';
 
 // ─── Registry ───────────────────────────────────────────────────
 
-const NODE_TYPE_VALUES = [
-    'file-watcher',
-    'manual-trigger',
-    'if-else',
-    'switch',
-    'file-manager',
-    'notification',
-    'log',
-    'delay',
-    'state-get',
-    'state-set',
-] as const;
+const NODE_TYPE_VALUES = BUILTIN_NODE_TYPE_VALUES;
+type NodeType = (typeof NODE_TYPE_VALUES)[number];
 
-export type NodeType = (typeof NODE_TYPE_VALUES)[number];
-
-const NODE_DESCRIPTORS = {
-    'file-watcher': FileWatcherDescriptor,
-    'manual-trigger': ManualTriggerDescriptor,
-    'if-else': IfElseDescriptor,
-    switch: SwitchDescriptor,
-    'file-manager': FileManagerDescriptor,
-    notification: NotificationDescriptor,
-    log: LogDescriptor,
-    delay: DelayDescriptor,
-    'state-get': StateGetDescriptor,
-    'state-set': StateSetDescriptor,
-} as const satisfies { readonly [K in NodeType]: { readonly type: K } };
+const NODE_DESCRIPTORS = BUILTIN_NODE_DESCRIPTORS;
 
 type NodeConfigMap = {
     [K in NodeType]: z.infer<(typeof NODE_DESCRIPTORS)[K]['configSchema']>;
 };
 
-type DescriptorRegistry = {
-    readonly [K in NodeType]: NodeDescriptor<K, (typeof NODE_DESCRIPTORS)[K]['configSchema']>;
-};
-
-const nodeDescriptors: DescriptorRegistry = NODE_DESCRIPTORS;
-
-export function getNodeDescriptor<K extends NodeType>(type: K): DescriptorRegistry[K] {
-    return nodeDescriptors[type];
-}
+export { getNodeDescriptor } from '../node-contract.js';
 
 // ─── NodeTypeSchema ─────────────────────────────────────────────
 
@@ -126,16 +139,16 @@ function createBuiltinNodeSchema<TType extends NodeType, TSchema extends z.ZodTy
 }
 
 const builtinNodeSchemas = [
-    createBuiltinNodeSchema(FileWatcherDescriptor),
-    createBuiltinNodeSchema(ManualTriggerDescriptor),
-    createBuiltinNodeSchema(IfElseDescriptor),
-    createBuiltinNodeSchema(SwitchDescriptor),
-    createBuiltinNodeSchema(FileManagerDescriptor),
-    createBuiltinNodeSchema(NotificationDescriptor),
-    createBuiltinNodeSchema(LogDescriptor),
-    createBuiltinNodeSchema(DelayDescriptor),
-    createBuiltinNodeSchema(StateGetDescriptor),
-    createBuiltinNodeSchema(StateSetDescriptor),
+    createBuiltinNodeSchema(NODE_DESCRIPTORS['file-watcher']),
+    createBuiltinNodeSchema(NODE_DESCRIPTORS['manual-trigger']),
+    createBuiltinNodeSchema(NODE_DESCRIPTORS['if-else']),
+    createBuiltinNodeSchema(NODE_DESCRIPTORS.switch),
+    createBuiltinNodeSchema(NODE_DESCRIPTORS['file-manager']),
+    createBuiltinNodeSchema(NODE_DESCRIPTORS.notification),
+    createBuiltinNodeSchema(NODE_DESCRIPTORS.log),
+    createBuiltinNodeSchema(NODE_DESCRIPTORS.delay),
+    createBuiltinNodeSchema(NODE_DESCRIPTORS['state-get']),
+    createBuiltinNodeSchema(NODE_DESCRIPTORS['state-set']),
 ] as const;
 
 const BuiltinPipelineNodeSchema = z.discriminatedUnion('type', builtinNodeSchemas);
@@ -154,57 +167,10 @@ export const PipelineNodeSchema = z.union([PluginPipelineNodeSchema, BuiltinPipe
 // ─── Output ports ───────────────────────────────────────────────
 
 export function outputPortsForNode(node: PipelineNode): readonly string[] {
-    if (isPluginNode(node)) {
-        return [];
-    }
-
-    switch (node.type) {
-        case 'file-watcher':
-            return nodeDescriptors['file-watcher'].getOutputPorts(node.config);
-        case 'manual-trigger':
-            return nodeDescriptors['manual-trigger'].getOutputPorts(node.config);
-        case 'if-else':
-            return nodeDescriptors['if-else'].getOutputPorts(node.config);
-        case 'switch':
-            return nodeDescriptors.switch.getOutputPorts(node.config);
-        case 'file-manager':
-            return nodeDescriptors['file-manager'].getOutputPorts(node.config);
-        case 'notification':
-            return nodeDescriptors.notification.getOutputPorts(node.config);
-        case 'log':
-            return nodeDescriptors.log.getOutputPorts(node.config);
-        case 'delay':
-            return nodeDescriptors.delay.getOutputPorts(node.config);
-        case 'state-get':
-            return nodeDescriptors['state-get'].getOutputPorts(node.config);
-        case 'state-set':
-            return nodeDescriptors['state-set'].getOutputPorts(node.config);
-        default:
-            return assertNever(node);
-    }
+    const ports = outputPortIdsForNode(node);
+    return ports === 'dynamic' ? [] : ports;
 }
 
 export function outputPortLabelForNode(node: PipelineNode, port: string): string {
-    if (isPluginNode(node)) return port;
-
-    switch (node.type) {
-        case 'file-watcher':
-        case 'manual-trigger':
-        case 'if-else':
-        case 'file-manager':
-        case 'notification':
-        case 'log':
-        case 'delay':
-        case 'state-get':
-        case 'state-set':
-            return port;
-        case 'switch':
-            return switchPortLabel(node.config, port);
-        default:
-            return assertNever(node);
-    }
-}
-
-function assertNever(value: never): never {
-    throw new Error(`Unhandled node type: ${JSON.stringify(value)}`);
+    return resolveOutputPortLabel(node, port);
 }

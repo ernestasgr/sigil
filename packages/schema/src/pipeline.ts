@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { PipelineEdgeSchema } from './edges.js';
-import { isPluginNode, outputPortsForNode, PipelineNodeSchema } from './nodes/index.js';
+import { outputPortIdsForNode } from './node-contract.js';
+import { isPluginNode, PipelineNodeSchema } from './nodes/index.js';
 import { WorkflowIdSchema } from './workflow-id.js';
 
 export const PipelineSchemaVersionSchema = z.literal(1);
@@ -57,8 +58,8 @@ export const CompiledPipelineSchema = z
             }
 
             if (!isPluginNode(sourceNode)) {
-                const allowedPorts = outputPortsForNode(sourceNode);
-                if (!allowedPorts.includes(edge.sourcePort)) {
+                const allowedPorts = outputPortIdsForNode(sourceNode);
+                if (allowedPorts !== 'dynamic' && !allowedPorts.includes(edge.sourcePort)) {
                     ctx.addIssue({
                         code: 'custom',
                         message: `Edge "${edge.id}" has invalid sourcePort "${edge.sourcePort}" for node "${sourceNode.id}" (${sourceNode.type}). Allowed ports: ${allowedPorts.join(', ')}`,

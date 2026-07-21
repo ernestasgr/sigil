@@ -1,5 +1,11 @@
 import type { Manifest } from '@sigil/schema/manifest';
 import {
+    BUILTIN_NODE_CONTRACT_REGISTRY,
+    getBuiltinNodeContract,
+    type NodeContractRegistry,
+    resolveNodeContract,
+} from '@sigil/schema/node-contract';
+import {
     type BuiltinPipelineNode,
     getNodeDescriptor,
     isPluginNode,
@@ -7,7 +13,6 @@ import {
     type NodeType,
     type PipelineNode,
 } from '@sigil/schema/nodes';
-import { switchPortLabel } from '@sigil/schema/nodes/switch';
 import { type ComponentType, createElement, type ReactElement } from 'react';
 import type { z } from 'zod';
 
@@ -115,11 +120,6 @@ export type NodeCatalogManifest = Pick<Manifest, 'id' | 'nodeType'>;
 
 interface BuiltinNodeCatalogAdapter<K extends NodeType, TSchema extends z.ZodType> {
     readonly descriptor: NodeDescriptor<K, TSchema>;
-    readonly label: string;
-    readonly category: NodeCategory;
-    readonly description: string;
-    readonly isTrigger: boolean;
-    readonly outputPortLabel?: (config: z.output<TSchema>, port: string) => string;
     readonly Form: ComponentType<ConfigFormProps<z.output<TSchema>>>;
 }
 
@@ -140,6 +140,29 @@ function outputPortsForConfig<TSchema extends z.ZodType>(
 ): readonly string[] | 'dynamic' {
     const validation = validateConfig(configSchema, config);
     return validation.ok ? outputPorts(validation.value) : 'dynamic';
+}
+
+function builtinOutputPorts(
+    type: NodeType,
+    config: unknown,
+    registry: NodeContractRegistry = BUILTIN_NODE_CONTRACT_REGISTRY,
+): readonly string[] | 'dynamic' {
+    const resolved = resolveNodeContract({ type, config }, registry);
+    if (resolved.status !== 'available') return 'dynamic';
+    return resolved.outputPorts === 'dynamic'
+        ? 'dynamic'
+        : resolved.outputPorts.map((port) => port.id);
+}
+
+function builtinOutputPortLabel(
+    type: NodeType,
+    config: unknown,
+    port: string,
+    registry: NodeContractRegistry = BUILTIN_NODE_CONTRACT_REGISTRY,
+): string {
+    const resolved = resolveNodeContract({ type, config }, registry);
+    if (resolved.status !== 'available' || resolved.outputPorts === 'dynamic') return port;
+    return resolved.outputPorts.find((candidate) => candidate.id === port)?.label ?? port;
 }
 
 function outputPortLabelForConfig<TSchema extends z.ZodType>(
@@ -182,24 +205,18 @@ function createBuiltinNodeCatalogEntry<K extends NodeType, TSchema extends z.Zod
     adapter: BuiltinNodeCatalogAdapter<K, TSchema>,
 ): BuiltinNodeCatalogEntry {
     const descriptor = adapter.descriptor;
+    const contract = getBuiltinNodeContract(descriptor.type);
     return {
         source: 'builtin',
         type: descriptor.type,
-        label: adapter.label,
-        category: adapter.category,
-        description: adapter.description,
-        defaultConfig: descriptor.defaultConfig,
-        isTrigger: adapter.isTrigger,
+        label: contract.display.label,
+        category: contract.display.category,
+        description: contract.display.description,
+        defaultConfig: contract.defaultConfig,
+        isTrigger: contract.role === 'trigger',
         validateConfig: (config) => validateConfig(descriptor.configSchema, config),
-        outputPorts: (config) =>
-            outputPortsForConfig(descriptor.configSchema, descriptor.getOutputPorts, config),
-        outputPortLabel: (config, port) =>
-            outputPortLabelForConfig(
-                descriptor.configSchema,
-                adapter.outputPortLabel,
-                config,
-                port,
-            ),
+        outputPorts: (config) => builtinOutputPorts(descriptor.type, config),
+        outputPortLabel: (config, port) => builtinOutputPortLabel(descriptor.type, config, port),
         showInPalette: true,
         authoring: 'editable',
         Form: createNodeConfigForm(descriptor.type, adapter.Form, descriptor.configSchema),
@@ -235,86 +252,42 @@ export function createPluginNodeCatalogEntry<TConfig>(
 const BUILTIN_NODE_CATALOG_ENTRIES: readonly BuiltinNodeCatalogEntry[] = [
     createBuiltinNodeCatalogEntry({
         descriptor: getNodeDescriptor('file-watcher'),
-        label: 'File Watcher',
-        category: 'trigger',
-        description:
-            'Emits an event when files are created, modified, or deleted in a watched path.',
-        isTrigger: true,
         Form: FileWatcherConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
         descriptor: getNodeDescriptor('manual-trigger'),
-        label: 'Manual Trigger',
-        category: 'trigger',
-        description:
-            'Fires a single event with a hand-crafted payload, for testing and manual runs.',
-        isTrigger: true,
         Form: ManualTriggerConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
         descriptor: getNodeDescriptor('if-else'),
-        label: 'If / Else',
-        category: 'logic',
-        description: 'Branches the flow down a true or false path based on a condition.',
-        isTrigger: false,
         Form: IfElseConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
         descriptor: getNodeDescriptor('switch'),
-        label: 'Switch',
-        category: 'logic',
-        description:
-            'Routes the flow to one of several cases (plus default) by event name or field value.',
-        isTrigger: false,
-        outputPortLabel: switchPortLabel,
         Form: SwitchConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
         descriptor: getNodeDescriptor('file-manager'),
-        label: 'File Manager',
-        category: 'system',
-        description: 'Moves, renames, or copies the file carried by the incoming event.',
-        isTrigger: false,
         Form: FileManagerConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
         descriptor: getNodeDescriptor('notification'),
-        label: 'Notification',
-        category: 'system',
-        description: 'Shows an OS notification with a title and body.',
-        isTrigger: false,
         Form: NotificationConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
         descriptor: getNodeDescriptor('state-get'),
-        label: 'State Get',
-        category: 'state',
-        description: 'Loads a value from workflow state into the workflow variables.',
-        isTrigger: false,
         Form: StateGetConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
         descriptor: getNodeDescriptor('state-set'),
-        label: 'State Set',
-        category: 'state',
-        description: 'Writes a templated value into workflow state under a key.',
-        isTrigger: false,
         Form: StateSetConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
         descriptor: getNodeDescriptor('log'),
-        label: 'Log',
-        category: 'utility',
-        description: 'Emits a log line with a templated message.',
-        isTrigger: false,
         Form: LogConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
         descriptor: getNodeDescriptor('delay'),
-        label: 'Delay',
-        category: 'utility',
-        description: 'Pauses the flow for a number of milliseconds.',
-        isTrigger: false,
         Form: DelayConfigForm,
     }),
 ];
@@ -355,6 +328,7 @@ function pluginKey(pluginId: string, type: string): string {
 
 export interface NodeCatalog {
     readonly entries: readonly NodeCatalogEntry[];
+    readonly contractRegistry: NodeContractRegistry;
     readonly findBuiltin: (type: NodeType) => BuiltinNodeCatalogEntry | undefined;
     readonly findPlugin: (pluginId: string, type: string) => PluginNodeCatalogEntry | undefined;
     readonly findForSpec: (spec: NodeSpec) => NodeCatalogEntry | undefined;
@@ -364,6 +338,7 @@ export interface NodeCatalog {
 
 export interface NodeCatalogOptions {
     readonly includeBundledPluginEntries?: boolean;
+    readonly contractRegistry?: NodeContractRegistry;
 }
 
 export function createNodeCatalog(
@@ -385,11 +360,13 @@ export function createNodeCatalog(
         ...builtinEntries.values(),
         ...pluginEntries.values(),
     ] as NodeCatalogEntry[]);
+    const contractRegistry = options.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
     const findPlugin = (pluginId: string, type: string): PluginNodeCatalogEntry | undefined =>
         pluginEntries.get(pluginKey(pluginId, type));
 
     return {
         entries,
+        contractRegistry,
         findBuiltin: (type) => builtinEntries.get(type),
         findPlugin,
         findForSpec: (spec) =>
@@ -471,6 +448,14 @@ export function resolveNodeCatalogEntry(
     }
 
     const validation = entry.validateConfig(spec.config);
+    const contractResolution = resolveNodeContract(
+        {
+            type: spec.type,
+            ...(isPluginNodeSpec(spec) ? { pluginId: spec.pluginId } : {}),
+            config: spec.config,
+        },
+        catalog.contractRegistry,
+    );
     const authoring = entry.authoring ?? (entry.Form ? 'editable' : 'read-only');
     const readOnlyReason =
         entry.source === 'plugin' && !entry.Form
@@ -486,11 +471,36 @@ export function resolveNodeCatalogEntry(
         description: entry.description,
         defaultConfig: entry.defaultConfig,
         authoring,
-        isTrigger: entry.isTrigger,
-        outputPorts: validation.ok ? entry.outputPorts(validation.value) : 'dynamic',
+        isTrigger:
+            contractResolution.status === 'available'
+                ? contractResolution.contract.role === 'trigger'
+                : entry.isTrigger,
+        outputPorts:
+            contractResolution.status === 'available'
+                ? contractResolution.outputPorts === 'dynamic'
+                    ? 'dynamic'
+                    : contractResolution.outputPorts.map((port) => port.id)
+                : validation.ok
+                  ? entry.outputPorts(validation.value)
+                  : 'dynamic',
         outputPortLabel: (config, port) => {
             const parsed = entry.validateConfig(config);
-            return parsed.ok ? (entry.outputPortLabel?.(parsed.value, port) ?? port) : port;
+            if (!parsed.ok) return port;
+
+            const resolved = resolveNodeContract(
+                {
+                    type: spec.type,
+                    ...(isPluginNodeSpec(spec) ? { pluginId: spec.pluginId } : {}),
+                    config: parsed.value,
+                },
+                catalog.contractRegistry,
+            );
+            if (resolved.status === 'available' && resolved.outputPorts !== 'dynamic') {
+                return (
+                    resolved.outputPorts.find((candidate) => candidate.id === port)?.label ?? port
+                );
+            }
+            return entry.outputPortLabel?.(parsed.value, port) ?? port;
         },
         validateConfig: entry.validateConfig,
         ...(entry.Form ? { Form: entry.Form } : {}),

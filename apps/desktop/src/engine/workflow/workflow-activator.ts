@@ -214,7 +214,11 @@ export function createWorkflowActivator(
 
             setActivation(workflowId, { kind: 'activating' });
 
-            const accepted = acceptWorkflow(data.value.executable, handlerRegistry);
+            const accepted = acceptWorkflow(
+                data.value.executable,
+                handlerRegistry,
+                engine.contractRegistry,
+            );
             if (!accepted.ok) {
                 for (const diagnostic of accepted.diagnostics) {
                     engine.bus.next({
