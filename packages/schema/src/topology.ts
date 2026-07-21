@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import {
+    BUILTIN_NODE_CONTRACT_REGISTRY,
+    type NodeContractRegistry,
+    outputPortIdsForNode,
+    resolveNodeContract,
+} from './node-contract.js';
+import {
     isPluginNode,
-    outputPortsForNode,
     type PipelineNode,
     SWITCH_DIAGNOSTIC_CODES,
     validateSwitchConfig,
@@ -61,6 +66,8 @@ export type TopologyDiagnostic = z.infer<typeof TopologyDiagnosticSchema>;
 export type TopologyOutputPorts = readonly string[] | 'dynamic';
 
 export interface WorkflowTopologyOptions {
+    /** Shared Node Contract Registry used for built-in and registered Plugin Nodes. */
+    readonly contractRegistry?: NodeContractRegistry;
     /**
      * Supplies trigger knowledge for plugin Nodes. Built-in trigger types are
      * recognised by default; a resolver replaces that default when provided.
@@ -88,9 +95,9 @@ export type WorkflowTopologyResult =
     | { readonly ok: true; readonly value: ExecutableWorkflow }
     | { readonly ok: false; readonly diagnostics: readonly TopologyDiagnostic[] };
 
-function isBuiltinTrigger(node: PipelineNode): boolean {
-    if (isPluginNode(node)) return false;
-    return node.type === 'manual-trigger' || node.type === 'file-watcher';
+function isBuiltinTrigger(node: PipelineNode, registry: NodeContractRegistry): boolean {
+    const resolution = resolveNodeContract(node, registry);
+    return resolution.status === 'available' && resolution.contract.role === 'trigger';
 }
 
 function pipelineDiagnostic(code: TopologyDiagnosticCode, message: string): TopologyDiagnostic {
@@ -137,8 +144,14 @@ function outputPortsForTopologyNode(
     options: WorkflowTopologyOptions,
 ): TopologyOutputPorts {
     if (options.outputPortsForNode) return options.outputPortsForNode(node);
-    if (isPluginNode(node)) return 'dynamic';
-    return outputPortsForNode(node);
+
+    const registry = options.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
+    const outputPorts = outputPortIdsForNode(node, registry);
+    if (outputPorts.length > 0 || outputPorts === 'dynamic') return outputPorts;
+
+    // Unknown Plugin contracts remain structurally preservable. Engine
+    // admission separately rejects them when no runtime handler is present.
+    return isPluginNode(node) ? 'dynamic' : outputPorts;
 }
 
 function appendUnique(diagnostics: TopologyDiagnostic[], diagnostic: TopologyDiagnostic): void {
@@ -319,7 +332,8 @@ export function validateWorkflowTopology(
         }
     }
 
-    const isTrigger = options.isTrigger ?? isBuiltinTrigger;
+    const contractRegistry = options.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
+    const isTrigger = options.isTrigger ?? ((node) => isBuiltinTrigger(node, contractRegistry));
     const triggers = nodes.filter(isTrigger);
     const roots = nodes.filter((node) => (incoming.get(node.id)?.length ?? 0) === 0);
 

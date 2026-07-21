@@ -3,6 +3,10 @@ import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Capability } from '@sigil/schema/manifest';
 import {
+    createBuiltinNodeContractRegistry,
+    type NodeContractRegistry,
+} from '@sigil/schema/node-contract';
+import {
     createPropertyRegistry,
     loadPropertiesFile,
     PROPERTY_REGISTRY,
@@ -75,6 +79,8 @@ export interface Engine {
     readonly settings: ExecutorSettings;
     readonly fileWatcherManager: FileWatcherManager;
     readonly handlerRegistry: NodeHandlerRegistry;
+    /** Shared topology and runtime contract lookup for built-in Nodes. */
+    readonly contractRegistry: NodeContractRegistry;
     readonly propertyRegistry: PropertyRegistry;
     readonly validateProperties: (
         properties: Readonly<Record<string, unknown>>,
@@ -199,6 +205,7 @@ export function createEngine(options?: EngineOptions): Engine {
         : resolvePath(engineDir, '../../builtin-plugins');
 
     const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
+    const contractRegistry = createBuiltinNodeContractRegistry();
     const pluginLoader = createNodePluginLoader();
     let resourcesDisposed = false;
     let shutdownPromise: Promise<void> | undefined;
@@ -307,6 +314,7 @@ export function createEngine(options?: EngineOptions): Engine {
         },
         fileWatcherManager,
         handlerRegistry,
+        contractRegistry,
         loadBuiltinPlugins: async (): Promise<readonly NodePluginLoadResult[]> => {
             const kernel = { fileWatcherManager, capabilityBroker };
             const deps = {
@@ -335,7 +343,7 @@ export function createEngine(options?: EngineOptions): Engine {
             seedContext,
             executionOptions,
         ): Promise<WorkflowExecutionResult> => {
-            const topology = acceptWorkflow(pipeline, handlerRegistry);
+            const topology = acceptWorkflow(pipeline, handlerRegistry, contractRegistry);
             if (!topology.ok) {
                 emitTopologyDiagnostics(bus, topology.diagnostics);
                 throw createWorkflowTopologyError(topology.diagnostics);

@@ -102,6 +102,11 @@
             "import": "./dist/nodes/types.js",
             "default": "./dist/nodes/types.js"
         },
+        "./node-contract": {
+            "types": "./dist/node-contract.d.ts",
+            "import": "./dist/node-contract.js",
+            "default": "./dist/node-contract.js"
+        },
         "./edges": {
             "types": "./dist/edges.d.ts",
             "import": "./dist/edges.js",

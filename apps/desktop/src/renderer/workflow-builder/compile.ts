@@ -1,4 +1,5 @@
 import { type CompiledPipeline, parsePipeline } from '@sigil/schema';
+import { resolveNodeContract } from '@sigil/schema/node-contract';
 import { isPluginNode, type PipelineNode } from '@sigil/schema/nodes';
 import {
     type ExecutableWorkflow,
@@ -144,11 +145,38 @@ function topologyOptionsWithCatalog(
         return entry;
     };
 
+    const resolveContract = (node: PipelineNode) =>
+        resolveNodeContract(
+            {
+                type: node.type,
+                ...(isPluginNode(node) ? { pluginId: node.pluginId } : {}),
+                config: node.config,
+            },
+            catalog.contractRegistry,
+        );
+
     return {
         ...(options?.isNodeSupported ? { isNodeSupported: options.isNodeSupported } : {}),
-        isTrigger: options?.isTrigger ?? ((node) => resolveCatalogEntry(node).isTrigger === true),
+        contractRegistry: catalog.contractRegistry,
+        isTrigger:
+            options?.isTrigger ??
+            ((node) => {
+                const contract = resolveContract(node);
+                return contract.status === 'available'
+                    ? contract.contract.role === 'trigger'
+                    : resolveCatalogEntry(node).isTrigger === true;
+            }),
         outputPortsForNode:
-            options?.outputPortsForNode ?? ((node) => resolveCatalogEntry(node).outputPorts),
+            options?.outputPortsForNode ??
+            ((node) => {
+                const contract = resolveContract(node);
+                if (contract.status === 'available') {
+                    return contract.outputPorts === 'dynamic'
+                        ? 'dynamic'
+                        : contract.outputPorts.map((port) => port.id);
+                }
+                return resolveCatalogEntry(node).outputPorts;
+            }),
     };
 }
 

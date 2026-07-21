@@ -148,7 +148,10 @@ for (const result of pluginResults) {
 }
 
 const workflowsDir = join(userDataPath ?? '', 'workflows');
-const store = createWorkflowStore(workflowsDir, workflowTopologyOptions(engine.handlerRegistry));
+const store = createWorkflowStore(
+    workflowsDir,
+    workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
+);
 
 function broadcastWorkflowsList(): void {
     const message: EngineWorkflowsList = {
