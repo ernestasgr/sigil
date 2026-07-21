@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Capability } from '@sigil/schema/manifest';
@@ -192,7 +193,10 @@ export function createEngine(options?: EngineOptions): Engine {
     );
 
     const __filename = fileURLToPath(import.meta.url);
-    const builtinPluginsDir = resolvePath(dirname(__filename), '../../builtin-plugins');
+    const engineDir = dirname(__filename);
+    const builtinPluginsDir = existsSync(resolvePath(engineDir, '../../src/builtin-plugins'))
+        ? resolvePath(engineDir, '../../src/builtin-plugins')
+        : resolvePath(engineDir, '../../builtin-plugins');
 
     const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
     const pluginLoader = createNodePluginLoader();
