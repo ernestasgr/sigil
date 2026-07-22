@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PipelineEdgeSchema } from './edges.js';
-import { resolveNodeContract } from './node-contract.js';
+import { outputPortIdsForNode } from './node-contract.js';
 import { isPluginNode, PipelineNodeSchema } from './nodes/index.js';
 import { WorkflowIdSchema } from './workflow-id.js';
 
@@ -58,12 +58,7 @@ export const CompiledPipelineSchema = z
             }
 
             if (!isPluginNode(sourceNode)) {
-                const contract = resolveNodeContract(sourceNode);
-                if (contract.status !== 'available') continue;
-                const allowedPorts =
-                    contract.outputPorts === 'dynamic'
-                        ? 'dynamic'
-                        : contract.outputPorts.map((port) => port.id);
+                const allowedPorts = outputPortIdsForNode(sourceNode);
                 if (allowedPorts !== 'dynamic' && !allowedPorts.includes(edge.sourcePort)) {
                     ctx.addIssue({
                         code: 'custom',

@@ -4,6 +4,7 @@ import {
     formatNodeIdentity,
     type NodeContractRegistry,
     type NodeContractResolution,
+    outputPortIdsForNode,
     resolveNodeContract,
 } from './node-contract.js';
 import {
@@ -149,17 +150,7 @@ function outputPortsForTopologyNode(
     if (options.outputPortsForNode) return options.outputPortsForNode(node);
 
     const registry = options.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
-    const resolution = resolveNodeContract(node, registry);
-    if (resolution.status === 'available') {
-        return resolution.outputPorts === 'dynamic'
-            ? 'dynamic'
-            : resolution.outputPorts.map((port) => port.id);
-    }
-    return resolution.status === 'invalid' && resolution.outputPorts !== undefined
-        ? resolution.outputPorts === 'dynamic'
-            ? 'dynamic'
-            : resolution.outputPorts.map((port) => port.id)
-        : [];
+    return outputPortIdsForNode(node, registry);
 }
 
 function contractIssueFieldPath(path: string): string {
