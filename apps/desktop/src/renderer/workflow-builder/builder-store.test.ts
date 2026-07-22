@@ -240,7 +240,31 @@ describe('useBuilderStore', () => {
             Form: () => null,
         });
         const catalog = createNodeCatalogFromManifests(
-            [{ id: 'com.example.timer', nodeType: 'timer-trigger' }],
+            [
+                {
+                    id: 'com.example.timer',
+                    nodeType: 'timer-trigger',
+                    nodeContract: {
+                        identity: {
+                            namespace: 'plugin',
+                            pluginId: 'com.example.timer',
+                            type: 'timer-trigger',
+                        },
+                        version: 1,
+                        role: 'trigger',
+                        defaultConfig: {},
+                        outputPorts: {
+                            kind: 'fixed',
+                            ports: [{ id: 'out', label: 'Output' }],
+                        },
+                        display: {
+                            label: 'Timer Trigger',
+                            description: 'Starts a Workflow on a timer.',
+                            category: 'trigger',
+                        },
+                    },
+                },
+            ],
             [entry],
         );
         useBuilderStore.getState().setNodeCatalog(catalog);
@@ -584,6 +608,37 @@ describe('useBuilderStore', () => {
             edges: [{ id: 'edge-1', source: 'file-trigger', target: 'log', sourcePort: 'out' }],
         };
 
+        useBuilderStore.getState().setNodeCatalog(
+            createNodeCatalogFromManifests([
+                {
+                    id: 'com.sigil.file-watcher',
+                    nodeType: 'file-watcher',
+                    nodeContract: {
+                        identity: {
+                            namespace: 'plugin',
+                            pluginId: 'com.sigil.file-watcher',
+                            type: 'file-watcher',
+                        },
+                        version: 1,
+                        role: 'trigger',
+                        defaultConfig: {
+                            path: '/',
+                            recursive: true,
+                            events: ['file.created'],
+                        },
+                        outputPorts: {
+                            kind: 'fixed',
+                            ports: [{ id: 'out', label: 'Output' }],
+                        },
+                        display: {
+                            label: 'File Watcher',
+                            description: 'Watches a path for file events.',
+                            category: 'trigger',
+                        },
+                    },
+                },
+            ]),
+        );
         useBuilderStore.getState().loadPipeline(pipeline, 'Plugin Workflow');
 
         expect(useBuilderStore.getState().nodes[0]?.data).toMatchObject({

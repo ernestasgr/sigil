@@ -318,6 +318,50 @@ describe('createEngine', () => {
         engine.dispose();
     });
 
+    it('rejects a Plugin handler when its Node Contract is unavailable', async () => {
+        const engine = createEngine();
+        const events: BusEvent[] = [];
+        engine.bus.subscribe((event) => {
+            events.push(event);
+        });
+        engine.handlerRegistry.register('contractless-node', {
+            execute: async ({ ctx }) => ({ outputCtx: ctx, activePort: 'out' }),
+        });
+        const contractlessPipeline: CompiledPipeline = {
+            ...sampleManualTriggerToLog,
+            nodes: [
+                ...sampleManualTriggerToLog.nodes,
+                {
+                    id: 'contractless',
+                    type: 'contractless-node',
+                    pluginId: 'com.example.contractless',
+                    config: {},
+                },
+            ],
+            edges: [
+                ...sampleManualTriggerToLog.edges,
+                {
+                    id: 'log-contractless',
+                    source: 'log',
+                    target: 'contractless',
+                    sourcePort: 'out',
+                },
+            ],
+        };
+
+        await expect(engine.execute(contractlessPipeline)).rejects.toMatchObject({
+            kind: 'workflow_topology',
+            diagnostics: expect.arrayContaining([
+                expect.objectContaining({
+                    code: 'unavailable_node_contract',
+                    nodeId: 'contractless',
+                }),
+            ]),
+        });
+        expect(events.some((event) => event.name === 'workflow.started')).toBe(false);
+        engine.dispose();
+    });
+
     it('executes a validated Trigger-rooted fan-out', async () => {
         const engine = createEngine();
         const events: BusEvent[] = [];

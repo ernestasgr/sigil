@@ -4,7 +4,6 @@ import {
     formatNodeIdentity,
     type NodeContractRegistry,
     type NodeContractResolution,
-    outputPortIdsForNode,
     resolveNodeContract,
 } from './node-contract.js';
 import {
@@ -33,6 +32,7 @@ const TOPOLOGY_DIAGNOSTIC_CODES = [
     'duplicate_node_id',
     'duplicate_edge_id',
     'unsupported_node_handler',
+    'unavailable_node_contract',
     'unsupported_plugin_authoring',
     'invalid_plugin_config',
     'invalid_node_contract',
@@ -72,16 +72,8 @@ export type TopologyOutputPorts = readonly string[] | 'dynamic';
 export interface WorkflowTopologyOptions {
     /** Shared Node Contract Registry used for built-in and registered Plugin Nodes. */
     readonly contractRegistry?: NodeContractRegistry;
-    /**
-     * Supplies trigger knowledge for plugin Nodes. Built-in trigger types are
-     * recognised by default; a resolver replaces that default when provided.
-     */
-    readonly isTrigger?: (node: PipelineNode) => boolean;
-    /**
-     * Supplies declared output ports for plugin Nodes. A dynamic result is an
-     * explicit contract for a plugin whose active ports are data-dependent.
-     */
-    readonly outputPortsForNode?: (node: PipelineNode) => TopologyOutputPorts;
+    /** Require every Node to have a registered, valid contract for execution. */
+    readonly requireNodeContracts?: boolean;
     /**
      * Supplies runtime support knowledge for Nodes. The topology module does
      * not know which handlers are available in a particular Engine process.
@@ -98,11 +90,6 @@ export interface ExecutableWorkflow {
 export type WorkflowTopologyResult =
     | { readonly ok: true; readonly value: ExecutableWorkflow }
     | { readonly ok: false; readonly diagnostics: readonly TopologyDiagnostic[] };
-
-function isBuiltinTrigger(node: PipelineNode, registry: NodeContractRegistry): boolean {
-    const resolution = resolveNodeContract(node, registry);
-    return resolution.status === 'available' && resolution.contract.role === 'trigger';
-}
 
 function pipelineDiagnostic(code: TopologyDiagnosticCode, message: string): TopologyDiagnostic {
     return {
@@ -143,14 +130,18 @@ function edgeDiagnostic(
     };
 }
 
-function outputPortsForTopologyNode(
-    node: PipelineNode,
-    options: WorkflowTopologyOptions,
-): TopologyOutputPorts {
-    if (options.outputPortsForNode) return options.outputPortsForNode(node);
-
-    const registry = options.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
-    return outputPortIdsForNode(node, registry);
+function outputPortsForResolution(resolution: NodeContractResolution): TopologyOutputPorts {
+    if (resolution.status === 'available') {
+        return resolution.outputPorts === 'dynamic'
+            ? 'dynamic'
+            : resolution.outputPorts.map((port) => port.id);
+    }
+    if (resolution.status === 'invalid' && resolution.outputPorts !== undefined) {
+        return resolution.outputPorts === 'dynamic'
+            ? 'dynamic'
+            : resolution.outputPorts.map((port) => port.id);
+    }
+    return [];
 }
 
 function contractIssueFieldPath(path: string): string {
@@ -269,8 +260,25 @@ export function validateWorkflowTopology(
 
     const nodes = [...nodeById.values()];
     const contractRegistry = options.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
+    const contractResolutions = new Map(
+        nodes.map((node) => [node.id, resolveNodeContract(node, contractRegistry)] as const),
+    );
     for (const node of nodes) {
-        const resolution = resolveNodeContract(node, contractRegistry);
+        const resolution = contractResolutions.get(node.id);
+        if (!resolution) continue;
+        if (resolution.status === 'unavailable' && options.requireNodeContracts) {
+            appendUnique(diagnostics, {
+                severity: 'error',
+                code: 'unavailable_node_contract',
+                target: { kind: 'node', nodeId: node.id },
+                nodeId: node.id,
+                message:
+                    `Node "${node.id}" (${formatNodeIdentity(resolution.identity)}) has no registered ` +
+                    'Node Contract; load the Plugin that declares it before running the Workflow.',
+                repairHint:
+                    'Load the Plugin contract or remove the unavailable Plugin Node from the Workflow.',
+            });
+        }
         if (!isPluginNode(node) && node.type === 'switch') {
             const parsedConfig = SwitchConfigSchema.safeParse(node.config);
             if (!parsedConfig.success) {
@@ -340,7 +348,9 @@ export function validateWorkflowTopology(
             continue;
         }
 
-        const outputPorts = outputPortsForTopologyNode(sourceNode, options);
+        const sourceResolution = contractResolutions.get(sourceNode.id);
+        if (!sourceResolution) continue;
+        const outputPorts = outputPortsForResolution(sourceResolution);
         if (outputPorts !== 'dynamic' && !outputPorts.includes(edge.sourcePort)) {
             appendUnique(
                 diagnostics,
@@ -372,8 +382,10 @@ export function validateWorkflowTopology(
         }
     }
 
-    const isTrigger = options.isTrigger ?? ((node) => isBuiltinTrigger(node, contractRegistry));
-    const triggers = nodes.filter(isTrigger);
+    const triggers = nodes.filter((node) => {
+        const resolution = contractResolutions.get(node.id);
+        return resolution?.status === 'available' && resolution.contract.role === 'trigger';
+    });
     const roots = nodes.filter((node) => (incoming.get(node.id)?.length ?? 0) === 0);
 
     if (triggers.length === 0) {
@@ -405,7 +417,7 @@ export function validateWorkflowTopology(
     }
 
     for (const root of roots) {
-        if (!isTrigger(root)) {
+        if (!triggers.some((triggerNode) => triggerNode.id === root.id)) {
             appendUnique(
                 diagnostics,
                 nodeDiagnostic(

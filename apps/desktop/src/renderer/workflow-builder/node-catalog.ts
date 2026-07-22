@@ -440,9 +440,11 @@ function normalizePluginEntry(
     if (!contract) {
         return {
             ...entry,
+            isTrigger: false,
+            outputPorts: () => [],
             outputPortLabel: entry.outputPortLabel ?? ((_config, port) => port),
-            showInPalette: entry.showInPalette ?? true,
-            authoring: entry.authoring ?? (entry.Form ? 'editable' : 'read-only'),
+            showInPalette: false,
+            authoring: 'read-only',
         };
     }
 
@@ -528,8 +530,8 @@ export const DEFAULT_NODE_CATALOG = createNodeCatalog();
 
 function unsupportedPluginEntry(spec: PluginNodeSpec): ResolvedNodeCatalogEntry {
     const readOnlyReason =
-        `Plugin Node "${spec.type}" from "${spec.pluginId}" has no Workflow Builder ` +
-        'authoring adapter; it is read-only and its identity and configuration will be preserved.';
+        `Plugin Node "${spec.type}" from "${spec.pluginId}" has no registered Node Contract or ` +
+        'Workflow Builder authoring adapter; it is read-only and its identity and configuration will be preserved.';
     return {
         source: 'plugin',
         type: spec.type,
@@ -575,7 +577,6 @@ export function resolveNodeCatalogEntry(
         throw new Error(`Missing built-in Node catalog entry for "${spec.type}"`);
     }
 
-    const validation = entry.validateConfig(spec.config);
     const contractResolution = resolveNodeContract(
         {
             type: spec.type,
@@ -584,11 +585,18 @@ export function resolveNodeCatalogEntry(
         },
         catalog.contractRegistry,
     );
-    const authoring = entry.authoring ?? (entry.Form ? 'editable' : 'read-only');
+    const authoring =
+        contractResolution.status === 'unavailable'
+            ? 'read-only'
+            : (entry.authoring ?? (entry.Form ? 'editable' : 'read-only'));
     const readOnlyReason =
-        entry.source === 'plugin' && !entry.Form
-            ? `Plugin Node "${spec.type}" from "${entry.pluginId}" has no config editor and is read-only.`
-            : undefined;
+        entry.source !== 'plugin'
+            ? undefined
+            : contractResolution.status === 'unavailable'
+              ? `Plugin Node "${spec.type}" from "${entry.pluginId}" has no registered Node Contract; its identity and configuration are preserved read-only.`
+              : !entry.Form
+                ? `Plugin Node "${spec.type}" from "${entry.pluginId}" has no config editor and is read-only.`
+                : undefined;
 
     return {
         source: entry.source,
@@ -603,7 +611,9 @@ export function resolveNodeCatalogEntry(
         isTrigger:
             contractResolution.status === 'available'
                 ? contractResolution.contract.role === 'trigger'
-                : entry.isTrigger,
+                : contractResolution.status === 'invalid'
+                  ? contractResolution.contract.role === 'trigger'
+                  : 'unknown',
         outputPorts:
             contractResolution.status === 'available'
                 ? contractResolution.outputPorts === 'dynamic'
@@ -615,9 +625,7 @@ export function resolveNodeCatalogEntry(
                       : contractResolution.outputPorts === 'dynamic'
                         ? 'dynamic'
                         : contractResolution.outputPorts.map((port) => port.id)
-                  : validation.ok
-                    ? entry.outputPorts(validation.value)
-                    : 'dynamic',
+                  : [],
         outputPortLabel: (config, port) => {
             const parsed = entry.validateConfig(config);
             if (!parsed.ok) return port;
@@ -630,16 +638,11 @@ export function resolveNodeCatalogEntry(
                 },
                 catalog.contractRegistry,
             );
-            if (
-                (resolved.status === 'available' || resolved.status === 'invalid') &&
-                resolved.outputPorts !== undefined &&
-                resolved.outputPorts !== 'dynamic'
-            ) {
-                return (
-                    resolved.outputPorts.find((candidate) => candidate.id === port)?.label ?? port
-                );
+            if (resolved.status === 'unavailable' || resolved.outputPorts === undefined) {
+                return port;
             }
-            return entry.outputPortLabel?.(parsed.value, port) ?? port;
+            if (resolved.outputPorts === 'dynamic') return port;
+            return resolved.outputPorts.find((candidate) => candidate.id === port)?.label ?? port;
         },
         validateConfig: entry.validateConfig,
         ...(entry.Form ? { Form: entry.Form } : {}),

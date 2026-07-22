@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { compileGraph } from './compile.js';
-import { createNodeCatalogFromManifests } from './node-catalog.js';
+import {
+    createNodeCatalog,
+    createNodeCatalogFromManifests,
+    createPluginNodeCatalogEntry,
+} from './node-catalog.js';
 
 describe('compileGraph', () => {
     it('rejects an empty graph with a structured topology diagnostic', () => {
@@ -181,15 +185,32 @@ describe('compileGraph', () => {
         ];
         const edges = [{ id: 'e1', source: 'plugin-trigger', target: 'log', sourceHandle: 'out' }];
 
-        const result = compileGraph(
-            nodes,
-            edges,
-            { id: 'p', workflowId: 'w' },
+        const nodeCatalog = createNodeCatalogFromManifests([
             {
-                isTrigger: (node) => node.type === 'tick-trigger',
-                outputPortsForNode: () => ['out'],
+                id: 'com.example.tick',
+                nodeType: 'tick-trigger',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: 'com.example.tick',
+                        type: 'tick-trigger',
+                    },
+                    version: 1,
+                    role: 'trigger',
+                    defaultConfig: {},
+                    outputPorts: {
+                        kind: 'fixed',
+                        ports: [{ id: 'out', label: 'Output' }],
+                    },
+                    display: {
+                        label: 'Tick Trigger',
+                        description: 'Starts a Workflow on a tick.',
+                        category: 'trigger',
+                    },
+                },
             },
-        );
+        ]);
+        const result = compileGraph(nodes, edges, { id: 'p', workflowId: 'w' }, { nodeCatalog });
 
         expect(result.ok).toBe(true);
         if (result.ok) {
@@ -201,7 +222,7 @@ describe('compileGraph', () => {
         }
     });
 
-    it('compiles a bundled Plugin Node as a trigger through the default catalog', () => {
+    it('compiles a bundled Plugin Node as a trigger through its manifest contract', () => {
         const nodes = [
             {
                 id: 'file-trigger',
@@ -218,10 +239,40 @@ describe('compileGraph', () => {
             { id: 'log', data: { type: 'log', config: { message: 'hi' } } },
         ];
 
+        const nodeCatalog = createNodeCatalogFromManifests([
+            {
+                id: 'com.sigil.file-watcher',
+                nodeType: 'file-watcher',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: 'com.sigil.file-watcher',
+                        type: 'file-watcher',
+                    },
+                    version: 1,
+                    role: 'trigger',
+                    defaultConfig: {
+                        path: '/',
+                        recursive: true,
+                        events: ['file.created'],
+                    },
+                    outputPorts: {
+                        kind: 'fixed',
+                        ports: [{ id: 'out', label: 'Output' }],
+                    },
+                    display: {
+                        label: 'File Watcher',
+                        description: 'Watches a path for file events.',
+                        category: 'trigger',
+                    },
+                },
+            },
+        ]);
         const result = compileGraph(
             nodes,
             [{ id: 'e1', source: 'file-trigger', target: 'log', sourceHandle: 'out' }],
             { id: 'p', workflowId: 'w' },
+            { nodeCatalog },
         );
 
         expect(result.ok).toBe(true);
@@ -287,7 +338,7 @@ describe('compileGraph', () => {
         }
     });
 
-    it('recognises a plugin trigger when topology options supply isTrigger', () => {
+    it('does not infer a Plugin trigger or ports from an adapter without a contract', () => {
         const nodes = [
             {
                 id: 'plugin-trigger',
@@ -301,19 +352,35 @@ describe('compileGraph', () => {
         ];
         const edges = [{ id: 'e1', source: 'plugin-trigger', target: 'log', sourceHandle: 'out' }];
 
+        const adapter = createPluginNodeCatalogEntry({
+            pluginId: 'com.example.tick',
+            type: 'tick-trigger',
+            label: 'Tick Trigger',
+            category: 'trigger',
+            description: 'Starts a Workflow on a tick.',
+            defaultConfig: {},
+            isTrigger: true,
+            outputPorts: () => ['out'],
+        });
         const result = compileGraph(
             nodes,
             edges,
             { id: 'p', workflowId: 'w' },
-            {
-                isTrigger: (node) => node.type === 'tick-trigger',
-                outputPortsForNode: () => ['out'],
-            },
+            { nodeCatalog: createNodeCatalog([adapter]) },
         );
 
-        expect(result.ok).toBe(true);
-        if (result.ok) {
-            expect(result.executable.triggerId).toBe('plugin-trigger');
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.diagnostics).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ code: 'missing_trigger' }),
+                    expect.objectContaining({
+                        code: 'invalid_output_port',
+                        edgeId: 'e1',
+                        nodeId: 'plugin-trigger',
+                    }),
+                ]),
+            );
         }
     });
 

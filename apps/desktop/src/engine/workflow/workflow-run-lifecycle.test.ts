@@ -2,6 +2,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
+import {
+    type NodeContractRegistry,
+    pluginNodeIdentity,
+    registerSerializableNodeContract,
+} from '@sigil/schema/node-contract';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
@@ -36,6 +41,24 @@ function testPipeline(): CompiledPipeline {
         ],
         edges: [],
     };
+}
+
+function registerTestTriggerContract(contractRegistry: NodeContractRegistry): void {
+    registerSerializableNodeContract(contractRegistry, {
+        identity: pluginNodeIdentity('com.sigil.test-trigger', 'test-trigger'),
+        version: 1,
+        role: 'trigger',
+        defaultConfig: {},
+        outputPorts: {
+            kind: 'fixed',
+            ports: [{ id: 'out', label: 'Output' }],
+        },
+        display: {
+            label: 'Test Trigger',
+            description: 'Test trigger for workflow run lifecycle coverage.',
+            category: 'trigger',
+        },
+    });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -89,8 +112,12 @@ function createRunFixture(cancelOnAbort: boolean, queueLimit = 1): RunFixture {
             }),
     };
     engine.handlerRegistry.register('test-trigger', handler);
+    registerTestTriggerContract(engine.contractRegistry);
 
-    const store = createWorkflowStore(storageDir, workflowTopologyOptions(engine.handlerRegistry));
+    const store = createWorkflowStore(
+        storageDir,
+        workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
+    );
     const workflowId = store.create('Run Lifecycle Workflow', testPipeline(), {}).id;
     const activator = createWorkflowActivator(engine, store, engine.handlerRegistry, undefined, {
         runPolicy: { queueLimit },

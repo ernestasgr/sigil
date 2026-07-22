@@ -1,5 +1,4 @@
 import { type CompiledPipeline, parsePipeline } from '@sigil/schema';
-import { resolveNodeContract } from '@sigil/schema/node-contract';
 import { isPluginNode, type PipelineNode } from '@sigil/schema/nodes';
 import {
     type ExecutableWorkflow,
@@ -10,9 +9,9 @@ import {
 } from '@sigil/schema/topology';
 
 import {
+    createNodeCatalog,
     DEFAULT_NODE_CATALOG,
     type NodeCatalog,
-    pipelineNodeToSpec,
     resolveNodeCatalogEntry,
 } from './node-catalog.js';
 
@@ -108,22 +107,6 @@ function pluginCatalogDiagnostics(
                     'Install or register a Plugin Node authoring adapter before editing it.',
             });
         }
-
-        const validation = entry.validateConfig?.(node.config);
-        if (validation && !validation.ok) {
-            diagnostics.push({
-                severity: 'error',
-                code: 'invalid_plugin_config',
-                target: { kind: 'node', nodeId: node.id },
-                nodeId: node.id,
-                fieldPath: 'config',
-                message:
-                    `Plugin Node "${node.type}" from "${spec.pluginId}" has invalid configuration: ` +
-                    `${validation.error}`,
-                repairHint:
-                    'Restore the plugin configuration to the version supported by its adapter.',
-            });
-        }
     }
 
     return diagnostics;
@@ -133,50 +116,10 @@ function topologyOptionsWithCatalog(
     options: CompileOptions | undefined,
     catalog: NodeCatalog,
 ): WorkflowTopologyOptions {
-    const resolvedEntries = new Map<string, ReturnType<typeof resolveNodeCatalogEntry>>();
-    const resolveCatalogEntry = (
-        node: PipelineNode,
-    ): ReturnType<typeof resolveNodeCatalogEntry> => {
-        const cached = resolvedEntries.get(node.id);
-        if (cached !== undefined) return cached;
-
-        const entry = resolveNodeCatalogEntry(pipelineNodeToSpec(node), catalog);
-        resolvedEntries.set(node.id, entry);
-        return entry;
-    };
-
-    const resolveContract = (node: PipelineNode) =>
-        resolveNodeContract(
-            {
-                type: node.type,
-                ...(isPluginNode(node) ? { pluginId: node.pluginId } : {}),
-                config: node.config,
-            },
-            catalog.contractRegistry,
-        );
-
     return {
         ...(options?.isNodeSupported ? { isNodeSupported: options.isNodeSupported } : {}),
-        contractRegistry: catalog.contractRegistry,
-        isTrigger:
-            options?.isTrigger ??
-            ((node) => {
-                const contract = resolveContract(node);
-                return contract.status === 'available'
-                    ? contract.contract.role === 'trigger'
-                    : resolveCatalogEntry(node).isTrigger === true;
-            }),
-        outputPortsForNode:
-            options?.outputPortsForNode ??
-            ((node) => {
-                const contract = resolveContract(node);
-                if (contract.status === 'available') {
-                    return contract.outputPorts === 'dynamic'
-                        ? 'dynamic'
-                        : contract.outputPorts.map((port) => port.id);
-                }
-                return resolveCatalogEntry(node).outputPorts;
-            }),
+        ...(options?.requireNodeContracts ? { requireNodeContracts: true } : {}),
+        contractRegistry: options?.contractRegistry ?? catalog.contractRegistry,
     };
 }
 
@@ -216,7 +159,11 @@ export function compileGraph(
         return { ok: false, error: formatTopologyDiagnostics(diagnostics), diagnostics };
     }
 
-    const catalog = topologyOptions?.nodeCatalog ?? DEFAULT_NODE_CATALOG;
+    const catalog =
+        topologyOptions?.nodeCatalog ??
+        (topologyOptions?.contractRegistry
+            ? createNodeCatalog([], { contractRegistry: topologyOptions.contractRegistry })
+            : DEFAULT_NODE_CATALOG);
     const catalogDiagnostics = pluginCatalogDiagnostics(parsed.value.nodes, catalog);
     const topology = validateWorkflowTopology(
         parsed.value,
