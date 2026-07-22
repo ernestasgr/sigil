@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineEdge } from '@sigil/schema/edges';
+import {
+    BUILTIN_NODE_CONTRACT_REGISTRY,
+    formatNodeIdentity,
+    type NodeContractRegistry,
+    resolveNodeContract,
+} from '@sigil/schema/node-contract';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { CollisionSuffixStyle, ConflictPolicy } from '@sigil/schema/properties-file';
 import type { ExecutableWorkflow } from '@sigil/schema/topology';
@@ -43,6 +49,7 @@ export interface ExecutionOptions {
     readonly runId?: string;
     readonly workflowId?: string;
     readonly signal?: AbortSignal;
+    readonly contractRegistry?: NodeContractRegistry;
 }
 
 export interface WorkflowExecutionResult {
@@ -192,7 +199,7 @@ export async function executePipeline(
     seedContext?: WorkflowContext,
     executionOptions: ExecutionOptions = {},
 ): Promise<WorkflowExecutionResult> {
-    const topology = acceptWorkflow(pipeline, handlerRegistry);
+    const topology = acceptWorkflow(pipeline, handlerRegistry, executionOptions.contractRegistry);
     if (!topology.ok) {
         throw createWorkflowTopologyError(topology.diagnostics);
     }
@@ -229,6 +236,7 @@ export async function executeValidatedWorkflow(
         workflowId,
         runId,
     };
+    const contractRegistry = executionOptions.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
     const telemetry = createRunTelemetry(bus, {
         workflowId,
         pipelineId: pipeline.id,
@@ -297,6 +305,21 @@ export async function executeValidatedWorkflow(
                     { node, ctx },
                     { ...commonDeps, bus: nodeTelemetry.bus },
                 );
+                const contract = resolveNodeContract(node, contractRegistry);
+                if (contract.status === 'invalid') {
+                    throw new Error(
+                        `Node Contract ${formatNodeIdentity(contract.identity)} is invalid: ${contract.issues.map((issue) => issue.message).join('; ')}`,
+                    );
+                }
+                if (
+                    contract.status === 'available' &&
+                    contract.outputPorts !== 'dynamic' &&
+                    !contract.outputPorts.some((port) => port.id === result.activePort)
+                ) {
+                    throw new Error(
+                        `Node ${formatNodeIdentity(contract.identity)} returned undeclared activePort "${result.activePort}". Allowed ports: ${contract.outputPorts.map((port) => port.id).join(', ')}.`,
+                    );
+                }
                 span.finish('succeeded');
                 return result;
             } catch (err) {

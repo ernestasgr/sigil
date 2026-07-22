@@ -107,6 +107,16 @@ for (const result of pluginResults) {
                     `Plugin load failed (${e.dir}): type mismatch — manifest "${e.manifestType}" vs handler "${e.descriptorType}"`,
                 ),
             ),
+            Match.when({ kind: 'contract_mismatch' }, (e) =>
+                log(
+                    `Plugin load failed (${e.dir}): incompatible Node Contract for "${e.pluginId}" (${e.nodeType}) — ${e.error}`,
+                ),
+            ),
+            Match.when({ kind: 'duplicate_contract' }, (e) =>
+                log(
+                    `Plugin load failed (${e.dir}): duplicate Node Contract for "${e.pluginId}" (${e.nodeType})`,
+                ),
+            ),
             Match.when({ kind: 'invalid_manifest' }, (e) =>
                 log(`Plugin load failed (${e.dir}): invalid manifest — ${e.error}`),
             ),

@@ -6,6 +6,11 @@ import { dirname } from 'node:path';
 import vm from 'node:vm';
 import { parentPort, workerData } from 'node:worker_threads';
 import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
+import {
+    NodeContractSnapshotSchema,
+    type SerializableNodeContract,
+    validatePluginNodeContract,
+} from '@sigil/schema/node-contract';
 import type { PluginPipelineNode } from '@sigil/schema/nodes';
 import {
     type AnyPropertyDescriptor,
@@ -66,6 +71,7 @@ const port = parentPort;
 const WorkerDataSchema = z.object({
     pluginId: z.string().min(1),
     manifestNodeType: z.string().min(1),
+    nodeContract: NodeContractSnapshotSchema.optional(),
     handlerPath: z.string().min(1),
     manifestPermissions: z.array(CapabilitySchema).default([]),
     permissions: z.array(CapabilitySchema).default([]),
@@ -135,7 +141,15 @@ function createLiveFunctionProxy(getCurrent: () => unknown, name: string): Calla
 
 interface RawPluginDescriptor {
     readonly type: string;
-    readonly configSchema: { readonly safeParse: (value: unknown) => unknown };
+    readonly configSchema: {
+        readonly safeParse: (
+            value: unknown,
+        ) =>
+            | { readonly success: true; readonly data: unknown }
+            | { readonly success: false; readonly error: { readonly message: string } };
+    };
+    readonly defaultConfig?: unknown;
+    readonly getOutputPorts?: (config: unknown) => unknown;
     readonly properties?: unknown;
     readonly propertyDescriptors?: unknown;
 }
@@ -948,6 +962,114 @@ async function loadHandler(): Promise<RawPluginModule> {
 
 // ─── Load handler ─────────────────────────────────────────────
 
+function jsonEqual(first: unknown, second: unknown): boolean {
+    if (Object.is(first, second)) return true;
+    if (Array.isArray(first) || Array.isArray(second)) {
+        return (
+            Array.isArray(first) &&
+            Array.isArray(second) &&
+            first.length === second.length &&
+            first.every((value, index) => jsonEqual(value, second[index]))
+        );
+    }
+    if (isRecord(first) || isRecord(second)) {
+        if (!isRecord(first) || !isRecord(second)) return false;
+        const firstKeys = Object.keys(first);
+        const secondKeys = Object.keys(second);
+        return (
+            firstKeys.length === secondKeys.length &&
+            firstKeys.every(
+                (key) => Object.hasOwn(second, key) && jsonEqual(first[key], second[key]),
+            )
+        );
+    }
+    return false;
+}
+
+type RuntimeContractValidation =
+    | { readonly ok: true; readonly contract: SerializableNodeContract }
+    | { readonly ok: false; readonly error: string };
+
+function validateRuntimeContract(
+    contract: SerializableNodeContract,
+    pluginId: string,
+    nodeType: string,
+    descriptor: RawPluginDescriptor,
+    isTrigger: boolean,
+): RuntimeContractValidation {
+    const identity = validatePluginNodeContract(contract, pluginId, nodeType);
+    if (!identity.ok) return identity;
+
+    if (descriptor.defaultConfig === undefined || !isCallable(descriptor.getOutputPorts)) {
+        return {
+            ok: false,
+            error: 'The runtime descriptor must expose defaultConfig and getOutputPorts to validate its Node Contract.',
+        };
+    }
+
+    const parsedDefault = descriptor.configSchema.safeParse(identity.contract.defaultConfig);
+    if (!parsedDefault.success) {
+        return {
+            ok: false,
+            error: `Contract defaultConfig is rejected by the runtime descriptor schema: ${parsedDefault.error.message}`,
+        };
+    }
+
+    if (!jsonEqual(descriptor.defaultConfig, identity.contract.defaultConfig)) {
+        return {
+            ok: false,
+            error: 'Contract defaultConfig does not match the runtime descriptor defaultConfig.',
+        };
+    }
+
+    const expectedRole = isTrigger ? 'trigger' : 'action';
+    if (identity.contract.role !== expectedRole) {
+        return {
+            ok: false,
+            error: `Contract role "${identity.contract.role}" does not match the runtime handler role "${expectedRole}".`,
+        };
+    }
+
+    let runtimePorts: unknown;
+    try {
+        runtimePorts = descriptor.getOutputPorts(parsedDefault.data);
+    } catch (error) {
+        return {
+            ok: false,
+            error: `Runtime descriptor output-port declaration failed: ${error instanceof Error ? error.message : String(error)}`,
+        };
+    }
+    if (!Array.isArray(runtimePorts)) {
+        return {
+            ok: false,
+            error: 'Runtime descriptor must declare a unique non-empty string output-port list.',
+        };
+    }
+
+    const runtimePortValues: readonly unknown[] = runtimePorts;
+    if (
+        !runtimePortValues.every((port: unknown) => typeof port === 'string' && port.length > 0) ||
+        new Set(runtimePortValues).size !== runtimePortValues.length
+    ) {
+        return {
+            ok: false,
+            error: 'Runtime descriptor must declare a unique non-empty string output-port list.',
+        };
+    }
+
+    if (identity.contract.outputPorts.kind === 'fixed') {
+        const declaredPorts = identity.contract.outputPorts.ports.map((port) => port.id);
+        if (!jsonEqual(runtimePortValues, declaredPorts)) {
+            return {
+                ok: false,
+                error: `Contract output ports [${declaredPorts.join(', ')}] do not match runtime descriptor ports [${runtimePortValues.join(', ')}].`,
+            };
+        }
+    }
+
+    return { ok: true, contract: identity.contract };
+}
+
 async function main(): Promise<void> {
     let mod: RawPluginModule;
 
@@ -1007,10 +1129,31 @@ async function main(): Promise<void> {
 
     const isTrigger = isTriggerHandler(rawHandler);
 
+    let validatedContract: SerializableNodeContract | undefined;
+    if (data.nodeContract !== undefined) {
+        const contractResult = validateRuntimeContract(
+            data.nodeContract,
+            data.pluginId,
+            descriptorType,
+            mod.descriptor,
+            isTrigger,
+        );
+        if (!contractResult.ok) {
+            send({
+                kind: NodePluginWorkerKind.LoadError,
+                error: `Plugin Node Contract validation failed: ${contractResult.error}`,
+                contractError: contractResult.error,
+            });
+            return;
+        }
+        validatedContract = contractResult.contract;
+    }
+
     send({
         kind: NodePluginWorkerKind.Loaded,
         descriptorType,
         isTrigger,
+        ...(validatedContract === undefined ? {} : { contract: validatedContract }),
         ...(serializedProperties.descriptors.length === 0
             ? {}
             : { propertyDescriptors: serializedProperties.descriptors }),

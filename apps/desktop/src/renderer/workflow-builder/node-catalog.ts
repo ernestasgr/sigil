@@ -1,9 +1,13 @@
 import type { Manifest } from '@sigil/schema/manifest';
 import {
     BUILTIN_NODE_CONTRACT_REGISTRY,
+    createBuiltinNodeContractRegistry,
     getBuiltinNodeContract,
     type NodeContractRegistry,
+    pluginNodeIdentity,
+    registerSerializableNodeContract,
     resolveNodeContract,
+    type SerializableNodeContract,
 } from '@sigil/schema/node-contract';
 import {
     type BuiltinPipelineNode,
@@ -101,22 +105,26 @@ export interface PluginNodeCatalogEntry extends NodeCatalogEntryFields {
 
 export type NodeCatalogEntry = BuiltinNodeCatalogEntry | PluginNodeCatalogEntry;
 
-export interface PluginNodeCatalogAdapter<TConfig> {
+export interface PluginNodeCatalogAdapter<TConfig = unknown> {
     readonly pluginId: string;
     readonly type: string;
-    readonly label: string;
-    readonly category: NodeCategory;
-    readonly description: string;
-    readonly defaultConfig: TConfig;
-    readonly configSchema: z.ZodType<TConfig>;
-    readonly isTrigger: boolean;
-    readonly outputPorts: (config: TConfig) => readonly string[] | 'dynamic';
+    /** Authoring presentation may refine the contract display facts. */
+    readonly label?: string;
+    readonly category?: NodeCategory;
+    readonly description?: string;
+    /** Authoring defaults win when supplied; the contract default is the fallback. */
+    readonly defaultConfig?: TConfig;
+    readonly configSchema?: z.ZodType<TConfig>;
+    /** @deprecated Contract role is authoritative when a snapshot is loaded. */
+    readonly isTrigger?: boolean;
+    /** @deprecated Contract output ports are authoritative when a snapshot is loaded. */
+    readonly outputPorts?: (config: TConfig) => readonly string[] | 'dynamic';
     readonly outputPortLabel?: (config: TConfig, port: string) => string;
     readonly showInPalette?: boolean;
     readonly Form?: ComponentType<ConfigFormProps<TConfig>>;
 }
 
-export type NodeCatalogManifest = Pick<Manifest, 'id' | 'nodeType'>;
+export type NodeCatalogManifest = Pick<Manifest, 'id' | 'nodeType' | 'nodeContract'>;
 
 interface BuiltinNodeCatalogAdapter<K extends NodeType, TSchema extends z.ZodType> {
     readonly descriptor: NodeDescriptor<K, TSchema>;
@@ -163,16 +171,6 @@ function builtinOutputPortLabel(
     const resolved = resolveNodeContract({ type, config }, registry);
     if (resolved.status !== 'available' || resolved.outputPorts === 'dynamic') return port;
     return resolved.outputPorts.find((candidate) => candidate.id === port)?.label ?? port;
-}
-
-function outputPortLabelForConfig<TSchema extends z.ZodType>(
-    configSchema: TSchema,
-    outputPortLabel: ((config: z.output<TSchema>, port: string) => string) | undefined,
-    config: unknown,
-    port: string,
-): string {
-    const validation = validateConfig(configSchema, config);
-    return validation.ok ? (outputPortLabel?.(validation.value, port) ?? port) : port;
 }
 
 export function createNodeConfigForm<TSchema extends z.ZodType>(
@@ -226,23 +224,39 @@ function createBuiltinNodeCatalogEntry<K extends NodeType, TSchema extends z.Zod
 export function createPluginNodeCatalogEntry<TConfig>(
     adapter: PluginNodeCatalogAdapter<TConfig>,
 ): PluginNodeCatalogEntry {
-    const Form = adapter.Form
-        ? createNodeConfigForm(adapter.type, adapter.Form, adapter.configSchema)
-        : undefined;
+    const configSchema = adapter.configSchema;
+    const outputPorts = adapter.outputPorts;
+    const outputPortLabel = adapter.outputPortLabel;
+    const Form =
+        adapter.Form && configSchema
+            ? createNodeConfigForm(adapter.type, adapter.Form, configSchema)
+            : undefined;
     return {
         source: 'plugin',
         pluginId: adapter.pluginId,
         type: adapter.type,
-        label: adapter.label,
-        category: adapter.category,
-        description: adapter.description,
+        label: adapter.label ?? adapter.type,
+        category: adapter.category ?? 'utility',
+        description: adapter.description ?? `Plugin Node ${adapter.type}.`,
         defaultConfig: adapter.defaultConfig,
-        isTrigger: adapter.isTrigger,
-        validateConfig: (config) => validateConfig(adapter.configSchema, config),
-        outputPorts: (config) =>
-            outputPortsForConfig(adapter.configSchema, adapter.outputPorts, config),
-        outputPortLabel: (config, port) =>
-            outputPortLabelForConfig(adapter.configSchema, adapter.outputPortLabel, config, port),
+        isTrigger: adapter.isTrigger ?? false,
+        validateConfig: configSchema
+            ? (config) => validateConfig(configSchema, config)
+            : (config) => ({ ok: true, value: config }),
+        outputPorts:
+            configSchema && outputPorts
+                ? (config) => outputPortsForConfig(configSchema, outputPorts, config)
+                : () => 'dynamic',
+        ...(configSchema && outputPortLabel
+            ? {
+                  outputPortLabel: (config: unknown, port: string): string => {
+                      const parsed = configSchema.safeParse(config);
+                      return parsed?.success
+                          ? (outputPortLabel?.(parsed.data, port) ?? port)
+                          : port;
+                  },
+              }
+            : {}),
         showInPalette: adapter.showInPalette ?? true,
         authoring: Form ? 'editable' : 'read-only',
         ...(Form ? { Form } : {}),
@@ -339,12 +353,14 @@ export interface NodeCatalog {
 export interface NodeCatalogOptions {
     readonly includeBundledPluginEntries?: boolean;
     readonly contractRegistry?: NodeContractRegistry;
+    readonly includeContractEntries?: boolean;
 }
 
 export function createNodeCatalog(
     additionalEntries: readonly PluginNodeCatalogEntry[] = [],
     options: NodeCatalogOptions = {},
 ): NodeCatalog {
+    const contractRegistry = options.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
     const builtinEntries = new Map<NodeType, BuiltinNodeCatalogEntry>();
     for (const entry of BUILTIN_NODE_CATALOG) builtinEntries.set(entry.type, entry);
 
@@ -353,14 +369,25 @@ export function createNodeCatalog(
         options.includeBundledPluginEntries === false ? [] : BUILTIN_PLUGIN_NODE_CATALOG;
     for (const entry of [...bundledPluginEntries, ...additionalEntries]) {
         const key = pluginKey(entry.pluginId, entry.type);
-        if (!pluginEntries.has(key)) pluginEntries.set(key, normalizePluginEntry(entry));
+        if (!pluginEntries.has(key)) {
+            pluginEntries.set(key, normalizePluginEntry(entry, contractRegistry));
+        }
+    }
+
+    if (options.includeContractEntries !== false) {
+        for (const contract of contractRegistry.all()) {
+            if (contract.identity.namespace !== 'plugin') continue;
+            const key = pluginKey(contract.identity.pluginId, contract.identity.type);
+            if (!pluginEntries.has(key)) {
+                pluginEntries.set(key, pluginEntryFromContract(contract, contractRegistry));
+            }
+        }
     }
 
     const entries = Object.freeze([
         ...builtinEntries.values(),
         ...pluginEntries.values(),
     ] as NodeCatalogEntry[]);
-    const contractRegistry = options.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
     const findPlugin = (pluginId: string, type: string): PluginNodeCatalogEntry | undefined =>
         pluginEntries.get(pluginKey(pluginId, type));
 
@@ -381,20 +408,119 @@ export function createNodeCatalogFromManifests(
     manifests: readonly NodeCatalogManifest[],
     adapters: readonly PluginNodeCatalogEntry[] = BUILTIN_PLUGIN_NODE_CATALOG,
 ): NodeCatalog {
+    const contractRegistry = createBuiltinNodeContractRegistry();
+    for (const manifest of manifests) {
+        if (manifest.nodeType === undefined || manifest.nodeContract === undefined) continue;
+        const identity = manifest.nodeContract.identity;
+        if (
+            identity.namespace !== 'plugin' ||
+            identity.pluginId !== manifest.id ||
+            identity.type !== manifest.nodeType
+        ) {
+            continue;
+        }
+        registerSerializableNodeContract(contractRegistry, manifest.nodeContract);
+    }
     const entries = adapters.filter((entry) =>
         manifests.some(
             (manifest) => manifest.id === entry.pluginId && manifest.nodeType === entry.type,
         ),
     );
-    return createNodeCatalog(entries, { includeBundledPluginEntries: false });
+    return createNodeCatalog(entries, {
+        includeBundledPluginEntries: false,
+        contractRegistry,
+    });
 }
 
-function normalizePluginEntry(entry: PluginNodeCatalogEntry): PluginNodeCatalogEntry {
+function normalizePluginEntry(
+    entry: PluginNodeCatalogEntry,
+    registry: NodeContractRegistry,
+): PluginNodeCatalogEntry {
+    const contract = registry.get(pluginNodeIdentity(entry.pluginId, entry.type));
+    if (!contract) {
+        return {
+            ...entry,
+            outputPortLabel: entry.outputPortLabel ?? ((_config, port) => port),
+            showInPalette: entry.showInPalette ?? true,
+            authoring: entry.authoring ?? (entry.Form ? 'editable' : 'read-only'),
+        };
+    }
+
     return {
         ...entry,
-        outputPortLabel: entry.outputPortLabel ?? ((_config, port) => port),
+        defaultConfig:
+            entry.defaultConfig === undefined ? contract.defaultConfig : entry.defaultConfig,
+        isTrigger: contract.role === 'trigger',
+        outputPorts: (config) => {
+            const resolved = resolveNodeContract(
+                { type: entry.type, pluginId: entry.pluginId, config },
+                registry,
+            );
+            if (resolved.status !== 'available') return 'dynamic';
+            return resolved.outputPorts === 'dynamic'
+                ? 'dynamic'
+                : resolved.outputPorts.map((port) => port.id);
+        },
+        outputPortLabel: (config, port) => {
+            const resolved = resolveNodeContract(
+                { type: entry.type, pluginId: entry.pluginId, config },
+                registry,
+            );
+            if (resolved.status !== 'available' || resolved.outputPorts === 'dynamic') return port;
+            return resolved.outputPorts.find((candidate) => candidate.id === port)?.label ?? port;
+        },
         showInPalette: entry.showInPalette ?? true,
         authoring: entry.authoring ?? (entry.Form ? 'editable' : 'read-only'),
+    };
+}
+
+function pluginEntryFromContract(
+    contract: SerializableNodeContract,
+    registry: NodeContractRegistry,
+): PluginNodeCatalogEntry {
+    if (contract.identity.namespace !== 'plugin') {
+        throw new Error('Only Plugin Node Contracts can create Plugin catalog entries.');
+    }
+    const { pluginId, type } = contract.identity;
+
+    return {
+        source: 'plugin',
+        pluginId,
+        type,
+        label: contract.display.label,
+        category: contract.display.category,
+        description: contract.display.description,
+        defaultConfig: contract.defaultConfig,
+        isTrigger: contract.role === 'trigger',
+        validateConfig: (config) => ({ ok: true, value: config }),
+        outputPorts: (config) => {
+            const resolved = resolveNodeContract(
+                {
+                    type,
+                    pluginId,
+                    config,
+                },
+                registry,
+            );
+            if (resolved.status !== 'available') return 'dynamic';
+            return resolved.outputPorts === 'dynamic'
+                ? 'dynamic'
+                : resolved.outputPorts.map((port) => port.id);
+        },
+        outputPortLabel: (config, port) => {
+            const resolved = resolveNodeContract(
+                {
+                    type,
+                    pluginId,
+                    config,
+                },
+                registry,
+            );
+            if (resolved.status !== 'available' || resolved.outputPorts === 'dynamic') return port;
+            return resolved.outputPorts.find((candidate) => candidate.id === port)?.label ?? port;
+        },
+        showInPalette: false,
+        authoring: 'read-only',
     };
 }
 

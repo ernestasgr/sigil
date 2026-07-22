@@ -3,5 +3,28 @@
     "version": "0.0.1",
     "permissions": ["state.write", "filesystem.read"],
     "emits": ["file.created", "file.modified", "file.deleted"],
-    "nodeType": "file-watcher"
+    "nodeType": "file-watcher",
+    "nodeContract": {
+        "identity": {
+            "namespace": "plugin",
+            "pluginId": "com.sigil.file-watcher",
+            "type": "file-watcher"
+        },
+        "version": 1,
+        "role": "trigger",
+        "defaultConfig": {
+            "path": "/",
+            "recursive": true,
+            "events": ["file.created"]
+        },
+        "outputPorts": {
+            "kind": "fixed",
+            "ports": [{ "id": "out", "label": "Output" }]
+        },
+        "display": {
+            "label": "File Watcher",
+            "description": "Emits an event when files are created, modified, or deleted in a watched path.",
+            "category": "trigger"
+        }
+    }
 }

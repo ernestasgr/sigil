@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
+import { createNodeContractRegistry, resolveNodeContract } from '@sigil/schema/node-contract';
 import {
     createPropertyRegistry,
     definePropertyDescriptor,
@@ -290,6 +291,111 @@ describe('loadNodePlugin', () => {
             expect(handlerRegistry.has('greet')).toBe(true);
             expect(manifestRegistry.has('com.sigil.greet')).toBe(true);
         }
+    });
+
+    it('validates and registers a serializable Plugin Node Contract through the worker seam', async () => {
+        const pluginDir = join(tempDir, 'contract-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.contract',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['contract.output'],
+                nodeType: 'greet',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: 'com.sigil.contract',
+                        type: 'greet',
+                    },
+                    version: 1,
+                    role: 'action',
+                    defaultConfig: { name: 'world' },
+                    outputPorts: {
+                        kind: 'fixed',
+                        ports: [{ id: 'out', label: 'Output' }],
+                    },
+                    display: {
+                        label: 'Contract Greet',
+                        description: 'Greets a person.',
+                        category: 'utility',
+                    },
+                },
+            },
+            GREET_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const contractRegistry = createNodeContractRegistry();
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            contractRegistry,
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.contract).toMatchObject({
+            identity: {
+                namespace: 'plugin',
+                pluginId: 'com.sigil.contract',
+                type: 'greet',
+            },
+            outputPorts: { kind: 'fixed', ports: [{ id: 'out', label: 'Output' }] },
+        });
+        expect(
+            resolveNodeContract(
+                { type: 'greet', pluginId: 'com.sigil.contract', config: { name: 'Ada' } },
+                contractRegistry,
+            ),
+        ).toMatchObject({
+            status: 'available',
+            outputPorts: [{ id: 'out', label: 'Output' }],
+        });
+    });
+
+    it('rejects a Plugin whose runtime descriptor disagrees with its fixed contract', async () => {
+        const pluginDir = join(tempDir, 'incompatible-contract-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.incompatible',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['contract.output'],
+                nodeType: 'greet',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: 'com.sigil.incompatible',
+                        type: 'greet',
+                    },
+                    version: 1,
+                    role: 'action',
+                    defaultConfig: { name: 'world' },
+                    outputPorts: {
+                        kind: 'fixed',
+                        ports: [{ id: 'different', label: 'Different' }],
+                    },
+                    display: {
+                        label: 'Incompatible Greet',
+                        description: 'A malformed contract.',
+                        category: 'utility',
+                    },
+                },
+            },
+            GREET_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: { kind: 'contract_mismatch' },
+        });
+        expect(manifestRegistry.has('com.sigil.incompatible')).toBe(false);
     });
 
     it('registers typed Plugin properties before the Engine validates the Properties File', async () => {

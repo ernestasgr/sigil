@@ -3,5 +3,28 @@
     "version": "0.0.1",
     "permissions": ["state.write", "filesystem.read", "filesystem.write"],
     "emits": ["file-manager.completed"],
-    "nodeType": "file-manager"
+    "nodeType": "file-manager",
+    "nodeContract": {
+        "identity": {
+            "namespace": "plugin",
+            "pluginId": "com.sigil.file-manager",
+            "type": "file-manager"
+        },
+        "version": 1,
+        "role": "action",
+        "defaultConfig": {
+            "action": "move",
+            "destination": "/",
+            "onConflict": "skip"
+        },
+        "outputPorts": {
+            "kind": "fixed",
+            "ports": [{ "id": "out", "label": "Output" }]
+        },
+        "display": {
+            "label": "File Manager",
+            "description": "Moves, renames, or copies the file carried by the incoming event.",
+            "category": "system"
+        }
+    }
 }

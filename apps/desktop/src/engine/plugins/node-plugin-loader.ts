@@ -1,7 +1,14 @@
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
+import {
+    type NodeContractRegistry,
+    registerSerializableNodeContract,
+    type SerializableNodeContract,
+    validatePluginNodeContract,
+} from '@sigil/schema/node-contract';
 import type { PropertyRegistry, SerializedPropertyDescriptor } from '@sigil/schema/properties-file';
 import { Either } from 'effect';
 import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
@@ -38,6 +45,19 @@ export type NodePluginLoadError =
           readonly manifestType: string;
           readonly descriptorType: string;
       }
+    | {
+          readonly kind: 'contract_mismatch';
+          readonly dir: string;
+          readonly pluginId: string;
+          readonly nodeType: string;
+          readonly error: string;
+      }
+    | {
+          readonly kind: 'duplicate_contract';
+          readonly dir: string;
+          readonly pluginId: string;
+          readonly nodeType: string;
+      }
     | { readonly kind: 'duplicate'; readonly dir: string; readonly pluginId: string }
     | { readonly kind: 'duplicate_type'; readonly dir: string; readonly nodeType: string }
     | {
@@ -61,6 +81,7 @@ export type NodePluginLoadResult =
           readonly ok: true;
           readonly manifest: Manifest;
           readonly descriptor: { readonly type: string };
+          readonly contract?: SerializableNodeContract;
           readonly propertyDescriptors: readonly SerializedPropertyDescriptor[];
           readonly handler: NodeHandler;
       }
@@ -68,6 +89,7 @@ export type NodePluginLoadResult =
 
 export interface NodePluginLoaderDeps {
     readonly manifestRegistry: ManifestRegistry;
+    readonly contractRegistry?: NodeContractRegistry;
     readonly handlerRegistry: NodeHandlerRegistry;
     readonly kernel?: KernelDeps;
     readonly bridge?: Pick<Bridge, 'emit'>;
@@ -145,6 +167,25 @@ async function loadDiscoveredPlugin(
     workerLoadOptions?: NodePluginWorkerLoadOptions,
 ): Promise<NodePluginLoadResult> {
     const { manifest, dir } = plugin;
+    if (manifest.nodeContract !== undefined) {
+        const contract = validatePluginNodeContract(
+            manifest.nodeContract,
+            manifest.id,
+            manifest.nodeType,
+        );
+        if (!contract.ok) {
+            return {
+                ok: false,
+                error: {
+                    kind: 'contract_mismatch',
+                    dir,
+                    pluginId: manifest.id,
+                    nodeType: manifest.nodeType,
+                    error: contract.error,
+                },
+            };
+        }
+    }
     if (deps.manifestRegistry.has(manifest.id)) {
         return { ok: false, error: { kind: 'duplicate', dir, pluginId: manifest.id } };
     }
@@ -179,7 +220,18 @@ async function loadDiscoveredPlugin(
         }
         return loaded.propertyError
             ? propertyErrorResult(dir, loaded.propertyError)
-            : { ok: false, error: { kind: 'worker_error', dir, error: loaded.error } };
+            : loaded.contractError
+              ? {
+                    ok: false,
+                    error: {
+                        kind: 'contract_mismatch',
+                        dir,
+                        pluginId: manifest.id,
+                        nodeType: manifest.nodeType,
+                        error: loaded.contractError,
+                    },
+                }
+              : { ok: false, error: { kind: 'worker_error', dir, error: loaded.error } };
     }
 
     const propertyDescriptors = loaded.propertyDescriptors ?? [];
@@ -226,6 +278,42 @@ async function loadDiscoveredPlugin(
 
     const registeredPropertyKeys =
         propertyRegistration?.ok === true ? propertyRegistration.registeredKeys : [];
+
+    if (manifest.nodeContract !== undefined) {
+        if (loaded.contract === undefined) {
+            await supervisor.disposePlugin(manifest.id);
+            for (const key of registeredPropertyKeys) {
+                deps.propertyRegistry?.unregister(key);
+            }
+            return {
+                ok: false,
+                error: {
+                    kind: 'contract_mismatch',
+                    dir,
+                    pluginId: manifest.id,
+                    nodeType: manifest.nodeType,
+                    error: 'Plugin worker did not return the declared Node Contract.',
+                },
+            };
+        }
+        if (!isDeepStrictEqual(loaded.contract, manifest.nodeContract)) {
+            await supervisor.disposePlugin(manifest.id);
+            for (const key of registeredPropertyKeys) {
+                deps.propertyRegistry?.unregister(key);
+            }
+            return {
+                ok: false,
+                error: {
+                    kind: 'contract_mismatch',
+                    dir,
+                    pluginId: manifest.id,
+                    nodeType: manifest.nodeType,
+                    error: 'Plugin worker returned a Node Contract different from its manifest.',
+                },
+            };
+        }
+    }
+
     const registerResult = deps.manifestRegistry.register(manifest);
     if (Either.isLeft(registerResult)) {
         await supervisor.disposePlugin(manifest.id);
@@ -235,11 +323,50 @@ async function loadDiscoveredPlugin(
         return { ok: false, error: { kind: 'duplicate', dir, pluginId: manifest.id } };
     }
 
+    if (manifest.nodeContract !== undefined && deps.contractRegistry !== undefined) {
+        if (deps.contractRegistry.has(manifest.nodeContract.identity)) {
+            await supervisor.disposePlugin(manifest.id);
+            deps.manifestRegistry.unregister(manifest.id);
+            for (const key of registeredPropertyKeys) {
+                deps.propertyRegistry?.unregister(key);
+            }
+            return {
+                ok: false,
+                error: {
+                    kind: 'duplicate_contract',
+                    dir,
+                    pluginId: manifest.id,
+                    nodeType: manifest.nodeType,
+                },
+            };
+        }
+        try {
+            registerSerializableNodeContract(deps.contractRegistry, manifest.nodeContract);
+        } catch (error) {
+            await supervisor.disposePlugin(manifest.id);
+            deps.manifestRegistry.unregister(manifest.id);
+            for (const key of registeredPropertyKeys) {
+                deps.propertyRegistry?.unregister(key);
+            }
+            return {
+                ok: false,
+                error: {
+                    kind: 'contract_mismatch',
+                    dir,
+                    pluginId: manifest.id,
+                    nodeType: manifest.nodeType,
+                    error: error instanceof Error ? error.message : String(error),
+                },
+            };
+        }
+    }
+
     deps.handlerRegistry.register(manifest.nodeType, loaded.handler);
     return {
         ok: true,
         manifest,
         descriptor: { type: loaded.descriptorType },
+        ...(loaded.contract === undefined ? {} : { contract: loaded.contract }),
         propertyDescriptors,
         handler: loaded.handler,
     };
