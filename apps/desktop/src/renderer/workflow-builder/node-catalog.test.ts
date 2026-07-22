@@ -7,6 +7,7 @@ import {
     DEFAULT_NODE_CATALOG,
     defaultNodeSpecForCatalogEntry,
     nodeCatalogEntryFromPaletteValue,
+    nodeOutputPortLabel,
     nodeOutputPorts,
     resolveNodeCatalogEntry,
     serializeNodeCatalogEntry,
@@ -42,7 +43,7 @@ describe('Workflow Builder Node catalog', () => {
             authoring: 'read-only',
         });
         expect(entry.description).toMatch(/read-only|authoring/i);
-        expect(nodeOutputPorts(spec)).toBe('dynamic');
+        expect(nodeOutputPorts(spec)).toEqual([]);
     });
 
     it('resolves the bundled File Watcher plugin adapter without losing plugin identity', () => {
@@ -208,5 +209,78 @@ describe('Workflow Builder Node catalog', () => {
         expect(nodeOutputPorts({ ...spec, config: { enabled: false } }, catalog)).toEqual([
             'declared',
         ]);
+    });
+
+    it('keeps renderer output ports in parity with a Plugin config-derived contract', () => {
+        const catalog = createNodeCatalogFromManifests([
+            {
+                id: 'com.example.router',
+                nodeType: 'router-node',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: 'com.example.router',
+                        type: 'router-node',
+                    },
+                    version: 1,
+                    role: 'action',
+                    defaultConfig: {
+                        target: 'event',
+                        cases: [{ id: 'ready', value: 'ready' }],
+                    },
+                    outputPorts: {
+                        kind: 'config-derived',
+                        strategy: 'switch-cases',
+                        defaultPort: { id: 'default', label: 'Fallback' },
+                    },
+                    display: {
+                        label: 'Router Node',
+                        description: 'Routes by event name.',
+                        category: 'logic',
+                    },
+                },
+            },
+        ]);
+        const spec = {
+            type: 'router-node',
+            pluginId: 'com.example.router',
+            config: {
+                target: 'event',
+                cases: [
+                    { id: 'ready', value: 'ready' },
+                    { id: 'failed', value: 'failed' },
+                ],
+            },
+        };
+
+        expect(nodeOutputPorts(spec, catalog)).toEqual(['default', 'ready', 'failed']);
+        expect(resolveNodeCatalogEntry(spec, catalog).outputPortLabel(spec.config, 'default')).toBe(
+            'Fallback',
+        );
+
+        const changed = {
+            ...spec,
+            config: { target: 'event' as const, cases: [{ id: 'cancelled', value: 'cancelled' }] },
+        };
+        expect(nodeOutputPorts(changed, catalog)).toEqual(['default', 'cancelled']);
+        expect(
+            nodeOutputPorts({ ...spec, config: { target: 'event', cases: [] } }, catalog),
+        ).toEqual(['default']);
+        expect(
+            nodeOutputPorts(
+                {
+                    ...spec,
+                    config: { target: 'event', cases: [{ id: 'empty', value: '' }] },
+                },
+                catalog,
+            ),
+        ).toEqual(['default', 'empty']);
+        expect(
+            nodeOutputPortLabel(
+                { ...spec, config: { target: 'event', cases: [{ id: 'empty', value: '' }] } },
+                'empty',
+                catalog,
+            ),
+        ).toBe('(empty)');
     });
 });

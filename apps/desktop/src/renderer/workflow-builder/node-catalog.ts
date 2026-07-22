@@ -540,8 +540,9 @@ function unsupportedPluginEntry(spec: PluginNodeSpec): ResolvedNodeCatalogEntry 
         defaultConfig: undefined,
         authoring: 'read-only',
         isTrigger: 'unknown',
-        outputPorts: 'dynamic',
+        outputPorts: [],
         outputPortLabel: (_config, port) => port,
+        contractStatus: 'unavailable',
         readOnlyReason,
     };
 }
@@ -555,6 +556,7 @@ export interface ResolvedNodeCatalogEntry {
     readonly description: string;
     readonly defaultConfig: unknown;
     readonly authoring: 'editable' | 'read-only';
+    readonly contractStatus: 'available' | 'invalid' | 'unavailable';
     readonly isTrigger: boolean | 'unknown';
     readonly outputPorts: readonly string[] | 'dynamic';
     readonly outputPortLabel: (config: unknown, port: string) => string;
@@ -597,6 +599,7 @@ export function resolveNodeCatalogEntry(
         description: entry.description,
         defaultConfig: entry.defaultConfig,
         authoring,
+        contractStatus: contractResolution.status,
         isTrigger:
             contractResolution.status === 'available'
                 ? contractResolution.contract.role === 'trigger'
@@ -606,9 +609,15 @@ export function resolveNodeCatalogEntry(
                 ? contractResolution.outputPorts === 'dynamic'
                     ? 'dynamic'
                     : contractResolution.outputPorts.map((port) => port.id)
-                : validation.ok
-                  ? entry.outputPorts(validation.value)
-                  : 'dynamic',
+                : contractResolution.status === 'invalid'
+                  ? contractResolution.outputPorts === undefined
+                      ? []
+                      : contractResolution.outputPorts === 'dynamic'
+                        ? 'dynamic'
+                        : contractResolution.outputPorts.map((port) => port.id)
+                  : validation.ok
+                    ? entry.outputPorts(validation.value)
+                    : 'dynamic',
         outputPortLabel: (config, port) => {
             const parsed = entry.validateConfig(config);
             if (!parsed.ok) return port;
@@ -621,7 +630,11 @@ export function resolveNodeCatalogEntry(
                 },
                 catalog.contractRegistry,
             );
-            if (resolved.status === 'available' && resolved.outputPorts !== 'dynamic') {
+            if (
+                (resolved.status === 'available' || resolved.status === 'invalid') &&
+                resolved.outputPorts !== undefined &&
+                resolved.outputPorts !== 'dynamic'
+            ) {
                 return (
                     resolved.outputPorts.find((candidate) => candidate.id === port)?.label ?? port
                 );

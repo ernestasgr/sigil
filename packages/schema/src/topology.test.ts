@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PipelineEdge } from './edges.js';
+import {
+    createBuiltinNodeContractRegistry,
+    pluginNodeIdentity,
+    registerSerializableNodeContract,
+    switchOutputPortSpec,
+} from './node-contract.js';
 import type { PipelineNode } from './nodes/index.js';
 import type { CompiledPipeline } from './pipeline.js';
-import { TopologyDiagnosticSchema, validateWorkflowTopology } from './topology.js';
+import {
+    formatTopologyDiagnostics,
+    TopologyDiagnosticSchema,
+    validateWorkflowTopology,
+} from './topology.js';
 
 const trigger = (id: string): PipelineNode => ({
     id,
@@ -132,6 +142,17 @@ describe('validateWorkflowTopology', () => {
         expect(diagnosticCodes(result)).toEqual(
             expect.arrayContaining(['multiple_triggers', 'multiple_roots']),
         );
+    });
+
+    it('reports a Trigger that has an incoming Edge instead of being the root', () => {
+        const result = validateWorkflowTopology(
+            pipeline(
+                [trigger('trigger'), log('source')],
+                [edge('source-trigger', 'source', 'trigger')],
+            ),
+        );
+
+        expect(diagnosticCodes(result)).toContain('trigger_not_root');
     });
 
     it('rejects a cycle and identifies the participating Edge', () => {
@@ -264,6 +285,30 @@ describe('validateWorkflowTopology', () => {
         }
     });
 
+    it('reports malformed built-in Switch configuration through the contract diagnostic seam', () => {
+        const malformedSwitch = {
+            id: 'switch',
+            type: 'switch',
+            config: { target: 'payload', field: '', cases: [] },
+        } as unknown as PipelineNode;
+        const result = validateWorkflowTopology(
+            pipeline(
+                [trigger('trigger'), malformedSwitch],
+                [edge('trigger-switch', 'trigger', 'switch')],
+            ),
+        );
+
+        expect(result).toMatchObject({
+            ok: false,
+            diagnostics: expect.arrayContaining([
+                expect.objectContaining({
+                    code: 'invalid_node_contract',
+                    nodeId: 'switch',
+                }),
+            ]),
+        });
+    });
+
     it('allows a plugin Node to declare trigger and output-port capabilities', () => {
         const plugin: PipelineNode = {
             id: 'plugin-trigger',
@@ -280,6 +325,128 @@ describe('validateWorkflowTopology', () => {
         );
 
         expect(result.ok).toBe(true);
+    });
+
+    it('reports invalid configuration for a derived Plugin contract before Edge admission', () => {
+        const contractRegistry = createBuiltinNodeContractRegistry();
+        registerSerializableNodeContract(contractRegistry, {
+            identity: pluginNodeIdentity('com.example.router', 'router-node'),
+            version: 1,
+            role: 'action',
+            defaultConfig: {
+                target: 'event',
+                cases: [{ id: 'ready', value: 'ready' }],
+            },
+            outputPorts: switchOutputPortSpec(),
+            display: {
+                label: 'Router Node',
+                description: 'Routes by event name.',
+                category: 'logic',
+            },
+        });
+
+        const result = validateWorkflowTopology(
+            pipeline(
+                [
+                    trigger('trigger'),
+                    {
+                        id: 'router',
+                        type: 'router-node',
+                        pluginId: 'com.example.router',
+                        config: {
+                            target: 'event',
+                            cases: [{ id: 'empty', value: '' }],
+                        },
+                    },
+                    log('log'),
+                ],
+                [
+                    edge('trigger-router', 'trigger', 'router'),
+                    edge('router-log', 'router', 'log', 'empty'),
+                ],
+            ),
+            {
+                contractRegistry,
+                isNodeSupported: () => true,
+            },
+        );
+
+        expect(result).toMatchObject({
+            ok: false,
+            diagnostics: [
+                expect.objectContaining({
+                    code: 'invalid_node_contract',
+                    nodeId: 'router',
+                    fieldPath: 'config.cases[0].value',
+                }),
+            ],
+        });
+        if (!result.ok) {
+            expect(result.diagnostics).not.toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ code: 'invalid_output_port', edgeId: 'router-log' }),
+                ]),
+            );
+        }
+    });
+
+    it('does not infer dynamic output ports for an unavailable Plugin contract', () => {
+        const result = validateWorkflowTopology(
+            pipeline(
+                [
+                    trigger('trigger'),
+                    {
+                        id: 'unknown',
+                        type: 'unknown-node',
+                        pluginId: 'com.example.missing',
+                        config: {},
+                    },
+                    log('log'),
+                ],
+                [
+                    edge('trigger-unknown', 'trigger', 'unknown'),
+                    edge('unknown-log', 'unknown', 'log'),
+                ],
+            ),
+            { isNodeSupported: () => true },
+        );
+
+        expect(result).toMatchObject({
+            ok: false,
+            diagnostics: [
+                expect.objectContaining({
+                    code: 'invalid_output_port',
+                    edgeId: 'unknown-log',
+                    nodeId: 'unknown',
+                }),
+            ],
+        });
+    });
+
+    it('reports duplicate Nodes, duplicate Edges, and Edges with missing endpoints', () => {
+        const duplicateNodes = validateWorkflowTopology(
+            pipeline([trigger('trigger'), trigger('trigger')], []),
+        );
+        expect(diagnosticCodes(duplicateNodes)).toContain('duplicate_node_id');
+
+        const duplicateEdges = validateWorkflowTopology(
+            pipeline(
+                [trigger('trigger'), log('log')],
+                [edge('same-edge', 'trigger', 'log'), edge('same-edge', 'trigger', 'log')],
+            ),
+        );
+        expect(diagnosticCodes(duplicateEdges)).toContain('duplicate_edge_id');
+
+        const missingEndpoints = validateWorkflowTopology(
+            pipeline(
+                [trigger('trigger'), log('log')],
+                [
+                    edge('missing-source', 'missing', 'log'),
+                    edge('missing-target', 'trigger', 'missing'),
+                ],
+            ),
+        );
+        expect(diagnosticCodes(missingEndpoints)).toContain('invalid_edge');
     });
 
     it('reports an unsupported Node handler as a structured diagnostic', () => {
@@ -309,5 +476,32 @@ describe('validateWorkflowTopology', () => {
                 ]),
             );
         }
+    });
+
+    it('formats optional diagnostic field paths and repair hints', () => {
+        const diagnostics = [
+            {
+                severity: 'error',
+                code: 'invalid_node_contract',
+                target: { kind: 'node', nodeId: 'router' },
+                nodeId: 'router',
+                fieldPath: 'config.cases[0].value',
+                message: 'The match value is empty.',
+                repairHint: 'Enter a non-empty match value.',
+            },
+            {
+                severity: 'warning',
+                code: 'invalid_edge',
+                target: { kind: 'edge', edgeId: 'edge-1' },
+                edgeId: 'edge-1',
+                message: 'Reconnect the Edge.',
+            },
+        ] as const;
+
+        expect(formatTopologyDiagnostics(diagnostics)).toBe(
+            '[invalid_node_contract] (config.cases[0].value) The match value is empty. ' +
+                'Repair: Enter a non-empty match value.\n' +
+                '[invalid_edge] Reconnect the Edge.',
+        );
     });
 });
