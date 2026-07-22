@@ -33,7 +33,7 @@ export type SerializableJsonValue =
 export const SerializableJsonValueSchema: z.ZodType<SerializableJsonValue> = z.lazy(() =>
     z.union([
         z.string(),
-        z.number().finite(),
+        z.number(),
         z.boolean(),
         z.null(),
         z.array(SerializableJsonValueSchema),

@@ -200,6 +200,7 @@ describe('Workflow Builder Node catalog', () => {
         expect(resolveNodeCatalogEntry(spec, catalog)).toMatchObject({
             label: 'Adapter Label',
             category: 'utility',
+            defaultConfig: { enabled: false },
             isTrigger: true,
             outputPorts: ['declared'],
         });

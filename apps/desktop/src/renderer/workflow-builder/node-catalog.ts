@@ -112,6 +112,7 @@ export interface PluginNodeCatalogAdapter<TConfig = unknown> {
     readonly label?: string;
     readonly category?: NodeCategory;
     readonly description?: string;
+    /** Authoring defaults win when supplied; the contract default is the fallback. */
     readonly defaultConfig?: TConfig;
     readonly configSchema?: z.ZodType<TConfig>;
     /** @deprecated Contract role is authoritative when a snapshot is loaded. */
@@ -447,7 +448,8 @@ function normalizePluginEntry(
 
     return {
         ...entry,
-        defaultConfig: contract.defaultConfig,
+        defaultConfig:
+            entry.defaultConfig === undefined ? contract.defaultConfig : entry.defaultConfig,
         isTrigger: contract.role === 'trigger',
         outputPorts: (config) => {
             const resolved = resolveNodeContract(
