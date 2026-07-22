@@ -12,6 +12,7 @@ import { StateSetDescriptor } from './nodes/state-set.js';
 import {
     SWITCH_DEFAULT_PORT,
     type SwitchConfig,
+    SwitchConfigSchema,
     SwitchDescriptor,
     validateSwitchConfig,
 } from './nodes/switch.js';
@@ -96,6 +97,7 @@ const FixedOutputPortSpecSchema = z
         kind: z.literal('fixed'),
         ports: z.array(NodeOutputPortSchema).min(1),
     })
+    .strict()
     .readonly();
 
 const ConfigDerivedOutputPortSpecSchema = z
@@ -104,12 +106,14 @@ const ConfigDerivedOutputPortSpecSchema = z
         strategy: z.literal('switch-cases'),
         defaultPort: NodeOutputPortSchema,
     })
+    .strict()
     .readonly();
 
 const DynamicOutputPortSpecSchema = z
     .object({
         kind: z.literal('dynamic'),
     })
+    .strict()
     .readonly();
 
 export const NodeOutputPortSpecSchema = z.discriminatedUnion('kind', [
@@ -160,6 +164,20 @@ export const SerializableNodeContractSchema = NodeContractSchema.superRefine((co
             path: ['defaultConfig'],
             message: 'Node Contract defaultConfig must contain JSON-serializable data only.',
         });
+    }
+
+    const resolvedDefault = resolveDeclarativeOutputPorts(
+        contract.outputPorts,
+        contract.defaultConfig,
+    );
+    if (!resolvedDefault.ok) {
+        for (const issue of resolvedDefault.issues) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['defaultConfig', ...issue.path.split('.').filter(Boolean)],
+                message: issue.message,
+            });
+        }
     }
 });
 export type SerializableNodeContract = z.infer<typeof SerializableNodeContractSchema>;
@@ -229,6 +247,7 @@ export const NodeContractIssueSchema = z
         code: NodeContractIssueCodeSchema,
         path: z.string(),
         message: z.string().min(1),
+        repairHint: z.string().min(1).optional(),
     })
     .readonly();
 export type NodeContractIssue = z.infer<typeof NodeContractIssueSchema>;
@@ -345,79 +364,70 @@ function switchConfigIssues(config: SwitchConfig): readonly NodeContractIssue[] 
                 ? `cases[${diagnostic.caseIndex}].id`
                 : `cases[${diagnostic.caseIndex}].value`,
         message: diagnostic.message,
+        repairHint: diagnostic.repairHint,
     }));
 }
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+export type DeclarativeOutputPortResolution =
+    | { readonly ok: true; readonly value: readonly NodeOutputPort[] | 'dynamic' }
+    | {
+          readonly ok: false;
+          readonly issues: readonly NodeContractIssue[];
+          readonly outputPorts?: readonly NodeOutputPort[] | 'dynamic';
+      };
 
-function declarativeOutputPorts(
+export function resolveDeclarativeOutputPorts(
     spec: NodeOutputPortSpec,
     config: unknown,
-):
-    | { readonly ok: true; readonly value: readonly NodeOutputPort[] | 'dynamic' }
-    | { readonly ok: false; readonly issue: NodeContractIssue } {
+): DeclarativeOutputPortResolution {
     switch (spec.kind) {
         case 'fixed':
             return { ok: true, value: spec.ports };
         case 'dynamic':
             return { ok: true, value: 'dynamic' };
         case 'config-derived': {
-            if (spec.strategy !== 'switch-cases' || !isRecord(config)) {
+            const parsed = SwitchConfigSchema.safeParse(config);
+            if (!parsed.success) {
+                return { ok: false, issues: zodIssues(parsed.error) };
+            }
+
+            const configIssues = switchConfigIssues(parsed.data);
+            const reservedDefaultIssues =
+                spec.defaultPort.id === SWITCH_DEFAULT_PORT
+                    ? []
+                    : parsed.data.cases.flatMap((switchCase, caseIndex) =>
+                          switchCase.id === spec.defaultPort.id
+                              ? [
+                                    {
+                                        code: 'invalid_configuration' as const,
+                                        path: `cases[${caseIndex}].id`,
+                                        message:
+                                            `Switch case identity "${switchCase.id}" is reserved for the ` +
+                                            'default output port.',
+                                        repairHint:
+                                            'Use a different case identity so the fallback output remains stable.',
+                                    },
+                                ]
+                              : [],
+                      );
+            const issues = [...configIssues, ...reservedDefaultIssues];
+            const outputPorts = [
+                spec.defaultPort,
+                ...parsed.data.cases.map((switchCase) => ({
+                    id: switchCase.id,
+                    label: switchCase.value || '(empty)',
+                })),
+            ];
+            if (issues.length > 0) {
+                const hasUnresolvableIdentity = issues.some((issue) => issue.path.endsWith('.id'));
                 return {
                     ok: false,
-                    issue: {
-                        code: 'invalid_contract',
-                        path: 'outputPorts',
-                        message: `Cannot resolve ${spec.strategy} output ports from the Node configuration.`,
-                    },
+                    issues,
+                    ...(hasUnresolvableIdentity ? {} : { outputPorts }),
                 };
             }
 
-            const cases = config.cases;
-            if (!Array.isArray(cases)) {
-                return {
-                    ok: false,
-                    issue: {
-                        code: 'invalid_contract',
-                        path: 'outputPorts',
-                        message: 'The switch-cases output-port strategy requires a cases array.',
-                    },
-                };
-            }
-
-            const ports: NodeOutputPort[] = [spec.defaultPort];
-            const seen = new Set<string>([spec.defaultPort.id]);
-            for (const [index, value] of cases.entries()) {
-                if (
-                    !isRecord(value) ||
-                    typeof value.id !== 'string' ||
-                    typeof value.value !== 'string'
-                ) {
-                    return {
-                        ok: false,
-                        issue: {
-                            code: 'invalid_contract',
-                            path: `cases[${index}]`,
-                            message: 'A switch case must provide string id and value fields.',
-                        },
-                    };
-                }
-                if (seen.has(value.id)) {
-                    return {
-                        ok: false,
-                        issue: {
-                            code: 'invalid_configuration',
-                            path: `cases[${index}].id`,
-                            message: `Output port identity "${value.id}" is declared more than once.`,
-                        },
-                    };
-                }
-                seen.add(value.id);
-                ports.push({ id: value.id, label: value.value || '(empty)' });
-            }
-            return { ok: true, value: ports };
+            return { ok: true, value: outputPorts };
         }
         default:
             return assertNever(spec);
@@ -445,25 +455,25 @@ function resolveRegistration(
 
     const resolved = registration.resolveOutputPorts
         ? { ok: true as const, value: registration.resolveOutputPorts(parsed.data) }
-        : declarativeOutputPorts(registration.contract.outputPorts, parsed.data);
+        : resolveDeclarativeOutputPorts(registration.contract.outputPorts, parsed.data);
 
     const customIssues = registration.validateConfig?.(parsed.data) ?? [];
+    if (!resolved.ok) {
+        return {
+            status: 'invalid',
+            identity,
+            contract: registration.contract,
+            issues: [...customIssues, ...resolved.issues],
+            ...(resolved.outputPorts === undefined ? {} : { outputPorts: resolved.outputPorts }),
+        };
+    }
     if (customIssues.length > 0) {
         return {
             status: 'invalid',
             identity,
             contract: registration.contract,
             issues: customIssues,
-            ...(resolved.ok ? { outputPorts: resolved.value } : {}),
-        };
-    }
-
-    if (!resolved.ok) {
-        return {
-            status: 'invalid',
-            identity,
-            contract: registration.contract,
-            issues: [resolved.issue],
+            outputPorts: resolved.value,
         };
     }
 
@@ -496,6 +506,18 @@ export function createNodeContractRegistry(
             throw new Error(
                 `Invalid default configuration for ${formatNodeIdentity(parsedContract.data.identity)}: ${defaultConfig.error.message}`,
             );
+        }
+
+        if (!registration.resolveOutputPorts) {
+            const defaultPorts = resolveDeclarativeOutputPorts(
+                parsedContract.data.outputPorts,
+                defaultConfig.data,
+            );
+            if (!defaultPorts.ok) {
+                throw new Error(
+                    `Invalid default output-port configuration for ${formatNodeIdentity(parsedContract.data.identity)}: ${defaultPorts.issues.map((issue) => issue.message).join('; ')}`,
+                );
+            }
         }
 
         const key = nodeIdentityKey(parsedContract.data.identity);
@@ -719,7 +741,6 @@ export const BUILTIN_NODE_CONTRACT_REGISTRATIONS: readonly NodeContractRegistrat
                 'Routes the flow to one of several cases (plus default) by event name or field value.',
             category: 'logic',
         },
-        validateConfig: (config) => switchConfigIssues(config),
     }),
     builtinRegistration(FileManagerDescriptor, {
         role: 'action',

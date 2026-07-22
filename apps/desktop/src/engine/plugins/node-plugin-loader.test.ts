@@ -69,6 +69,34 @@ export const handler: NodeHandler = {
 };
 `;
 
+const DERIVED_ROUTER_PLUGIN_HANDLER = `
+import { z } from 'zod';
+
+const RouterConfigSchema = z.object({
+    target: z.literal('event'),
+    cases: z.array(z.object({ id: z.string().min(1), value: z.string() })),
+});
+
+export const descriptor = {
+    type: 'router-node' as const,
+    configSchema: RouterConfigSchema,
+    defaultConfig: { target: 'event', cases: [{ id: 'ready', value: 'ready' }] },
+    getOutputPorts: (config) => ['fallback', ...config.cases.map((item) => item.id)],
+};
+
+export const handler = {
+    async execute({ node, ctx }) {
+        const config = node.config as { cases: readonly { id: string }[] };
+        return { outputCtx: ctx, activePort: config.cases[0]?.id ?? 'fallback' };
+    },
+};
+`;
+
+const DERIVED_ROUTER_MISMATCH_PLUGIN_HANDLER = DERIVED_ROUTER_PLUGIN_HANDLER.replace(
+    "getOutputPorts: (config) => ['fallback', ...config.cases.map((item) => item.id)]",
+    "getOutputPorts: (config) => ['fallback', ...config.cases.map(() => 'wrong-port')]",
+);
+
 const TRIGGER_PLUGIN_HANDLER = `
 import { z } from 'zod';
 import type { TriggerHandler, NodePluginModule } from '../../node-handlers/types.js';
@@ -352,6 +380,128 @@ describe('loadNodePlugin', () => {
         ).toMatchObject({
             status: 'available',
             outputPorts: [{ id: 'out', label: 'Output' }],
+        });
+    });
+
+    it('resolves a config-derived Plugin contract through the worker and shared registry', async () => {
+        const pluginDir = join(tempDir, 'derived-router-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.derived-router',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['router.output'],
+                nodeType: 'router-node',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: 'com.sigil.derived-router',
+                        type: 'router-node',
+                    },
+                    version: 1,
+                    role: 'action',
+                    defaultConfig: {
+                        target: 'event',
+                        cases: [{ id: 'ready', value: 'ready' }],
+                    },
+                    outputPorts: {
+                        kind: 'config-derived',
+                        strategy: 'switch-cases',
+                        defaultPort: { id: 'fallback', label: 'Fallback' },
+                    },
+                    display: {
+                        label: 'Derived Router',
+                        description: 'Routes by event name.',
+                        category: 'logic',
+                    },
+                },
+            },
+            DERIVED_ROUTER_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const contractRegistry = createNodeContractRegistry();
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            contractRegistry,
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        expect(
+            resolveNodeContract(
+                {
+                    type: 'router-node',
+                    pluginId: 'com.sigil.derived-router',
+                    config: {
+                        target: 'event',
+                        cases: [
+                            { id: 'ready', value: 'ready' },
+                            { id: 'failed', value: 'failed' },
+                        ],
+                    },
+                },
+                contractRegistry,
+            ),
+        ).toMatchObject({
+            status: 'available',
+            outputPorts: [
+                { id: 'fallback', label: 'Fallback' },
+                { id: 'ready', label: 'ready' },
+                { id: 'failed', label: 'failed' },
+            ],
+        });
+    });
+
+    it('rejects a Plugin whose runtime derived ports disagree with the contract', async () => {
+        const pluginDir = join(tempDir, 'derived-router-mismatch-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.derived-router-mismatch',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['router.output'],
+                nodeType: 'router-node',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: 'com.sigil.derived-router-mismatch',
+                        type: 'router-node',
+                    },
+                    version: 1,
+                    role: 'action',
+                    defaultConfig: {
+                        target: 'event',
+                        cases: [{ id: 'ready', value: 'ready' }],
+                    },
+                    outputPorts: {
+                        kind: 'config-derived',
+                        strategy: 'switch-cases',
+                        defaultPort: { id: 'fallback', label: 'Fallback' },
+                    },
+                    display: {
+                        label: 'Derived Router',
+                        description: 'Routes by event name.',
+                        category: 'logic',
+                    },
+                },
+            },
+            DERIVED_ROUTER_MISMATCH_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: { kind: 'contract_mismatch' },
         });
     });
 

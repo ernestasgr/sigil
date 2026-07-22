@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { compileGraph } from './compile.js';
+import { createNodeCatalogFromManifests } from './node-catalog.js';
 
 describe('compileGraph', () => {
     it('rejects an empty graph with a structured topology diagnostic', () => {
@@ -186,6 +187,7 @@ describe('compileGraph', () => {
             { id: 'p', workflowId: 'w' },
             {
                 isTrigger: (node) => node.type === 'tick-trigger',
+                outputPortsForNode: () => ['out'],
             },
         );
 
@@ -305,6 +307,7 @@ describe('compileGraph', () => {
             { id: 'p', workflowId: 'w' },
             {
                 isTrigger: (node) => node.type === 'tick-trigger',
+                outputPortsForNode: () => ['out'],
             },
         );
 
@@ -332,6 +335,115 @@ describe('compileGraph', () => {
         if (!result.ok) {
             expect(result.diagnostics).toEqual(
                 expect.arrayContaining([expect.objectContaining({ code: 'missing_trigger' })]),
+            );
+        }
+    });
+
+    it('keeps compiler and topology admission in parity for derived Plugin ports', () => {
+        const nodeCatalog = createNodeCatalogFromManifests([
+            {
+                id: 'com.example.router',
+                nodeType: 'router-node',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: 'com.example.router',
+                        type: 'router-node',
+                    },
+                    version: 1,
+                    role: 'action',
+                    defaultConfig: {
+                        target: 'event',
+                        cases: [{ id: 'ready', value: 'ready' }],
+                    },
+                    outputPorts: {
+                        kind: 'config-derived',
+                        strategy: 'switch-cases',
+                        defaultPort: { id: 'default', label: 'Fallback' },
+                    },
+                    display: {
+                        label: 'Router Node',
+                        description: 'Routes by event name.',
+                        category: 'logic',
+                    },
+                },
+            },
+        ]);
+        const nodes = [
+            {
+                id: 'trigger',
+                data: {
+                    type: 'manual-trigger',
+                    config: {
+                        eventName: 'file.created',
+                        payload: {
+                            path: '/tmp/a.txt',
+                            name: 'a.txt',
+                            ext: 'txt',
+                            size: 1,
+                            dir: '/tmp',
+                        },
+                    },
+                },
+            },
+            {
+                id: 'router',
+                data: {
+                    type: 'router-node',
+                    pluginId: 'com.example.router',
+                    config: {
+                        target: 'event',
+                        cases: [
+                            { id: 'ready', value: 'ready' },
+                            { id: 'failed', value: 'failed' },
+                        ],
+                    },
+                },
+            },
+            { id: 'log', data: { type: 'log', config: { message: 'done' } } },
+        ];
+        const edges = [
+            { id: 'trigger-router', source: 'trigger', target: 'router', sourceHandle: 'out' },
+            { id: 'router-log', source: 'router', target: 'log', sourceHandle: 'failed' },
+        ];
+
+        const valid = compileGraph(
+            nodes,
+            edges,
+            { id: 'derived-pipeline', workflowId: 'derived-workflow' },
+            { nodeCatalog },
+        );
+        expect(valid.ok).toBe(true);
+
+        const changed = compileGraph(
+            nodes.map((node) =>
+                node.id === 'router'
+                    ? {
+                          ...node,
+                          data: {
+                              ...node.data,
+                              config: {
+                                  target: 'event',
+                                  cases: [{ id: 'cancelled', value: 'cancelled' }],
+                              },
+                          },
+                      }
+                    : node,
+            ),
+            edges,
+            { id: 'derived-pipeline-changed', workflowId: 'derived-workflow' },
+            { nodeCatalog },
+        );
+        expect(changed.ok).toBe(false);
+        if (!changed.ok) {
+            expect(changed.diagnostics).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        code: 'invalid_output_port',
+                        edgeId: 'router-log',
+                        nodeId: 'router',
+                    }),
+                ]),
             );
         }
     });

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PipelineEdge } from './edges.js';
+import {
+    createBuiltinNodeContractRegistry,
+    pluginNodeIdentity,
+    registerSerializableNodeContract,
+    switchOutputPortSpec,
+} from './node-contract.js';
 import type { PipelineNode } from './nodes/index.js';
 import type { CompiledPipeline } from './pipeline.js';
 import { TopologyDiagnosticSchema, validateWorkflowTopology } from './topology.js';
@@ -280,6 +286,91 @@ describe('validateWorkflowTopology', () => {
         );
 
         expect(result.ok).toBe(true);
+    });
+
+    it('reports invalid configuration for a derived Plugin contract before Edge admission', () => {
+        const contractRegistry = createBuiltinNodeContractRegistry();
+        registerSerializableNodeContract(contractRegistry, {
+            identity: pluginNodeIdentity('com.example.router', 'router-node'),
+            version: 1,
+            role: 'action',
+            defaultConfig: {
+                target: 'event',
+                cases: [{ id: 'ready', value: 'ready' }],
+            },
+            outputPorts: switchOutputPortSpec(),
+            display: {
+                label: 'Router Node',
+                description: 'Routes by event name.',
+                category: 'logic',
+            },
+        });
+
+        const result = validateWorkflowTopology(
+            pipeline(
+                [
+                    trigger('trigger'),
+                    {
+                        id: 'router',
+                        type: 'router-node',
+                        pluginId: 'com.example.router',
+                        config: {
+                            target: 'event',
+                            cases: [{ id: 'empty', value: '' }],
+                        },
+                    },
+                ],
+                [edge('trigger-router', 'trigger', 'router')],
+            ),
+            {
+                contractRegistry,
+                isNodeSupported: () => true,
+            },
+        );
+
+        expect(result).toMatchObject({
+            ok: false,
+            diagnostics: [
+                expect.objectContaining({
+                    code: 'invalid_node_contract',
+                    nodeId: 'router',
+                    fieldPath: 'config.cases[0].value',
+                }),
+            ],
+        });
+    });
+
+    it('does not infer dynamic output ports for an unavailable Plugin contract', () => {
+        const result = validateWorkflowTopology(
+            pipeline(
+                [
+                    trigger('trigger'),
+                    {
+                        id: 'unknown',
+                        type: 'unknown-node',
+                        pluginId: 'com.example.missing',
+                        config: {},
+                    },
+                    log('log'),
+                ],
+                [
+                    edge('trigger-unknown', 'trigger', 'unknown'),
+                    edge('unknown-log', 'unknown', 'log'),
+                ],
+            ),
+            { isNodeSupported: () => true },
+        );
+
+        expect(result).toMatchObject({
+            ok: false,
+            diagnostics: [
+                expect.objectContaining({
+                    code: 'invalid_output_port',
+                    edgeId: 'unknown-log',
+                    nodeId: 'unknown',
+                }),
+            ],
+        });
     });
 
     it('reports an unsupported Node handler as a structured diagnostic', () => {

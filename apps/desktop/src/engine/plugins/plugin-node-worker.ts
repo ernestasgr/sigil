@@ -8,6 +8,7 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
 import {
     NodeContractSnapshotSchema,
+    resolveDeclarativeOutputPorts,
     type SerializableNodeContract,
     validatePluginNodeContract,
 } from '@sigil/schema/node-contract';
@@ -1057,8 +1058,20 @@ function validateRuntimeContract(
         };
     }
 
-    if (identity.contract.outputPorts.kind === 'fixed') {
-        const declaredPorts = identity.contract.outputPorts.ports.map((port) => port.id);
+    const resolvedDefaultPorts = resolveDeclarativeOutputPorts(
+        identity.contract.outputPorts,
+        parsedDefault.data,
+    );
+    if (!resolvedDefaultPorts.ok) {
+        return {
+            ok: false,
+            error: `Contract defaultConfig cannot resolve output ports: ${resolvedDefaultPorts.issues
+                .map((issue) => issue.message)
+                .join('; ')}`,
+        };
+    }
+    if (resolvedDefaultPorts.value !== 'dynamic') {
+        const declaredPorts = resolvedDefaultPorts.value.map((port) => port.id);
         if (!jsonEqual(runtimePortValues, declaredPorts)) {
             return {
                 ok: false,

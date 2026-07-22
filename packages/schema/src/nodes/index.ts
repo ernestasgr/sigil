@@ -8,6 +8,7 @@ import {
 import type { NodeDescriptor } from './types.js';
 
 export type {
+    DeclarativeOutputPortResolution,
     NodeCategory,
     NodeContract,
     NodeContractDisplay,
@@ -59,6 +60,7 @@ export {
     outputPortIdsForNode,
     pluginNodeIdentity,
     registerSerializableNodeContract,
+    resolveDeclarativeOutputPorts,
     resolveNodeContract,
     SerializableJsonValueSchema,
     SerializableNodeContractSchema,

@@ -18,8 +18,8 @@ import {
     type BuilderNodeSpec,
     type NodeCatalog,
     type NodeSpec,
-    nodeOutputPorts,
     nodeSpecData,
+    resolveNodeCatalogEntry,
 } from './node-catalog.js';
 
 export type WorkflowDraftNode = Node<BuilderNodeSpec, 'sigil'>;
@@ -240,9 +240,10 @@ function applyCommand(
             const nodes = snapshot.nodes.map((node) =>
                 node.id === command.nodeId ? { ...node, data: nodeSpecData(command.spec) } : node,
             );
-            const outputPorts = nodeOutputPorts(command.spec, nodeCatalog);
+            const resolvedEntry = resolveNodeCatalogEntry(command.spec, nodeCatalog);
+            const outputPorts = resolvedEntry.outputPorts;
             const edges =
-                outputPorts === 'dynamic'
+                resolvedEntry.contractStatus !== 'available' || outputPorts === 'dynamic'
                     ? snapshot.edges
                     : snapshot.edges.filter(
                           (edge) =>

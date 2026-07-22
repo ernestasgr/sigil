@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import {
     BUILTIN_NODE_CONTRACT_REGISTRY,
+    formatNodeIdentity,
     type NodeContractRegistry,
-    outputPortIdsForNode,
+    type NodeContractResolution,
     resolveNodeContract,
 } from './node-contract.js';
 import {
@@ -11,6 +12,7 @@ import {
     SWITCH_DIAGNOSTIC_CODES,
     validateSwitchConfig,
 } from './nodes/index.js';
+import { SwitchConfigSchema } from './nodes/switch.js';
 import type { CompiledPipeline } from './pipeline.js';
 
 const TOPOLOGY_DIAGNOSTIC_CODES = [
@@ -32,6 +34,7 @@ const TOPOLOGY_DIAGNOSTIC_CODES = [
     'unsupported_node_handler',
     'unsupported_plugin_authoring',
     'invalid_plugin_config',
+    'invalid_node_contract',
     ...SWITCH_DIAGNOSTIC_CODES,
 ] as const;
 
@@ -146,12 +149,42 @@ function outputPortsForTopologyNode(
     if (options.outputPortsForNode) return options.outputPortsForNode(node);
 
     const registry = options.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
-    const outputPorts = outputPortIdsForNode(node, registry);
-    if (outputPorts.length > 0 || outputPorts === 'dynamic') return outputPorts;
+    const resolution = resolveNodeContract(node, registry);
+    if (resolution.status === 'available') {
+        return resolution.outputPorts === 'dynamic'
+            ? 'dynamic'
+            : resolution.outputPorts.map((port) => port.id);
+    }
+    return resolution.status === 'invalid' && resolution.outputPorts !== undefined
+        ? resolution.outputPorts === 'dynamic'
+            ? 'dynamic'
+            : resolution.outputPorts.map((port) => port.id)
+        : [];
+}
 
-    // Unknown Plugin contracts remain structurally preservable. Engine
-    // admission separately rejects them when no runtime handler is present.
-    return isPluginNode(node) ? 'dynamic' : outputPorts;
+function contractIssueFieldPath(path: string): string {
+    const normalized = path.replace(/\.(\d+)(?=\.|$)/g, '[$1]');
+    return `config.${normalized}`;
+}
+
+function appendInvalidContractDiagnostics(
+    diagnostics: TopologyDiagnostic[],
+    node: PipelineNode,
+    resolution: Extract<NodeContractResolution, { readonly status: 'invalid' }>,
+): void {
+    for (const issue of resolution.issues) {
+        appendUnique(diagnostics, {
+            severity: 'error',
+            code: 'invalid_node_contract',
+            target: { kind: 'node', nodeId: node.id },
+            nodeId: node.id,
+            fieldPath: contractIssueFieldPath(issue.path),
+            message:
+                `Node "${node.id}" (${formatNodeIdentity(resolution.identity)}) has invalid ` +
+                `configuration for its output-port contract: ${issue.message}`,
+            ...(issue.repairHint === undefined ? {} : { repairHint: issue.repairHint }),
+        });
+    }
 }
 
 function appendUnique(diagnostics: TopologyDiagnostic[], diagnostic: TopologyDiagnostic): void {
@@ -244,24 +277,40 @@ export function validateWorkflowTopology(
     }
 
     const nodes = [...nodeById.values()];
+    const contractRegistry = options.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
     for (const node of nodes) {
-        if (isPluginNode(node) || node.type !== 'switch') continue;
+        const resolution = resolveNodeContract(node, contractRegistry);
+        if (!isPluginNode(node) && node.type === 'switch') {
+            const parsedConfig = SwitchConfigSchema.safeParse(node.config);
+            if (!parsedConfig.success) {
+                if (resolution.status === 'invalid') {
+                    appendInvalidContractDiagnostics(diagnostics, node, resolution);
+                }
+                continue;
+            }
 
-        for (const diagnostic of validateSwitchConfig(node.config)) {
-            const fieldPath =
-                diagnostic.code === 'duplicate_case_id' || diagnostic.code === 'reserved_case_id'
-                    ? `config.cases[${diagnostic.caseIndex}].id`
-                    : `config.cases[${diagnostic.caseIndex}].value`;
-            appendUnique(diagnostics, {
-                severity: 'error',
-                code: diagnostic.code,
-                target: { kind: 'node', nodeId: node.id },
-                nodeId: node.id,
-                caseId: diagnostic.caseId,
-                fieldPath,
-                message: diagnostic.message,
-                repairHint: diagnostic.repairHint,
-            });
+            for (const diagnostic of validateSwitchConfig(parsedConfig.data)) {
+                const fieldPath =
+                    diagnostic.code === 'duplicate_case_id' ||
+                    diagnostic.code === 'reserved_case_id'
+                        ? `config.cases[${diagnostic.caseIndex}].id`
+                        : `config.cases[${diagnostic.caseIndex}].value`;
+                appendUnique(diagnostics, {
+                    severity: 'error',
+                    code: diagnostic.code,
+                    target: { kind: 'node', nodeId: node.id },
+                    nodeId: node.id,
+                    caseId: diagnostic.caseId,
+                    fieldPath,
+                    message: diagnostic.message,
+                    repairHint: diagnostic.repairHint,
+                });
+            }
+            continue;
+        }
+
+        if (resolution.status === 'invalid') {
+            appendInvalidContractDiagnostics(diagnostics, node, resolution);
         }
     }
 
@@ -332,7 +381,6 @@ export function validateWorkflowTopology(
         }
     }
 
-    const contractRegistry = options.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
     const isTrigger = options.isTrigger ?? ((node) => isBuiltinTrigger(node, contractRegistry));
     const triggers = nodes.filter(isTrigger);
     const roots = nodes.filter((node) => (incoming.get(node.id)?.length ?? 0) === 0);
