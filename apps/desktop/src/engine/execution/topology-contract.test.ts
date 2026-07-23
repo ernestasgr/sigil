@@ -110,7 +110,7 @@ describe('Workflow topology contract', () => {
 
             const store = createWorkflowStore(
                 storageDir,
-                workflowTopologyOptions(engine.handlerRegistry),
+                workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
             );
             const createFileWatcherPipeline = (
                 pipelineId: string,

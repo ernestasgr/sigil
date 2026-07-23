@@ -11,6 +11,11 @@
             "type": "file-watcher"
         },
         "version": 1,
+        "compatibility": {
+            "minimumReaderVersion": 1,
+            "maximumReaderVersion": 1,
+            "portIdsStable": true
+        },
         "role": "trigger",
         "defaultConfig": {
             "path": "/",
@@ -19,7 +24,7 @@
         },
         "outputPorts": {
             "kind": "fixed",
-            "ports": [{ "id": "out", "label": "Output" }]
+            "ports": [{ "id": "out", "label": "Output", "aliases": ["Output"] }]
         },
         "display": {
             "label": "File Watcher",

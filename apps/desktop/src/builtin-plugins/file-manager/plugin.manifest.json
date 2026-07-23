@@ -11,6 +11,11 @@
             "type": "file-manager"
         },
         "version": 1,
+        "compatibility": {
+            "minimumReaderVersion": 1,
+            "maximumReaderVersion": 1,
+            "portIdsStable": true
+        },
         "role": "action",
         "defaultConfig": {
             "action": "move",
@@ -19,7 +24,7 @@
         },
         "outputPorts": {
             "kind": "fixed",
-            "ports": [{ "id": "out", "label": "Output" }]
+            "ports": [{ "id": "out", "label": "Output", "aliases": ["Output"] }]
         },
         "display": {
             "label": "File Manager",

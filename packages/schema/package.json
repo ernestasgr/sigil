@@ -136,6 +136,11 @@
             "types": "./dist/workflow-id.d.ts",
             "import": "./dist/workflow-id.js",
             "default": "./dist/workflow-id.js"
+        },
+        "./workflow-migration": {
+            "types": "./dist/workflow-migration.d.ts",
+            "import": "./dist/workflow-migration.js",
+            "default": "./dist/workflow-migration.js"
         }
     },
     "files": [

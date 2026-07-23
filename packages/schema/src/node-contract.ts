@@ -23,6 +23,48 @@ export type NodeNamespace = z.infer<typeof NodeNamespaceSchema>;
 
 export const CURRENT_NODE_CONTRACT_VERSION = 1 as const;
 
+export const DEFAULT_NODE_CONTRACT_COMPATIBILITY = {
+    minimumReaderVersion: CURRENT_NODE_CONTRACT_VERSION,
+    maximumReaderVersion: CURRENT_NODE_CONTRACT_VERSION,
+    portIdsStable: true,
+} as const;
+
+export const NodeContractCompatibilitySchema = z
+    .object({
+        minimumReaderVersion: z.number().int().positive(),
+        maximumReaderVersion: z.number().int().positive(),
+        /** True when persisted Edge sourcePort values remain valid without a port migration. */
+        portIdsStable: z.boolean(),
+    })
+    .strict()
+    .readonly();
+export type NodeContractCompatibility = z.infer<typeof NodeContractCompatibilitySchema>;
+
+export type NodeContractCompatibilityValidation =
+    | { readonly ok: true }
+    | { readonly ok: false; readonly error: string };
+
+function compatibilityError(
+    version: number,
+    compatibility: NodeContractCompatibility | undefined,
+    readerVersion: number,
+): string | undefined {
+    const policy = compatibility ?? DEFAULT_NODE_CONTRACT_COMPATIBILITY;
+    if (policy.minimumReaderVersion > policy.maximumReaderVersion) {
+        return 'compatibility.minimumReaderVersion must not exceed compatibility.maximumReaderVersion.';
+    }
+    if (version > CURRENT_NODE_CONTRACT_VERSION) {
+        return `Node Contract version ${version} is not supported; the current supported version is ${CURRENT_NODE_CONTRACT_VERSION}.`;
+    }
+    if (readerVersion < policy.minimumReaderVersion) {
+        return `Node Contract requires reader version ${policy.minimumReaderVersion}, but the current reader is version ${readerVersion}.`;
+    }
+    if (readerVersion > policy.maximumReaderVersion) {
+        return `Node Contract supports readers through version ${policy.maximumReaderVersion}, but the current reader is version ${readerVersion}.`;
+    }
+    return undefined;
+}
+
 export type SerializableJsonValue =
     | string
     | number
@@ -88,6 +130,8 @@ export const NodeOutputPortSchema = z
     .object({
         id: z.string().min(1),
         label: z.string().min(1),
+        /** Previous persisted port IDs or labels that may be migrated to id. */
+        aliases: z.array(z.string().min(1)).readonly().optional(),
     })
     .readonly();
 export type NodeOutputPort = z.infer<typeof NodeOutputPortSchema>;
@@ -127,6 +171,7 @@ export const NodeContractSchema = z
     .object({
         identity: NodeIdentitySchema,
         version: z.number().int().positive(),
+        compatibility: NodeContractCompatibilitySchema.default(DEFAULT_NODE_CONTRACT_COMPATIBILITY),
         role: NodeRoleSchema,
         defaultConfig: z.unknown(),
         outputPorts: NodeOutputPortSpecSchema,
@@ -134,11 +179,25 @@ export const NodeContractSchema = z
     })
     .strict()
     .superRefine((contract, ctx) => {
+        const compatibilityIssue = compatibilityError(
+            contract.version,
+            contract.compatibility,
+            CURRENT_NODE_CONTRACT_VERSION,
+        );
+        if (compatibilityIssue) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['compatibility'],
+                message: compatibilityIssue,
+            });
+        }
+
         if (contract.outputPorts.kind !== 'fixed') return;
 
         const seen = new Set<string>();
+        const seenAliases = new Set<string>();
         for (const [index, port] of contract.outputPorts.ports.entries()) {
-            if (seen.has(port.id)) {
+            if (seen.has(port.id) || seenAliases.has(port.id)) {
                 ctx.addIssue({
                     code: 'custom',
                     path: ['outputPorts', 'ports', index, 'id'],
@@ -146,10 +205,23 @@ export const NodeContractSchema = z
                 });
             }
             seen.add(port.id);
+
+            for (const alias of port.aliases ?? []) {
+                if (alias === port.id || seen.has(alias) || seenAliases.has(alias)) {
+                    ctx.addIssue({
+                        code: 'custom',
+                        path: ['outputPorts', 'ports', index, 'aliases'],
+                        message: `Output port alias "${alias}" conflicts with another port identity.`,
+                    });
+                }
+                seenAliases.add(alias);
+            }
         }
     })
     .readonly();
-export type NodeContract = z.infer<typeof NodeContractSchema>;
+/** Input form intentionally permits omitted compatibility for legacy contracts. */
+export type NodeContract = z.input<typeof NodeContractSchema>;
+export type ParsedNodeContract = z.output<typeof NodeContractSchema>;
 
 /**
  * The contract representation that may cross a worker or Electron Bridge.
@@ -180,7 +252,9 @@ export const SerializableNodeContractSchema = NodeContractSchema.superRefine((co
         }
     }
 });
-export type SerializableNodeContract = z.infer<typeof SerializableNodeContractSchema>;
+/** Input form intentionally permits omitted compatibility for legacy manifests. */
+export type SerializableNodeContractInput = z.input<typeof SerializableNodeContractSchema>;
+export type SerializableNodeContract = z.output<typeof SerializableNodeContractSchema>;
 export const NodeContractSnapshotSchema = SerializableNodeContractSchema;
 export type NodeContractSnapshot = SerializableNodeContract;
 export const NodeContractSnapshotListSchema = z.array(NodeContractSnapshotSchema).readonly();
@@ -188,6 +262,26 @@ export const NodeContractSnapshotListSchema = z.array(NodeContractSnapshotSchema
 export type PluginNodeContractValidation =
     | { readonly ok: true; readonly contract: SerializableNodeContract }
     | { readonly ok: false; readonly error: string };
+
+export function validateNodeContractCompatibility(
+    contract: Pick<NodeContract, 'version' | 'compatibility'>,
+    readerVersion: number = CURRENT_NODE_CONTRACT_VERSION,
+): NodeContractCompatibilityValidation {
+    const parsedCompatibility = NodeContractCompatibilitySchema.safeParse(
+        contract.compatibility ?? DEFAULT_NODE_CONTRACT_COMPATIBILITY,
+    );
+    if (!parsedCompatibility.success) {
+        return {
+            ok: false,
+            error: parsedCompatibility.error.issues
+                .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+                .join('; '),
+        };
+    }
+
+    const error = compatibilityError(contract.version, parsedCompatibility.data, readerVersion);
+    return error === undefined ? { ok: true } : { ok: false, error };
+}
 
 export function validatePluginNodeContract(
     unknown: unknown,
@@ -325,8 +419,30 @@ export function formatNodeIdentity(identity: NodeIdentity): string {
         : `plugin:${identity.pluginId}:${identity.type}`;
 }
 
-export function fixedOutputPort(id: string, label = id): NodeOutputPort {
-    return { id, label };
+export function fixedOutputPort(
+    id: string,
+    label = id,
+    aliases: readonly string[] = [],
+): NodeOutputPort {
+    return aliases.length > 0 ? { id, label, aliases: [...aliases] } : { id, label };
+}
+
+export type OutputPortIdResolution =
+    | { readonly ok: true; readonly portId: string; readonly matchedBy: 'id' | 'alias' }
+    | { readonly ok: false; readonly reason: 'unknown' };
+
+/** Resolve a persisted Edge value without making display labels topology. */
+export function resolveOutputPortId(
+    ports: readonly NodeOutputPort[],
+    persistedPortId: string,
+): OutputPortIdResolution {
+    const direct = ports.find((port) => port.id === persistedPortId);
+    if (direct) return { ok: true, portId: direct.id, matchedBy: 'id' };
+
+    const alias = ports.find((port) => port.aliases?.includes(persistedPortId) === true);
+    return alias
+        ? { ok: true, portId: alias.id, matchedBy: 'alias' }
+        : { ok: false, reason: 'unknown' };
 }
 
 export function fixedOutputPortSpec(
@@ -557,7 +673,7 @@ export function createNodeContractRegistry(
 /** Register a validated serializable contract without importing a runtime config schema. */
 export function registerSerializableNodeContract(
     registry: NodeContractRegistry,
-    contract: SerializableNodeContract,
+    contract: SerializableNodeContractInput,
 ): void {
     registry.register({
         contract,
@@ -609,9 +725,10 @@ export interface NodeDescriptorAdapterOptions {
 }
 
 /**
- * Compatibility Adapter for descriptor-shaped registrations during migration.
- * The declarative contract is marked dynamic because descriptor functions are
- * not serializable; the registry still resolves their concrete ports in-process.
+ * @deprecated Compatibility Adapter for descriptor-shaped registrations during
+ * migration. The declarative contract is marked dynamic because descriptor
+ * functions are not serializable; the registry still resolves their concrete
+ * ports in-process.
  */
 export function adaptNodeDescriptor<TType extends string, TSchema extends z.ZodType>(
     descriptor: NodeDescriptor<TType, TSchema>,
@@ -700,7 +817,7 @@ function builtinRegistration<TType extends NodeType, TSchema extends z.ZodType>(
     };
 }
 
-const OUT_PORTS = fixedOutputPortSpec(['out']);
+const OUT_PORTS = fixedOutputPortSpec([fixedOutputPort('out', 'Output', ['Output'])]);
 
 export const BUILTIN_NODE_CONTRACT_REGISTRATIONS: readonly NodeContractRegistration[] = [
     builtinRegistration(FileWatcherDescriptor, {

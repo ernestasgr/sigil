@@ -3,14 +3,18 @@ import { describe, expect, it } from 'vitest';
 
 import {
     adaptNodeDescriptor,
+    CURRENT_NODE_CONTRACT_VERSION,
     createBuiltinNodeContractRegistry,
     createNodeContractRegistry,
     fixedOutputPortSpec,
     type NodeContractInput,
+    NodeContractSnapshotSchema,
     pluginNodeIdentity,
     registerSerializableNodeContract,
     resolveNodeContract,
+    resolveOutputPortId,
     switchOutputPortSpec,
+    validateNodeContractCompatibility,
     validatePluginNodeContract,
 } from './node-contract.js';
 import { LogDescriptor } from './nodes/log.js';
@@ -366,5 +370,69 @@ describe('Node Contract Registry', () => {
                 'file-node',
             ),
         ).toMatchObject({ ok: false, error: expect.stringContaining('version') });
+    });
+
+    it('carries and validates an explicit reader compatibility policy at registration and transport', () => {
+        const registry = createNodeContractRegistry();
+        const contract = {
+            identity: pluginNodeIdentity('com.example.compatible', 'compatible-node'),
+            version: CURRENT_NODE_CONTRACT_VERSION,
+            compatibility: {
+                minimumReaderVersion: CURRENT_NODE_CONTRACT_VERSION,
+                maximumReaderVersion: CURRENT_NODE_CONTRACT_VERSION,
+                portIdsStable: true,
+            },
+            role: 'action' as const,
+            defaultConfig: {},
+            outputPorts: fixedOutputPortSpec(['out']),
+            display: {
+                label: 'Compatible Node',
+                description: 'A compatibility fixture.',
+                category: 'utility' as const,
+            },
+        };
+
+        expect(validateNodeContractCompatibility(contract)).toEqual({ ok: true });
+        expect(NodeContractSnapshotSchema.safeParse(contract).success).toBe(true);
+        registerSerializableNodeContract(registry, contract);
+        expect(registry.get(contract.identity)).toMatchObject({
+            version: CURRENT_NODE_CONTRACT_VERSION,
+            compatibility: contract.compatibility,
+        });
+
+        const futureReader = {
+            ...contract,
+            compatibility: {
+                ...contract.compatibility,
+                minimumReaderVersion: CURRENT_NODE_CONTRACT_VERSION + 1,
+            },
+        };
+        expect(validateNodeContractCompatibility(futureReader)).toMatchObject({
+            ok: false,
+            error: expect.stringContaining('minimumReaderVersion'),
+        });
+        expect(NodeContractSnapshotSchema.safeParse(futureReader).success).toBe(false);
+    });
+
+    it('maps an explicit legacy port alias to the stable persisted port ID', () => {
+        const ports = [
+            { id: 'result', label: 'Result', aliases: ['out', 'Output'] },
+            { id: 'error', label: 'Error' },
+        ];
+
+        expect(resolveOutputPortId(ports, 'result')).toEqual({
+            ok: true,
+            portId: 'result',
+            matchedBy: 'id',
+        });
+        expect(resolveOutputPortId(ports, 'Output')).toEqual({
+            ok: true,
+            portId: 'result',
+            matchedBy: 'alias',
+        });
+        expect(resolveOutputPortId(ports, 'removed')).toEqual({
+            ok: false,
+            reason: 'unknown',
+        });
     });
 });

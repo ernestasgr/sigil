@@ -3,6 +3,14 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
 import { parsePipeline } from '@sigil/schema';
+import {
+    createBuiltinNodeContractRegistry,
+    createNodeContractRegistry,
+    fixedOutputPortSpec,
+    getBuiltinNodeContract,
+    pluginNodeIdentity,
+    registerSerializableNodeContract,
+} from '@sigil/schema/node-contract';
 import { isPluginNode } from '@sigil/schema/nodes';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -571,6 +579,153 @@ describe('WorkflowStore', () => {
 
         expect(Option.isSome(store.setActivation('wf-legacy', { kind: 'active' }))).toBe(true);
         expect(JSON.parse(readFileSync(join(dir, 'wf-legacy.json'), 'utf8')).schemaVersion).toBe(1);
+    });
+
+    it('migrates legacy bundled Node identities and port aliases on the next successful write', () => {
+        const registry = createBuiltinNodeContractRegistry();
+        const legacyContract = getBuiltinNodeContract('file-watcher');
+        registerSerializableNodeContract(registry, {
+            ...legacyContract,
+            identity: pluginNodeIdentity('com.sigil.file-watcher', 'file-watcher'),
+        });
+
+        const pipeline = {
+            id: 'pipeline-legacy-node-contract',
+            workflowId: 'wf-legacy-node-contract',
+            schemaVersion: 1 as const,
+            nodes: [
+                {
+                    id: 'watcher',
+                    type: 'file-watcher',
+                    config: legacyContract.defaultConfig,
+                },
+                { id: 'log', type: 'log', config: { message: 'migrated' } },
+            ],
+            edges: [
+                {
+                    id: 'watcher-log',
+                    source: 'watcher',
+                    target: 'log',
+                    sourcePort: 'Output',
+                },
+            ],
+        };
+        writeFileSync(
+            join(dir, 'wf-legacy-node-contract.json'),
+            JSON.stringify({
+                id: pipeline.workflowId,
+                name: 'Legacy Node Contract Workflow',
+                pipelineId: pipeline.id,
+                workflowId: pipeline.workflowId,
+                schemaVersion: pipeline.schemaVersion,
+                nodes: pipeline.nodes,
+                edges: pipeline.edges,
+            }),
+        );
+
+        const migratedStore = createWorkflowStore(dir, { contractRegistry: registry });
+        const loaded = migratedStore.get('wf-legacy-node-contract');
+        expect(Option.isSome(loaded)).toBe(true);
+        if (Option.isNone(loaded)) return;
+
+        expect(loaded.value.pipeline.nodes[0]).toMatchObject({
+            pluginId: 'com.sigil.file-watcher',
+        });
+        expect(loaded.value.pipeline.edges[0]?.sourcePort).toBe('out');
+        expect(loaded.value.migration).toMatchObject({
+            changed: true,
+            migrations: expect.arrayContaining([
+                expect.objectContaining({ kind: 'node-identity', nodeId: 'watcher' }),
+                expect.objectContaining({ kind: 'port-alias', edgeId: 'watcher-log' }),
+            ]),
+        });
+
+        const rawBeforeWrite = JSON.parse(
+            readFileSync(join(dir, 'wf-legacy-node-contract.json'), 'utf8'),
+        );
+        expect(rawBeforeWrite.nodes[0].pluginId).toBeUndefined();
+        expect(rawBeforeWrite.edges[0].sourcePort).toBe('Output');
+
+        expect(
+            Option.isSome(
+                migratedStore.setActivation('wf-legacy-node-contract', { kind: 'active' }),
+            ),
+        ).toBe(true);
+        const rawAfterWrite = JSON.parse(
+            readFileSync(join(dir, 'wf-legacy-node-contract.json'), 'utf8'),
+        );
+        expect(rawAfterWrite.nodes[0].pluginId).toBe('com.sigil.file-watcher');
+        expect(rawAfterWrite.edges[0].sourcePort).toBe('out');
+
+        const reloaded = createWorkflowStore(dir, { contractRegistry: registry }).get(
+            'wf-legacy-node-contract',
+        );
+        expect(Option.isSome(reloaded)).toBe(true);
+        if (Option.isSome(reloaded)) {
+            expect(reloaded.value.migration).toEqual({ changed: false, migrations: [] });
+        }
+    });
+
+    it('keeps a Workflow disabled with an explicit diagnostic when a persisted port was removed', () => {
+        const registry = createNodeContractRegistry();
+        registerSerializableNodeContract(registry, {
+            identity: pluginNodeIdentity('com.example.removed-port', 'trigger'),
+            version: 1,
+            role: 'trigger',
+            defaultConfig: {},
+            outputPorts: fixedOutputPortSpec(['current']),
+            display: {
+                label: 'Removed Port Trigger',
+                description: 'A migration fixture.',
+                category: 'trigger',
+            },
+        });
+
+        writeFileSync(
+            join(dir, 'wf-removed-port.json'),
+            JSON.stringify({
+                id: 'wf-removed-port',
+                name: 'Removed Port Workflow',
+                enabled: true,
+                schemaVersion: 1,
+                pipelineId: 'pipeline-removed-port',
+                workflowId: 'wf-removed-port',
+                nodes: [
+                    {
+                        id: 'trigger',
+                        type: 'trigger',
+                        pluginId: 'com.example.removed-port',
+                        config: {},
+                    },
+                    { id: 'log', type: 'log', config: { message: 'unreachable' } },
+                ],
+                edges: [
+                    {
+                        id: 'trigger-log',
+                        source: 'trigger',
+                        target: 'log',
+                        sourcePort: 'removed',
+                    },
+                ],
+            }),
+        );
+
+        const disabledStore = createWorkflowStore(dir, { contractRegistry: registry });
+
+        expect(disabledStore.get('wf-removed-port')).toEqual(Option.none());
+        expect(disabledStore.getSummary('wf-removed-port')).toMatchObject(
+            Option.some({
+                id: 'wf-removed-port',
+                enabled: false,
+                diagnostics: [
+                    expect.objectContaining({
+                        code: 'invalid_output_port',
+                        edgeId: 'trigger-log',
+                        nodeId: 'trigger',
+                    }),
+                ],
+            }),
+        );
     });
 
     it('loads an explicit legacy schema version as the current in-memory Pipeline without rewriting on startup', () => {
