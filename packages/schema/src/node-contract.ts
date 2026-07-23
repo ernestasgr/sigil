@@ -26,15 +26,12 @@ export const CURRENT_NODE_CONTRACT_VERSION = 1 as const;
 export const DEFAULT_NODE_CONTRACT_COMPATIBILITY = {
     minimumReaderVersion: CURRENT_NODE_CONTRACT_VERSION,
     maximumReaderVersion: CURRENT_NODE_CONTRACT_VERSION,
-    portIdsStable: true,
 } as const;
 
 export const NodeContractCompatibilitySchema = z
     .object({
         minimumReaderVersion: z.number().int().positive(),
         maximumReaderVersion: z.number().int().positive(),
-        /** True when persisted Edge sourcePort values remain valid without a port migration. */
-        portIdsStable: z.boolean(),
     })
     .strict()
     .readonly();

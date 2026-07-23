@@ -13,8 +13,7 @@
         "version": 1,
         "compatibility": {
             "minimumReaderVersion": 1,
-            "maximumReaderVersion": 1,
-            "portIdsStable": true
+            "maximumReaderVersion": 1
         },
         "role": "trigger",
         "defaultConfig": {

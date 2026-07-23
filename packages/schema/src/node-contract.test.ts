@@ -380,7 +380,6 @@ describe('Node Contract Registry', () => {
             compatibility: {
                 minimumReaderVersion: CURRENT_NODE_CONTRACT_VERSION,
                 maximumReaderVersion: CURRENT_NODE_CONTRACT_VERSION,
-                portIdsStable: true,
             },
             role: 'action' as const,
             defaultConfig: {},
@@ -405,11 +404,12 @@ describe('Node Contract Registry', () => {
             compatibility: {
                 ...contract.compatibility,
                 minimumReaderVersion: CURRENT_NODE_CONTRACT_VERSION + 1,
+                maximumReaderVersion: CURRENT_NODE_CONTRACT_VERSION + 2,
             },
         };
         expect(validateNodeContractCompatibility(futureReader)).toMatchObject({
             ok: false,
-            error: expect.stringContaining('minimumReaderVersion'),
+            error: expect.stringContaining('requires reader version'),
         });
         expect(NodeContractSnapshotSchema.safeParse(futureReader).success).toBe(false);
     });
@@ -434,5 +434,27 @@ describe('Node Contract Registry', () => {
             ok: false,
             reason: 'unknown',
         });
+    });
+
+    it('rejects output-port aliases that conflict with another port identity', () => {
+        const registry = createNodeContractRegistry();
+
+        expect(() =>
+            registerSerializableNodeContract(registry, {
+                identity: pluginNodeIdentity('com.example.conflicting-ports', 'node'),
+                version: 1,
+                role: 'action',
+                defaultConfig: {},
+                outputPorts: fixedOutputPortSpec([
+                    { id: 'a', label: 'A' },
+                    { id: 'b', label: 'B', aliases: ['a'] },
+                ]),
+                display: {
+                    label: 'Conflicting Ports',
+                    description: 'A validation fixture.',
+                    category: 'utility',
+                },
+            }),
+        ).toThrow(/conflicts with another port identity/);
     });
 });

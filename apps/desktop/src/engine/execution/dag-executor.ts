@@ -317,6 +317,7 @@ export async function executeValidatedWorkflow(
                     { node, ctx },
                     { ...commonDeps, bus: nodeTelemetry.bus },
                 );
+                let normalizedResult = result;
                 if (contract.outputPorts !== 'dynamic') {
                     const port = resolveOutputPortId(contract.outputPorts, result.activePort);
                     if (!port.ok) {
@@ -325,11 +326,11 @@ export async function executeValidatedWorkflow(
                         );
                     }
                     if (port.matchedBy === 'alias') {
-                        return { ...result, activePort: port.portId };
+                        normalizedResult = { ...result, activePort: port.portId };
                     }
                 }
                 span.finish('succeeded');
-                return result;
+                return normalizedResult;
             } catch (err) {
                 span.finish(
                     executionOptions.signal?.aborted ? 'cancelled' : 'failed',

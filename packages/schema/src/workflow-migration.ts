@@ -9,7 +9,7 @@ import {
     resolveOutputPortId,
 } from './node-contract.js';
 import { isPluginNode, type PipelineNode } from './nodes/index.js';
-import type { CompiledPipeline } from './pipeline.js';
+import type { PersistedPipeline } from './pipeline.js';
 
 export const WorkflowMigrationSchema = z.discriminatedUnion('kind', [
     z
@@ -82,6 +82,7 @@ function migrateLegacyNode(node: PipelineNode): {
     return {
         node: {
             ...node,
+            type: migration.to.type,
             pluginId: migration.to.pluginId,
         },
         migration: {
@@ -109,9 +110,9 @@ function concreteOutputPorts(
 }
 
 export function migrateWorkflowContracts(
-    pipeline: CompiledPipeline,
+    pipeline: PersistedPipeline,
     registry: NodeContractRegistry = BUILTIN_NODE_CONTRACT_REGISTRY,
-): { readonly value: CompiledPipeline; readonly report: WorkflowMigrationReport } {
+): { readonly value: PersistedPipeline; readonly report: WorkflowMigrationReport } {
     const migrations: WorkflowMigration[] = [];
     const nodes = pipeline.nodes.map((node) => {
         const migrated = migrateLegacyNode(node);

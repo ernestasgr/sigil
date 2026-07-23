@@ -12,9 +12,9 @@ Accepted
 ## Decision
 
 - Every Node Contract has a positive `version` and a reader compatibility
-  policy. The policy declares the minimum and maximum reader versions and
-  whether port IDs are stable. Contracts are validated when registered and
-  whenever a serializable snapshot crosses a worker or Electron boundary.
+  policy. The policy declares the minimum and maximum reader versions.
+  Contracts are validated when registered and whenever a serializable snapshot
+  crosses a worker or Electron boundary.
 - Existing contracts that omit the policy receive the current reader policy at
   the schema boundary. Future or out-of-range policies are rejected rather
   than interpreted as dynamic metadata.

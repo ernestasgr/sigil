@@ -128,7 +128,6 @@ describe('NodePluginWorker contract transport', () => {
             expect(parsed.data.contract?.compatibility).toEqual({
                 minimumReaderVersion: 1,
                 maximumReaderVersion: 1,
-                portIdsStable: true,
             });
         }
         expect(
@@ -148,7 +147,6 @@ describe('NodePluginWorker contract transport', () => {
                     compatibility: {
                         minimumReaderVersion: 2,
                         maximumReaderVersion: 2,
-                        portIdsStable: true,
                     },
                 },
             }).success,

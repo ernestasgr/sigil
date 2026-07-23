@@ -6,7 +6,7 @@ import {
     registerSerializableNodeContract,
 } from './node-contract.js';
 import { FileWatcherDescriptor } from './nodes/file-watcher.js';
-import type { CompiledPipeline } from './pipeline.js';
+import type { PersistedPipeline } from './pipeline.js';
 import { migrateWorkflowContracts } from './workflow-migration.js';
 
 describe('Workflow contract migrations', () => {
@@ -18,7 +18,7 @@ describe('Workflow contract migrations', () => {
             identity: pluginNodeIdentity('com.sigil.file-watcher', 'file-watcher'),
         });
 
-        const pipeline: CompiledPipeline = {
+        const pipeline: PersistedPipeline = {
             id: 'pipeline-legacy-contracts',
             workflowId: 'workflow-legacy-contracts',
             schemaVersion: 1,
