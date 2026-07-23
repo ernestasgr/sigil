@@ -7,7 +7,7 @@ import {
     pluginNodeIdentity,
     registerSerializableNodeContract,
     resolveNodeContract,
-    type SerializableNodeContract,
+    type SerializableNodeContractInput,
 } from '@sigil/schema/node-contract';
 import {
     type BuiltinPipelineNode,
@@ -124,7 +124,9 @@ export interface PluginNodeCatalogAdapter<TConfig = unknown> {
     readonly Form?: ComponentType<ConfigFormProps<TConfig>>;
 }
 
-export type NodeCatalogManifest = Pick<Manifest, 'id' | 'nodeType' | 'nodeContract'>;
+export type NodeCatalogManifest = Pick<Manifest, 'id' | 'nodeType'> & {
+    readonly nodeContract?: SerializableNodeContractInput;
+};
 
 interface BuiltinNodeCatalogAdapter<K extends NodeType, TSchema extends z.ZodType> {
     readonly descriptor: NodeDescriptor<K, TSchema>;
@@ -477,7 +479,7 @@ function normalizePluginEntry(
 }
 
 function pluginEntryFromContract(
-    contract: SerializableNodeContract,
+    contract: SerializableNodeContractInput,
     registry: NodeContractRegistry,
 ): PluginNodeCatalogEntry {
     if (contract.identity.namespace !== 'plugin') {

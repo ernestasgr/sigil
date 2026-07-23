@@ -15,7 +15,7 @@ import {
     type CompiledPipeline,
     type PipelineSchemaVersion,
     PipelineSchemaVersionSchema,
-    parsePipeline,
+    parsePersistedPipeline,
 } from '@sigil/schema';
 import { PipelineEdgeSchema } from '@sigil/schema/edges';
 import { PipelineNodeSchema } from '@sigil/schema/nodes';
@@ -27,6 +27,10 @@ import {
     type WorkflowTopologyOptions,
 } from '@sigil/schema/topology';
 import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
+import {
+    migrateWorkflowContracts,
+    type WorkflowMigrationReport,
+} from '@sigil/schema/workflow-migration';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
 
@@ -56,6 +60,7 @@ export interface StoredWorkflow {
     readonly schemaVersion: PipelineSchemaVersion;
     readonly nodes: CompiledPipeline['nodes'];
     readonly edges: CompiledPipeline['edges'];
+    readonly migration: WorkflowMigrationReport;
     readonly executable: ExecutableWorkflow;
     readonly diagnostics: readonly TopologyDiagnostic[];
 }
@@ -107,6 +112,7 @@ export interface WorkflowStore {
         readonly executable: ExecutableWorkflow;
         readonly name: string;
         readonly positions: Readonly<Record<string, NodePosition>>;
+        readonly migration: WorkflowMigrationReport;
     }>;
     readonly getSummary: (id: string) => Option.Option<WorkflowSummary>;
     readonly save: (
@@ -424,21 +430,23 @@ function readWorkflowFile(
         ]);
     }
 
-    const pipeline = {
+    const parsedPipeline = {
         id: parsedFile.data.pipelineId ?? parsedFile.data.id,
         workflowId: persistedWorkflowId,
         schemaVersion: schemaVersion.value,
         nodes: parsedFile.data.nodes ?? [],
         edges: parsedFile.data.edges ?? [],
     };
-    const parseResult = parsePipeline(pipeline);
+    const parseResult = parsePersistedPipeline(parsedPipeline);
     if (!parseResult.ok) {
         return invalidWorkflowRecord(storagePath, workflowId, raw, [
             storedWorkflowDiagnostic(fileName, parseResult.error),
         ]);
     }
 
-    const topology = validateWorkflowTopology(parseResult.value, topologyOptions);
+    const migration = migrateWorkflowContracts(parseResult.value, topologyOptions.contractRegistry);
+    const pipeline = migration.value;
+    const topology = validateWorkflowTopology(pipeline, topologyOptions);
     if (!topology.ok) {
         return invalidWorkflowRecord(storagePath, workflowId, raw, topology.diagnostics);
     }
@@ -453,6 +461,7 @@ function readWorkflowFile(
         schemaVersion: pipeline.schemaVersion,
         nodes: pipeline.nodes,
         edges: pipeline.edges,
+        migration: migration.report,
         activation: initialActivationState(
             parsedFile.data.enabled ?? false,
             parsedFile.data.activation,
@@ -563,6 +572,7 @@ export function createWorkflowStore(
                 executable: stored.executable,
                 name: stored.name,
                 positions: stored.positions,
+                migration: stored.migration,
             });
         },
 
@@ -576,7 +586,9 @@ export function createWorkflowStore(
                     workflowId,
                 );
             }
-            const topology = validateWorkflowTopology(pipeline, topologyOptions);
+            const migration = migrateWorkflowContracts(pipeline, topologyOptions.contractRegistry);
+            const canonicalPipeline = migration.value;
+            const topology = validateWorkflowTopology(canonicalPipeline, topologyOptions);
             if (!topology.ok) {
                 throw createWorkflowTopologyError(topology.diagnostics);
             }
@@ -585,11 +597,12 @@ export function createWorkflowStore(
                 name,
                 enabled: false,
                 positions,
-                pipelineId: pipeline.id,
-                workflowId: pipeline.workflowId,
-                schemaVersion: pipeline.schemaVersion,
-                nodes: pipeline.nodes,
-                edges: pipeline.edges,
+                pipelineId: canonicalPipeline.id,
+                workflowId: canonicalPipeline.workflowId,
+                schemaVersion: canonicalPipeline.schemaVersion,
+                nodes: canonicalPipeline.nodes,
+                edges: canonicalPipeline.edges,
+                migration: migration.report,
                 activation: { kind: 'disabled' },
                 executable: topology.value,
                 diagnostics: [],
@@ -610,7 +623,9 @@ export function createWorkflowStore(
                     workflowId,
                 );
             }
-            const topology = validateWorkflowTopology(pipeline, topologyOptions);
+            const migration = migrateWorkflowContracts(pipeline, topologyOptions.contractRegistry);
+            const canonicalPipeline = migration.value;
+            const topology = validateWorkflowTopology(canonicalPipeline, topologyOptions);
             if (!topology.ok) {
                 throw createWorkflowTopologyError(topology.diagnostics);
             }
@@ -623,11 +638,12 @@ export function createWorkflowStore(
                       id: workflowId,
                       name,
                       positions,
-                      pipelineId: pipeline.id,
-                      workflowId: pipeline.workflowId,
-                      schemaVersion: pipeline.schemaVersion,
-                      nodes: pipeline.nodes,
-                      edges: pipeline.edges,
+                      pipelineId: canonicalPipeline.id,
+                      workflowId: canonicalPipeline.workflowId,
+                      schemaVersion: canonicalPipeline.schemaVersion,
+                      nodes: canonicalPipeline.nodes,
+                      edges: canonicalPipeline.edges,
+                      migration: migration.report,
                       activation: existingValid.activation,
                       executable: topology.value,
                       diagnostics: [],
@@ -638,11 +654,12 @@ export function createWorkflowStore(
                       name,
                       enabled: false,
                       positions,
-                      pipelineId: pipeline.id,
-                      workflowId: pipeline.workflowId,
-                      schemaVersion: pipeline.schemaVersion,
-                      nodes: pipeline.nodes,
-                      edges: pipeline.edges,
+                      pipelineId: canonicalPipeline.id,
+                      workflowId: canonicalPipeline.workflowId,
+                      schemaVersion: canonicalPipeline.schemaVersion,
+                      nodes: canonicalPipeline.nodes,
+                      edges: canonicalPipeline.edges,
+                      migration: migration.report,
                       activation: { kind: 'disabled' },
                       executable: topology.value,
                       diagnostics: [],

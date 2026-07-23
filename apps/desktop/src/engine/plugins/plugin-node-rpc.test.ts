@@ -122,13 +122,32 @@ describe('NodePluginWorker contract transport', () => {
             contract,
         };
 
-        expect(NodePluginWorkerLoadedSchema.safeParse(loaded).success).toBe(true);
+        const parsed = NodePluginWorkerLoadedSchema.safeParse(loaded);
+        expect(parsed.success).toBe(true);
+        if (parsed.success) {
+            expect(parsed.data.contract?.compatibility).toEqual({
+                minimumReaderVersion: 1,
+                maximumReaderVersion: 1,
+            });
+        }
         expect(
             NodePluginWorkerLoadedSchema.safeParse({
                 ...loaded,
                 contract: {
                     ...contract,
                     defaultConfig: { validate: () => true },
+                },
+            }).success,
+        ).toBe(false);
+        expect(
+            NodePluginWorkerLoadedSchema.safeParse({
+                ...loaded,
+                contract: {
+                    ...contract,
+                    compatibility: {
+                        minimumReaderVersion: 2,
+                        maximumReaderVersion: 2,
+                    },
                 },
             }).success,
         ).toBe(false);

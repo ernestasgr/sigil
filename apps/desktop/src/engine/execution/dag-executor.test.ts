@@ -7,6 +7,7 @@ import type { PipelineEdge } from '@sigil/schema/edges';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import {
     createBuiltinNodeContractRegistry,
+    fixedOutputPortSpec,
     pluginNodeIdentity,
     registerSerializableNodeContract,
 } from '@sigil/schema/node-contract';
@@ -213,6 +214,62 @@ describe('dag-executor', () => {
                 ]),
             );
             expect(events.some((event) => event.name === 'log.output')).toBe(false);
+        });
+
+        it('normalizes a declared runtime port alias before scheduling persisted Edges', async () => {
+            const contractRegistry = createBuiltinNodeContractRegistry();
+            registerSerializableNodeContract(contractRegistry, {
+                identity: pluginNodeIdentity('com.example.alias', 'aliased-action'),
+                version: 1,
+                role: 'action',
+                defaultConfig: {},
+                outputPorts: fixedOutputPortSpec([
+                    { id: 'current', label: 'Current', aliases: ['legacy'] },
+                ]),
+                display: {
+                    label: 'Aliased Action',
+                    description: 'An action with a migrated runtime output.',
+                    category: 'utility',
+                },
+            });
+            handlerRegistry.register('aliased-action', {
+                execute: async ({ ctx }) => ({
+                    outputCtx: ctx,
+                    activePort: 'legacy',
+                }),
+            });
+
+            const bus = createEventBus();
+            const events = captureEvents(bus);
+            const result = await executePipeline(
+                pipeline(
+                    [
+                        trigger(),
+                        {
+                            id: 'aliased',
+                            type: 'aliased-action',
+                            pluginId: 'com.example.alias',
+                            config: {},
+                        },
+                        log('downstream', 'alias reached'),
+                    ],
+                    [
+                        edge('trigger-aliased', 'trigger', 'aliased', 'out'),
+                        edge('aliased-downstream', 'aliased', 'downstream', 'current'),
+                    ],
+                ),
+                bus,
+                handlerRegistry,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                { contractRegistry },
+            );
+
+            expect(result.outcome).toBe('succeeded');
+            expect(events.some((event) => event.name === 'log.output')).toBe(true);
         });
     });
 

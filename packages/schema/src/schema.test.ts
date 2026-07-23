@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PipelineConditionSchema } from './conditions.js';
 import { FileEventPayloadSchema } from './file-event-payload.js';
 import { PipelineNodeSchema } from './nodes/index.js';
-import { CompiledPipelineSchema, parsePipeline } from './pipeline.js';
+import { CompiledPipelineSchema, parsePersistedPipeline, parsePipeline } from './pipeline.js';
 import { sampleManualTriggerToLog } from './samples.js';
 import { validateWorkflowTopology } from './topology.js';
 import { WorkflowContextSchema } from './workflow-context.js';
@@ -223,6 +223,33 @@ describe('CompiledPipelineSchema', () => {
         if (!result.ok) {
             expect(result.error).toMatch(/invalid sourcePort "maybe"/);
         }
+    });
+
+    it('can structurally read a persisted edge before contract aliases are migrated', () => {
+        const persisted = {
+            id: 'p',
+            workflowId: 'w',
+            schemaVersion: 1,
+            nodes: [
+                {
+                    id: 'branch',
+                    type: 'if-else',
+                    config: {
+                        condition: {
+                            target: 'payload',
+                            field: 'ext',
+                            operator: 'equals',
+                            value: 'pdf',
+                        },
+                    },
+                },
+                { id: 'log', type: 'log', config: { message: 'x' } },
+            ],
+            edges: [{ id: 'e', source: 'branch', target: 'log', sourcePort: 'legacy-true' }],
+        };
+
+        expect(parsePersistedPipeline(persisted).ok).toBe(true);
+        expect(parsePipeline(persisted).ok).toBe(false);
     });
 
     it('accepts dynamic switch case ports and the default port', () => {
