@@ -2,6 +2,11 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
+import {
+    type NodeContractRegistry,
+    pluginNodeIdentity,
+    registerSerializableNodeContract,
+} from '@sigil/schema/node-contract';
 import { Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEngine } from '../core/engine.js';
@@ -29,6 +34,24 @@ function testPipeline(pipelineId: string, workflowId: string): CompiledPipeline 
     };
 }
 
+function registerTestTriggerContract(contractRegistry: NodeContractRegistry): void {
+    registerSerializableNodeContract(contractRegistry, {
+        identity: pluginNodeIdentity('com.sigil.test-trigger', 'test-trigger'),
+        version: 1,
+        role: 'trigger',
+        defaultConfig: {},
+        outputPorts: {
+            kind: 'fixed',
+            ports: [{ id: 'out', label: 'Output' }],
+        },
+        display: {
+            label: 'Test Trigger',
+            description: 'Test trigger for workflow lifecycle coverage.',
+            category: 'trigger',
+        },
+    });
+}
+
 function createFixture(activate: TriggerHandler['activate']): {
     readonly storageDir: string;
     readonly engine: ReturnType<typeof createEngine>;
@@ -48,7 +71,11 @@ function createFixture(activate: TriggerHandler['activate']): {
         }),
     };
     engine.handlerRegistry.register('test-trigger', handler);
-    const store = createWorkflowStore(storageDir, workflowTopologyOptions(engine.handlerRegistry));
+    registerTestTriggerContract(engine.contractRegistry);
+    const store = createWorkflowStore(
+        storageDir,
+        workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
+    );
     const activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
     const lifecycle = createWorkflowLifecycle(store, activator);
     const workflowId = store.create(
@@ -339,7 +366,10 @@ describe('WorkflowLifecycle transitions', () => {
 
         const reloadedStore = createWorkflowStore(
             fixture.storageDir,
-            workflowTopologyOptions(fixture.engine.handlerRegistry),
+            workflowTopologyOptions(
+                fixture.engine.handlerRegistry,
+                fixture.engine.contractRegistry,
+            ),
         );
         const reloadedActivator = createWorkflowActivator(
             fixture.engine,

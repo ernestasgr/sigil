@@ -316,11 +316,26 @@ describe('validateWorkflowTopology', () => {
             pluginId: 'com.example.tick',
             config: {},
         };
+        const contractRegistry = createBuiltinNodeContractRegistry();
+        registerSerializableNodeContract(contractRegistry, {
+            identity: pluginNodeIdentity('com.example.tick', 'tick-trigger'),
+            version: 1,
+            role: 'trigger',
+            defaultConfig: {},
+            outputPorts: {
+                kind: 'fixed',
+                ports: [{ id: 'out', label: 'Output' }],
+            },
+            display: {
+                label: 'Tick Trigger',
+                description: 'Starts a Workflow on a tick.',
+                category: 'trigger',
+            },
+        });
         const result = validateWorkflowTopology(
             pipeline([plugin, log('log')], [edge('plugin-log', 'plugin-trigger', 'log')]),
             {
-                isTrigger: (node) => node.id === 'plugin-trigger',
-                outputPortsForNode: () => ['out'],
+                contractRegistry,
             },
         );
 
@@ -420,6 +435,34 @@ describe('validateWorkflowTopology', () => {
                     nodeId: 'unknown',
                 }),
             ],
+        });
+    });
+
+    it('reports an unavailable Plugin contract during strict admission', () => {
+        const result = validateWorkflowTopology(
+            pipeline(
+                [
+                    trigger('trigger'),
+                    {
+                        id: 'unknown',
+                        type: 'unknown-node',
+                        pluginId: 'com.example.missing',
+                        config: {},
+                    },
+                ],
+                [edge('trigger-unknown', 'trigger', 'unknown')],
+            ),
+            { requireNodeContracts: true },
+        );
+
+        expect(result).toMatchObject({
+            ok: false,
+            diagnostics: expect.arrayContaining([
+                expect.objectContaining({
+                    code: 'unavailable_node_contract',
+                    nodeId: 'unknown',
+                }),
+            ]),
         });
     });
 

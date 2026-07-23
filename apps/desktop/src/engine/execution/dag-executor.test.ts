@@ -5,6 +5,11 @@ import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineEdge } from '@sigil/schema/edges';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
+import {
+    createBuiltinNodeContractRegistry,
+    pluginNodeIdentity,
+    registerSerializableNodeContract,
+} from '@sigil/schema/node-contract';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import Database from 'better-sqlite3';
@@ -136,6 +141,78 @@ describe('dag-executor', () => {
             });
             expect(nodeEvents).toHaveLength(4);
             expect(nodeEvents.every((event) => event.telemetry?.runId === result.runId)).toBe(true);
+        });
+
+        it('reports an undeclared runtime output and does not silently skip downstream work', async () => {
+            const contractRegistry = createBuiltinNodeContractRegistry();
+            registerSerializableNodeContract(contractRegistry, {
+                identity: pluginNodeIdentity('com.example.contract', 'contracted-action'),
+                version: 1,
+                role: 'action',
+                defaultConfig: {},
+                outputPorts: {
+                    kind: 'fixed',
+                    ports: [{ id: 'declared', label: 'Declared output' }],
+                },
+                display: {
+                    label: 'Contracted Action',
+                    description: 'An action with a fixed output contract.',
+                    category: 'utility',
+                },
+            });
+            handlerRegistry.register('contracted-action', {
+                execute: async ({ ctx }) => ({
+                    outputCtx: ctx,
+                    activePort: 'unexpected',
+                }),
+            });
+
+            const bus = createEventBus();
+            const events = captureEvents(bus);
+            const result = await executePipeline(
+                pipeline(
+                    [
+                        trigger(),
+                        {
+                            id: 'contracted',
+                            type: 'contracted-action',
+                            pluginId: 'com.example.contract',
+                            config: {},
+                        },
+                        log('downstream', 'must not run'),
+                    ],
+                    [
+                        edge('trigger-contracted', 'trigger', 'contracted', 'out'),
+                        edge('contracted-downstream', 'contracted', 'downstream', 'declared'),
+                    ],
+                ),
+                bus,
+                handlerRegistry,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                { contractRegistry },
+            );
+
+            expect(result.outcome).toBe('failed');
+            expect(events).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        name: 'workflow.error',
+                        payload: expect.objectContaining({
+                            nodeId: 'contracted',
+                            message: expect.stringContaining('undeclared activePort'),
+                        }),
+                    }),
+                    expect.objectContaining({
+                        name: 'workflow.completed',
+                        payload: expect.objectContaining({ outcome: 'failed' }),
+                    }),
+                ]),
+            );
+            expect(events.some((event) => event.name === 'log.output')).toBe(false);
         });
     });
 

@@ -57,7 +57,37 @@ describe('Workflow Builder Node catalog', () => {
             },
         };
 
-        expect(resolveNodeCatalogEntry(spec)).toMatchObject({
+        const catalog = createNodeCatalogFromManifests([
+            {
+                id: 'com.sigil.file-watcher',
+                nodeType: 'file-watcher',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: 'com.sigil.file-watcher',
+                        type: 'file-watcher',
+                    },
+                    version: 1,
+                    role: 'trigger',
+                    defaultConfig: {
+                        path: '/',
+                        recursive: true,
+                        events: ['file.created'],
+                    },
+                    outputPorts: {
+                        kind: 'fixed',
+                        ports: [{ id: 'out', label: 'Output' }],
+                    },
+                    display: {
+                        label: 'File Watcher',
+                        description: 'Watches a path for file events.',
+                        category: 'trigger',
+                    },
+                },
+            },
+        ]);
+
+        expect(resolveNodeCatalogEntry(spec, catalog)).toMatchObject({
             source: 'plugin',
             pluginId: 'com.sigil.file-watcher',
             type: 'file-watcher',
@@ -65,10 +95,10 @@ describe('Workflow Builder Node catalog', () => {
             isTrigger: true,
             outputPorts: ['out'],
         });
-        expect(nodeOutputPorts(spec)).toEqual(['out']);
+        expect(nodeOutputPorts(spec, catalog)).toEqual(['out']);
     });
 
-    it('keeps Plugin defaults, validation, output ports, and Form correlation behind the seam', () => {
+    it('does not let an adapter provide topology facts without a Node Contract', () => {
         const configSchema = z.object({ message: z.string().min(1) });
         const entry = createPluginNodeCatalogEntry({
             pluginId: 'com.example.message',
@@ -104,15 +134,17 @@ describe('Workflow Builder Node catalog', () => {
             source: 'plugin',
             pluginId: 'com.example.message',
             type: 'message-node',
-            authoring: 'editable',
-            outputPorts: ['out'],
+            authoring: 'read-only',
+            contractStatus: 'unavailable',
+            isTrigger: 'unknown',
+            outputPorts: [],
         });
         expect(resolved.validateConfig?.({ message: '' })).toMatchObject({ ok: false });
         expect(resolved.validateConfig?.({ message: 'updated' })).toEqual({
             ok: true,
             value: { message: 'updated' },
         });
-        expect(nodeOutputPorts(spec, catalog)).toEqual(['out']);
+        expect(nodeOutputPorts(spec, catalog)).toEqual([]);
     });
 
     it('only exposes Plugin adapters declared by loaded manifests', () => {

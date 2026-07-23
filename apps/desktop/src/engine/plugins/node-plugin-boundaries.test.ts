@@ -152,6 +152,25 @@ function writePartialRegistrationFailurePlugin(dir: string): void {
             permissions: ['filesystem.read'],
             emits: ['boundary.output'],
             nodeType: 'partial-registration-failure-trigger',
+            nodeContract: {
+                identity: {
+                    namespace: 'plugin',
+                    pluginId: 'com.sigil.partial-registration-failure',
+                    type: 'partial-registration-failure-trigger',
+                },
+                version: 1,
+                role: 'trigger',
+                defaultConfig: {},
+                outputPorts: {
+                    kind: 'fixed',
+                    ports: [{ id: 'out', label: 'Output' }],
+                },
+                display: {
+                    label: 'Partial Registration Failure Trigger',
+                    description: 'Trigger used to test partial registration cleanup.',
+                    category: 'trigger',
+                },
+            },
         }),
     );
     writeFileSync(join(dir, 'handler.ts'), PARTIAL_REGISTRATION_FAILURE_HANDLER);
@@ -198,6 +217,25 @@ function writeConcurrentActivationPlugin(dir: string): void {
             permissions: ['filesystem.read'],
             emits: ['boundary.output'],
             nodeType: 'concurrent-activation-trigger',
+            nodeContract: {
+                identity: {
+                    namespace: 'plugin',
+                    pluginId: 'com.sigil.concurrent-activation',
+                    type: 'concurrent-activation-trigger',
+                },
+                version: 1,
+                role: 'trigger',
+                defaultConfig: { id: 'default' },
+                outputPorts: {
+                    kind: 'fixed',
+                    ports: [{ id: 'out', label: 'Output' }],
+                },
+                display: {
+                    label: 'Concurrent Activation Trigger',
+                    description: 'Trigger used to test concurrent activation cleanup.',
+                    category: 'trigger',
+                },
+            },
         }),
     );
     writeFileSync(join(dir, 'handler.ts'), CONCURRENT_ACTIVATION_HANDLER);
@@ -543,6 +581,7 @@ describe('instance-owned Plugin loader supervision', () => {
             const result = await loader.loadNodePlugin(pluginDir, {
                 manifestRegistry: createManifestRegistry(),
                 handlerRegistry: engine.handlerRegistry,
+                contractRegistry: engine.contractRegistry,
                 kernel: {
                     capabilityBroker: {
                         request: () => Either.right(undefined),
@@ -556,7 +595,7 @@ describe('instance-owned Plugin loader supervision', () => {
 
             const store = createWorkflowStore(
                 join(tempDir, 'workflows'),
-                workflowTopologyOptions(engine.handlerRegistry),
+                workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
             );
             const pipeline: CompiledPipeline = {
                 id: 'pipeline-activation-failure',
@@ -621,6 +660,7 @@ describe('instance-owned Plugin loader supervision', () => {
             const result = await loader.loadNodePlugin(pluginDir, {
                 manifestRegistry: createManifestRegistry(),
                 handlerRegistry: engine.handlerRegistry,
+                contractRegistry: engine.contractRegistry,
                 kernel: {
                     capabilityBroker: {
                         request: () => Either.right(undefined),
@@ -634,7 +674,7 @@ describe('instance-owned Plugin loader supervision', () => {
 
             const store = createWorkflowStore(
                 join(tempDir, 'workflows'),
-                workflowTopologyOptions(engine.handlerRegistry),
+                workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
             );
             const createPipeline = (
                 pipelineId: string,

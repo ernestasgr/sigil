@@ -297,6 +297,17 @@ export async function executeValidatedWorkflow(
             const nodeTelemetry = telemetry.forNode(nodeIdentity);
             const span = nodeTelemetry.start();
             try {
+                const contract = resolveNodeContract(node, contractRegistry);
+                if (contract.status === 'unavailable') {
+                    throw new Error(
+                        `Node Contract ${formatNodeIdentity(contract.identity)} is unavailable; load the Plugin that declares it before execution.`,
+                    );
+                }
+                if (contract.status === 'invalid') {
+                    throw new Error(
+                        `Node Contract ${formatNodeIdentity(contract.identity)} is invalid: ${contract.issues.map((issue) => issue.message).join('; ')}`,
+                    );
+                }
                 const handler = handlerRegistry.get(node.type);
                 if (Option.isNone(handler)) {
                     throw new Error(`No handler registered for node type "${node.type}"`);
@@ -305,12 +316,6 @@ export async function executeValidatedWorkflow(
                     { node, ctx },
                     { ...commonDeps, bus: nodeTelemetry.bus },
                 );
-                const contract = resolveNodeContract(node, contractRegistry);
-                if (contract.status === 'invalid') {
-                    throw new Error(
-                        `Node Contract ${formatNodeIdentity(contract.identity)} is invalid: ${contract.issues.map((issue) => issue.message).join('; ')}`,
-                    );
-                }
                 if (
                     contract.status === 'available' &&
                     contract.outputPorts !== 'dynamic' &&

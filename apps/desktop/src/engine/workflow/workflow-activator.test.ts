@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
+import { pluginNodeIdentity, registerSerializableNodeContract } from '@sigil/schema/node-contract';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
@@ -34,10 +35,25 @@ describe('WorkflowActivator lifecycle', () => {
                 }),
             };
             engine.handlerRegistry.register('test-trigger', triggerHandler);
+            registerSerializableNodeContract(engine.contractRegistry, {
+                identity: pluginNodeIdentity('com.sigil.test-trigger', 'test-trigger'),
+                version: 1,
+                role: 'trigger',
+                defaultConfig: {},
+                outputPorts: {
+                    kind: 'fixed',
+                    ports: [{ id: 'out', label: 'Output' }],
+                },
+                display: {
+                    label: 'Test Trigger',
+                    description: 'Test trigger for workflow activator coverage.',
+                    category: 'trigger',
+                },
+            });
 
             const store = createWorkflowStore(
                 storageDir,
-                workflowTopologyOptions(engine.handlerRegistry),
+                workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
             );
             const createPipeline = (pipelineId: string, workflowId: string): CompiledPipeline => ({
                 id: pipelineId,
