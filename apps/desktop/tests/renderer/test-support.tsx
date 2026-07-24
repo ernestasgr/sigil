@@ -33,6 +33,7 @@ export function createMockSigil(): SigilAdapter {
         setPermissionOverride: vi.fn(async () => ({
             ok: true as const,
             grantedPermissions: [],
+            cancelledRunIds: [],
         })),
         readProperties: vi.fn(async () => ({ properties: {} })),
         saveProperties: vi.fn(async () => ({

@@ -1,14 +1,18 @@
+import { isPluginNode } from '@sigil/schema/nodes';
+import type { ExecutableWorkflow } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
 
 import type { WorkflowActivationState } from '../../shared/workflow.js';
 import type { Engine } from '../core/engine.js';
+import type { PermissionTransitionRunReconciler } from '../core/permission-transition.js';
 import { createRunTelemetry } from '../events/telemetry.js';
 import type { NodeHandlerRegistry } from '../execution/node-registry.js';
 import { isTriggerHandler } from '../node-handlers/types.js';
 import { acceptWorkflow } from './workflow-acceptance.js';
 import {
     createWorkflowRunSupervisor,
+    WORKFLOW_RUN_PERMISSION_REVOKED_REASON,
     type WorkflowRunLifecycleEvent,
     type WorkflowRunPolicy,
     type WorkflowRunSupervisor,
@@ -37,6 +41,7 @@ interface ActiveActivation {
     readonly onEvent: WorkflowEventCallback;
     readonly teardown: () => void;
     readonly supervisor: WorkflowRunSupervisor;
+    readonly executable: ExecutableWorkflow;
 }
 
 const deactivationHooks = new WeakMap<WorkflowEventCallback, (reason?: string) => void>();
@@ -65,7 +70,11 @@ export function createWorkflowActivator(
     const active = new Map<string, ActiveActivation>();
     const stoppedRuns = new Map<
         string,
-        readonly { readonly supervisor: WorkflowRunSupervisor; readonly promise: Promise<void> }[]
+        readonly {
+            readonly supervisor: WorkflowRunSupervisor;
+            readonly promise: Promise<void>;
+            readonly executable: ExecutableWorkflow;
+        }[]
     >();
     let nextToken = 0;
 
@@ -169,15 +178,18 @@ export function createWorkflowActivator(
     function rememberStoppedRuns(
         workflowId: string,
         supervisor: WorkflowRunSupervisor,
-        pending: Promise<void>,
+        executable: ExecutableWorkflow,
+        pending: Promise<readonly string[]>,
     ): void {
-        const guarded = pending.catch((error: unknown) => {
-            emitDiagnostic(
-                `[activator] run supervisor shutdown failed for ${workflowId}: ${errorMessage(error)}`,
-                'workflow_run',
-            );
-        });
-        const entry = { supervisor, promise: guarded };
+        const guarded = pending
+            .then(() => undefined)
+            .catch((error: unknown) => {
+                emitDiagnostic(
+                    `[activator] run supervisor shutdown failed for ${workflowId}: ${errorMessage(error)}`,
+                    'workflow_run',
+                );
+            });
+        const entry = { supervisor, promise: guarded, executable };
         stoppedRuns.set(workflowId, [...(stoppedRuns.get(workflowId) ?? []), entry]);
         void guarded.then(() => {
             const current = stoppedRuns.get(workflowId);
@@ -194,12 +206,62 @@ export function createWorkflowActivator(
     function stopRuns(
         workflowId: string,
         supervisor: WorkflowRunSupervisor,
+        executable: ExecutableWorkflow,
         reason: string,
-    ): Promise<void> {
+    ): Promise<readonly string[]> {
         const pending = supervisor.cancel(reason);
-        rememberStoppedRuns(workflowId, supervisor, pending);
+        rememberStoppedRuns(workflowId, supervisor, executable, pending);
         return pending;
     }
+
+    const reconcilePermissionChange: PermissionTransitionRunReconciler = async (
+        pluginId,
+        manifestPermissions,
+        effectivePermissions,
+    ): Promise<readonly string[]> => {
+        if (manifestPermissions.every((permission) => effectivePermissions.includes(permission))) {
+            return [];
+        }
+
+        const supervisors = new Map<
+            WorkflowRunSupervisor,
+            { readonly workflowId: string; readonly executable: ExecutableWorkflow }
+        >();
+        for (const [workflowId, activation] of active) {
+            supervisors.set(activation.supervisor, {
+                workflowId,
+                executable: activation.executable,
+            });
+        }
+        for (const [workflowId, entries] of stoppedRuns) {
+            for (const entry of entries) {
+                supervisors.set(entry.supervisor, {
+                    workflowId,
+                    executable: entry.executable,
+                });
+            }
+        }
+
+        const affected = [...supervisors.entries()].filter(([, { executable }]) =>
+            executable.pipeline.nodes.some(
+                (node) => isPluginNode(node) && node.pluginId === pluginId,
+            ),
+        );
+        const cancelled = await Promise.all(
+            affected.map(([supervisor, { workflowId, executable }]) =>
+                stopRuns(
+                    workflowId,
+                    supervisor,
+                    executable,
+                    WORKFLOW_RUN_PERMISSION_REVOKED_REASON,
+                ),
+            ),
+        );
+        return [...new Set(cancelled.flat())];
+    };
+
+    const unregisterPermissionTransitionReconciler =
+        engine.registerPermissionTransitionReconciler(reconcilePermissionChange);
 
     function assertNever(value: never): never {
         throw new Error(`Unhandled Workflow run lifecycle event: ${JSON.stringify(value)}`);
@@ -311,7 +373,12 @@ export function createWorkflowActivator(
 
                 active.delete(workflowId);
                 deactivationHooks.delete(onEvent);
-                stopRuns(workflowId, current.supervisor, reason ?? 'Trigger activation failed.');
+                stopRuns(
+                    workflowId,
+                    current.supervisor,
+                    current.executable,
+                    reason ?? 'Trigger activation failed.',
+                );
                 teardownSafely(workflowId, data.value.name, current.teardown);
                 try {
                     recordFailure(
@@ -332,7 +399,7 @@ export function createWorkflowActivator(
             let teardown: (() => void) | undefined;
             try {
                 teardown = handler.value.activate(trigger.config, onEvent);
-                active.set(workflowId, { token, onEvent, teardown, supervisor });
+                active.set(workflowId, { token, onEvent, teardown, supervisor, executable });
                 setActivation(workflowId, { kind: 'active' });
                 emitDiagnostic(
                     `[activator] trigger "${trigger.type}" active for "${data.value.name}" (${workflowId})`,
@@ -343,7 +410,7 @@ export function createWorkflowActivator(
                 const current = active.get(workflowId);
                 active.delete(workflowId);
                 deactivationHooks.delete(onEvent);
-                stopRuns(workflowId, supervisor, 'Trigger activation failed.');
+                stopRuns(workflowId, supervisor, executable, 'Trigger activation failed.');
                 if (current) {
                     teardownSafely(workflowId, data.value.name, current.teardown);
                 } else if (teardown) {
@@ -371,7 +438,12 @@ export function createWorkflowActivator(
             if (activation) {
                 active.delete(workflowId);
                 deactivationHooks.delete(activation.onEvent);
-                stopRuns(workflowId, activation.supervisor, 'Workflow disabled.');
+                stopRuns(
+                    workflowId,
+                    activation.supervisor,
+                    activation.executable,
+                    'Workflow disabled.',
+                );
                 teardownSafely(workflowId, workflowId, activation.teardown);
                 setActivation(workflowId, disabledState());
                 return true;
@@ -429,11 +501,17 @@ export function createWorkflowActivator(
                 if (activation) {
                     active.delete(workflowId);
                     deactivationHooks.delete(activation.onEvent);
-                    stopRuns(workflowId, activation.supervisor, 'Engine shutting down.');
+                    stopRuns(
+                        workflowId,
+                        activation.supervisor,
+                        activation.executable,
+                        'Engine shutting down.',
+                    );
                     teardownSafely(workflowId, workflowId, activation.teardown);
                 }
                 setActivation(workflowId, disabledState());
             }
+            unregisterPermissionTransitionReconciler();
         },
     };
 }

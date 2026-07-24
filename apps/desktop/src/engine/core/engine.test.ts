@@ -144,9 +144,13 @@ describe('createEngine', () => {
             ];
 
             for (const selection of selections) {
-                const result = engine.applyPermissionOverride(pluginId, selection.requested);
+                const result = await engine.applyPermissionOverride(pluginId, selection.requested);
 
-                expect(result).toEqual({ ok: true, grantedPermissions: selection.effective });
+                expect(result).toEqual({
+                    ok: true,
+                    grantedPermissions: selection.effective,
+                    cancelledRunIds: [],
+                });
                 expect(engine.permissionOverrides.get(pluginId)).toEqual(selection.requested);
                 expect(JSON.parse(readFileSync(overridesPath, 'utf8'))).toEqual({
                     [pluginId]: selection.requested,
@@ -204,11 +208,15 @@ describe('createEngine', () => {
                 engine.fileWatcherManager.getSubscriberIdsByOwner('com.sigil.file-watcher'),
             ).toHaveLength(1);
 
-            const result = engine.applyPermissionOverride('com.sigil.file-watcher', [
+            const result = await engine.applyPermissionOverride('com.sigil.file-watcher', [
                 'state.write',
             ]);
 
-            expect(result).toEqual({ ok: true, grantedPermissions: ['state.write'] });
+            expect(result).toEqual({
+                ok: true,
+                grantedPermissions: ['state.write'],
+                cancelledRunIds: [],
+            });
             expect(engine.fileWatcherManager.getSubscriberCount()).toBe(1);
             expect(
                 engine.fileWatcherManager.getSubscriberIdsByOwner('com.sigil.file-watcher'),
@@ -229,10 +237,14 @@ describe('createEngine', () => {
                 'after-revocation.txt',
             );
 
-            const repeated = engine.applyPermissionOverride('com.sigil.file-watcher', [
+            const repeated = await engine.applyPermissionOverride('com.sigil.file-watcher', [
                 'state.write',
             ]);
-            expect(repeated).toEqual({ ok: true, grantedPermissions: ['state.write'] });
+            expect(repeated).toEqual({
+                ok: true,
+                grantedPermissions: ['state.write'],
+                cancelledRunIds: [],
+            });
             expect(engine.fileWatcherManager.getSubscriberCount()).toBe(1);
         } finally {
             teardown?.();

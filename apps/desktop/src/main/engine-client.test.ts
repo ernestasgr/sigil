@@ -217,8 +217,13 @@ describe('permission override outcome mapping', () => {
                 correlationId: 'corr-permission-success',
                 ok: true,
                 grantedPermissions: ['filesystem.read'],
+                cancelledRunIds: ['run-active', 'run-queued'],
             }),
-        ).toEqual({ ok: true, grantedPermissions: ['filesystem.read'] });
+        ).toEqual({
+            ok: true,
+            grantedPermissions: ['filesystem.read'],
+            cancelledRunIds: ['run-active', 'run-queued'],
+        });
     });
 
     it('keeps an unknown Plugin rejection typed and diagnostic-free', () => {

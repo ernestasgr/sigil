@@ -612,6 +612,15 @@ describe('createInMemoryWorkflowStateStore — listKeys / setKey / deleteKey', (
         expect(store.listKeys('wf-a')).toEqual([]);
     });
 
+    it('keeps pending state unchanged when flushAll is called', () => {
+        const store = createInMemoryWorkflowStateStore();
+        store.setKey('wf-a', 'k', 'v');
+
+        store.flushAll();
+
+        expect(store.listKeys('wf-a')).toEqual([{ key: 'k', type: 'string', value: 'v' }]);
+    });
+
     it('rejects invalid in-memory primitives at the entry boundary', () => {
         const store = createInMemoryWorkflowStateStore();
         store.setKey('wf-a', 'invalid', {} as unknown as WorkflowStatePrimitive);

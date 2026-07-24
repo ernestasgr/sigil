@@ -46,6 +46,7 @@ export type PersistenceWriteOutcome = z.infer<typeof PersistenceWriteOutcomeSche
 export const PermissionOverrideSuccessFieldsSchema = z.object({
     ok: z.literal(true),
     grantedPermissions: z.array(CapabilitySchema).readonly(),
+    cancelledRunIds: z.array(z.string().min(1)).readonly(),
 });
 
 export const PermissionOverrideDomainFailureFieldsSchema = z.object({

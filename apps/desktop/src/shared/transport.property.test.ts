@@ -108,11 +108,12 @@ const responseArbitrary = fc.oneof(
             { maxLength: 4 },
         ),
     }),
-    fc.constant({
-        type: EngineChannel.SetPermissionOverrideResult,
-        correlationId: 'corr-permission-success',
-        ok: true as const,
-        grantedPermissions: ['filesystem.read'] as const,
+    fc.record({
+        type: fc.constant(EngineChannel.SetPermissionOverrideResult),
+        correlationId: fc.constant('corr-permission-success'),
+        ok: fc.constant(true as const),
+        grantedPermissions: fc.constant(['filesystem.read'] as const),
+        cancelledRunIds: fc.array(fc.string({ minLength: 1, maxLength: 32 }), { maxLength: 4 }),
     }),
     fc.record({
         type: fc.constant(EngineChannel.SavePropertiesResult),

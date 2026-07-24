@@ -134,6 +134,7 @@ describe('Settings Plugin Permissions', () => {
             | {
                   readonly ok: true;
                   readonly grantedPermissions: readonly ['filesystem.read'];
+                  readonly cancelledRunIds: readonly string[];
               }
             | {
                   readonly ok: false;
@@ -181,6 +182,7 @@ describe('Settings Plugin Permissions', () => {
         vi.mocked(sigil.setPermissionOverride).mockResolvedValue({
             ok: true,
             grantedPermissions: [],
+            cancelledRunIds: [],
         });
 
         render(withSigil(<SettingsSection />, sigil));

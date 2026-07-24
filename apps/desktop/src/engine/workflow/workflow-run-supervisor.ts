@@ -12,6 +12,8 @@ export const DEFAULT_WORKFLOW_RUN_POLICY = {
     overflow: 'drop-newest',
 } as const;
 
+export const WORKFLOW_RUN_PERMISSION_REVOKED_REASON = 'permission_revoked' as const;
+
 export type WorkflowRunOutcome = 'succeeded' | 'failed' | 'cancelled';
 
 export interface WorkflowRunExecutionResult {
@@ -89,7 +91,7 @@ export interface WorkflowRunSupervisor {
     readonly policy: WorkflowRunPolicy;
     readonly submit: (context: WorkflowContext) => WorkflowRunAdmission;
     /** Stop accepting work, cancel queued work, abort active work, and await it. */
-    readonly cancel: (reason?: string) => Promise<void>;
+    readonly cancel: (reason?: string) => Promise<readonly string[]>;
     /** Stop accepting work but finish the already-admitted queue. */
     readonly drain: () => Promise<void>;
     readonly waitForIdle: () => Promise<void>;
@@ -312,12 +314,14 @@ export function createWorkflowRunSupervisor(
         return admission;
     }
 
-    function cancel(reason = 'Workflow run supervisor stopped.'): Promise<void> {
+    function cancel(reason = 'Workflow run supervisor stopped.'): Promise<readonly string[]> {
         accepting = false;
         draining = false;
 
+        const cancelledRunIds: string[] = [];
         const cancelled = queue.splice(0);
         for (const pending of cancelled) {
+            cancelledRunIds.push(pending.run.runId);
             emit({
                 kind: 'cancelled',
                 run: toIdentity(pending.run),
@@ -329,6 +333,7 @@ export function createWorkflowRunSupervisor(
 
         for (const pending of active.values()) {
             if (pending.controller.signal.aborted) continue;
+            cancelledRunIds.push(pending.run.runId);
             emit({
                 kind: 'cancelled',
                 run: toIdentity(pending.run),
@@ -340,7 +345,7 @@ export function createWorkflowRunSupervisor(
         }
 
         resolveIdleWaiters();
-        return waitForIdle();
+        return waitForIdle().then(() => cancelledRunIds);
     }
 
     function drain(): Promise<void> {

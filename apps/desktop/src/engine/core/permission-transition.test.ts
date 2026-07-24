@@ -31,7 +31,7 @@ describe('applyPermissionOverride', () => {
         rmSync(tempDir, { recursive: true, force: true });
     });
 
-    it('keeps the persisted selection, Broker view, worker view, and result aligned across repeated sets', () => {
+    it('keeps the persisted selection, Broker view, worker view, and result aligned across repeated sets', async () => {
         const overridesPath = join(tempDir, 'permission-overrides.json');
         const registry = createManifestRegistry();
         expect(Either.isRight(registry.register(manifest))).toBe(true);
@@ -62,7 +62,7 @@ describe('applyPermissionOverride', () => {
         ];
 
         for (const selection of selections) {
-            const result = applyPermissionOverride(
+            const result = await applyPermissionOverride(
                 {
                     registry,
                     permissionOverrides,
@@ -73,7 +73,11 @@ describe('applyPermissionOverride', () => {
                 selection.requested,
             );
 
-            expect(result).toEqual({ ok: true, grantedPermissions: selection.effective });
+            expect(result).toEqual({
+                ok: true,
+                grantedPermissions: selection.effective,
+                cancelledRunIds: [],
+            });
             expect(permissionOverrides.get(pluginId)).toEqual(selection.requested);
             expect(JSON.parse(readFileSync(overridesPath, 'utf8'))).toEqual({
                 [pluginId]: selection.requested,
@@ -88,7 +92,135 @@ describe('applyPermissionOverride', () => {
         }
     });
 
-    it('preserves every prior view when the atomic write fails', () => {
+    it('waits for dependent run supervisors before synchronizing the worker and returns their IDs', async () => {
+        const registry = createManifestRegistry();
+        expect(Either.isRight(registry.register(manifest))).toBe(true);
+        const permissionOverrides = createPermissionOverrideStore();
+        const revokeFileWatcherSubscriptions = vi.fn();
+        const updatePluginPermissions = vi.fn();
+        let resolveReconciliation: (runIds: readonly string[]) => void = () => undefined;
+        const reconciliation = new Promise<readonly string[]>((resolve) => {
+            resolveReconciliation = resolve;
+        });
+
+        const transition = applyPermissionOverride(
+            {
+                registry,
+                permissionOverrides,
+                reconcileActiveWorkflowRuns: async () => reconciliation,
+                revokeFileWatcherSubscriptions,
+                updatePluginPermissions,
+            },
+            pluginId,
+            [],
+        );
+
+        expect(updatePluginPermissions).not.toHaveBeenCalled();
+        resolveReconciliation(['run-active', 'run-queued']);
+
+        await expect(transition).resolves.toEqual({
+            ok: true,
+            grantedPermissions: [],
+            cancelledRunIds: ['run-active', 'run-queued'],
+        });
+        expect(updatePluginPermissions).toHaveBeenCalledWith(pluginId, []);
+    });
+
+    it('does not let an older reconciliation re-grant permissions from a newer override', async () => {
+        const registry = createManifestRegistry();
+        expect(Either.isRight(registry.register(manifest))).toBe(true);
+        const permissionOverrides = createPermissionOverrideStore();
+        const revokeFileWatcherSubscriptions = vi.fn();
+        const updatePluginPermissions = vi.fn();
+        const reconciliationResolvers: Array<(runIds: readonly string[]) => void> = [];
+        const reconcileActiveWorkflowRuns = vi.fn(
+            () =>
+                new Promise<readonly string[]>((resolve) => {
+                    reconciliationResolvers.push(resolve);
+                }),
+        );
+
+        const olderTransition = applyPermissionOverride(
+            {
+                registry,
+                permissionOverrides,
+                reconcileActiveWorkflowRuns,
+                revokeFileWatcherSubscriptions,
+                updatePluginPermissions,
+            },
+            pluginId,
+            ['state.write'],
+        );
+        const newerTransition = applyPermissionOverride(
+            {
+                registry,
+                permissionOverrides,
+                reconcileActiveWorkflowRuns,
+                revokeFileWatcherSubscriptions,
+                updatePluginPermissions,
+            },
+            pluginId,
+            [],
+        );
+
+        expect(reconcileActiveWorkflowRuns).toHaveBeenCalledTimes(2);
+        reconciliationResolvers[1]?.([]);
+        await expect(newerTransition).resolves.toEqual({
+            ok: true,
+            grantedPermissions: [],
+            cancelledRunIds: [],
+        });
+        expect(updatePluginPermissions).toHaveBeenLastCalledWith(pluginId, []);
+
+        reconciliationResolvers[0]?.([]);
+        await expect(olderTransition).resolves.toEqual({
+            ok: true,
+            grantedPermissions: ['state.write'],
+            cancelledRunIds: [],
+        });
+        expect(permissionOverrides.get(pluginId)).toEqual([]);
+        expect(updatePluginPermissions).toHaveBeenCalledTimes(1);
+        expect(updatePluginPermissions).toHaveBeenLastCalledWith(pluginId, []);
+    });
+
+    it('synchronizes the worker when active run reconciliation fails', async () => {
+        const registry = createManifestRegistry();
+        expect(Either.isRight(registry.register(manifest))).toBe(true);
+        const permissionOverrides = createPermissionOverrideStore();
+        const revokeFileWatcherSubscriptions = vi.fn();
+        const updatePluginPermissions = vi.fn();
+        const reconciliationError = new Error('supervisor shutdown failed');
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        try {
+            const result = await applyPermissionOverride(
+                {
+                    registry,
+                    permissionOverrides,
+                    reconcileActiveWorkflowRuns: vi.fn().mockRejectedValue(reconciliationError),
+                    revokeFileWatcherSubscriptions,
+                    updatePluginPermissions,
+                },
+                pluginId,
+                [],
+            );
+
+            expect(result).toEqual({
+                ok: true,
+                grantedPermissions: [],
+                cancelledRunIds: [],
+            });
+            expect(permissionOverrides.get(pluginId)).toEqual([]);
+            expect(updatePluginPermissions).toHaveBeenCalledWith(pluginId, []);
+            expect(consoleError).toHaveBeenCalledWith(
+                `[permission-transition] Active Workflow reconciliation failed for Plugin "${pluginId}": supervisor shutdown failed`,
+            );
+        } finally {
+            consoleError.mockRestore();
+        }
+    });
+
+    it('preserves every prior view when the atomic write fails', async () => {
         const overridesPath = join(tempDir, 'permission-overrides.json');
         const initialOverrides = createPermissionOverrideStore(overridesPath);
         expect(Either.isRight(initialOverrides.set(pluginId, ['filesystem.read']))).toBe(true);
@@ -111,7 +243,7 @@ describe('applyPermissionOverride', () => {
         const revokeFileWatcherSubscriptions = vi.fn();
         const updatePluginPermissions = vi.fn();
 
-        const result = applyPermissionOverride(
+        const result = await applyPermissionOverride(
             {
                 registry,
                 permissionOverrides,
@@ -151,7 +283,7 @@ describe('applyPermissionOverride', () => {
         expect(updatePluginPermissions).not.toHaveBeenCalled();
     });
 
-    it('revokes owned File Watcher subscriptions before notifying a worker about read removal', () => {
+    it('revokes owned File Watcher subscriptions before notifying a worker about read removal', async () => {
         const registry = createManifestRegistry();
         expect(Either.isRight(registry.register(manifest))).toBe(true);
         const permissionOverrides = createPermissionOverrideStore();
@@ -185,7 +317,7 @@ describe('applyPermissionOverride', () => {
             'com.sigil.other-plugin',
         );
 
-        const result = applyPermissionOverride(
+        const result = await applyPermissionOverride(
             {
                 registry,
                 permissionOverrides,
@@ -203,7 +335,11 @@ describe('applyPermissionOverride', () => {
             ['state.write'],
         );
 
-        expect(result).toEqual({ ok: true, grantedPermissions: ['state.write'] });
+        expect(result).toEqual({
+            ok: true,
+            grantedPermissions: ['state.write'],
+            cancelledRunIds: [],
+        });
         expect(order).toEqual(['revoke', 'update']);
         expect(fileWatcherManager.getSubscriberIdsByOwner(pluginId)).toEqual([]);
         expect(fileWatcherManager.getSubscriberIdsByOwner('com.sigil.other-plugin')).toEqual([
@@ -212,7 +348,7 @@ describe('applyPermissionOverride', () => {
         fileWatcherManager.dispose();
     });
 
-    it('preserves owned File Watcher subscriptions while filesystem.read remains effective', () => {
+    it('preserves owned File Watcher subscriptions while filesystem.read remains effective', async () => {
         const registry = createManifestRegistry();
         expect(Either.isRight(registry.register(manifest))).toBe(true);
         const permissionOverrides = createPermissionOverrideStore();
@@ -234,7 +370,7 @@ describe('applyPermissionOverride', () => {
             pluginId,
         );
 
-        const result = applyPermissionOverride(
+        const result = await applyPermissionOverride(
             {
                 registry,
                 permissionOverrides,
@@ -245,7 +381,11 @@ describe('applyPermissionOverride', () => {
             ['filesystem.read'],
         );
 
-        expect(result).toEqual({ ok: true, grantedPermissions: ['filesystem.read'] });
+        expect(result).toEqual({
+            ok: true,
+            grantedPermissions: ['filesystem.read'],
+            cancelledRunIds: [],
+        });
         expect(revokeFileWatcherSubscriptions).not.toHaveBeenCalled();
         expect(fileWatcherManager.getSubscriberIdsByOwner(pluginId)).toEqual([
             'preserved-subscription',

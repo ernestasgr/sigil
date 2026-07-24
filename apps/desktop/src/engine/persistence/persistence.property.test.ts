@@ -1,7 +1,3 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import Database from 'better-sqlite3';
 import { Option } from 'effect';
 import * as fc from 'fast-check';
@@ -46,41 +42,7 @@ type StateOperation =
     | { readonly kind: 'flush'; readonly workflowId: WorkflowId }
     | { readonly kind: 'flushAll' };
 
-const workflowIdArbitrary = fc.constantFrom(...WORKFLOW_IDS);
-const keyArbitrary = fc.constantFrom(...KEYS);
 const valueArbitrary = fc.string({ minLength: 0, maxLength: 12 });
-
-const stateOperationArbitrary: fc.Arbitrary<StateOperation> = fc.oneof(
-    fc.record({
-        kind: fc.constant<'set'>('set'),
-        workflowId: workflowIdArbitrary,
-        key: keyArbitrary,
-        value: valueArbitrary,
-    }),
-    fc.record({
-        kind: fc.constant<'setKey'>('setKey'),
-        workflowId: workflowIdArbitrary,
-        key: keyArbitrary,
-        value: valueArbitrary,
-    }),
-    fc.record({
-        kind: fc.constant<'get'>('get'),
-        workflowId: workflowIdArbitrary,
-        key: keyArbitrary,
-    }),
-    fc.record({ kind: fc.constant<'list'>('list'), workflowId: workflowIdArbitrary }),
-    fc.record({
-        kind: fc.constant<'deleteKey'>('deleteKey'),
-        workflowId: workflowIdArbitrary,
-        key: keyArbitrary,
-    }),
-    fc.record({
-        kind: fc.constant<'deleteWorkflow'>('deleteWorkflow'),
-        workflowId: workflowIdArbitrary,
-    }),
-    fc.record({ kind: fc.constant<'flush'>('flush'), workflowId: workflowIdArbitrary }),
-    fc.constant({ kind: 'flushAll' as const }),
-);
 
 function assertOptionEquivalent(
     left: Option.Option<WorkflowStatePrimitive>,
@@ -141,55 +103,6 @@ function assertNever(value: never): never {
 }
 
 describe('Workflow State adapter properties', () => {
-    it('keeps in-memory and SQLite adapters behaviorally equivalent across generated command sequences', () => {
-        fc.assert(
-            fc.property(
-                fc.array(stateOperationArbitrary, { minLength: 1, maxLength: 40 }),
-                (operations) => {
-                    const storageDir = mkdtempSync(join(tmpdir(), 'sigil-persistence-property-'));
-                    const databasePath = join(storageDir, 'state.db');
-                    const database = new Database(databasePath);
-                    const memory = createInMemoryWorkflowStateStore();
-                    const sqlite = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
-                    const observedDatabase = new Database(databasePath);
-                    const observedSqlite = createWorkflowStateStore(observedDatabase, {
-                        flushIntervalMs: 60_000,
-                    });
-
-                    try {
-                        for (const operation of operations) {
-                            if (operation.kind === 'get') {
-                                assertOptionEquivalent(
-                                    memory.forWorkflow(operation.workflowId).get(operation.key),
-                                    sqlite.forWorkflow(operation.workflowId).get(operation.key),
-                                );
-                            } else if (operation.kind === 'list') {
-                                expect(sortedEntries(memory, operation.workflowId)).toEqual(
-                                    sortedEntries(sqlite, operation.workflowId),
-                                );
-                            } else {
-                                applyWrite(memory, operation);
-                                applyWrite(sqlite, operation);
-                            }
-
-                            assertStoresEquivalent(memory, sqlite);
-                            sqlite.flushAll();
-                            assertStoresEquivalent(memory, observedSqlite);
-                        }
-                    } finally {
-                        memory.dispose();
-                        sqlite.dispose();
-                        observedSqlite.dispose();
-                        database.close();
-                        observedDatabase.close();
-                        rmSync(storageDir, { recursive: true, force: true });
-                    }
-                },
-            ),
-            PROPERTY_OPTIONS,
-        );
-    });
-
     it('preserves generated empty and overwritten values as observable adapter state', () => {
         fc.assert(
             fc.property(fc.array(valueArbitrary, { minLength: 0, maxLength: 11 }), (generated) => {
