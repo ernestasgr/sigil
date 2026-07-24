@@ -98,7 +98,7 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
         properties,
     }));
     const applyProperties = vi.fn(() => ({ applied: {}, restartRequired: [] as string[] }));
-    const applyPermissionOverride = vi.fn().mockReturnValue({
+    const applyPermissionOverride = vi.fn().mockResolvedValue({
         ok: true as const,
         grantedPermissions: [] as const,
         cancelledRunIds: [] as const,
@@ -789,10 +789,10 @@ describe('dispatch', () => {
 
     it('returns the Engine-owned effective view instead of echoing the raw request', async () => {
         const { subsystems, engine } = createFakeSubsystems();
-        engine.applyPermissionOverride.mockReturnValue({
+        engine.applyPermissionOverride.mockResolvedValue({
             ok: true,
             grantedPermissions: ['filesystem.read'],
-            cancelledRunIds: [],
+            cancelledRunIds: ['run-active', 'run-queued'],
         });
 
         await dispatch(
@@ -815,13 +815,13 @@ describe('dispatch', () => {
             correlationId: 'corr-bounded-update',
             ok: true,
             grantedPermissions: ['filesystem.read'],
-            cancelledRunIds: [],
+            cancelledRunIds: ['run-active', 'run-queued'],
         });
     });
 
     it('passes an Engine-owned unknown Plugin rejection through unchanged', async () => {
         const { subsystems, postMessage, engine } = createFakeSubsystems();
-        engine.applyPermissionOverride.mockReturnValue({
+        engine.applyPermissionOverride.mockResolvedValue({
             ok: false,
             kind: 'domain',
             code: 'unknown_plugin',
@@ -863,7 +863,7 @@ describe('dispatch', () => {
             path: 'C:/permission-overrides.json',
             message: 'disk full',
         } as const;
-        engine.applyPermissionOverride.mockReturnValue({
+        engine.applyPermissionOverride.mockResolvedValue({
             ok: false,
             kind: 'persistence',
             error: '[persistence:write] C:/permission-overrides.json: disk full',

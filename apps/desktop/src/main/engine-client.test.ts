@@ -217,12 +217,12 @@ describe('permission override outcome mapping', () => {
                 correlationId: 'corr-permission-success',
                 ok: true,
                 grantedPermissions: ['filesystem.read'],
-                cancelledRunIds: [],
+                cancelledRunIds: ['run-active', 'run-queued'],
             }),
         ).toEqual({
             ok: true,
             grantedPermissions: ['filesystem.read'],
-            cancelledRunIds: [],
+            cancelledRunIds: ['run-active', 'run-queued'],
         });
     });
 

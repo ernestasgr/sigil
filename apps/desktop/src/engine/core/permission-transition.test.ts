@@ -126,6 +126,100 @@ describe('applyPermissionOverride', () => {
         expect(updatePluginPermissions).toHaveBeenCalledWith(pluginId, []);
     });
 
+    it('does not let an older reconciliation re-grant permissions from a newer override', async () => {
+        const registry = createManifestRegistry();
+        expect(Either.isRight(registry.register(manifest))).toBe(true);
+        const permissionOverrides = createPermissionOverrideStore();
+        const revokeFileWatcherSubscriptions = vi.fn();
+        const updatePluginPermissions = vi.fn();
+        const reconciliationResolvers: Array<(runIds: readonly string[]) => void> = [];
+        const reconcileActiveWorkflowRuns = vi.fn(
+            () =>
+                new Promise<readonly string[]>((resolve) => {
+                    reconciliationResolvers.push(resolve);
+                }),
+        );
+
+        const olderTransition = applyPermissionOverride(
+            {
+                registry,
+                permissionOverrides,
+                reconcileActiveWorkflowRuns,
+                revokeFileWatcherSubscriptions,
+                updatePluginPermissions,
+            },
+            pluginId,
+            ['state.write'],
+        );
+        const newerTransition = applyPermissionOverride(
+            {
+                registry,
+                permissionOverrides,
+                reconcileActiveWorkflowRuns,
+                revokeFileWatcherSubscriptions,
+                updatePluginPermissions,
+            },
+            pluginId,
+            [],
+        );
+
+        expect(reconcileActiveWorkflowRuns).toHaveBeenCalledTimes(2);
+        reconciliationResolvers[1]?.([]);
+        await expect(newerTransition).resolves.toEqual({
+            ok: true,
+            grantedPermissions: [],
+            cancelledRunIds: [],
+        });
+        expect(updatePluginPermissions).toHaveBeenLastCalledWith(pluginId, []);
+
+        reconciliationResolvers[0]?.([]);
+        await expect(olderTransition).resolves.toEqual({
+            ok: true,
+            grantedPermissions: ['state.write'],
+            cancelledRunIds: [],
+        });
+        expect(permissionOverrides.get(pluginId)).toEqual([]);
+        expect(updatePluginPermissions).toHaveBeenCalledTimes(1);
+        expect(updatePluginPermissions).toHaveBeenLastCalledWith(pluginId, []);
+    });
+
+    it('synchronizes the worker when active run reconciliation fails', async () => {
+        const registry = createManifestRegistry();
+        expect(Either.isRight(registry.register(manifest))).toBe(true);
+        const permissionOverrides = createPermissionOverrideStore();
+        const revokeFileWatcherSubscriptions = vi.fn();
+        const updatePluginPermissions = vi.fn();
+        const reconciliationError = new Error('supervisor shutdown failed');
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        try {
+            const result = await applyPermissionOverride(
+                {
+                    registry,
+                    permissionOverrides,
+                    reconcileActiveWorkflowRuns: vi.fn().mockRejectedValue(reconciliationError),
+                    revokeFileWatcherSubscriptions,
+                    updatePluginPermissions,
+                },
+                pluginId,
+                [],
+            );
+
+            expect(result).toEqual({
+                ok: true,
+                grantedPermissions: [],
+                cancelledRunIds: [],
+            });
+            expect(permissionOverrides.get(pluginId)).toEqual([]);
+            expect(updatePluginPermissions).toHaveBeenCalledWith(pluginId, []);
+            expect(consoleError).toHaveBeenCalledWith(
+                `[permission-transition] Active Workflow reconciliation failed for Plugin "${pluginId}": supervisor shutdown failed`,
+            );
+        } finally {
+            consoleError.mockRestore();
+        }
+    });
+
     it('preserves every prior view when the atomic write fails', async () => {
         const overridesPath = join(tempDir, 'permission-overrides.json');
         const initialOverrides = createPermissionOverrideStore(overridesPath);
