@@ -215,7 +215,7 @@ describe('EventPayloadSchemaRegistry', () => {
                 previous: ['filesystem.read'],
                 next: ['state.write'],
                 actor: 'operator',
-                cancelledRuns: [],
+                cancelledRuns: ['run-1'],
             },
         ],
         ['engine.diagnostic', { message: 42 }],
@@ -475,6 +475,56 @@ describe('PluginPermissionChangedPayloadSchema', () => {
         });
 
         expect(result.success).toBe(true);
+    });
+
+    it('accepts an empty cancelledRuns list with a valid actor', () => {
+        const result = PluginPermissionChangedPayloadSchema.safeParse({
+            pluginId: 'com.example',
+            previous: ['filesystem.read'],
+            next: ['state.write'],
+            actor: 'user',
+            cancelledRuns: [],
+        });
+
+        expect(result.success).toBe(true);
+    });
+
+    it('accepts cancelledRuns at the bounded telemetry limits', () => {
+        const cancelledRuns = Array.from({ length: 8 }, (_, index) => `${index}${'r'.repeat(95)}`);
+        const result = PluginPermissionChangedPayloadSchema.safeParse({
+            pluginId: 'com.example',
+            previous: ['filesystem.read'],
+            next: ['state.write'],
+            actor: 'user',
+            cancelledRuns,
+        });
+
+        expect(cancelledRuns).toHaveLength(8);
+        expect(cancelledRuns.every((runId) => runId.length === 96)).toBe(true);
+        expect(result.success).toBe(true);
+    });
+
+    it('rejects cancelledRuns beyond either bounded telemetry limit', () => {
+        const atMaximum = Array.from({ length: 8 }, (_, index) => `${index}${'r'.repeat(95)}`);
+        const basePayload = {
+            pluginId: 'com.example',
+            previous: ['filesystem.read'],
+            next: ['state.write'],
+            actor: 'user',
+        };
+
+        expect(
+            PluginPermissionChangedPayloadSchema.safeParse({
+                ...basePayload,
+                cancelledRuns: [...atMaximum, 'extra-run'],
+            }).success,
+        ).toBe(false);
+        expect(
+            PluginPermissionChangedPayloadSchema.safeParse({
+                ...basePayload,
+                cancelledRuns: ['r'.repeat(97)],
+            }).success,
+        ).toBe(false);
     });
 
     it('rejects an unbounded capability view', () => {

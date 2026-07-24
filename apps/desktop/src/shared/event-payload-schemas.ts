@@ -140,6 +140,9 @@ export const PermissionTransitionActorSchema = z.enum([
 ]);
 export type PermissionTransitionActor = z.infer<typeof PermissionTransitionActorSchema>;
 
+const TELEMETRY_MAX_STRING_LENGTH = 96;
+const TELEMETRY_MAX_ARRAY_ITEMS = 8;
+
 const EffectiveCapabilityViewSchema = z
     .array(CapabilitySchema)
     .max(CapabilitySchema.options.length)
@@ -154,7 +157,10 @@ export const PluginPermissionChangedPayloadSchema = z
         previous: EffectiveCapabilityViewSchema,
         next: EffectiveCapabilityViewSchema,
         actor: PermissionTransitionActorSchema,
-        cancelledRuns: z.array(z.string().min(1)).readonly(),
+        cancelledRuns: z
+            .array(z.string().min(1).max(TELEMETRY_MAX_STRING_LENGTH))
+            .max(TELEMETRY_MAX_ARRAY_ITEMS)
+            .readonly(),
     })
     .strict()
     .readonly();

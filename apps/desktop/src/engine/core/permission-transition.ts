@@ -57,6 +57,16 @@ function isLatestPermissionTransition(
     return latestPermissionTransitionVersions.get(permissionOverrides)?.get(pluginId) === version;
 }
 
+function capabilityViewsEqual(
+    previous: readonly Capability[],
+    next: readonly Capability[],
+): boolean {
+    return (
+        previous.length === next.length &&
+        previous.every((permission, index) => permission === next[index])
+    );
+}
+
 export async function applyPermissionOverride(
     dependencies: PermissionOverrideTransitionDependencies,
     pluginId: string,
@@ -122,15 +132,24 @@ export async function applyPermissionOverride(
         isLatestPermissionTransition(dependencies.permissionOverrides, pluginId, transitionVersion)
     ) {
         dependencies.updatePluginPermissions(pluginId, effectivePermissions);
-        dependencies.emitPermissionChanged?.(
-            createPluginPermissionChangedEvent({
-                pluginId,
-                previous: previousEffectivePermissions,
-                next: effectivePermissions,
-                actor,
-                cancelledRuns: cancelledRunIds,
-            }),
-        );
+        if (!capabilityViewsEqual(previousEffectivePermissions, effectivePermissions)) {
+            try {
+                dependencies.emitPermissionChanged?.(
+                    createPluginPermissionChangedEvent({
+                        pluginId,
+                        previous: previousEffectivePermissions,
+                        next: effectivePermissions,
+                        actor,
+                        cancelledRuns: cancelledRunIds,
+                    }),
+                );
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.error(
+                    `[permission-transition] Permission change Event emission failed for Plugin "${pluginId}": ${message}`,
+                );
+            }
+        }
     }
 
     return {

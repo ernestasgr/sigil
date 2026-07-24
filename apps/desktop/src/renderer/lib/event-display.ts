@@ -105,7 +105,7 @@ export function telemetryEntryContext(entry: BusEventEntry): string {
                 `plugin=${permissionChange.pluginId}`,
                 `actor=${permissionChange.actor}`,
                 `cancelledRuns=${formatCapabilityView(permissionChange.cancelledRuns)}`,
-            ].join(' Â· ');
+            ].join(' · ');
         }
     }
     const parsed =

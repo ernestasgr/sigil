@@ -61,7 +61,7 @@ describe('event display', () => {
             'plugin=com.example.plugin, previous=[filesystem.read], next=[state.write]',
         );
         expect(telemetryEntryContext(entry)).toBe(
-            'plugin=com.example.plugin Â· actor=user Â· cancelledRuns=[run-1]',
+            'plugin=com.example.plugin · actor=user · cancelledRuns=[run-1]',
         );
     });
 });

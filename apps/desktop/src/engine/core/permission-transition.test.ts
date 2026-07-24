@@ -197,6 +197,73 @@ describe('applyPermissionOverride', () => {
         ]);
     });
 
+    it('does not emit a permission Event when the Effective Capability View is unchanged', async () => {
+        const registry = createManifestRegistry();
+        expect(Either.isRight(registry.register(manifest))).toBe(true);
+        const permissionOverrides = createPermissionOverrideStore();
+        expect(Either.isRight(permissionOverrides.set(pluginId, ['state.write']))).toBe(true);
+        const updatePluginPermissions = vi.fn();
+        const emitPermissionChanged = vi.fn<(event: PluginPermissionChangedEvent) => void>();
+
+        const result = await applyPermissionOverride(
+            {
+                registry,
+                permissionOverrides,
+                revokeFileWatcherSubscriptions: vi.fn(),
+                updatePluginPermissions,
+                emitPermissionChanged,
+            },
+            pluginId,
+            ['state.write'],
+        );
+
+        expect(result).toEqual({
+            ok: true,
+            grantedPermissions: ['state.write'],
+            cancelledRunIds: [],
+        });
+        expect(updatePluginPermissions).toHaveBeenCalledWith(pluginId, ['state.write']);
+        expect(emitPermissionChanged).not.toHaveBeenCalled();
+    });
+
+    it('contains permission Event emission failures after updating the worker', async () => {
+        const registry = createManifestRegistry();
+        expect(Either.isRight(registry.register(manifest))).toBe(true);
+        const permissionOverrides = createPermissionOverrideStore();
+        const updatePluginPermissions = vi.fn();
+        const emitPermissionChanged = vi.fn<(event: PluginPermissionChangedEvent) => void>(() => {
+            throw new Error('bus unavailable');
+        });
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        try {
+            const result = await applyPermissionOverride(
+                {
+                    registry,
+                    permissionOverrides,
+                    revokeFileWatcherSubscriptions: vi.fn(),
+                    updatePluginPermissions,
+                    emitPermissionChanged,
+                },
+                pluginId,
+                [],
+            );
+
+            expect(result).toEqual({
+                ok: true,
+                grantedPermissions: [],
+                cancelledRunIds: [],
+            });
+            expect(updatePluginPermissions).toHaveBeenCalledWith(pluginId, []);
+            expect(emitPermissionChanged).toHaveBeenCalledTimes(1);
+            expect(consoleError).toHaveBeenCalledWith(
+                `[permission-transition] Permission change Event emission failed for Plugin "${pluginId}": bus unavailable`,
+            );
+        } finally {
+            consoleError.mockRestore();
+        }
+    });
+
     it('does not let an older reconciliation re-grant permissions from a newer override', async () => {
         const registry = createManifestRegistry();
         expect(Either.isRight(registry.register(manifest))).toBe(true);
