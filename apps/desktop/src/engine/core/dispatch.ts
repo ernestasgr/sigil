@@ -13,6 +13,7 @@ import {
     isExpectedMissingFileDiagnostic,
 } from '../../shared/persistence.js';
 import type { PluginInfo } from '../../shared/plugin-info.js';
+import { effectiveCapabilityView } from '../persistence/capability-broker.js';
 import type { WorkflowActivator } from '../workflow/workflow-activator.js';
 import type { WorkflowLifecycle } from '../workflow/workflow-lifecycle.js';
 import type { WorkflowStore } from '../workflow/workflow-store.js';
@@ -479,9 +480,12 @@ function handleListPlugins(
     const manifests = subsystems.engine.registry.all();
     const plugins: readonly PluginInfo[] = manifests.map((manifest) => ({
         manifest,
-        grantedPermissions: subsystems.engine.permissionOverrides.has(manifest.id)
-            ? subsystems.engine.permissionOverrides.get(manifest.id)
-            : manifest.permissions,
+        grantedPermissions: effectiveCapabilityView(
+            manifest.permissions,
+            subsystems.engine.permissionOverrides.has(manifest.id)
+                ? subsystems.engine.permissionOverrides.get(manifest.id)
+                : undefined,
+        ),
     }));
     postCommandResponse(
         'listPlugins',
@@ -533,7 +537,11 @@ function handleSetPermissionOverride(
         );
         return;
     }
-    subsystems.engine.updatePluginPermissions?.(message.pluginId, message.overrides);
+    const manifest = subsystems.engine.registry.get(message.pluginId);
+    const effectivePermissions = Option.isSome(manifest)
+        ? effectiveCapabilityView(manifest.value.permissions, message.overrides)
+        : [];
+    subsystems.engine.updatePluginPermissions?.(message.pluginId, effectivePermissions);
     postCommandResponse(
         'setPermissionOverride',
         {

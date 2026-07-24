@@ -1,5 +1,4 @@
 import type { Capability } from '@sigil/schema/manifest';
-import { CapabilitySchema } from '@sigil/schema/manifest';
 
 import { DEFAULT_PROPERTIES as ENGINE_DEFAULTS } from '@sigil/schema/properties-file';
 import type { ReactElement } from 'react';
@@ -18,8 +17,6 @@ import { Button } from '../components/ui/button.js';
 import { useSigil } from '../lib/use-sigil.js';
 import { useAppStore } from '../store/app-store.js';
 import { propertiesTemplateFromDefaults } from './properties-template.js';
-
-const ALL_CAPABILITIES = CapabilitySchema.options;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -176,7 +173,7 @@ function PluginPermissionsCard({
                 {editing ? (
                     <div className="flex flex-col gap-4">
                         <div className="grid grid-cols-2 gap-2">
-                            {ALL_CAPABILITIES.map((cap) => (
+                            {info.manifest.permissions.map((cap) => (
                                 <PermissionToggle
                                     key={cap}
                                     capability={cap}

@@ -43,7 +43,11 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
         execute: ReturnType<typeof vi.fn>;
         validateProperties: ReturnType<typeof vi.fn>;
         applyProperties: ReturnType<typeof vi.fn>;
-        registry: { all: ReturnType<typeof vi.fn>; has: ReturnType<typeof vi.fn> };
+        registry: {
+            all: ReturnType<typeof vi.fn>;
+            get: ReturnType<typeof vi.fn>;
+            has: ReturnType<typeof vi.fn>;
+        };
         updatePluginPermissions: ReturnType<typeof vi.fn>;
         propertyRegistry?: { defaults: ReturnType<typeof vi.fn> };
         permissionOverrides: {
@@ -80,6 +84,14 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
     const broadcastWorkflowsList = vi.fn();
     const execute = vi.fn().mockResolvedValue(undefined);
     const registryAll = vi.fn().mockReturnValue([]);
+    const registryGet = vi.fn().mockReturnValue(
+        Option.some({
+            id: 'plugin-a',
+            version: '1.0.0',
+            permissions: [],
+            emits: ['stub.event'],
+        }),
+    );
     const validateProperties = vi.fn((properties: Readonly<Record<string, unknown>>) => ({
         ok: true as const,
         properties,
@@ -114,7 +126,7 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
                 execute,
                 validateProperties,
                 applyProperties,
-                registry: { all: registryAll, has: registryHas },
+                registry: { all: registryAll, get: registryGet, has: registryHas },
                 updatePluginPermissions,
                 ...(propertyRegistry === undefined ? {} : { propertyRegistry }),
                 permissionOverrides: {
@@ -152,7 +164,7 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
             execute,
             validateProperties,
             applyProperties,
-            registry: { all: registryAll, has: registryHas },
+            registry: { all: registryAll, get: registryGet, has: registryHas },
             updatePluginPermissions,
             ...(propertyRegistry === undefined ? {} : { propertyRegistry }),
             permissionOverrides: { has: permissionHas, get: permissionGet, set: permissionSet },
@@ -722,16 +734,26 @@ describe('dispatch', () => {
         });
     });
 
-    it('routes ListPlugins and uses overridden permissions when present', () => {
-        const { subsystems, engine } = createFakeSubsystems();
-        const manifest = { id: 'plugin-a', name: 'A', version: '1.0.0', permissions: [] };
+    it('routes ListPlugins and reports the effective manifest-bounded permissions', () => {
+        const { subsystems, postMessage, engine } = createFakeSubsystems();
+        const manifest = {
+            id: 'plugin-a',
+            name: 'A',
+            version: '1.0.0',
+            permissions: ['filesystem.read'],
+        };
         engine.registry.all.mockReturnValue([manifest]);
         engine.permissionOverrides.has.mockReturnValue(true);
-        engine.permissionOverrides.get.mockReturnValue([{ capability: 'custom' }]);
+        engine.permissionOverrides.get.mockReturnValue(['filesystem.read', 'network']);
 
         dispatch({ type: EngineChannel.ListPlugins, correlationId: 'c' }, subsystems);
 
         expect(engine.permissionOverrides.get).toHaveBeenCalledWith('plugin-a');
+        expect(postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.ListPluginsResult,
+            correlationId: 'c',
+            plugins: [{ manifest, grantedPermissions: ['filesystem.read'] }],
+        });
     });
 
     it('routes SetPermissionOverride and posts ok result', () => {
@@ -753,6 +775,32 @@ describe('dispatch', () => {
             correlationId: 'corr-7',
             ok: true,
         });
+    });
+
+    it('updates the live Plugin with the manifest-bounded permission view', () => {
+        const { subsystems, engine } = createFakeSubsystems();
+        engine.registry.get.mockReturnValue(
+            Option.some({
+                id: 'plugin-a',
+                version: '1.0.0',
+                permissions: ['filesystem.read'],
+                emits: ['stub.event'],
+            }),
+        );
+
+        dispatch(
+            {
+                type: EngineChannel.SetPermissionOverride,
+                correlationId: 'corr-bounded-update',
+                pluginId: 'plugin-a',
+                overrides: ['filesystem.read', 'network'],
+            },
+            subsystems,
+        );
+
+        expect(engine.updatePluginPermissions).toHaveBeenCalledWith('plugin-a', [
+            'filesystem.read',
+        ]);
     });
 
     it('rejects an unknown Plugin before persistence or worker permission updates', () => {
