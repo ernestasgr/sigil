@@ -138,6 +138,7 @@ function eventKind(name: BusEvent['name']): TelemetryKind {
         case 'notification.show':
             return 'node';
         case 'plugin.event':
+        case 'plugin.permission.changed':
             return 'plugin';
         case 'engine.diagnostic':
             return 'diagnostic';
@@ -167,6 +168,7 @@ function eventOutcome(event: BusEvent): TelemetryOutcome | undefined {
         case 'log.output':
         case 'notification.show':
         case 'plugin.event':
+        case 'plugin.permission.changed':
         case 'engine.diagnostic':
             return 'outcome' in event.payload ? event.payload.outcome : undefined;
         default:

@@ -1,7 +1,10 @@
+import type { Capability } from '@sigil/schema/manifest';
 import { Either } from 'effect';
 
 import {
     type EngineDiagnosticPayload,
+    type PermissionTransitionActor,
+    type PluginPermissionChangedPayload,
     safeParsePayload,
 } from '../../shared/event-payload-schemas.js';
 import type { EngineBusEventPayload } from '../../shared/ipc-channels.js';
@@ -34,6 +37,10 @@ interface SupportTelemetryRecord {
     readonly nodeId?: string;
     readonly nodeType?: string;
     readonly pluginId?: string;
+    readonly previous?: readonly Capability[];
+    readonly next?: readonly Capability[];
+    readonly actor?: PermissionTransitionActor;
+    readonly cancelledRuns?: readonly string[];
     readonly outcome?: EventTelemetry['outcome'];
     readonly durationMs?: number;
     readonly summary: string;
@@ -73,6 +80,13 @@ function parseDiagnosticPayload(payload: unknown): EngineDiagnosticPayload | und
     return Either.isRight(parsed) ? parsed.right : undefined;
 }
 
+function parsePermissionChangedPayload(
+    payload: unknown,
+): PluginPermissionChangedPayload | undefined {
+    const parsed = safeParsePayload('plugin.permission.changed', payload);
+    return Either.isRight(parsed) ? parsed.right : undefined;
+}
+
 function diagnosticMetadata(entry: TelemetryEntry): Partial<SupportTelemetryRecord> {
     if (entry.name !== 'engine.diagnostic') return {};
 
@@ -104,13 +118,30 @@ function diagnosticMetadata(entry: TelemetryEntry): Partial<SupportTelemetryReco
     };
 }
 
+function permissionChangeMetadata(entry: TelemetryEntry): Partial<SupportTelemetryRecord> {
+    if (entry.name !== 'plugin.permission.changed') return {};
+
+    const permissionChange = parsePermissionChangedPayload(entry.payload);
+    if (permissionChange === undefined) return {};
+
+    return {
+        pluginId: permissionChange.pluginId,
+        previous: permissionChange.previous,
+        next: permissionChange.next,
+        actor: permissionChange.actor,
+        cancelledRuns: permissionChange.cancelledRuns,
+    };
+}
+
 function supportRecord(entry: TelemetryEntry): SupportTelemetryRecord {
     const telemetry = entry.telemetry;
     const diagnostic = diagnosticMetadata(entry);
+    const permissionChange = permissionChangeMetadata(entry);
     return {
         name: entry.name,
         timestamp: entry.timestamp,
         ...diagnostic,
+        ...permissionChange,
         summary: telemetry
             ? redactTelemetrySummary(telemetry.summary)
             : (diagnostic.summary ?? '[PAYLOAD_OMITTED]'),
