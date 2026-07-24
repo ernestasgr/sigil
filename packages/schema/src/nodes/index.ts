@@ -1,10 +1,5 @@
 import { z } from 'zod';
-import {
-    BUILTIN_NODE_DESCRIPTORS,
-    BUILTIN_NODE_TYPE_VALUES,
-    outputPortIdsForNode,
-    outputPortLabelForNode as resolveOutputPortLabel,
-} from '../node-contract.js';
+import { BUILTIN_NODE_DESCRIPTORS, BUILTIN_NODE_TYPE_VALUES } from '../node-contract.js';
 import type { NodeDescriptor } from './types.js';
 
 export type {
@@ -183,14 +178,3 @@ const PluginPipelineNodeSchema = z.object({
 // Try plugin nodes first so an object carrying a pluginId remains a plugin
 // node even when its type happens to match a builtin node name.
 export const PipelineNodeSchema = z.union([PluginPipelineNodeSchema, BuiltinPipelineNodeSchema]);
-
-// ─── Output ports ───────────────────────────────────────────────
-
-export function outputPortsForNode(node: PipelineNode): readonly string[] {
-    const ports = outputPortIdsForNode(node);
-    return ports === 'dynamic' ? [] : ports;
-}
-
-export function outputPortLabelForNode(node: PipelineNode, port: string): string {
-    return resolveOutputPortLabel(node, port);
-}
