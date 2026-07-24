@@ -224,7 +224,7 @@ function toWorkflowGetOutcome(
 export function toPermissionOverrideOutcome(
     response: EngineResponse<'setPermissionOverride'>,
 ): RendererResponse<'setPermissionOverride'> {
-    if (response.ok) return { ok: true };
+    if (response.ok) return { ok: true, grantedPermissions: response.grantedPermissions };
     if (response.kind === 'domain') {
         return {
             ok: false,

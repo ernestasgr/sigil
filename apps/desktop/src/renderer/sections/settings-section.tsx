@@ -772,7 +772,10 @@ export function SettingsSection(): ReactElement {
                         setPlugins((prev) =>
                             prev.map((p) =>
                                 p.manifest.id === pluginId
-                                    ? { ...p, grantedPermissions: overrides }
+                                    ? {
+                                          ...p,
+                                          grantedPermissions: result.grantedPermissions,
+                                      }
                                     : p,
                             ),
                         );

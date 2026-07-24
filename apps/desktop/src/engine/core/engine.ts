@@ -19,6 +19,7 @@ import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import Database from 'better-sqlite3';
 import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
+import type { PermissionOverrideOutcome } from '../../shared/persistence.js';
 import type { Bridge } from '../events/bridge.js';
 import { createBridge } from '../events/bridge.js';
 import type { EventBus } from '../events/event-bus.js';
@@ -48,6 +49,7 @@ import {
 import { acceptWorkflow, type WorkflowInput } from '../workflow/workflow-acceptance.js';
 import { createWorkflowStateStore, type WorkflowStateStore } from '../workflow/workflow-state.js';
 import { createWorkflowTopologyError } from '../workflow/workflow-topology-error.js';
+import { applyPermissionOverride as applyPermissionOverrideTransition } from './permission-transition.js';
 
 export interface EngineOptions {
     readonly properties?: unknown;
@@ -87,6 +89,10 @@ export interface Engine {
     ) => PropertyValidationResult;
     readonly applyProperties: (properties: PropertiesFile) => PropertyApplyResult;
     readonly loadBuiltinPlugins: () => Promise<readonly NodePluginLoadResult[]>;
+    readonly applyPermissionOverride: (
+        pluginId: string,
+        overrides: readonly Capability[],
+    ) => PermissionOverrideOutcome;
     readonly updatePluginPermissions: (
         pluginId: string,
         permissions: readonly Capability[],
@@ -299,6 +305,27 @@ export function createEngine(options?: EngineOptions): Engine {
         return commitResolvedProperties(resolveConfiguredProperties());
     };
 
+    const updatePluginPermissions = (
+        pluginId: string,
+        permissions: readonly Capability[],
+    ): void => {
+        pluginLoader.updatePluginPermissions(pluginId, permissions);
+    };
+
+    const applyPermissionOverride = (
+        pluginId: string,
+        overrides: readonly Capability[],
+    ): PermissionOverrideOutcome =>
+        applyPermissionOverrideTransition(
+            {
+                registry,
+                permissionOverrides,
+                updatePluginPermissions,
+            },
+            pluginId,
+            overrides,
+        );
+
     return {
         bus,
         bridge,
@@ -336,9 +363,8 @@ export function createEngine(options?: EngineOptions): Engine {
             refreshResolvedProperties();
             return builtinResults;
         },
-        updatePluginPermissions: (pluginId, permissions): void => {
-            pluginLoader.updatePluginPermissions(pluginId, permissions);
-        },
+        applyPermissionOverride,
+        updatePluginPermissions,
         execute: async (
             pipeline,
             seedContext,

@@ -133,6 +133,7 @@ describe('Settings Plugin Permissions', () => {
         result:
             | {
                   readonly ok: true;
+                  readonly grantedPermissions: readonly ['filesystem.read'];
               }
             | {
                   readonly ok: false;
@@ -172,6 +173,25 @@ describe('Settings Plugin Permissions', () => {
             ]),
         );
     }
+
+    it('updates PluginInfo from the Engine effective result instead of the raw selection', async () => {
+        const sigil = createMockSigil();
+        vi.mocked(sigil.listPlugins).mockResolvedValue([pluginInfo]);
+        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {} });
+        vi.mocked(sigil.setPermissionOverride).mockResolvedValue({
+            ok: true,
+            grantedPermissions: [],
+        });
+
+        render(withSigil(<SettingsSection />, sigil));
+        const user = userEvent.setup();
+
+        await waitFor(() => expect(screen.getByText('plugin-1')).toBeInTheDocument());
+        await user.click(screen.getByRole('button', { name: 'Override' }));
+        await user.click(screen.getByRole('button', { name: 'Save' }));
+
+        await waitFor(() => expect(screen.getByText('None granted')).toBeInTheDocument());
+    });
 
     it('reports an unknown Plugin rejection without labeling it as a write failure', async () => {
         await submitPermissionOverride({

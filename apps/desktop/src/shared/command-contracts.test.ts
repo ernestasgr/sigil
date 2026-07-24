@@ -121,7 +121,7 @@ const engineFixtures = {
     },
     setPermissionOverride: {
         request: { pluginId: 'plugin-1', overrides: [] },
-        response: { ok: true },
+        response: { ok: true, grantedPermissions: [] },
     },
     readProperties: { request: {}, response: { properties: {} } },
     saveProperties: {
@@ -278,6 +278,15 @@ describe('CommandContracts', () => {
             RendererCommandContracts.setPermissionOverride.responseSchema.safeParse(
                 persistenceFailure,
             ).success,
+        ).toBe(true);
+    });
+
+    it('requires the effective permission view on a successful override response', () => {
+        const responseSchema = RendererCommandContracts.setPermissionOverride.responseSchema;
+
+        expect(responseSchema.safeParse({ ok: true }).success).toBe(false);
+        expect(
+            responseSchema.safeParse({ ok: true, grantedPermissions: ['filesystem.read'] }).success,
         ).toBe(true);
     });
 });

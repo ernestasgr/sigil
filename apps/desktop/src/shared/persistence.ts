@@ -1,3 +1,4 @@
+import { CapabilitySchema } from '@sigil/schema/manifest';
 import { z } from 'zod';
 
 export const PersistenceOperationSchema = z.enum(['read', 'write']);
@@ -44,6 +45,7 @@ export type PersistenceWriteOutcome = z.infer<typeof PersistenceWriteOutcomeSche
 
 export const PermissionOverrideSuccessFieldsSchema = z.object({
     ok: z.literal(true),
+    grantedPermissions: z.array(CapabilitySchema).readonly(),
 });
 
 export const PermissionOverrideDomainFailureFieldsSchema = z.object({
