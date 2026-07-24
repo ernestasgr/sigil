@@ -56,6 +56,7 @@ describe('createCapabilityBroker', () => {
         const registry = createManifestRegistry();
         registry.register(manifestWithNone);
         const overrides = createPermissionOverrideStore();
+        overrides.set('com.sigil.bare', ['network']);
         const broker = createCapabilityBroker(registry, overrides);
 
         const result = broker.request({
@@ -98,7 +99,7 @@ describe('createCapabilityBroker', () => {
         expect(Either.isRight(second)).toBe(true);
     });
 
-    it('permits a capability granted via override even if not in manifest', () => {
+    it('rejects a capability granted via override when it is not in the manifest', () => {
         const registry = createManifestRegistry();
         registry.register(manifestWithRead);
         const overrides = createPermissionOverrideStore();
@@ -110,7 +111,12 @@ describe('createCapabilityBroker', () => {
             capability: 'network',
         });
 
-        expect(Either.isRight(result)).toBe(true);
+        expect(Either.isLeft(result)).toBe(true);
+        if (Either.isLeft(result)) {
+            expect(result.left.kind).toBe('denied');
+            expect(result.left.capability).toBe('network');
+        }
+        expect(overrides.get('com.sigil.reader')).toEqual(['filesystem.read', 'network']);
     });
 
     it('rejects a capability revoked via override even if in manifest', () => {
@@ -138,17 +144,24 @@ describe('createCapabilityBroker', () => {
         const overrides = createPermissionOverrideStore();
         const broker = createCapabilityBroker(registry, overrides);
 
-        overrides.set('com.sigil.reader', ['filesystem.read', 'filesystem.write']);
+        overrides.set('com.sigil.reader', []);
+        const initiallyRevoked = broker.request({
+            pluginId: 'com.sigil.reader',
+            capability: 'filesystem.read',
+        });
+        expect(Either.isLeft(initiallyRevoked)).toBe(true);
+
+        overrides.set('com.sigil.reader', ['filesystem.read']);
         const granted = broker.request({
             pluginId: 'com.sigil.reader',
-            capability: 'filesystem.write',
+            capability: 'filesystem.read',
         });
         expect(Either.isRight(granted)).toBe(true);
 
-        overrides.set('com.sigil.reader', ['filesystem.read']);
+        overrides.set('com.sigil.reader', []);
         const revoked = broker.request({
             pluginId: 'com.sigil.reader',
-            capability: 'filesystem.write',
+            capability: 'filesystem.read',
         });
         expect(Either.isLeft(revoked)).toBe(true);
     });

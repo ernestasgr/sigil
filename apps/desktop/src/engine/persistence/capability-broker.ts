@@ -25,8 +25,31 @@ export interface CapabilityBroker {
     readonly request: (request: CapabilityRequest) => CapabilityResult;
 }
 
-function hasPermission(manifest: Option.Option<Manifest>, capability: Capability): boolean {
-    return Option.isSome(manifest) && manifest.value.permissions.includes(capability);
+/**
+ * Return the capabilities that are both declared by a Manifest and selected by
+ * a stored override. An absent override means the Manifest is authoritative;
+ * an empty override is an explicit revoke-all selection.
+ */
+export function effectiveCapabilityView(
+    manifestPermissions: readonly Capability[],
+    storedOverride?: readonly Capability[],
+): readonly Capability[] {
+    if (storedOverride === undefined) return [...manifestPermissions];
+
+    const selected = new Set(storedOverride);
+    return manifestPermissions.filter((capability) => selected.has(capability));
+}
+
+function effectivePermissions(
+    manifest: Option.Option<Manifest>,
+    overrides: PermissionOverrideStore,
+): readonly Capability[] {
+    if (Option.isNone(manifest)) return [];
+
+    const storedOverride = overrides.has(manifest.value.id)
+        ? overrides.get(manifest.value.id)
+        : undefined;
+    return effectiveCapabilityView(manifest.value.permissions, storedOverride);
 }
 
 export function createCapabilityBroker(
@@ -35,9 +58,9 @@ export function createCapabilityBroker(
 ): CapabilityBroker {
     return {
         request: ({ pluginId, capability }) => {
-            const allowed = overrides.has(pluginId)
-                ? overrides.get(pluginId).includes(capability)
-                : hasPermission(registry.get(pluginId), capability);
+            const allowed = effectivePermissions(registry.get(pluginId), overrides).includes(
+                capability,
+            );
 
             return allowed
                 ? Either.right(undefined)

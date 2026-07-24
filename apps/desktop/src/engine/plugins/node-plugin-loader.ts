@@ -15,6 +15,7 @@ import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas
 import type { Bridge } from '../events/bridge.js';
 import type { NodeHandlerRegistry } from '../execution/node-registry.js';
 import type { KernelDeps, NodeHandler } from '../node-handlers/types.js';
+import { effectiveCapabilityView } from '../persistence/capability-broker.js';
 import type { PermissionOverrideStore } from '../persistence/permission-override-store.js';
 import type { ManifestRegistry } from './manifest-registry.js';
 import {
@@ -196,9 +197,12 @@ async function loadDiscoveredPlugin(
         };
     }
 
-    const effectivePermissions = deps.permissionOverrides?.has(manifest.id)
-        ? deps.permissionOverrides.get(manifest.id)
-        : manifest.permissions;
+    const effectivePermissions = effectiveCapabilityView(
+        manifest.permissions,
+        deps.permissionOverrides?.has(manifest.id)
+            ? deps.permissionOverrides.get(manifest.id)
+            : undefined,
+    );
     const preparation = prepareNodePlugin(plugin, {
         workerScriptPath: workerScriptPath(),
         permissions: effectivePermissions,

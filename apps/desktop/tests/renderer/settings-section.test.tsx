@@ -114,6 +114,21 @@ describe('Settings Plugin Permissions', () => {
         grantedPermissions: ['filesystem.read'],
     } satisfies PluginInfo;
 
+    it('offers toggles only for capabilities declared by the Plugin Manifest', async () => {
+        const sigil = createMockSigil();
+        vi.mocked(sigil.listPlugins).mockResolvedValue([pluginInfo]);
+        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {} });
+
+        render(withSigil(<SettingsSection />, sigil));
+        const user = userEvent.setup();
+        await waitFor(() => expect(screen.getByText('plugin-1')).toBeInTheDocument());
+        await user.click(screen.getByRole('button', { name: 'Override' }));
+
+        expect(screen.getByRole('checkbox', { name: 'Filesystem Read' })).toBeInTheDocument();
+        expect(screen.queryByRole('checkbox', { name: 'Network' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('checkbox', { name: 'Clipboard' })).not.toBeInTheDocument();
+    });
+
     async function submitPermissionOverride(
         result:
             | {

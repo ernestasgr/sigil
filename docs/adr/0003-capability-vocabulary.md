@@ -32,6 +32,26 @@ The Bridge and the Capability Broker have distinct responsibilities that compose
 
 When both apply (for example, an operation that reads the filesystem and emits an Event), the two checks are independent — both must pass for the operation to succeed.
 
+### Permission Overrides are a narrowing surface
+
+A Permission Override can revoke capabilities declared by a Plugin's Manifest,
+but it can never expand the Plugin's reach. When an override exists, the
+Capability Broker's **Effective Capability View** is:
+
+```
+Manifest permissions ∩ stored override
+```
+
+When no override exists, the Effective Capability View is the Manifest's
+permission set. The Engine plugin listing and the Settings permission card use
+this same view, so the Renderer never presents an undeclared capability as
+granted or toggleable.
+
+The Permission Override Store preserves the user's stored selection verbatim,
+including capabilities not currently declared by the Manifest. Those selections
+remain available if a future version of the Plugin expands its Manifest; the
+Broker continues to enforce the intersection until that expansion occurs.
+
 ## Considered Options
 
 - **Single `state` permission** — One `state` capability guarding both read and write. Rejected because it prevents granting read-only access (e.g. allow a plugin to read its own state but not mutate it).
