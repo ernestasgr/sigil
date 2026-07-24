@@ -9,6 +9,7 @@ export const WorkflowIdSchema = z
     .regex(
         WORKFLOW_ID_PATTERN,
         'Workflow id must contain only letters, numbers, hyphens, and underscores, and start with a letter or number.',
-    );
+    )
+    .brand<'WorkflowId'>();
 
 export type WorkflowId = z.infer<typeof WorkflowIdSchema>;

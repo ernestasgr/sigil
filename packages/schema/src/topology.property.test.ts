@@ -5,6 +5,7 @@ import type { PipelineEdge } from './edges.js';
 import type { PipelineNode } from './nodes/index.js';
 import { type CompiledPipeline, parsePipeline } from './pipeline.js';
 import { validateWorkflowTopology } from './topology.js';
+import { WorkflowIdSchema } from './workflow-id.js';
 
 const PROPERTY_OPTIONS = {
     numRuns: 100,
@@ -39,7 +40,7 @@ function pipeline(
 ): CompiledPipeline {
     return {
         id: 'pipeline-property',
-        workflowId: 'workflow-property',
+        workflowId: WorkflowIdSchema.parse('workflow-property'),
         schemaVersion: 1,
         nodes: [...nodes],
         edges: [...edges],

@@ -1,6 +1,7 @@
 import { isPluginNode } from '@sigil/schema/nodes';
 import type { ExecutableWorkflow } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import type { WorkflowId } from '@sigil/schema/workflow-id';
 import { Option } from 'effect';
 
 import type { WorkflowActivationState } from '../../shared/workflow.js';
@@ -20,12 +21,12 @@ import {
 import type { WorkflowStore } from './workflow-store.js';
 
 export interface WorkflowActivator {
-    readonly activate: (workflowId: string) => boolean;
-    readonly deactivate: (workflowId: string) => boolean;
-    readonly isActive: (workflowId: string) => boolean;
-    readonly activeWorkflowIds: () => readonly string[];
-    readonly hasInFlightRuns: (workflowId: string) => boolean;
-    readonly waitForRuns: (workflowId: string) => Promise<void>;
+    readonly activate: (workflowId: WorkflowId) => boolean;
+    readonly deactivate: (workflowId: WorkflowId) => boolean;
+    readonly isActive: (workflowId: WorkflowId) => boolean;
+    readonly activeWorkflowIds: () => readonly WorkflowId[];
+    readonly hasInFlightRuns: (workflowId: WorkflowId) => boolean;
+    readonly waitForRuns: (workflowId: WorkflowId) => Promise<void>;
     readonly waitForAllRuns: () => Promise<void>;
     readonly dispose: () => void;
 }
@@ -67,9 +68,9 @@ export function createWorkflowActivator(
     onStateChange?: () => void,
     options?: WorkflowActivatorOptions,
 ): WorkflowActivator {
-    const active = new Map<string, ActiveActivation>();
+    const active = new Map<WorkflowId, ActiveActivation>();
     const stoppedRuns = new Map<
-        string,
+        WorkflowId,
         readonly {
             readonly supervisor: WorkflowRunSupervisor;
             readonly promise: Promise<void>;
@@ -78,7 +79,7 @@ export function createWorkflowActivator(
     >();
     let nextToken = 0;
 
-    function setActivation(workflowId: string, activation: WorkflowActivationState): void {
+    function setActivation(workflowId: WorkflowId, activation: WorkflowActivationState): void {
         store.setActivation(workflowId, activation);
     }
 
@@ -90,7 +91,7 @@ export function createWorkflowActivator(
     }
 
     function recordFailure(
-        workflowId: string,
+        workflowId: WorkflowId,
         message: string,
         diagnostic: string,
         publishStateChange: boolean,
@@ -100,7 +101,7 @@ export function createWorkflowActivator(
         if (publishStateChange) onStateChange?.();
     }
 
-    function teardownSafely(workflowId: string, name: string, teardown: () => void): void {
+    function teardownSafely(workflowId: WorkflowId, name: string, teardown: () => void): void {
         try {
             teardown();
         } catch (error) {
@@ -176,7 +177,7 @@ export function createWorkflowActivator(
     }
 
     function rememberStoppedRuns(
-        workflowId: string,
+        workflowId: WorkflowId,
         supervisor: WorkflowRunSupervisor,
         executable: ExecutableWorkflow,
         pending: Promise<readonly string[]>,
@@ -204,7 +205,7 @@ export function createWorkflowActivator(
     }
 
     function stopRuns(
-        workflowId: string,
+        workflowId: WorkflowId,
         supervisor: WorkflowRunSupervisor,
         executable: ExecutableWorkflow,
         reason: string,
@@ -225,7 +226,7 @@ export function createWorkflowActivator(
 
         const supervisors = new Map<
             WorkflowRunSupervisor,
-            { readonly workflowId: string; readonly executable: ExecutableWorkflow }
+            { readonly workflowId: WorkflowId; readonly executable: ExecutableWorkflow }
         >();
         for (const [workflowId, activation] of active) {
             supervisors.set(activation.supervisor, {
@@ -268,7 +269,7 @@ export function createWorkflowActivator(
     }
 
     return {
-        activate(workflowId: string): boolean {
+        activate(workflowId: WorkflowId): boolean {
             if (active.has(workflowId)) return true;
 
             const data = store.get(workflowId);
@@ -433,7 +434,7 @@ export function createWorkflowActivator(
             }
         },
 
-        deactivate(workflowId: string): boolean {
+        deactivate(workflowId: WorkflowId): boolean {
             const activation = active.get(workflowId);
             if (activation) {
                 active.delete(workflowId);
@@ -456,15 +457,15 @@ export function createWorkflowActivator(
             return false;
         },
 
-        isActive(workflowId: string): boolean {
+        isActive(workflowId: WorkflowId): boolean {
             return active.has(workflowId);
         },
 
-        activeWorkflowIds(): readonly string[] {
+        activeWorkflowIds(): readonly WorkflowId[] {
             return [...active.keys()];
         },
 
-        hasInFlightRuns(workflowId: string): boolean {
+        hasInFlightRuns(workflowId: WorkflowId): boolean {
             const activation = active.get(workflowId);
             if (
                 activation &&
@@ -477,7 +478,7 @@ export function createWorkflowActivator(
             );
         },
 
-        waitForRuns(workflowId: string): Promise<void> {
+        waitForRuns(workflowId: WorkflowId): Promise<void> {
             const activation = active.get(workflowId);
             const pending = stoppedRuns.get(workflowId) ?? [];
             return Promise.all([

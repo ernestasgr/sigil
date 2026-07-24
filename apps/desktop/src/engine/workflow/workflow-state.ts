@@ -1,10 +1,10 @@
+import type { WorkflowId } from '@sigil/schema/workflow-id';
 import type { Database } from 'better-sqlite3';
 import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { Option } from 'effect';
 import { z } from 'zod';
-
 import type {
     WorkflowStateEntry,
     WorkflowStatePrimitive,
@@ -36,11 +36,11 @@ export interface WorkflowState {
 }
 
 export interface WorkflowStateStore {
-    readonly forWorkflow: (workflowId: string) => WorkflowState;
-    readonly listKeys: (workflowId: string) => readonly WorkflowStateEntry[];
-    readonly setKey: (workflowId: string, key: string, value: WorkflowStatePrimitive) => void;
-    readonly deleteKey: (workflowId: string, key: string) => void;
-    readonly deleteWorkflow: (workflowId: string) => void;
+    readonly forWorkflow: (workflowId: WorkflowId) => WorkflowState;
+    readonly listKeys: (workflowId: WorkflowId) => readonly WorkflowStateEntry[];
+    readonly setKey: (workflowId: WorkflowId, key: string, value: WorkflowStatePrimitive) => void;
+    readonly deleteKey: (workflowId: WorkflowId, key: string) => void;
+    readonly deleteWorkflow: (workflowId: WorkflowId) => void;
     readonly flushAll: () => void;
     readonly dispose: () => void;
 }
@@ -227,11 +227,11 @@ export function createWorkflowStateStore(
     database.exec(CREATE_TABLE_SQL);
     migrateLegacyWorkflowState(database);
     const db = drizzle(database);
-    const buffer = new Map<string, Map<string, WorkflowStatePrimitive>>();
+    const buffer = new Map<WorkflowId, Map<string, WorkflowStatePrimitive>>();
     const flushIntervalMs = options?.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;
 
     const upsert = database.transaction(
-        (entries: ReadonlyMap<string, WorkflowStatePrimitive>, workflowId: string) => {
+        (entries: ReadonlyMap<string, WorkflowStatePrimitive>, workflowId: WorkflowId) => {
             for (const [key, value] of entries) {
                 const encodedValue = encodeWorkflowStateValue(value);
                 db.insert(workflowStateTable)
@@ -245,7 +245,7 @@ export function createWorkflowStateStore(
         },
     );
 
-    function flushWorkflow(workflowId: string): void {
+    function flushWorkflow(workflowId: WorkflowId): void {
         const entries = buffer.get(workflowId);
         if (!entries || entries.size === 0) return;
         upsert(entries, workflowId);
@@ -261,7 +261,7 @@ export function createWorkflowStateStore(
     const timer: ReturnType<typeof setInterval> = setInterval(flushAll, flushIntervalMs);
     timer.unref?.();
 
-    function forWorkflow(workflowId: string): WorkflowState {
+    function forWorkflow(workflowId: WorkflowId): WorkflowState {
         return {
             get(key: string): Option.Option<WorkflowStatePrimitive> {
                 const pendingValue = buffer.get(workflowId)?.get(key);
@@ -299,7 +299,7 @@ export function createWorkflowStateStore(
         flushAll();
     }
 
-    function listKeys(workflowId: string): readonly WorkflowStateEntry[] {
+    function listKeys(workflowId: WorkflowId): readonly WorkflowStateEntry[] {
         flushWorkflow(workflowId);
         const rows = db
             .select({ key: workflowStateTable.key, value: workflowStateTable.value })
@@ -309,14 +309,14 @@ export function createWorkflowStateStore(
         return rows.map((row) => workflowStateEntry(row.key, decodeWorkflowStateValue(row.value)));
     }
 
-    function setKey(workflowId: string, key: string, value: WorkflowStatePrimitive): void {
+    function setKey(workflowId: WorkflowId, key: string, value: WorkflowStatePrimitive): void {
         const pending = buffer.get(workflowId) ?? new Map<string, WorkflowStatePrimitive>();
         pending.set(key, value);
         buffer.set(workflowId, pending);
         flushWorkflow(workflowId);
     }
 
-    function deleteKey(workflowId: string, key: string): void {
+    function deleteKey(workflowId: WorkflowId, key: string): void {
         flushWorkflow(workflowId);
         db.delete(workflowStateTable)
             .where(
@@ -325,7 +325,7 @@ export function createWorkflowStateStore(
             .run();
     }
 
-    function deleteWorkflow(workflowId: string): void {
+    function deleteWorkflow(workflowId: WorkflowId): void {
         buffer.delete(workflowId);
         db.delete(workflowStateTable).where(eq(workflowStateTable.workflowId, workflowId)).run();
     }
@@ -334,9 +334,9 @@ export function createWorkflowStateStore(
 }
 
 export function createInMemoryWorkflowStateStore(): WorkflowStateStore {
-    const buffer = new Map<string, Map<string, WorkflowStatePrimitive>>();
+    const buffer = new Map<WorkflowId, Map<string, WorkflowStatePrimitive>>();
 
-    function forWorkflow(workflowId: string): WorkflowState {
+    function forWorkflow(workflowId: WorkflowId): WorkflowState {
         return {
             get: (key: string): Option.Option<WorkflowStatePrimitive> => {
                 const val = buffer.get(workflowId)?.get(key);
@@ -351,26 +351,26 @@ export function createInMemoryWorkflowStateStore(): WorkflowStateStore {
         };
     }
 
-    function listKeys(workflowId: string): readonly WorkflowStateEntry[] {
+    function listKeys(workflowId: WorkflowId): readonly WorkflowStateEntry[] {
         const pending = buffer.get(workflowId);
         if (!pending) return [];
         return Array.from(pending.entries()).map(([key, value]) => workflowStateEntry(key, value));
     }
 
-    function setKey(workflowId: string, key: string, value: WorkflowStatePrimitive): void {
+    function setKey(workflowId: WorkflowId, key: string, value: WorkflowStatePrimitive): void {
         const pending = buffer.get(workflowId) ?? new Map<string, WorkflowStatePrimitive>();
         pending.set(key, value);
         buffer.set(workflowId, pending);
     }
 
-    function deleteKey(workflowId: string, key: string): void {
+    function deleteKey(workflowId: WorkflowId, key: string): void {
         const pending = buffer.get(workflowId);
         if (pending) {
             pending.delete(key);
         }
     }
 
-    function deleteWorkflow(workflowId: string): void {
+    function deleteWorkflow(workflowId: WorkflowId): void {
         buffer.delete(workflowId);
     }
 

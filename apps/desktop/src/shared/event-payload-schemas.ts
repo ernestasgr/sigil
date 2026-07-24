@@ -1,5 +1,6 @@
 import { type FileEventPayload, FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
 import { CapabilitySchema } from '@sigil/schema/manifest';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either } from 'effect';
 import { z } from 'zod';
 
@@ -15,7 +16,7 @@ export {
 export const WorkflowRunPayloadSchema = z
     .object({
         pipelineId: z.string(),
-        workflowId: z.string().optional(),
+        workflowId: WorkflowIdSchema.optional(),
         runId: z.string().optional(),
         outcome: z.enum(['succeeded', 'failed', 'cancelled']).optional(),
     })
@@ -25,7 +26,7 @@ export type WorkflowRunPayload = z.infer<typeof WorkflowRunPayloadSchema>;
 export const WorkflowErrorPayloadSchema = z
     .object({
         pipelineId: z.string(),
-        workflowId: z.string().optional(),
+        workflowId: WorkflowIdSchema.optional(),
         runId: z.string().optional(),
         nodeId: z.string(),
         nodeType: z.string().optional(),
@@ -47,7 +48,7 @@ export type WorkflowRunPolicyPayload = z.infer<typeof WorkflowRunPolicyPayloadSc
 
 const WorkflowAdmissionPayloadFields = {
     pipelineId: z.string(),
-    workflowId: z.string(),
+    workflowId: WorkflowIdSchema,
     runId: z.string(),
     queueSize: z.number().int().nonnegative(),
     policy: WorkflowRunPolicyPayloadSchema,
@@ -73,7 +74,7 @@ export type WorkflowDroppedPayload = z.infer<typeof WorkflowDroppedPayloadSchema
 export const WorkflowCancelledPayloadSchema = z
     .object({
         pipelineId: z.string(),
-        workflowId: z.string().optional(),
+        workflowId: WorkflowIdSchema.optional(),
         runId: z.string().optional(),
         phase: z.enum(['queued', 'running']).optional(),
         reason: z.string(),
@@ -84,7 +85,7 @@ export type WorkflowCancelledPayload = z.infer<typeof WorkflowCancelledPayloadSc
 
 const NodeRunPayloadFields = {
     pipelineId: z.string(),
-    workflowId: z.string().optional(),
+    workflowId: WorkflowIdSchema.optional(),
     runId: z.string().optional(),
     nodeId: z.string(),
     nodeType: z.string(),

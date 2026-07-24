@@ -14,6 +14,7 @@ import {
     TopologyDiagnosticSchema,
     validateWorkflowTopology,
 } from './topology.js';
+import { WorkflowIdSchema } from './workflow-id.js';
 
 const trigger = (id: string): PipelineNode => ({
     id,
@@ -43,7 +44,7 @@ function pipeline(
 ): CompiledPipeline {
     return {
         id: 'pipeline-1',
-        workflowId: 'workflow-1',
+        workflowId: WorkflowIdSchema.parse('workflow-1'),
         schemaVersion: 1,
         nodes: [...nodes],
         edges: [...edges],
@@ -81,7 +82,7 @@ describe('validateWorkflowTopology', () => {
     it('rejects an empty Pipeline with a repair-oriented diagnostic', () => {
         const result = validateWorkflowTopology({
             id: 'pipeline-1',
-            workflowId: 'workflow-1',
+            workflowId: WorkflowIdSchema.parse('workflow-1'),
             schemaVersion: 1,
             nodes: [],
             edges: [],

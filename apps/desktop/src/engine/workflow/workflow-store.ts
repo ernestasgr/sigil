@@ -26,7 +26,7 @@ import {
     validateWorkflowTopology,
     type WorkflowTopologyOptions,
 } from '@sigil/schema/topology';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
+import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import {
     migrateWorkflowContracts,
     type WorkflowMigrationReport,
@@ -50,13 +50,13 @@ import {
 import { createWorkflowTopologyError } from './workflow-topology-error.js';
 
 export interface StoredWorkflow {
-    readonly id: string;
+    readonly id: WorkflowId;
     readonly name: string;
     readonly enabled: boolean;
     readonly activation: WorkflowActivationState;
     readonly positions: Readonly<Record<string, NodePosition>>;
     readonly pipelineId: string;
-    readonly workflowId: string;
+    readonly workflowId: WorkflowId;
     readonly schemaVersion: PipelineSchemaVersion;
     readonly nodes: CompiledPipeline['nodes'];
     readonly edges: CompiledPipeline['edges'];
@@ -100,7 +100,7 @@ export type WorkflowPersistenceOperation =
 export interface WorkflowPersistenceError extends Error {
     readonly kind: 'workflow_persistence';
     readonly operation: WorkflowPersistenceOperation;
-    readonly workflowId: string;
+    readonly workflowId: WorkflowId;
     readonly diagnostic: AtomicWriteFailure;
     readonly diagnostics: readonly AtomicWriteFailure[];
 }
@@ -159,7 +159,7 @@ export function isWorkflowIdentityError(value: unknown): value is WorkflowIdenti
 
 function createWorkflowPersistenceError(
     operation: WorkflowPersistenceOperation,
-    workflowId: string,
+    workflowId: WorkflowId,
     diagnostic: AtomicWriteFailure,
 ): WorkflowPersistenceError {
     const message = `Could not ${operation.replace('_', ' ')} Workflow "${workflowId}": ${diagnostic.message}`;
@@ -187,7 +187,7 @@ export function isWorkflowPersistenceError(value: unknown): value is WorkflowPer
     );
 }
 
-function requireWorkflowId(id: string): string {
+function requireWorkflowId(id: string): WorkflowId {
     const parsedId = WorkflowIdSchema.safeParse(id);
     if (!parsedId.success) {
         throw createWorkflowIdentityError(
@@ -430,6 +430,16 @@ function readWorkflowFile(
         ]);
     }
 
+    const filenameId = WorkflowIdSchema.safeParse(workflowId);
+    if (!filenameId.success) {
+        return invalidWorkflowRecord(storagePath, workflowId, raw, [
+            storedWorkflowDiagnostic(
+                fileName,
+                filenameId.error.issues[0]?.message ?? 'Invalid Workflow id.',
+            ),
+        ]);
+    }
+
     const parsedPipeline = {
         id: parsedFile.data.pipelineId ?? parsedFile.data.id,
         workflowId: persistedWorkflowId,
@@ -452,7 +462,7 @@ function readWorkflowFile(
     }
 
     return {
-        id: workflowId,
+        id: filenameId.data,
         name: parsedFile.data.name,
         enabled: parsedFile.data.enabled ?? false,
         positions: readPositions(parsedFile.data.positions),

@@ -12,6 +12,7 @@ import type { PipelineNode } from '@sigil/schema/nodes';
 import type { CollisionSuffixStyle, ConflictPolicy } from '@sigil/schema/properties-file';
 import type { ExecutableWorkflow } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import type { WorkflowId } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import type { EventBus, WorkflowRunPayload } from '../events/event-bus.js';
 import {
@@ -48,14 +49,14 @@ export interface FileManagerExecutorSettings {
 
 export interface ExecutionOptions {
     readonly runId?: string;
-    readonly workflowId?: string;
+    readonly workflowId?: WorkflowId;
     readonly signal?: AbortSignal;
     readonly contractRegistry?: NodeContractRegistry;
 }
 
 export interface WorkflowExecutionResult {
     readonly pipelineId: string;
-    readonly workflowId: string;
+    readonly workflowId: WorkflowId;
     readonly runId: string;
     readonly outcome: WorkflowRunOutcome;
     readonly message?: string;
@@ -96,7 +97,7 @@ const DEFAULT_SLEEP: Sleep = (ms: number, signal?: AbortSignal): Promise<void> =
 const SEED_CONTEXT: WorkflowContext = { event: '', payload: {}, vars: {} };
 
 type CorrelatedWorkflowRunPayload = WorkflowRunPayload & {
-    readonly workflowId: string;
+    readonly workflowId: WorkflowId;
     readonly runId: string;
 };
 

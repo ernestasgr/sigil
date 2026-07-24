@@ -1,8 +1,9 @@
 import type { CompiledPipeline } from './pipeline.js';
+import { WorkflowIdSchema } from './workflow-id.js';
 
 export const sampleManualTriggerToLog: CompiledPipeline = {
     id: 'sample-manual-trigger-to-log',
-    workflowId: 'workflow-download-sorter',
+    workflowId: WorkflowIdSchema.parse('workflow-download-sorter'),
     schemaVersion: 1,
     nodes: [
         {

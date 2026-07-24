@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { PipelineNode } from '@sigil/schema/nodes';
+import type { WorkflowId } from '@sigil/schema/workflow-id';
 import type {
     EventTelemetry,
     TelemetryKind,
@@ -22,7 +23,7 @@ const MAX_SUMMARY_ENTRIES = 16;
 const MAX_SUMMARY_ARRAY_ITEMS = 8;
 
 export interface RunTelemetryIdentity {
-    readonly workflowId: string;
+    readonly workflowId: WorkflowId;
     readonly pipelineId: string;
     readonly runId: string;
 }

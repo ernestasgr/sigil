@@ -421,15 +421,18 @@ export type RendererCommandContract<C extends RendererCommandName = RendererComm
 export type RendererRequest<C extends RendererCommandName> = z.output<
     (typeof RendererCommandContracts)[C]['requestSchema']
 >;
+type RendererCommandInput<C extends RendererCommandName> = z.input<
+    (typeof RendererCommandContracts)[C]['requestSchema']
+>;
 export type RendererResponse<C extends RendererCommandName> = z.output<
     (typeof RendererCommandContracts)[C]['responseSchema']
 >;
 export type RendererCommandArguments<C extends RendererCommandName> =
-    RendererRequest<C> extends readonly unknown[]
-        ? RendererRequest<C>
-        : RendererRequest<C> extends undefined
+    RendererCommandInput<C> extends readonly unknown[]
+        ? RendererCommandInput<C>
+        : RendererCommandInput<C> extends undefined
           ? []
-          : [RendererRequest<C>];
+          : [RendererCommandInput<C>];
 export type RendererCommandMethod<C extends RendererCommandName> = (
     ...args: RendererCommandArguments<C>
 ) => Promise<RendererResponse<C>>;

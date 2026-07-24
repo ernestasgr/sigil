@@ -1,3 +1,4 @@
+import type { WorkflowId } from '@sigil/schema/workflow-id';
 import { Option } from 'effect';
 
 import type { WorkflowSummary } from '../../shared/workflow.js';
@@ -9,17 +10,17 @@ const MAX_COMPENSATION_DIAGNOSTICS = 4;
 const MAX_COMPENSATION_MESSAGE_LENGTH = 512;
 
 export interface WorkflowLifecycle {
-    readonly enable: (workflowId: string) => Option.Option<WorkflowSummary>;
-    readonly retry: (workflowId: string) => Option.Option<WorkflowSummary>;
-    readonly disable: (workflowId: string) => Option.Option<WorkflowSummary>;
-    readonly toggle: (workflowId: string) => Option.Option<WorkflowSummary>;
-    readonly activateEnabled: (workflowId: string) => Option.Option<WorkflowSummary>;
-    readonly update: (workflowId: string, save: () => WorkflowSummary) => WorkflowSummary;
+    readonly enable: (workflowId: WorkflowId) => Option.Option<WorkflowSummary>;
+    readonly retry: (workflowId: WorkflowId) => Option.Option<WorkflowSummary>;
+    readonly disable: (workflowId: WorkflowId) => Option.Option<WorkflowSummary>;
+    readonly toggle: (workflowId: WorkflowId) => Option.Option<WorkflowSummary>;
+    readonly activateEnabled: (workflowId: WorkflowId) => Option.Option<WorkflowSummary>;
+    readonly update: (workflowId: WorkflowId, save: () => WorkflowSummary) => WorkflowSummary;
     readonly updateAndDrain: (
-        workflowId: string,
+        workflowId: WorkflowId,
         save: () => WorkflowSummary,
     ) => Promise<WorkflowSummary>;
-    readonly waitForRuns: (workflowId: string) => Promise<void>;
+    readonly waitForRuns: (workflowId: WorkflowId) => Promise<void>;
 }
 
 export function createWorkflowLifecycle(
@@ -36,7 +37,7 @@ export function createWorkflowLifecycle(
             : message;
     }
 
-    function restorePreviousActivation(workflowId: string, wasActive: boolean): void {
+    function restorePreviousActivation(workflowId: WorkflowId, wasActive: boolean): void {
         if (wasActive) {
             if (!activator.isActive(workflowId) && !activator.activate(workflowId)) {
                 throw new Error(
@@ -52,7 +53,7 @@ export function createWorkflowLifecycle(
     }
 
     function collectRestoreFailures(
-        workflowId: string,
+        workflowId: WorkflowId,
         previousEnabled: boolean,
         wasActive: boolean,
     ): unknown[] {
@@ -87,7 +88,7 @@ export function createWorkflowLifecycle(
 
     function rethrowWithCompensation(
         primary: unknown,
-        workflowId: string,
+        workflowId: WorkflowId,
         failures: readonly unknown[],
     ): never {
         const primaryError = primary instanceof Error ? primary : new Error(errorMessage(primary));
@@ -130,7 +131,7 @@ export function createWorkflowLifecycle(
     }
 
     function restorePreviousState(
-        workflowId: string,
+        workflowId: WorkflowId,
         previousEnabled: boolean,
         wasActive: boolean,
         primary: unknown,
@@ -141,7 +142,7 @@ export function createWorkflowLifecycle(
     }
 
     function restoreFailedActivation(
-        workflowId: string,
+        workflowId: WorkflowId,
         previousEnabled: boolean,
         wasActive: boolean,
         activation: WorkflowSummary['activation'],
@@ -170,7 +171,7 @@ export function createWorkflowLifecycle(
         return store.getSummary(workflowId);
     }
 
-    function createActivationFailure(workflowId: string, message: string): Error {
+    function createActivationFailure(workflowId: WorkflowId, message: string): Error {
         const diagnostic: AtomicWriteFailure = {
             kind: 'persistence',
             operation: 'write',
@@ -189,7 +190,7 @@ export function createWorkflowLifecycle(
         });
     }
 
-    function activationFailure(workflowId: string): Error {
+    function activationFailure(workflowId: WorkflowId): Error {
         const summary = store.getSummary(workflowId);
         const message =
             Option.isSome(summary) && summary.value.activation.kind === 'failed'
@@ -199,7 +200,7 @@ export function createWorkflowLifecycle(
     }
 
     function restoreUpdatedWorkflow(
-        workflowId: string,
+        workflowId: WorkflowId,
         previous: Option.Option<{
             readonly pipeline: Parameters<WorkflowStore['save']>[2];
             readonly name: string;
@@ -245,7 +246,7 @@ export function createWorkflowLifecycle(
         throw primary;
     }
 
-    function activateAndCommitIntent(workflowId: string): Option.Option<WorkflowSummary> {
+    function activateAndCommitIntent(workflowId: WorkflowId): Option.Option<WorkflowSummary> {
         const current = store.getSummary(workflowId);
         if (Option.isNone(current)) return Option.none();
 
@@ -279,7 +280,7 @@ export function createWorkflowLifecycle(
         }
     }
 
-    function disableWorkflow(workflowId: string): Option.Option<WorkflowSummary> {
+    function disableWorkflow(workflowId: WorkflowId): Option.Option<WorkflowSummary> {
         const current = store.getSummary(workflowId);
         if (Option.isNone(current)) return Option.none();
 
@@ -296,7 +297,7 @@ export function createWorkflowLifecycle(
         }
     }
 
-    function toggleWorkflow(workflowId: string): Option.Option<WorkflowSummary> {
+    function toggleWorkflow(workflowId: WorkflowId): Option.Option<WorkflowSummary> {
         const current = store.getSummary(workflowId);
         if (Option.isNone(current)) return Option.none();
         return current.value.enabled
@@ -313,14 +314,14 @@ export function createWorkflowLifecycle(
 
         toggle: toggleWorkflow,
 
-        activateEnabled(workflowId: string): Option.Option<WorkflowSummary> {
+        activateEnabled(workflowId: WorkflowId): Option.Option<WorkflowSummary> {
             const current = store.getSummary(workflowId);
             if (Option.isNone(current) || !current.value.enabled) return current;
             activator.activate(workflowId);
             return store.getSummary(workflowId);
         },
 
-        update(workflowId: string, save: () => WorkflowSummary): WorkflowSummary {
+        update(workflowId: WorkflowId, save: () => WorkflowSummary): WorkflowSummary {
             const current = store.getSummary(workflowId);
             if (Option.isNone(current)) return save();
 
@@ -351,7 +352,7 @@ export function createWorkflowLifecycle(
         },
 
         async updateAndDrain(
-            workflowId: string,
+            workflowId: WorkflowId,
             save: () => WorkflowSummary,
         ): Promise<WorkflowSummary> {
             const current = store.getSummary(workflowId);
@@ -386,7 +387,7 @@ export function createWorkflowLifecycle(
             }
         },
 
-        waitForRuns(workflowId: string): Promise<void> {
+        waitForRuns(workflowId: WorkflowId): Promise<void> {
             return activator.waitForRuns(workflowId);
         },
     };

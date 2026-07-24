@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import type { WorkflowId } from '@sigil/schema/workflow-id';
 
 /**
  * The default admission policy is deliberately conservative: one run at a
@@ -29,7 +30,7 @@ export interface WorkflowRunPolicy {
 
 export interface WorkflowRunIdentity {
     readonly runId: string;
-    readonly workflowId: string;
+    readonly workflowId: WorkflowId;
     readonly pipelineId: string;
 }
 
@@ -79,7 +80,7 @@ export type WorkflowRunAdmission = Extract<
 >;
 
 export interface WorkflowRunSupervisorOptions {
-    readonly workflowId: string;
+    readonly workflowId: WorkflowId;
     readonly pipelineId: string;
     readonly policy?: Readonly<Partial<WorkflowRunPolicy>>;
     readonly execute: WorkflowRunExecutor;
