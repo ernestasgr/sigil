@@ -52,6 +52,22 @@ function formatPayloadPreview(payload: unknown): string {
     return parts.join(', ');
 }
 
+function formatCapabilityView(capabilities: readonly string[]): string {
+    return capabilities.length === 0 ? '[]' : `[${capabilities.join(', ')}]`;
+}
+
+function permissionChangePayload(payload: unknown) {
+    const parsed = safeParsePayload('plugin.permission.changed', payload);
+    return Either.isRight(parsed) ? parsed.right : undefined;
+}
+
+function permissionChangePreview(payload: unknown): string | undefined {
+    const permissionChange = permissionChangePayload(payload);
+    if (permissionChange === undefined) return undefined;
+
+    return `plugin=${permissionChange.pluginId}, previous=${formatCapabilityView(permissionChange.previous)}, next=${formatCapabilityView(permissionChange.next)}`;
+}
+
 export function payloadPreview(payload: unknown): string;
 export function payloadPreview(name: string, payload: unknown): string;
 export function payloadPreview(
@@ -69,6 +85,10 @@ export function payloadPreview(
 }
 
 export function telemetryEntryPreview(entry: BusEventEntry): string {
+    if (entry.name === 'plugin.permission.changed') {
+        const preview = permissionChangePreview(entry.payload);
+        if (preview !== undefined) return preview;
+    }
     if (entry.telemetry) return redactTelemetrySummary(entry.telemetry.summary);
     if (entry.name === 'engine.diagnostic') {
         const parsed = safeParsePayload('engine.diagnostic', entry.payload);
@@ -78,6 +98,16 @@ export function telemetryEntryPreview(entry: BusEventEntry): string {
 }
 
 export function telemetryEntryContext(entry: BusEventEntry): string {
+    if (entry.name === 'plugin.permission.changed') {
+        const permissionChange = permissionChangePayload(entry.payload);
+        if (permissionChange !== undefined) {
+            return [
+                `plugin=${permissionChange.pluginId}`,
+                `actor=${permissionChange.actor}`,
+                `cancelledRuns=${formatCapabilityView(permissionChange.cancelledRuns)}`,
+            ].join(' Â· ');
+        }
+    }
     const parsed =
         entry.name === 'engine.diagnostic'
             ? safeParsePayload('engine.diagnostic', entry.payload)

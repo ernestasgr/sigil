@@ -1,4 +1,5 @@
 import { type FileEventPayload, FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
+import { CapabilitySchema } from '@sigil/schema/manifest';
 import { Either } from 'effect';
 import { z } from 'zod';
 
@@ -132,6 +133,47 @@ export const PluginBusEventPayloadSchema = z
     .readonly();
 export type PluginBusEventPayload = z.infer<typeof PluginBusEventPayloadSchema>;
 
+export const PermissionTransitionActorSchema = z.enum([
+    'user',
+    'properties_file',
+    'startup_recovery',
+]);
+export type PermissionTransitionActor = z.infer<typeof PermissionTransitionActorSchema>;
+
+const EffectiveCapabilityViewSchema = z
+    .array(CapabilitySchema)
+    .max(CapabilitySchema.options.length)
+    .refine((capabilities) => new Set(capabilities).size === capabilities.length, {
+        message: 'Effective Capability Views must not contain duplicate capabilities.',
+    })
+    .readonly();
+
+export const PluginPermissionChangedPayloadSchema = z
+    .object({
+        pluginId: z.string().min(1),
+        previous: EffectiveCapabilityViewSchema,
+        next: EffectiveCapabilityViewSchema,
+        actor: PermissionTransitionActorSchema,
+        cancelledRuns: z.array(z.string().min(1)).readonly(),
+    })
+    .strict()
+    .readonly();
+export type PluginPermissionChangedPayload = z.infer<typeof PluginPermissionChangedPayloadSchema>;
+
+export type PluginPermissionChangedEvent = {
+    readonly name: 'plugin.permission.changed';
+    readonly payload: PluginPermissionChangedPayload;
+};
+
+export function createPluginPermissionChangedEvent(
+    payload: PluginPermissionChangedPayload,
+): PluginPermissionChangedEvent {
+    return {
+        name: 'plugin.permission.changed',
+        payload: PluginPermissionChangedPayloadSchema.parse(payload),
+    };
+}
+
 export const EngineDiagnosticPayloadSchema = z
     .object({
         message: z.string(),
@@ -173,6 +215,7 @@ type EventPayloadMap = {
     'log.output': LogOutputPayload;
     'notification.show': NotificationShowPayload;
     'plugin.event': PluginBusEventPayload;
+    'plugin.permission.changed': PluginPermissionChangedPayload;
     'engine.diagnostic': EngineDiagnosticPayload;
 };
 
@@ -251,6 +294,11 @@ const EVENT_PAYLOAD_SCHEMA_REGISTRY = {
         schema: PluginBusEventPayloadSchema,
         label: 'Plugin Event',
         color: 'text-veil',
+    },
+    'plugin.permission.changed': {
+        schema: PluginPermissionChangedPayloadSchema,
+        label: 'Plugin Permission Changed',
+        color: 'text-gilt',
     },
     'engine.diagnostic': {
         schema: EngineDiagnosticPayloadSchema,

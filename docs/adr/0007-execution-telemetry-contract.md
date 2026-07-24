@@ -42,6 +42,32 @@ evicted Event cannot remain in a secondary index. The index uses the Engine
 timestamp when indexing entries; renderer receipt time is only a fallback for
 legacy Events without an Engine timestamp.
 
+### Permission-transition Events
+
+Engine-owned Permission Transitions publish exactly one
+`plugin.permission.changed` Event after the atomic override write succeeds,
+live File Watcher and Workflow reconciliation settles, and the Plugin worker
+has received its Effective Capability View. Unknown Plugins and failed writes
+do not publish an Event. A superseded concurrent transition does not publish a
+second authoritative Event after a newer transition has taken ownership of the
+Plugin's live state.
+
+The payload is a strict, bounded audit record rather than a raw override or
+payload summary:
+
+- `pluginId` identifies the affected Plugin.
+- `previous` and `next` are Effective Capability Views, each limited to the
+  closed Capability vocabulary and at most one entry per vocabulary member.
+- `actor` is one of `user`, `properties_file`, or `startup_recovery`.
+- `cancelledRuns` is a readonly list of every run identity cancelled while the
+  transition reconciled active Workflow runs; it is `[]` when none were
+  cancelled.
+
+The Renderer indexes this Event in the existing 500-entry buffer and presents
+these parsed fields directly. It does not require a telemetry `summary` and
+does not add a durable transition-history store. Support exports retain only
+the bounded structured fields and continue to omit the raw payload.
+
 Plugin and worker diagnostics carry a source, outcome, and any available
 Plugin, Workflow, Pipeline, run, or Node identity. A support export contains
 only those structured fields and bounded summaries: raw Event payloads are

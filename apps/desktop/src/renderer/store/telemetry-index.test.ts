@@ -180,4 +180,28 @@ describe('telemetry index', () => {
         expect(output).toContain('failed');
         expect(output).toContain('Plugin worker stopped unexpectedly');
     });
+
+    it('indexes and exports permission transitions from bounded fields without a summary', () => {
+        const entry = createTelemetryEntry(1, {
+            name: 'plugin.permission.changed',
+            payload: {
+                pluginId: 'com.example.plugin',
+                previous: ['filesystem.read'],
+                next: ['state.write'],
+                actor: 'user',
+                cancelledRuns: ['run-1'],
+            },
+        });
+
+        const index = createTelemetryIndex(1).append(entry);
+        const output = formatTelemetryExport(index.entries);
+
+        expect(index.entries).toEqual([entry]);
+        expect(output).toContain('"pluginId": "com.example.plugin"');
+        expect(output).toContain('"previous": [\n        "filesystem.read"\n      ]');
+        expect(output).toContain('"next": [\n        "state.write"\n      ]');
+        expect(output).toContain('"actor": "user"');
+        expect(output).toContain('"cancelledRuns": [\n        "run-1"\n      ]');
+        expect(output).toContain('"summary": "[PAYLOAD_OMITTED]"');
+    });
 });

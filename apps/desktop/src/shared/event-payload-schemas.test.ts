@@ -10,6 +10,7 @@ import {
     NodeStartedPayloadSchema,
     NotificationShowPayloadSchema,
     PluginBusEventPayloadSchema,
+    PluginPermissionChangedPayloadSchema,
     safeParsePayload,
     validateBusEventPayload,
     WorkflowCancelledPayloadSchema,
@@ -35,6 +36,7 @@ describe('EventPayloadSchemaRegistry', () => {
             'notification.show',
             'plugin.event',
             'engine.diagnostic',
+            'plugin.permission.changed',
         ];
         for (const name of expectedNames) {
             expect(EventPayloadSchemaRegistry[name]).toBeDefined();
@@ -106,6 +108,16 @@ describe('EventPayloadSchemaRegistry', () => {
         ['log.output', { message: 'hello' }],
         ['notification.show', { title: 'Sigil', body: 'Done' }],
         ['plugin.event', { pluginId: 'com.example', eventName: 'custom', data: { key: 'val' } }],
+        [
+            'plugin.permission.changed',
+            {
+                pluginId: 'com.example',
+                previous: ['filesystem.read'],
+                next: ['state.write'],
+                actor: 'user',
+                cancelledRuns: ['run-1'],
+            },
+        ],
         ['engine.diagnostic', { message: 'watcher active' }],
     ])('accepts a valid payload for %s', (name, payload) => {
         const result = safeParsePayload(name, payload);
@@ -196,6 +208,16 @@ describe('EventPayloadSchemaRegistry', () => {
         ['log.output', {}],
         ['notification.show', { title: 123 }],
         ['plugin.event', { pluginId: 'com.example' }],
+        [
+            'plugin.permission.changed',
+            {
+                pluginId: 'com.example',
+                previous: ['filesystem.read'],
+                next: ['state.write'],
+                actor: 'operator',
+                cancelledRuns: [],
+            },
+        ],
         ['engine.diagnostic', { message: 42 }],
     ])('rejects an invalid payload for %s', (name, payload) => {
         const result = safeParsePayload(name, payload);
@@ -438,6 +460,44 @@ describe('PluginBusEventPayloadSchema', () => {
             pluginId: 'com.example',
             data: {},
         });
+        expect(result.success).toBe(false);
+    });
+});
+
+describe('PluginPermissionChangedPayloadSchema', () => {
+    it('accepts bounded effective capability views and cancelled run identities', () => {
+        const result = PluginPermissionChangedPayloadSchema.safeParse({
+            pluginId: 'com.example',
+            previous: ['filesystem.read', 'state.write'],
+            next: ['state.write'],
+            actor: 'startup_recovery',
+            cancelledRuns: ['run-1', 'run-2'],
+        });
+
+        expect(result.success).toBe(true);
+    });
+
+    it('rejects an unbounded capability view', () => {
+        const result = PluginPermissionChangedPayloadSchema.safeParse({
+            pluginId: 'com.example',
+            previous: [
+                'state.read',
+                'state.write',
+                'filesystem.read',
+                'filesystem.write',
+                'network',
+                'clipboard',
+                'processes',
+                'display',
+                'keyboard.global',
+                'microphone',
+                'microphone',
+            ],
+            next: [],
+            actor: 'user',
+            cancelledRuns: [],
+        });
+
         expect(result.success).toBe(false);
     });
 });

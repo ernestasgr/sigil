@@ -18,7 +18,10 @@ import {
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import Database from 'better-sqlite3';
-import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
+import type {
+    EngineDiagnosticPayload,
+    PermissionTransitionActor,
+} from '../../shared/event-payload-schemas.js';
 import type { PermissionOverrideOutcome } from '../../shared/persistence.js';
 import type { Bridge } from '../events/bridge.js';
 import { createBridge } from '../events/bridge.js';
@@ -95,6 +98,7 @@ export interface Engine {
     readonly applyPermissionOverride: (
         pluginId: string,
         overrides: readonly Capability[],
+        actor?: PermissionTransitionActor,
     ) => Promise<PermissionOverrideOutcome>;
     readonly registerPermissionTransitionReconciler: (
         reconciler: PermissionTransitionRunReconciler,
@@ -334,6 +338,7 @@ export function createEngine(options?: EngineOptions): Engine {
     const applyPermissionOverride = async (
         pluginId: string,
         overrides: readonly Capability[],
+        actor: PermissionTransitionActor = 'user',
     ): Promise<PermissionOverrideOutcome> =>
         applyPermissionOverrideTransition(
             {
@@ -343,9 +348,11 @@ export function createEngine(options?: EngineOptions): Engine {
                 revokeFileWatcherSubscriptions: (ownerPluginId) =>
                     fileWatcherManager.unregisterSubscribersByOwner(ownerPluginId),
                 updatePluginPermissions,
+                emitPermissionChanged: (event) => bus.next({ ...event, timestamp: Date.now() }),
             },
             pluginId,
             overrides,
+            actor,
         );
 
     return {

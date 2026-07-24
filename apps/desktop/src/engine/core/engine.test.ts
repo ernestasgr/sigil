@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type CompiledPipeline, parsePipeline } from '@sigil/schema';
-import type { Capability } from '@sigil/schema/manifest';
+import type { Capability, Manifest } from '@sigil/schema/manifest';
 import type { FileWatcherConfig } from '@sigil/schema/nodes/file-watcher';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
@@ -91,6 +91,56 @@ describe('createEngine', () => {
         expect(engine.bridge).toBeDefined();
         expect(engine.capabilityBroker).toBeDefined();
         engine.dispose();
+    });
+
+    it('publishes one permission transition Event after the Engine-owned lifecycle settles', async () => {
+        const tempDir = mkdtempSync(join(tmpdir(), 'sigil-permission-telemetry-'));
+        const plugin: Manifest = {
+            id: 'com.sigil.permission-telemetry',
+            version: '1.0.0',
+            permissions: ['filesystem.read', 'state.write'],
+            emits: ['stub.event'],
+        };
+        const engine = createEngine({
+            defaultDatabasePath: join(tempDir, 'engine.db'),
+            permissionOverridesPath: join(tempDir, 'permission-overrides.json'),
+        });
+        const events: BusEvent[] = [];
+        const subscription = engine.bus.subscribe((event) => events.push(event));
+
+        try {
+            expect(Either.isRight(engine.registry.register(plugin))).toBe(true);
+
+            const result = await engine.applyPermissionOverride(
+                plugin.id,
+                ['state.write'],
+                'properties_file',
+            );
+
+            expect(result).toEqual({
+                ok: true,
+                grantedPermissions: ['state.write'],
+                cancelledRunIds: [],
+            });
+            expect(
+                events.filter((event) => event.name === 'plugin.permission.changed'),
+            ).toHaveLength(1);
+            expect(events).toContainEqual({
+                name: 'plugin.permission.changed',
+                payload: {
+                    pluginId: plugin.id,
+                    previous: plugin.permissions,
+                    next: ['state.write'],
+                    actor: 'properties_file',
+                    cancelledRuns: [],
+                },
+                timestamp: expect.any(Number),
+            });
+        } finally {
+            subscription.unsubscribe();
+            await engine.shutdown();
+            rmSync(tempDir, { recursive: true, force: true });
+        }
     });
 
     it('applies repeated Engine-owned permission transitions to persistence, the Broker, and a loaded worker', async () => {

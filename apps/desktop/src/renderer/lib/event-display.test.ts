@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { extractPluginId, payloadPreview, telemetryEntryContext } from './event-display.js';
+import {
+    extractPluginId,
+    payloadPreview,
+    telemetryEntryContext,
+    telemetryEntryPreview,
+} from './event-display.js';
 
 describe('event display', () => {
     it('renders a valid registered payload through its schema', () => {
@@ -36,5 +41,27 @@ describe('event display', () => {
                 data: 'not-a-record',
             }),
         ).toBeUndefined();
+    });
+
+    it('presents permission transition fields without a telemetry summary', () => {
+        const entry = {
+            id: 1,
+            name: 'plugin.permission.changed',
+            payload: {
+                pluginId: 'com.example.plugin',
+                previous: ['filesystem.read'],
+                next: ['state.write'],
+                actor: 'user',
+                cancelledRuns: ['run-1'],
+            },
+            timestamp: 1700000000000,
+        };
+
+        expect(telemetryEntryPreview(entry)).toBe(
+            'plugin=com.example.plugin, previous=[filesystem.read], next=[state.write]',
+        );
+        expect(telemetryEntryContext(entry)).toBe(
+            'plugin=com.example.plugin Â· actor=user Â· cancelledRuns=[run-1]',
+        );
     });
 });

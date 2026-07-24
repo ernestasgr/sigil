@@ -2,6 +2,11 @@ import type { Capability } from '@sigil/schema/manifest';
 import { Either, Option } from 'effect';
 
 import {
+    createPluginPermissionChangedEvent,
+    type PermissionTransitionActor,
+    type PluginPermissionChangedEvent,
+} from '../../shared/event-payload-schemas.js';
+import {
     formatPersistenceDiagnostic,
     type PermissionOverrideOutcome,
 } from '../../shared/persistence.js';
@@ -24,6 +29,7 @@ export interface PermissionOverrideTransitionDependencies {
         pluginId: string,
         permissions: readonly Capability[],
     ) => void;
+    readonly emitPermissionChanged?: (event: PluginPermissionChangedEvent) => void;
 }
 
 const latestPermissionTransitionVersions = new WeakMap<object, Map<string, number>>();
@@ -55,6 +61,7 @@ export async function applyPermissionOverride(
     dependencies: PermissionOverrideTransitionDependencies,
     pluginId: string,
     overrides: readonly Capability[],
+    actor: PermissionTransitionActor = 'user',
 ): Promise<PermissionOverrideOutcome> {
     const manifest = dependencies.registry.get(pluginId);
     if (Option.isNone(manifest)) {
@@ -115,6 +122,15 @@ export async function applyPermissionOverride(
         isLatestPermissionTransition(dependencies.permissionOverrides, pluginId, transitionVersion)
     ) {
         dependencies.updatePluginPermissions(pluginId, effectivePermissions);
+        dependencies.emitPermissionChanged?.(
+            createPluginPermissionChangedEvent({
+                pluginId,
+                previous: previousEffectivePermissions,
+                next: effectivePermissions,
+                actor,
+                cancelledRuns: cancelledRunIds,
+            }),
+        );
     }
 
     return {

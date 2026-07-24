@@ -5,6 +5,7 @@ import type { Capability, Manifest } from '@sigil/schema/manifest';
 import { Either } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { PluginPermissionChangedEvent } from '../../shared/event-payload-schemas.js';
 import type { AtomicFileWriter } from '../persistence/atomic-file.js';
 import { createCapabilityBroker } from '../persistence/capability-broker.js';
 import { createPermissionOverrideStore } from '../persistence/permission-override-store.js';
@@ -29,6 +30,25 @@ describe('applyPermissionOverride', () => {
 
     afterEach(() => {
         rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it('does not emit a permission Event for an unknown Plugin', async () => {
+        const emitPermissionChanged = vi.fn<(event: PluginPermissionChangedEvent) => void>();
+
+        const result = await applyPermissionOverride(
+            {
+                registry: createManifestRegistry(),
+                permissionOverrides: createPermissionOverrideStore(),
+                revokeFileWatcherSubscriptions: vi.fn(),
+                updatePluginPermissions: vi.fn(),
+                emitPermissionChanged,
+            },
+            'com.sigil.unknown',
+            [],
+        );
+
+        expect(result).toMatchObject({ ok: false, code: 'unknown_plugin' });
+        expect(emitPermissionChanged).not.toHaveBeenCalled();
     });
 
     it('keeps the persisted selection, Broker view, worker view, and result aligned across repeated sets', async () => {
@@ -124,6 +144,57 @@ describe('applyPermissionOverride', () => {
             cancelledRunIds: ['run-active', 'run-queued'],
         });
         expect(updatePluginPermissions).toHaveBeenCalledWith(pluginId, []);
+    });
+
+    it('emits one permission Event after reconciliation and worker synchronization settle', async () => {
+        const registry = createManifestRegistry();
+        expect(Either.isRight(registry.register(manifest))).toBe(true);
+        const permissionOverrides = createPermissionOverrideStore();
+        const order: string[] = [];
+        const events: PluginPermissionChangedEvent[] = [];
+
+        const result = await applyPermissionOverride(
+            {
+                registry,
+                permissionOverrides,
+                reconcileActiveWorkflowRuns: async () => {
+                    order.push('reconcile');
+                    return ['run-revoked'];
+                },
+                revokeFileWatcherSubscriptions: () => {
+                    order.push('revoke');
+                },
+                updatePluginPermissions: () => {
+                    order.push('update');
+                },
+                emitPermissionChanged: (event) => {
+                    order.push('emit');
+                    events.push(event);
+                },
+            },
+            pluginId,
+            [],
+            'startup_recovery',
+        );
+
+        expect(result).toEqual({
+            ok: true,
+            grantedPermissions: [],
+            cancelledRunIds: ['run-revoked'],
+        });
+        expect(order).toEqual(['revoke', 'reconcile', 'update', 'emit']);
+        expect(events).toEqual([
+            {
+                name: 'plugin.permission.changed',
+                payload: {
+                    pluginId,
+                    previous: ['state.write', 'filesystem.read'],
+                    next: [],
+                    actor: 'startup_recovery',
+                    cancelledRuns: ['run-revoked'],
+                },
+            },
+        ]);
     });
 
     it('does not let an older reconciliation re-grant permissions from a newer override', async () => {
@@ -242,6 +313,7 @@ describe('applyPermissionOverride', () => {
         const workerPermissions = new Set<Capability>(['filesystem.read']);
         const revokeFileWatcherSubscriptions = vi.fn();
         const updatePluginPermissions = vi.fn();
+        const emitPermissionChanged = vi.fn<(event: PluginPermissionChangedEvent) => void>();
 
         const result = await applyPermissionOverride(
             {
@@ -249,6 +321,7 @@ describe('applyPermissionOverride', () => {
                 permissionOverrides,
                 revokeFileWatcherSubscriptions,
                 updatePluginPermissions,
+                emitPermissionChanged,
             },
             pluginId,
             ['state.write'],
@@ -281,6 +354,7 @@ describe('applyPermissionOverride', () => {
             ),
         ).toBe(true);
         expect(updatePluginPermissions).not.toHaveBeenCalled();
+        expect(emitPermissionChanged).not.toHaveBeenCalled();
     });
 
     it('revokes owned File Watcher subscriptions before notifying a worker about read removal', async () => {

@@ -13,6 +13,8 @@ import {
     NotificationShowPayloadSchema,
     type PluginBusEventPayload,
     PluginBusEventPayloadSchema,
+    type PluginPermissionChangedPayload,
+    PluginPermissionChangedPayloadSchema,
     type WorkflowCancelledPayload,
     WorkflowCancelledPayloadSchema,
     type WorkflowDroppedPayload,
@@ -36,6 +38,7 @@ export type {
     NodeStartedPayload,
     NotificationShowPayload,
     PluginBusEventPayload,
+    PluginPermissionChangedPayload,
     WorkflowCancelledPayload,
     WorkflowDroppedPayload,
     WorkflowErrorPayload,
@@ -52,6 +55,7 @@ export {
     NodeStartedPayloadSchema,
     NotificationShowPayloadSchema,
     PluginBusEventPayloadSchema,
+    PluginPermissionChangedPayloadSchema,
     WorkflowCancelledPayloadSchema,
     WorkflowDroppedPayloadSchema,
     WorkflowErrorPayloadSchema,
@@ -80,6 +84,7 @@ export type BusEvent =
     | BusEventEnvelope<'log.output', LogOutputPayload>
     | BusEventEnvelope<'notification.show', NotificationShowPayload>
     | BusEventEnvelope<'plugin.event', PluginBusEventPayload>
+    | BusEventEnvelope<'plugin.permission.changed', PluginPermissionChangedPayload>
     | BusEventEnvelope<'engine.diagnostic', EngineDiagnosticPayload>;
 
 export interface EventSink {
