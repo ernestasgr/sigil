@@ -498,11 +498,14 @@ function handleListPlugins(
     );
 }
 
-function handleSetPermissionOverride(
+async function handleSetPermissionOverride(
     message: EngineRequest<'setPermissionOverride'>,
     subsystems: DispatchSubsystems,
-): void {
-    const result = subsystems.engine.applyPermissionOverride(message.pluginId, message.overrides);
+): Promise<void> {
+    const result = await subsystems.engine.applyPermissionOverride(
+        message.pluginId,
+        message.overrides,
+    );
     if (!result.ok) {
         if (result.kind === 'persistence') {
             subsystems.log(`Failed to save permission override: ${result.error}`);
@@ -525,6 +528,7 @@ function handleSetPermissionOverride(
             correlationId: message.correlationId,
             ok: true,
             grantedPermissions: result.grantedPermissions,
+            cancelledRunIds: result.cancelledRunIds,
         },
         subsystems,
     );

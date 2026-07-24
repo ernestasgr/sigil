@@ -49,7 +49,10 @@ import {
 import { acceptWorkflow, type WorkflowInput } from '../workflow/workflow-acceptance.js';
 import { createWorkflowStateStore, type WorkflowStateStore } from '../workflow/workflow-state.js';
 import { createWorkflowTopologyError } from '../workflow/workflow-topology-error.js';
-import { applyPermissionOverride as applyPermissionOverrideTransition } from './permission-transition.js';
+import {
+    applyPermissionOverride as applyPermissionOverrideTransition,
+    type PermissionTransitionRunReconciler,
+} from './permission-transition.js';
 
 export interface EngineOptions {
     readonly properties?: unknown;
@@ -92,7 +95,10 @@ export interface Engine {
     readonly applyPermissionOverride: (
         pluginId: string,
         overrides: readonly Capability[],
-    ) => PermissionOverrideOutcome;
+    ) => Promise<PermissionOverrideOutcome>;
+    readonly registerPermissionTransitionReconciler: (
+        reconciler: PermissionTransitionRunReconciler,
+    ) => () => void;
     readonly updatePluginPermissions: (
         pluginId: string,
         permissions: readonly Capability[],
@@ -213,6 +219,7 @@ export function createEngine(options?: EngineOptions): Engine {
     const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
     const contractRegistry = createBuiltinNodeContractRegistry();
     const pluginLoader = createNodePluginLoader();
+    let permissionTransitionReconciler: PermissionTransitionRunReconciler = async () => [];
     let resourcesDisposed = false;
     let shutdownPromise: Promise<void> | undefined;
 
@@ -312,14 +319,27 @@ export function createEngine(options?: EngineOptions): Engine {
         pluginLoader.updatePluginPermissions(pluginId, permissions);
     };
 
-    const applyPermissionOverride = (
+    const registerPermissionTransitionReconciler = (
+        reconciler: PermissionTransitionRunReconciler,
+    ): (() => void) => {
+        const previous = permissionTransitionReconciler;
+        permissionTransitionReconciler = reconciler;
+        return (): void => {
+            if (permissionTransitionReconciler === reconciler) {
+                permissionTransitionReconciler = previous;
+            }
+        };
+    };
+
+    const applyPermissionOverride = async (
         pluginId: string,
         overrides: readonly Capability[],
-    ): PermissionOverrideOutcome =>
+    ): Promise<PermissionOverrideOutcome> =>
         applyPermissionOverrideTransition(
             {
                 registry,
                 permissionOverrides,
+                reconcileActiveWorkflowRuns: permissionTransitionReconciler,
                 revokeFileWatcherSubscriptions: (ownerPluginId) =>
                     fileWatcherManager.unregisterSubscribersByOwner(ownerPluginId),
                 updatePluginPermissions,
@@ -366,6 +386,7 @@ export function createEngine(options?: EngineOptions): Engine {
             return builtinResults;
         },
         applyPermissionOverride,
+        registerPermissionTransitionReconciler,
         updatePluginPermissions,
         execute: async (
             pipeline,

@@ -98,9 +98,11 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
         properties,
     }));
     const applyProperties = vi.fn(() => ({ applied: {}, restartRequired: [] as string[] }));
-    const applyPermissionOverride = vi
-        .fn()
-        .mockReturnValue({ ok: true as const, grantedPermissions: [] as const });
+    const applyPermissionOverride = vi.fn().mockReturnValue({
+        ok: true as const,
+        grantedPermissions: [] as const,
+        cancelledRunIds: [] as const,
+    });
     const propertyRegistry =
         propertyDefaults === undefined
             ? undefined
@@ -762,7 +764,7 @@ describe('dispatch', () => {
         });
     });
 
-    it('delegates SetPermissionOverride to the Engine transition and posts its result', () => {
+    it('delegates SetPermissionOverride to the Engine transition and posts its result', async () => {
         const { subsystems, postMessage, engine } = createFakeSubsystems();
 
         const message: EngineSetPermissionOverride = {
@@ -771,7 +773,7 @@ describe('dispatch', () => {
             pluginId: 'plugin-a',
             overrides: [],
         };
-        dispatch(message, subsystems);
+        await dispatch(message, subsystems);
 
         expect(engine.applyPermissionOverride).toHaveBeenCalledWith('plugin-a', []);
         expect(engine.permissionOverrides.set).not.toHaveBeenCalled();
@@ -781,17 +783,19 @@ describe('dispatch', () => {
             correlationId: 'corr-7',
             ok: true,
             grantedPermissions: [],
+            cancelledRunIds: [],
         });
     });
 
-    it('returns the Engine-owned effective view instead of echoing the raw request', () => {
+    it('returns the Engine-owned effective view instead of echoing the raw request', async () => {
         const { subsystems, engine } = createFakeSubsystems();
         engine.applyPermissionOverride.mockReturnValue({
             ok: true,
             grantedPermissions: ['filesystem.read'],
+            cancelledRunIds: [],
         });
 
-        dispatch(
+        await dispatch(
             {
                 type: EngineChannel.SetPermissionOverride,
                 correlationId: 'corr-bounded-update',
@@ -811,10 +815,11 @@ describe('dispatch', () => {
             correlationId: 'corr-bounded-update',
             ok: true,
             grantedPermissions: ['filesystem.read'],
+            cancelledRunIds: [],
         });
     });
 
-    it('passes an Engine-owned unknown Plugin rejection through unchanged', () => {
+    it('passes an Engine-owned unknown Plugin rejection through unchanged', async () => {
         const { subsystems, postMessage, engine } = createFakeSubsystems();
         engine.applyPermissionOverride.mockReturnValue({
             ok: false,
@@ -824,7 +829,7 @@ describe('dispatch', () => {
             error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
         });
 
-        dispatch(
+        await dispatch(
             {
                 type: EngineChannel.SetPermissionOverride,
                 correlationId: 'corr-unknown-plugin',
@@ -849,7 +854,7 @@ describe('dispatch', () => {
         });
     });
 
-    it('returns a failure outcome when a permission override cannot be committed', () => {
+    it('returns a failure outcome when a permission override cannot be committed', async () => {
         const { subsystems, postMessage, engine } = createFakeSubsystems();
         const diagnostic = {
             kind: 'persistence',
@@ -865,7 +870,7 @@ describe('dispatch', () => {
             diagnostic,
         });
 
-        dispatch(
+        await dispatch(
             {
                 type: EngineChannel.SetPermissionOverride,
                 correlationId: 'corr-permission-failed',

@@ -113,6 +113,7 @@ const responseArbitrary = fc.oneof(
         correlationId: 'corr-permission-success',
         ok: true as const,
         grantedPermissions: ['filesystem.read'] as const,
+        cancelledRunIds: [] as const,
     }),
     fc.record({
         type: fc.constant(EngineChannel.SavePropertiesResult),

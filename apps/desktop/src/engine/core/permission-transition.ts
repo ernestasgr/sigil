@@ -9,9 +9,16 @@ import { effectiveCapabilityView } from '../persistence/capability-broker.js';
 import type { PermissionOverrideStore } from '../persistence/permission-override-store.js';
 import type { ManifestRegistry } from '../plugins/manifest-registry.js';
 
+export type PermissionTransitionRunReconciler = (
+    pluginId: string,
+    manifestPermissions: readonly Capability[],
+    effectivePermissions: readonly Capability[],
+) => Promise<readonly string[]>;
+
 export interface PermissionOverrideTransitionDependencies {
     readonly registry: Pick<ManifestRegistry, 'get'>;
-    readonly permissionOverrides: Pick<PermissionOverrideStore, 'get' | 'set'>;
+    readonly permissionOverrides: Pick<PermissionOverrideStore, 'get' | 'has' | 'set'>;
+    readonly reconcileActiveWorkflowRuns?: PermissionTransitionRunReconciler;
     readonly revokeFileWatcherSubscriptions: (pluginId: string) => void;
     readonly updatePluginPermissions: (
         pluginId: string,
@@ -19,11 +26,11 @@ export interface PermissionOverrideTransitionDependencies {
     ) => void;
 }
 
-export function applyPermissionOverride(
+export async function applyPermissionOverride(
     dependencies: PermissionOverrideTransitionDependencies,
     pluginId: string,
     overrides: readonly Capability[],
-): PermissionOverrideOutcome {
+): Promise<PermissionOverrideOutcome> {
     const manifest = dependencies.registry.get(pluginId);
     if (Option.isNone(manifest)) {
         return {
@@ -35,6 +42,12 @@ export function applyPermissionOverride(
         };
     }
 
+    const previousEffectivePermissions = effectiveCapabilityView(
+        manifest.value.permissions,
+        dependencies.permissionOverrides.has(pluginId)
+            ? dependencies.permissionOverrides.get(pluginId)
+            : undefined,
+    );
     const result = dependencies.permissionOverrides.set(pluginId, overrides);
     if (Either.isLeft(result)) {
         return {
@@ -52,7 +65,23 @@ export function applyPermissionOverride(
     if (!effectivePermissions.includes('filesystem.read')) {
         dependencies.revokeFileWatcherSubscriptions(pluginId);
     }
+
+    const revokedPermissions = previousEffectivePermissions.filter(
+        (permission) => !effectivePermissions.includes(permission),
+    );
+    const cancelledRunIds =
+        revokedPermissions.length === 0 || dependencies.reconcileActiveWorkflowRuns === undefined
+            ? []
+            : await dependencies.reconcileActiveWorkflowRuns(
+                  pluginId,
+                  manifest.value.permissions,
+                  effectivePermissions,
+              );
     dependencies.updatePluginPermissions(pluginId, effectivePermissions);
 
-    return { ok: true, grantedPermissions: effectivePermissions };
+    return {
+        ok: true,
+        grantedPermissions: effectivePermissions,
+        cancelledRunIds: [...cancelledRunIds],
+    };
 }

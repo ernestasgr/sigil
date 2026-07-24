@@ -121,7 +121,7 @@ const engineFixtures = {
     },
     setPermissionOverride: {
         request: { pluginId: 'plugin-1', overrides: [] },
-        response: { ok: true, grantedPermissions: [] },
+        response: { ok: true, grantedPermissions: [], cancelledRunIds: [] },
     },
     readProperties: { request: {}, response: { properties: {} } },
     saveProperties: {
@@ -286,7 +286,11 @@ describe('CommandContracts', () => {
 
         expect(responseSchema.safeParse({ ok: true }).success).toBe(false);
         expect(
-            responseSchema.safeParse({ ok: true, grantedPermissions: ['filesystem.read'] }).success,
+            responseSchema.safeParse({
+                ok: true,
+                grantedPermissions: ['filesystem.read'],
+                cancelledRunIds: [],
+            }).success,
         ).toBe(true);
     });
 });
