@@ -351,6 +351,50 @@ describe('typed Plugin RPC authorization router', () => {
         });
     });
 
+    it('attributes File Watcher registration and unregistration to the routing Plugin', () => {
+        const post = vi.fn();
+        const registerSubscriber = vi.fn();
+        const unregisterSubscriber = vi.fn();
+        const trackFileWatcherSubscription = vi.fn();
+        const untrackFileWatcherSubscription = vi.fn();
+        const pluginId = 'com.sigil.owner';
+        const subscriber = {
+            id: 'owned-subscription',
+            path: '/owned',
+            recursive: false,
+            events: ['file.created'] as const,
+        };
+        const router = createNodePluginRpcRouter({
+            pluginId,
+            pendingExecutions: new Map(),
+            post,
+            kernel: {
+                capabilityBroker: { request: () => Either.right(undefined) },
+                fileWatcherManager: { registerSubscriber, unregisterSubscriber },
+            },
+            trackFileWatcherSubscription,
+            untrackFileWatcherSubscription,
+        });
+
+        router.route({
+            kind: NodePluginWorkerKind.DepsRpc,
+            requestId: 'rpc:register',
+            operation: 'fileWatcherManager.registerSubscriber',
+            args: [subscriber, 'callback:owned'],
+        });
+        router.route({
+            kind: NodePluginWorkerKind.DepsRpc,
+            requestId: 'rpc:unregister',
+            operation: 'fileWatcherManager.unregisterSubscriber',
+            args: [subscriber.id],
+        });
+
+        expect(registerSubscriber).toHaveBeenCalledWith(subscriber, expect.any(Function), pluginId);
+        expect(unregisterSubscriber).toHaveBeenCalledWith(subscriber.id, pluginId);
+        expect(trackFileWatcherSubscription).toHaveBeenCalledWith(subscriber.id);
+        expect(untrackFileWatcherSubscription).toHaveBeenCalledWith(subscriber.id);
+    });
+
     it('rejects malformed or unauthorized RPCs before touching the adapter', () => {
         const post = vi.fn();
         const request: KernelDeps['capabilityBroker']['request'] = vi.fn(() =>
@@ -626,7 +670,10 @@ describe('instance-owned Plugin loader supervision', () => {
             expect(activator.isActive(workflow.id)).toBe(false);
             expect(registerSubscriber).toHaveBeenCalledTimes(2);
             expect(unregisterSubscriber).toHaveBeenCalledTimes(1);
-            expect(unregisterSubscriber).toHaveBeenCalledWith('successful-registration');
+            expect(unregisterSubscriber).toHaveBeenCalledWith(
+                'successful-registration',
+                'com.sigil.partial-registration-failure',
+            );
         } finally {
             activator?.dispose();
             await engine.shutdown();
@@ -726,7 +773,10 @@ describe('instance-owned Plugin loader supervision', () => {
 
             expect(activator.isActive(first.id)).toBe(false);
             expect(activator.isActive(second.id)).toBe(true);
-            expect(unregisterSubscriber).toHaveBeenCalledWith('first');
+            expect(unregisterSubscriber).toHaveBeenCalledWith(
+                'first',
+                'com.sigil.concurrent-activation',
+            );
         } finally {
             activator?.dispose();
             await engine.shutdown();

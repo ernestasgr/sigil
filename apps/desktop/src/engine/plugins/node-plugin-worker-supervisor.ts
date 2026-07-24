@@ -438,8 +438,10 @@ function createWorkerNodeHandlerProxy(
         if (kernel) {
             for (const subscriberId of activeFileWatcherSubscriptions) {
                 try {
-                    const unregistration =
-                        kernel.fileWatcherManager.unregisterSubscriber(subscriberId);
+                    const unregistration = kernel.fileWatcherManager.unregisterSubscriber(
+                        subscriberId,
+                        pluginId,
+                    );
                     if (unregistration instanceof Promise) {
                         void unregistration.catch((error: unknown) => {
                             publishUnregistrationFailure(subscriberId, error);

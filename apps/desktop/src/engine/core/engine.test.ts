@@ -12,6 +12,7 @@ import { compileGraph } from '../../renderer/workflow-builder/compile.js';
 import { createNodeCatalogFromManifests } from '../../renderer/workflow-builder/node-catalog.js';
 import type { BusEvent } from '../events/event-bus.js';
 import { isTriggerHandler } from '../node-handlers/types.js';
+import type { FileEvent } from '../plugins/file-watcher-manager.js';
 import { createEngine, type Engine } from './engine.js';
 
 async function activateFileWatcher(
@@ -163,6 +164,78 @@ describe('createEngine', () => {
                 );
             }
         } finally {
+            await engine.shutdown();
+            rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    it('revokes only the affected active File Watcher subscriptions before applying a read override', async () => {
+        const tempDir = mkdtempSync(join(tmpdir(), 'sigil-file-watcher-revocation-'));
+        const engine = createEngine({
+            defaultDatabasePath: join(tempDir, 'engine.db'),
+            permissionOverridesPath: join(tempDir, 'permission-overrides.json'),
+        });
+        let teardown: (() => void) | undefined;
+
+        try {
+            const contexts: WorkflowContext[] = [];
+            teardown = await activateFileWatcher(
+                engine,
+                { path: tempDir, recursive: false, events: ['file.created'] },
+                contexts,
+            );
+            const survivingEvents: FileEvent[] = [];
+            engine.fileWatcherManager.registerSubscriber(
+                {
+                    id: 'surviving-owner-subscription',
+                    path: tempDir,
+                    recursive: false,
+                    events: ['file.created'],
+                    ignorePatterns: [],
+                },
+                (event) => survivingEvents.push(event),
+                'com.sigil.surviving-owner',
+            );
+
+            await vi.waitFor(() => {
+                expect(engine.fileWatcherManager.getSubscriberCount()).toBe(2);
+            });
+            expect(
+                engine.fileWatcherManager.getSubscriberIdsByOwner('com.sigil.file-watcher'),
+            ).toHaveLength(1);
+
+            const result = engine.applyPermissionOverride('com.sigil.file-watcher', [
+                'state.write',
+            ]);
+
+            expect(result).toEqual({ ok: true, grantedPermissions: ['state.write'] });
+            expect(engine.fileWatcherManager.getSubscriberCount()).toBe(1);
+            expect(
+                engine.fileWatcherManager.getSubscriberIdsByOwner('com.sigil.file-watcher'),
+            ).toEqual([]);
+
+            writeFileSync(join(tempDir, 'after-revocation.txt'), 'surviving');
+            await vi.waitFor(() => {
+                expect(survivingEvents.map((event) => event.payload.name)).toContain(
+                    'after-revocation.txt',
+                );
+            });
+            await waitForFileWatcherQuiescence();
+
+            expect(contexts.map((context) => context.payload.name)).not.toContain(
+                'after-revocation.txt',
+            );
+            expect(survivingEvents.map((event) => event.payload.name)).toContain(
+                'after-revocation.txt',
+            );
+
+            const repeated = engine.applyPermissionOverride('com.sigil.file-watcher', [
+                'state.write',
+            ]);
+            expect(repeated).toEqual({ ok: true, grantedPermissions: ['state.write'] });
+            expect(engine.fileWatcherManager.getSubscriberCount()).toBe(1);
+        } finally {
+            teardown?.();
             await engine.shutdown();
             rmSync(tempDir, { recursive: true, force: true });
         }
