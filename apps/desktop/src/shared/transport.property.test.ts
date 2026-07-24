@@ -108,6 +108,12 @@ const responseArbitrary = fc.oneof(
             { maxLength: 4 },
         ),
     }),
+    fc.constant({
+        type: EngineChannel.SetPermissionOverrideResult,
+        correlationId: 'corr-permission-success',
+        ok: true as const,
+        grantedPermissions: ['filesystem.read'] as const,
+    }),
     fc.record({
         type: fc.constant(EngineChannel.SavePropertiesResult),
         correlationId: correlationIdArbitrary,

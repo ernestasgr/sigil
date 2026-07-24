@@ -502,52 +502,29 @@ function handleSetPermissionOverride(
     message: EngineRequest<'setPermissionOverride'>,
     subsystems: DispatchSubsystems,
 ): void {
-    if (!subsystems.engine.registry.has(message.pluginId)) {
+    const result = subsystems.engine.applyPermissionOverride(message.pluginId, message.overrides);
+    if (!result.ok) {
+        if (result.kind === 'persistence') {
+            subsystems.log(`Failed to save permission override: ${result.error}`);
+        }
         postCommandResponse(
             'setPermissionOverride',
             {
                 type: EngineChannel.SetPermissionOverrideResult,
                 correlationId: message.correlationId,
-                ok: false,
-                kind: 'domain',
-                code: 'unknown_plugin',
-                pluginId: message.pluginId,
-                error: `Plugin "${message.pluginId}" is not registered in the Manifest Registry.`,
+                ...result,
             },
             subsystems,
         );
         return;
     }
-
-    const result = subsystems.engine.permissionOverrides.set(message.pluginId, message.overrides);
-    if (Either.isLeft(result)) {
-        const detail = formatPersistenceDiagnostic(result.left);
-        subsystems.log(`Failed to save permission override: ${detail}`);
-        postCommandResponse(
-            'setPermissionOverride',
-            {
-                type: EngineChannel.SetPermissionOverrideResult,
-                correlationId: message.correlationId,
-                ok: false,
-                kind: 'persistence',
-                error: detail,
-                diagnostic: result.left,
-            },
-            subsystems,
-        );
-        return;
-    }
-    const manifest = subsystems.engine.registry.get(message.pluginId);
-    const effectivePermissions = Option.isSome(manifest)
-        ? effectiveCapabilityView(manifest.value.permissions, message.overrides)
-        : [];
-    subsystems.engine.updatePluginPermissions?.(message.pluginId, effectivePermissions);
     postCommandResponse(
         'setPermissionOverride',
         {
             type: EngineChannel.SetPermissionOverrideResult,
             correlationId: message.correlationId,
             ok: true,
+            grantedPermissions: result.grantedPermissions,
         },
         subsystems,
     );

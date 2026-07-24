@@ -210,6 +210,17 @@ describe('rpc', () => {
 });
 
 describe('permission override outcome mapping', () => {
+    it('preserves the Engine effective permission view on success', () => {
+        expect(
+            toPermissionOverrideOutcome({
+                type: EngineChannel.SetPermissionOverrideResult,
+                correlationId: 'corr-permission-success',
+                ok: true,
+                grantedPermissions: ['filesystem.read'],
+            }),
+        ).toEqual({ ok: true, grantedPermissions: ['filesystem.read'] });
+    });
+
     it('keeps an unknown Plugin rejection typed and diagnostic-free', () => {
         expect(
             toPermissionOverrideOutcome({

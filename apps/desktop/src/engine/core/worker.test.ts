@@ -43,6 +43,7 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
         execute: ReturnType<typeof vi.fn>;
         validateProperties: ReturnType<typeof vi.fn>;
         applyProperties: ReturnType<typeof vi.fn>;
+        applyPermissionOverride: ReturnType<typeof vi.fn>;
         registry: {
             all: ReturnType<typeof vi.fn>;
             get: ReturnType<typeof vi.fn>;
@@ -97,6 +98,9 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
         properties,
     }));
     const applyProperties = vi.fn(() => ({ applied: {}, restartRequired: [] as string[] }));
+    const applyPermissionOverride = vi
+        .fn()
+        .mockReturnValue({ ok: true as const, grantedPermissions: [] as const });
     const propertyRegistry =
         propertyDefaults === undefined
             ? undefined
@@ -126,6 +130,7 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
                 execute,
                 validateProperties,
                 applyProperties,
+                applyPermissionOverride,
                 registry: { all: registryAll, get: registryGet, has: registryHas },
                 updatePluginPermissions,
                 ...(propertyRegistry === undefined ? {} : { propertyRegistry }),
@@ -164,6 +169,7 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
             execute,
             validateProperties,
             applyProperties,
+            applyPermissionOverride,
             registry: { all: registryAll, get: registryGet, has: registryHas },
             updatePluginPermissions,
             ...(propertyRegistry === undefined ? {} : { propertyRegistry }),
@@ -756,7 +762,7 @@ describe('dispatch', () => {
         });
     });
 
-    it('routes SetPermissionOverride and posts ok result', () => {
+    it('delegates SetPermissionOverride to the Engine transition and posts its result', () => {
         const { subsystems, postMessage, engine } = createFakeSubsystems();
 
         const message: EngineSetPermissionOverride = {
@@ -767,26 +773,23 @@ describe('dispatch', () => {
         };
         dispatch(message, subsystems);
 
-        expect(engine.registry.has).toHaveBeenCalledWith('plugin-a');
-        expect(engine.permissionOverrides.set).toHaveBeenCalledWith('plugin-a', []);
-        expect(engine.updatePluginPermissions).toHaveBeenCalledWith('plugin-a', []);
+        expect(engine.applyPermissionOverride).toHaveBeenCalledWith('plugin-a', []);
+        expect(engine.permissionOverrides.set).not.toHaveBeenCalled();
+        expect(engine.updatePluginPermissions).not.toHaveBeenCalled();
         expect(postMessage).toHaveBeenCalledWith({
             type: EngineChannel.SetPermissionOverrideResult,
             correlationId: 'corr-7',
             ok: true,
+            grantedPermissions: [],
         });
     });
 
-    it('updates the live Plugin with the manifest-bounded permission view', () => {
+    it('returns the Engine-owned effective view instead of echoing the raw request', () => {
         const { subsystems, engine } = createFakeSubsystems();
-        engine.registry.get.mockReturnValue(
-            Option.some({
-                id: 'plugin-a',
-                version: '1.0.0',
-                permissions: ['filesystem.read'],
-                emits: ['stub.event'],
-            }),
-        );
+        engine.applyPermissionOverride.mockReturnValue({
+            ok: true,
+            grantedPermissions: ['filesystem.read'],
+        });
 
         dispatch(
             {
@@ -798,14 +801,28 @@ describe('dispatch', () => {
             subsystems,
         );
 
-        expect(engine.updatePluginPermissions).toHaveBeenCalledWith('plugin-a', [
+        expect(engine.applyPermissionOverride).toHaveBeenCalledWith('plugin-a', [
             'filesystem.read',
+            'network',
         ]);
+        expect(engine.updatePluginPermissions).not.toHaveBeenCalled();
+        expect(subsystems.postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.SetPermissionOverrideResult,
+            correlationId: 'corr-bounded-update',
+            ok: true,
+            grantedPermissions: ['filesystem.read'],
+        });
     });
 
-    it('rejects an unknown Plugin before persistence or worker permission updates', () => {
+    it('passes an Engine-owned unknown Plugin rejection through unchanged', () => {
         const { subsystems, postMessage, engine } = createFakeSubsystems();
-        engine.registry.has.mockReturnValue(false);
+        engine.applyPermissionOverride.mockReturnValue({
+            ok: false,
+            kind: 'domain',
+            code: 'unknown_plugin',
+            pluginId: 'plugin-ghost',
+            error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
+        });
 
         dispatch(
             {
@@ -817,7 +834,8 @@ describe('dispatch', () => {
             subsystems,
         );
 
-        expect(engine.registry.has).toHaveBeenCalledWith('plugin-ghost');
+        expect(engine.applyPermissionOverride).toHaveBeenCalledWith('plugin-ghost', []);
+        expect(engine.registry.has).not.toHaveBeenCalled();
         expect(engine.permissionOverrides.set).not.toHaveBeenCalled();
         expect(engine.updatePluginPermissions).not.toHaveBeenCalled();
         expect(postMessage).toHaveBeenCalledWith({
@@ -840,7 +858,12 @@ describe('dispatch', () => {
             path: 'C:/permission-overrides.json',
             message: 'disk full',
         } as const;
-        engine.permissionOverrides.set.mockReturnValue(Either.left(diagnostic));
+        engine.applyPermissionOverride.mockReturnValue({
+            ok: false,
+            kind: 'persistence',
+            error: '[persistence:write] C:/permission-overrides.json: disk full',
+            diagnostic,
+        });
 
         dispatch(
             {
@@ -860,6 +883,8 @@ describe('dispatch', () => {
             error: '[persistence:write] C:/permission-overrides.json: disk full',
             diagnostic,
         });
+        expect(engine.applyPermissionOverride).toHaveBeenCalledWith('plugin-a', []);
+        expect(engine.permissionOverrides.set).not.toHaveBeenCalled();
         expect(engine.updatePluginPermissions).not.toHaveBeenCalled();
     });
 

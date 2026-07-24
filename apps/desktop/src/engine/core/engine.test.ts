@@ -2,10 +2,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type CompiledPipeline, parsePipeline } from '@sigil/schema';
+import type { Capability } from '@sigil/schema/manifest';
 import type { FileWatcherConfig } from '@sigil/schema/nodes/file-watcher';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import { Option } from 'effect';
+import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileGraph } from '../../renderer/workflow-builder/compile.js';
 import { createNodeCatalogFromManifests } from '../../renderer/workflow-builder/node-catalog.js';
@@ -89,6 +90,82 @@ describe('createEngine', () => {
         expect(engine.bridge).toBeDefined();
         expect(engine.capabilityBroker).toBeDefined();
         engine.dispose();
+    });
+
+    it('applies repeated Engine-owned permission transitions to persistence, the Broker, and a loaded worker', async () => {
+        const tempDir = mkdtempSync(join(tmpdir(), 'sigil-permission-engine-'));
+        const overridesPath = join(tempDir, 'permission-overrides.json');
+        const pluginId = 'com.sigil.file-manager';
+        const engine = createEngine({
+            defaultDatabasePath: join(tempDir, 'engine.db'),
+            permissionOverridesPath: overridesPath,
+        });
+
+        try {
+            await engine.loadBuiltinPlugins();
+            const handler = engine.handlerRegistry.get('file-manager');
+            expect(Option.isSome(handler)).toBe(true);
+            if (Option.isNone(handler)) return;
+
+            const execute = (): Promise<unknown> =>
+                handler.value.execute(
+                    {
+                        node: {
+                            id: 'permission-contract',
+                            type: 'file-manager',
+                            pluginId,
+                            config: { action: 'copy', destination: tempDir },
+                        },
+                        ctx: {
+                            event: 'file.created',
+                            payload: { path: join(tempDir, 'source.txt') },
+                            vars: {},
+                        },
+                    },
+                    {} as never,
+                );
+
+            const selections: readonly {
+                readonly requested: readonly Capability[];
+                readonly effective: readonly Capability[];
+                readonly workerError: Capability;
+            }[] = [
+                {
+                    requested: ['state.write', 'filesystem.read'] as const,
+                    effective: ['state.write', 'filesystem.read'] as const,
+                    workerError: 'filesystem.write',
+                },
+                {
+                    requested: ['state.write'] as const,
+                    effective: ['state.write'] as const,
+                    workerError: 'filesystem.read',
+                },
+            ];
+
+            for (const selection of selections) {
+                const result = engine.applyPermissionOverride(pluginId, selection.requested);
+
+                expect(result).toEqual({ ok: true, grantedPermissions: selection.effective });
+                expect(engine.permissionOverrides.get(pluginId)).toEqual(selection.requested);
+                expect(JSON.parse(readFileSync(overridesPath, 'utf8'))).toEqual({
+                    [pluginId]: selection.requested,
+                });
+                expect(
+                    Either.isRight(
+                        engine.capabilityBroker.request({
+                            pluginId,
+                            capability: selection.workerError,
+                        }),
+                    ),
+                ).toBe(false);
+                await expect(execute()).rejects.toThrow(
+                    `Permission denied: ${selection.workerError}`,
+                );
+            }
+        } finally {
+            await engine.shutdown();
+            rmSync(tempDir, { recursive: true, force: true });
+        }
     });
 
     it('awaits plugin worker termination during graceful shutdown', async () => {
