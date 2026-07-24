@@ -2,14 +2,15 @@ import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Either } from 'effect';
 import { app, BrowserWindow, Notification } from 'electron';
+import { createIPCHandler } from 'electron-trpc/main';
 
 import { safeParsePayload } from '../shared/event-payload-schemas.js';
-import { type EngineBusEventPayload, RendererChannel } from '../shared/ipc-channels.js';
-import type { WorkflowSummary } from '../shared/workflow.js';
+import type { EngineBusEventPayload } from '../shared/ipc-channels.js';
+import { WorkflowIdSchema, type WorkflowSummary } from '../shared/workflow.js';
 import { type EngineHandle, spawnEngine } from './engine-client.js';
-import { registerIpcHandlers } from './ipc/ipc-handlers.js';
 import { createQuitCoordinator } from './quit-coordinator.js';
 import { createTray, type TrayController } from './tray/tray.js';
+import { createAppRouter } from './trpc/router.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -18,6 +19,7 @@ const RENDERER_DEV_URL = process.env.ELECTRON_RENDERER_URL;
 
 let engine: EngineHandle | null = null;
 let mainWindow: BrowserWindow | null = null;
+let trpcHandler: { readonly attachWindow: (window: BrowserWindow) => void } | null = null;
 let tray: TrayController | null = null;
 let workflows: readonly WorkflowSummary[] = [];
 let isQuitting = false;
@@ -53,6 +55,7 @@ function createWindow(): BrowserWindow {
             sandbox: true,
         },
     });
+    trpcHandler?.attachWindow(window);
 
     if (RENDERER_DEV_URL) {
         window.webContents.openDevTools({ mode: 'detach' });
@@ -92,48 +95,15 @@ function showAppWindow(): void {
     mainWindow = createWindow();
 }
 
-function broadcastWorkflowsList(next: readonly WorkflowSummary[]): void {
-    for (const window of BrowserWindow.getAllWindows()) {
-        if (!window.isDestroyed()) {
-            window.webContents.send(RendererChannel.WorkflowsList, next);
-        }
-    }
-}
-
 function handleWorkflowsListChange(next: readonly WorkflowSummary[]): void {
     workflows = next;
     tray?.updateWorkflows(next);
-    broadcastWorkflowsList(next);
-}
-
-function forwardEngineLogsToRenderer(): void {
-    if (!engine) return;
-    const unsubscribe = engine.onLog((line) => {
-        for (const window of BrowserWindow.getAllWindows()) {
-            if (!window.isDestroyed()) {
-                window.webContents.send(RendererChannel.EngineLog, line);
-            }
-        }
-    });
-    app.on('before-quit', unsubscribe);
 }
 
 function subscribeToWorkflowsList(): void {
     if (!engine) return;
     const unsubscribe = engine.onWorkflowsList((next) => {
         handleWorkflowsListChange(next);
-    });
-    app.on('before-quit', unsubscribe);
-}
-
-function forwardBusEventsToRenderer(): void {
-    if (!engine) return;
-    const unsubscribe = engine.onBusEvent((event: EngineBusEventPayload) => {
-        for (const window of BrowserWindow.getAllWindows()) {
-            if (!window.isDestroyed()) {
-                window.webContents.send(RendererChannel.BusEvent, event);
-            }
-        }
     });
     app.on('before-quit', unsubscribe);
 }
@@ -155,24 +125,29 @@ function handleOsNotifications(): void {
 app.whenReady().then(() => {
     engine = spawnEngine();
 
+    const router = createAppRouter({
+        getEngine: () => engine,
+        getMainWindow: () => mainWindow,
+        getWorkflows: () => workflows,
+    });
+    trpcHandler = createIPCHandler({ router });
+
     engine.onReady(() => {
         console.log('[main] engine worker ready');
     });
 
-    registerIpcHandlers({
-        getEngine: () => engine,
-        getMainWindow: () => mainWindow,
-        onRendererReady: () => {
-            broadcastWorkflowsList(workflows);
-        },
-    });
-    forwardEngineLogsToRenderer();
-    forwardBusEventsToRenderer();
     handleOsNotifications();
     subscribeToWorkflowsList();
 
     tray = createTray({
-        onToggleWorkflow: (id) => engine?.toggleWorkflow({ id }),
+        onToggleWorkflow: (id) => {
+            const workflowId = WorkflowIdSchema.safeParse(id);
+            if (!workflowId.success) {
+                console.error(`[main] refusing to toggle invalid workflow id: ${id}`);
+                return;
+            }
+            void engine?.toggleWorkflow({ id: workflowId.data });
+        },
         onOpenApp: () => showAppWindow(),
         onQuit: () => {
             app.quit();

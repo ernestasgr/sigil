@@ -1,37 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-    CommandContracts,
     CommandFailureSchema,
     EngineCommandContracts,
     type EngineCommandName,
     EngineToMainMessageSchema,
     MainToEngineMessageSchema,
-    RendererCommandContracts,
 } from './command-contracts.js';
 import { CorrelationIdSchema, EngineChannel } from './ipc-channels.js';
-
-const expectedCommandNames = [
-    'rendererReady',
-    'pingEngine',
-    'fireTestEvent',
-    'toggleWorkflow',
-    'retryWorkflow',
-    'createWorkflow',
-    'updateWorkflow',
-    'deleteWorkflow',
-    'getWorkflow',
-    'listPlugins',
-    'setPermissionOverride',
-    'readProperties',
-    'saveProperties',
-    'openFileDialog',
-    'fireManualTrigger',
-    'readWorkflowState',
-    'setWorkflowStateKey',
-    'deleteWorkflowStateKey',
-    'shutdown',
-] as const;
 
 const expectedEngineCommandNames = [
     'ping',
@@ -146,26 +122,7 @@ const engineFixtures = {
     };
 };
 
-describe('CommandContracts', () => {
-    it('enumerates every current command with an explicit request and response schema', () => {
-        expect(Object.keys(CommandContracts)).toEqual(expectedCommandNames);
-
-        for (const commandName of expectedCommandNames) {
-            const contract = CommandContracts[commandName];
-            expect('renderer' in contract || 'engine' in contract).toBe(true);
-
-            if ('renderer' in contract) {
-                expect(contract.renderer.requestSchema).toBeDefined();
-                expect(contract.renderer.responseSchema).toBeDefined();
-            }
-            if ('engine' in contract) {
-                expect(contract.engine.requestSchema).toBeDefined();
-                expect(contract.engine.responseSchema).toBeDefined();
-                expect(contract.engine.failureSchema).toBeDefined();
-            }
-        }
-    });
-
+describe('EngineCommandContracts', () => {
     it('accepts only the message direction allowed at the engine seam', () => {
         const request = {
             type: EngineChannel.ToggleWorkflow,
@@ -222,75 +179,5 @@ describe('CommandContracts', () => {
             expect(MainToEngineMessageSchema.safeParse(request).success).toBe(true);
             expect(EngineToMainMessageSchema.safeParse(response).success).toBe(true);
         }
-    });
-
-    it('requires the structured readProperties response shape', () => {
-        const responseSchema = RendererCommandContracts.readProperties.responseSchema;
-
-        expect(responseSchema.safeParse({ properties: {}, defaults: {} }).success).toBe(true);
-        expect(responseSchema.safeParse({ 'dynamic.property': true }).success).toBe(false);
-    });
-
-    it('keeps expected renderer failures in the response contract', () => {
-        const failure = { ok: false, error: 'Engine not ready' };
-
-        expect(
-            RendererCommandContracts.fireTestEvent.responseSchema.safeParse(failure).success,
-        ).toBe(true);
-        expect(
-            RendererCommandContracts.fireManualTrigger.responseSchema.safeParse(failure).success,
-        ).toBe(true);
-        expect(
-            RendererCommandContracts.toggleWorkflow.responseSchema.safeParse({
-                ok: false,
-                error: 'Could not toggle Workflow.',
-                diagnostics: [],
-            }).success,
-        ).toBe(true);
-    });
-
-    it('distinguishes permission override domain rejection from persistence failure', () => {
-        const domainFailure = {
-            ok: false,
-            kind: 'domain',
-            code: 'unknown_plugin',
-            pluginId: 'plugin-ghost',
-            error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
-        } as const;
-        const persistenceFailure = {
-            ok: false,
-            kind: 'persistence',
-            error: 'replacement denied',
-            diagnostic: {
-                kind: 'persistence',
-                operation: 'write',
-                phase: 'replace',
-                path: 'C:/permission-overrides.json',
-                message: 'replacement denied',
-            },
-        } as const;
-
-        expect(
-            RendererCommandContracts.setPermissionOverride.responseSchema.safeParse(domainFailure)
-                .success,
-        ).toBe(true);
-        expect(
-            RendererCommandContracts.setPermissionOverride.responseSchema.safeParse(
-                persistenceFailure,
-            ).success,
-        ).toBe(true);
-    });
-
-    it('requires the effective permission view on a successful override response', () => {
-        const responseSchema = RendererCommandContracts.setPermissionOverride.responseSchema;
-
-        expect(responseSchema.safeParse({ ok: true }).success).toBe(false);
-        expect(
-            responseSchema.safeParse({
-                ok: true,
-                grantedPermissions: ['filesystem.read'],
-                cancelledRunIds: [],
-            }).success,
-        ).toBe(true);
     });
 });

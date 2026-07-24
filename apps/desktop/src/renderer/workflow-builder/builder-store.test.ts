@@ -1,4 +1,5 @@
 import type { CompiledPipeline } from '@sigil/schema';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
@@ -14,6 +15,8 @@ import type {
     WorkflowDraftSaveCommand,
     WorkflowDraftSaveResult,
 } from './workflow-draft.js';
+
+const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
 
 describe('useBuilderStore', () => {
     beforeEach(() => {
@@ -495,7 +498,7 @@ describe('useBuilderStore', () => {
         useBuilderStore.getState().loadPipeline(
             {
                 id: 'pipeline-replaced',
-                workflowId: 'workflow-replaced',
+                workflowId: testWorkflowId('workflow-replaced'),
                 schemaVersion: 1,
                 nodes: [
                     {
@@ -563,7 +566,7 @@ describe('useBuilderStore', () => {
     it('loads a saved baseline including positions and tracks later node movement', () => {
         const pipeline: CompiledPipeline = {
             id: 'pipeline-loaded',
-            workflowId: 'workflow-loaded',
+            workflowId: testWorkflowId('workflow-loaded'),
             schemaVersion: 1,
             nodes: [{ id: 'log', type: 'log', config: { message: 'Loaded' } }],
             edges: [],
@@ -590,7 +593,7 @@ describe('useBuilderStore', () => {
     it('preserves a bundled Plugin Node through load, edit, compile, and save', async () => {
         const pipeline: CompiledPipeline = {
             id: 'pipeline-plugin',
-            workflowId: 'workflow-plugin',
+            workflowId: testWorkflowId('workflow-plugin'),
             schemaVersion: 1,
             nodes: [
                 {
@@ -695,7 +698,7 @@ describe('useBuilderStore', () => {
     it('fills missing loaded positions with a deterministic topology layout', () => {
         const pipeline: CompiledPipeline = {
             id: 'pipeline-layout',
-            workflowId: 'workflow-layout',
+            workflowId: testWorkflowId('workflow-layout'),
             schemaVersion: 1,
             nodes: [
                 {
@@ -811,7 +814,7 @@ describe('useBuilderStore', () => {
 
         const loadedPipeline: CompiledPipeline = {
             id: 'pipeline-new',
-            workflowId: 'workflow-new',
+            workflowId: testWorkflowId('workflow-new'),
             schemaVersion: 1,
             nodes: [
                 {

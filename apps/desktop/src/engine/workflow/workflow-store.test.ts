@@ -12,6 +12,7 @@ import {
     registerSerializableNodeContract,
 } from '@sigil/schema/node-contract';
 import { isPluginNode } from '@sigil/schema/nodes';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -24,13 +25,15 @@ import {
 } from './workflow-store.js';
 import { isWorkflowTopologyError } from './workflow-topology-error.js';
 
+const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
+
 function randomDir(): string {
     return join(tmpdir(), `sigil-test-workflow-store-${crypto.randomUUID()}`);
 }
 
 const samplePipeline: CompiledPipeline = {
     id: 'pipeline-1',
-    workflowId: 'wf-1',
+    workflowId: testWorkflowId('wf-1'),
     schemaVersion: 1,
     nodes: [
         {
@@ -57,7 +60,7 @@ const samplePositions: Record<string, { x: number; y: number }> = {
 
 const samplePipeline2: CompiledPipeline = {
     id: 'pipeline-2',
-    workflowId: 'wf-2',
+    workflowId: testWorkflowId('wf-2'),
     schemaVersion: 1,
     nodes: [
         {
@@ -283,7 +286,7 @@ describe('WorkflowStore', () => {
     it('preserves Switch case identities when a persisted match value is edited and saved', () => {
         const switchPipeline: CompiledPipeline = {
             id: 'pipeline-switch',
-            workflowId: 'wf-switch',
+            workflowId: testWorkflowId('wf-switch'),
             schemaVersion: 1,
             nodes: [
                 {
@@ -396,14 +399,20 @@ describe('WorkflowStore', () => {
     );
 
     it('rejects an unsafe Pipeline workflowId when creating a Workflow', () => {
-        const unsafePipeline = { ...samplePipeline, workflowId: '../outside' };
+        const unsafePipeline = {
+            ...samplePipeline,
+            workflowId: '../outside',
+        } as unknown as CompiledPipeline;
 
         expect(() => store.create('Unsafe Workflow', unsafePipeline, {})).toThrow();
         expect(store.list()).toEqual([]);
     });
 
     it('persists and retrieves a valid identifier without changing it', () => {
-        const pipeline = { ...samplePipeline, workflowId: 'safe_workflow-123' };
+        const pipeline = {
+            ...samplePipeline,
+            workflowId: testWorkflowId('safe_workflow-123'),
+        };
         const summary = store.create('Safe Workflow', pipeline, {});
 
         expect(summary.id).toBe('safe_workflow-123');
@@ -416,7 +425,7 @@ describe('WorkflowStore', () => {
         const second = store.create('Second', samplePipeline2, {});
         const updatedPipeline = {
             ...samplePipeline,
-            workflowId: first.id,
+            workflowId: testWorkflowId(first.id),
             nodes: [samplePipeline.nodes[0]],
             edges: [],
         };
@@ -490,7 +499,10 @@ describe('WorkflowStore', () => {
 
     it('rejects an update whose Pipeline identity does not match the Workflow id', () => {
         const summary = store.create('Original', samplePipeline, samplePositions);
-        const mismatchedPipeline = { ...samplePipeline, workflowId: 'another-workflow' };
+        const mismatchedPipeline = {
+            ...samplePipeline,
+            workflowId: testWorkflowId('another-workflow'),
+        };
 
         let error: unknown;
         try {
@@ -763,7 +775,7 @@ describe('WorkflowStore', () => {
         const supportedPipeline = {
             ...samplePipeline,
             id: 'pipeline-supported',
-            workflowId: 'wf-supported',
+            workflowId: testWorkflowId('wf-supported'),
         };
         store.create('Supported Workflow', supportedPipeline, {});
 
@@ -953,8 +965,9 @@ describe('WorkflowStore', () => {
     });
 
     it('upserts a new workflow when save() is called with a non-existent id', () => {
-        const newPipeline = { ...samplePipeline, workflowId: 'new-id' };
-        const saved = store.save('new-id', 'New via save', newPipeline, samplePositions);
+        const newWorkflowId = testWorkflowId('new-id');
+        const newPipeline = { ...samplePipeline, workflowId: newWorkflowId };
+        const saved = store.save(newWorkflowId, 'New via save', newPipeline, samplePositions);
         expect(saved.id).toBe('new-id');
         expect(saved.name).toBe('New via save');
         expect(saved.enabled).toBe(false);

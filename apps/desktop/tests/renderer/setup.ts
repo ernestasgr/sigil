@@ -2,6 +2,21 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 
+type ElectronTRPCTransport = {
+    readonly sendMessage: (message: unknown) => void;
+    readonly onMessage: (handler: (message: unknown) => void) => void;
+};
+
+const electronTRPCTransport: ElectronTRPCTransport = {
+    sendMessage: () => undefined,
+    onMessage: () => undefined,
+};
+
+Object.defineProperty(globalThis, 'electronTRPC', {
+    configurable: true,
+    value: electronTRPCTransport,
+});
+
 afterEach(() => {
     cleanup();
 });

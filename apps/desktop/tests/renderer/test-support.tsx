@@ -7,7 +7,6 @@ import type { WorkflowSummary } from '../../src/shared/workflow.js';
 
 export function createMockSigil(): SigilAdapter {
     return {
-        rendererReady: vi.fn(async () => undefined),
         pingEngine: vi.fn(async () => null),
         fireTestEvent: vi.fn(async () => ({ ok: true as const })),
         toggleWorkflow: vi.fn(async () => ({ ok: true as const, summary: null })),

@@ -13,6 +13,7 @@ import {
 } from '@sigil/schema/node-contract';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import Database from 'better-sqlite3';
 import { Either, Option } from 'effect';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -23,6 +24,10 @@ import type { CapabilityBroker } from '../persistence/capability-broker.js';
 import { createWorkflowStateStore } from '../workflow/workflow-state.js';
 import { type ExecutorSettings, executePipeline } from './dag-executor.js';
 import { createNodeHandlerRegistry } from './node-registry.js';
+
+const TEST_WORKFLOW_ID = WorkflowIdSchema.parse('test-workflow');
+const DOWNLOAD_WORKFLOW_ID = WorkflowIdSchema.parse('workflow-download-sorter');
+const AUTHORITATIVE_WORKFLOW_ID = WorkflowIdSchema.parse('authoritative-workflow');
 
 function captureEvents(bus: ReturnType<typeof createEventBus>): BusEvent[] {
     const events: BusEvent[] = [];
@@ -61,7 +66,7 @@ const pipeline = (
     edges: readonly PipelineEdge[],
 ): CompiledPipeline => ({
     id: 'test-pipeline',
-    workflowId: 'test-workflow',
+    workflowId: TEST_WORKFLOW_ID,
     schemaVersion: 1,
     nodes: [...nodes],
     edges: [...edges],
@@ -129,13 +134,13 @@ describe('dag-executor', () => {
 
             expect(result.runId).toBeTruthy();
             expect(started?.telemetry).toMatchObject({
-                workflowId: 'workflow-download-sorter',
+                workflowId: DOWNLOAD_WORKFLOW_ID,
                 pipelineId: 'sample-manual-trigger-to-log',
                 runId: result.runId,
                 outcome: 'running',
             });
             expect(completed?.telemetry).toMatchObject({
-                workflowId: 'workflow-download-sorter',
+                workflowId: DOWNLOAD_WORKFLOW_ID,
                 pipelineId: 'sample-manual-trigger-to-log',
                 runId: result.runId,
                 outcome: 'succeeded',
@@ -641,7 +646,7 @@ describe('dag-executor', () => {
             const cancelled = events.find((event) => event.name === 'workflow.cancelled');
             expect(result).toMatchObject({ outcome: 'cancelled', runId: expect.any(String) });
             expect(cancelled?.payload).toMatchObject({
-                workflowId: 'workflow-download-sorter',
+                workflowId: DOWNLOAD_WORKFLOW_ID,
                 pipelineId: 'sample-manual-trigger-to-log',
                 runId: result.runId,
                 outcome: 'cancelled',
@@ -750,7 +755,7 @@ describe('dag-executor', () => {
                     .map((event) => (event.name === 'log.output' ? event.payload.message : ''));
                 expect(messages).toContain('typed match');
                 expect(messages).not.toContain('default branch');
-                expect(store.forWorkflow('test-workflow').get('stored-value')).toEqual(
+                expect(store.forWorkflow(TEST_WORKFLOW_ID).get('stored-value')).toEqual(
                     Option.some(expected),
                 );
 
@@ -806,7 +811,9 @@ describe('dag-executor', () => {
                 .map((event) => (event.name === 'log.output' ? event.payload.message : ''));
             expect(messages).toContain('numeric match');
             expect(messages).not.toContain('numeric mismatch');
-            expect(store.forWorkflow('test-workflow').get('stored-value')).toEqual(Option.some(42));
+            expect(store.forWorkflow(TEST_WORKFLOW_ID).get('stored-value')).toEqual(
+                Option.some(42),
+            );
 
             store.dispose();
             database.close();
@@ -867,7 +874,7 @@ describe('dag-executor', () => {
             );
 
             const reader = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
-            expect(Option.getOrThrow(reader.forWorkflow('test-workflow').get('counter'))).toBe(
+            expect(Option.getOrThrow(reader.forWorkflow(TEST_WORKFLOW_ID).get('counter'))).toBe(
                 'report.pdf',
             );
             reader.dispose();
@@ -918,13 +925,13 @@ describe('dag-executor', () => {
                 store,
                 undefined,
                 undefined,
-                { workflowId: 'authoritative-workflow' },
+                { workflowId: AUTHORITATIVE_WORKFLOW_ID },
             );
 
-            expect(store.forWorkflow('authoritative-workflow').get('last-file')).toEqual(
+            expect(store.forWorkflow(AUTHORITATIVE_WORKFLOW_ID).get('last-file')).toEqual(
                 Option.some('report.pdf'),
             );
-            expect(store.forWorkflow('test-workflow').get('last-file')).toEqual(Option.none());
+            expect(store.forWorkflow(TEST_WORKFLOW_ID).get('last-file')).toEqual(Option.none());
 
             await executePipeline(
                 pipeline(
@@ -945,7 +952,7 @@ describe('dag-executor', () => {
                 store,
                 undefined,
                 undefined,
-                { workflowId: 'authoritative-workflow' },
+                { workflowId: AUTHORITATIVE_WORKFLOW_ID },
             );
 
             const recall = events.find((event) => event.name === 'log.output');
@@ -1023,7 +1030,7 @@ describe('dag-executor', () => {
 
             expect(events.some((event) => event.name === 'workflow.error')).toBe(true);
             const reader = createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
-            expect(Option.getOrThrow(reader.forWorkflow('test-workflow').get('counter'))).toBe(
+            expect(Option.getOrThrow(reader.forWorkflow(TEST_WORKFLOW_ID).get('counter'))).toBe(
                 'report.pdf',
             );
             reader.dispose();

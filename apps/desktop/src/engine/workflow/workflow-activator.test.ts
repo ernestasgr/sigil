@@ -9,6 +9,7 @@ import {
     type SerializableNodeContractInput,
 } from '@sigil/schema/node-contract';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -17,6 +18,8 @@ import type { NodeHandler, NodeRunResult, TriggerHandler } from '../node-handler
 import { workflowTopologyOptions } from './workflow-acceptance.js';
 import { createWorkflowActivator, getDeactivationHook } from './workflow-activator.js';
 import { createWorkflowStore } from './workflow-store.js';
+
+const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
 
 describe('WorkflowActivator lifecycle', () => {
     it('tears down only the Workflow whose Trigger activation failed', () => {
@@ -62,7 +65,7 @@ describe('WorkflowActivator lifecycle', () => {
             );
             const createPipeline = (pipelineId: string, workflowId: string): CompiledPipeline => ({
                 id: pipelineId,
-                workflowId,
+                workflowId: testWorkflowId(workflowId),
                 schemaVersion: 1,
                 nodes: [
                     {
@@ -74,16 +77,18 @@ describe('WorkflowActivator lifecycle', () => {
                 ],
                 edges: [],
             });
-            const first = store.create(
+            const firstSummary = store.create(
                 'First Workflow',
                 createPipeline('pipeline-first', 'workflow-first'),
                 {},
             );
-            const second = store.create(
+            const first = { ...firstSummary, id: testWorkflowId(firstSummary.id) };
+            const secondSummary = store.create(
                 'Second Workflow',
                 createPipeline('pipeline-second', 'workflow-second'),
                 {},
             );
+            const second = { ...secondSummary, id: testWorkflowId(secondSummary.id) };
 
             activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
             expect(activator.activate(first.id)).toBe(true);
@@ -111,9 +116,9 @@ describe('WorkflowActivator lifecycle', () => {
     it('cancels dependent active and queued runs through the Engine permission transition', async () => {
         const storageDir = mkdtempSync(join(tmpdir(), 'sigil-activator-permission-revocation-'));
         const pluginId = 'com.sigil.permission-dependent';
-        const workflowId = 'workflow-permission-dependent';
+        const workflowId = testWorkflowId('workflow-permission-dependent');
         const pipelineId = 'pipeline-permission-dependent';
-        const unaffectedWorkflowId = 'workflow-permission-independent';
+        const unaffectedWorkflowId = testWorkflowId('workflow-permission-independent');
         const engine = createEngine({
             defaultDatabasePath: join(storageDir, 'engine.db'),
             permissionOverridesPath: join(storageDir, 'permission-overrides.json'),

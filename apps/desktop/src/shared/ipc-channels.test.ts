@@ -78,7 +78,7 @@ describe('EngineToMainMessageSchema', () => {
         const message: EngineToggleWorkflow = {
             type: EngineChannel.ToggleWorkflow,
             correlationId: 'corr-1',
-            id: 'wf-1',
+            id: WorkflowIdSchema.parse('wf-1'),
         };
         const result = MainToEngineMessageSchema.safeParse(message);
         expect(result.success).toBe(true);

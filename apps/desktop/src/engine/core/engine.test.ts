@@ -6,6 +6,7 @@ import type { Capability, Manifest } from '@sigil/schema/manifest';
 import type { FileWatcherConfig } from '@sigil/schema/nodes/file-watcher';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileGraph } from '../../renderer/workflow-builder/compile.js';
@@ -14,6 +15,8 @@ import type { BusEvent } from '../events/event-bus.js';
 import { isTriggerHandler } from '../node-handlers/types.js';
 import type { FileEvent } from '../plugins/file-watcher-manager.js';
 import { createEngine, type Engine } from './engine.js';
+
+const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
 
 async function activateFileWatcher(
     engine: Engine,
@@ -422,7 +425,7 @@ describe('createEngine', () => {
             await engine.loadBuiltinPlugins();
             const pipeline: CompiledPipeline = {
                 id: 'bundled-action',
-                workflowId: 'bundled-action',
+                workflowId: testWorkflowId('bundled-action'),
                 schemaVersion: 1,
                 nodes: [
                     {
@@ -736,14 +739,14 @@ describe('createEngine — databasePath from properties', () => {
     it('opens the SQLite file at the databasePath from properties', () => {
         const dbPath = join(tempDir, 'from-properties.db');
         const engine = createEngine({ properties: { databasePath: dbPath } });
-        engine.workflowStateStore.forWorkflow('wf').set('k', 'persisted');
+        engine.workflowStateStore.forWorkflow(testWorkflowId('wf')).set('k', 'persisted');
         engine.workflowStateStore.flushAll();
         engine.dispose();
 
         const reader = createEngine({ properties: { databasePath: dbPath } });
-        expect(Option.getOrThrow(reader.workflowStateStore.forWorkflow('wf').get('k'))).toBe(
-            'persisted',
-        );
+        expect(
+            Option.getOrThrow(reader.workflowStateStore.forWorkflow(testWorkflowId('wf')).get('k')),
+        ).toBe('persisted');
         reader.dispose();
     });
 
@@ -753,7 +756,7 @@ describe('createEngine — databasePath from properties', () => {
             properties: {},
             defaultDatabasePath: dbPath,
         });
-        engine.workflowStateStore.forWorkflow('wf').set('k', 'default-used');
+        engine.workflowStateStore.forWorkflow(testWorkflowId('wf')).set('k', 'default-used');
         engine.workflowStateStore.flushAll();
         engine.dispose();
 
@@ -761,9 +764,9 @@ describe('createEngine — databasePath from properties', () => {
             properties: {},
             defaultDatabasePath: dbPath,
         });
-        expect(Option.getOrThrow(reader.workflowStateStore.forWorkflow('wf').get('k'))).toBe(
-            'default-used',
-        );
+        expect(
+            Option.getOrThrow(reader.workflowStateStore.forWorkflow(testWorkflowId('wf')).get('k')),
+        ).toBe('default-used');
         reader.dispose();
     });
 
@@ -773,14 +776,14 @@ describe('createEngine — databasePath from properties', () => {
             properties: { databasePath: 42 },
             defaultDatabasePath: dbPath,
         });
-        engine.workflowStateStore.forWorkflow('wf').set('k', 'default-used');
+        engine.workflowStateStore.forWorkflow(testWorkflowId('wf')).set('k', 'default-used');
         engine.workflowStateStore.flushAll();
         engine.dispose();
 
         const reader = createEngine({ properties: {}, defaultDatabasePath: dbPath });
-        expect(Option.getOrThrow(reader.workflowStateStore.forWorkflow('wf').get('k'))).toBe(
-            'default-used',
-        );
+        expect(
+            Option.getOrThrow(reader.workflowStateStore.forWorkflow(testWorkflowId('wf')).get('k')),
+        ).toBe('default-used');
         reader.dispose();
     });
 
@@ -791,20 +794,24 @@ describe('createEngine — databasePath from properties', () => {
             properties: { databasePath: explicit },
             defaultDatabasePath: fallback,
         });
-        engine.workflowStateStore.forWorkflow('wf').set('k', 'explicit-wins');
+        engine.workflowStateStore.forWorkflow(testWorkflowId('wf')).set('k', 'explicit-wins');
         engine.workflowStateStore.flushAll();
         engine.dispose();
 
         const fromExplicit = createEngine({ properties: { databasePath: explicit } });
-        expect(Option.getOrThrow(fromExplicit.workflowStateStore.forWorkflow('wf').get('k'))).toBe(
-            'explicit-wins',
-        );
+        expect(
+            Option.getOrThrow(
+                fromExplicit.workflowStateStore.forWorkflow(testWorkflowId('wf')).get('k'),
+            ),
+        ).toBe('explicit-wins');
         fromExplicit.dispose();
 
         const fromFallback = createEngine({ properties: { databasePath: fallback } });
-        expect(Option.isNone(fromFallback.workflowStateStore.forWorkflow('wf').get('k'))).toBe(
-            true,
-        );
+        expect(
+            Option.isNone(
+                fromFallback.workflowStateStore.forWorkflow(testWorkflowId('wf')).get('k'),
+            ),
+        ).toBe(true);
         fromFallback.dispose();
     });
 

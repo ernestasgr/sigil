@@ -1,4 +1,5 @@
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -6,6 +7,8 @@ import {
     type WorkflowRunExecutionResult,
     type WorkflowRunLifecycleEvent,
 } from './workflow-run-supervisor.js';
+
+const WORKFLOW_ID = WorkflowIdSchema.parse('workflow-1');
 
 const context: WorkflowContext = { event: 'file.created', payload: {}, vars: {} };
 
@@ -31,7 +34,7 @@ describe('Workflow run supervisor', () => {
         const executions: string[] = [];
         const events: WorkflowRunLifecycleEvent[] = [];
         const supervisor = createWorkflowRunSupervisor({
-            workflowId: 'workflow-1',
+            workflowId: WORKFLOW_ID,
             pipelineId: 'pipeline-1',
             policy: { concurrency: 1, queueLimit: 1 },
             onEvent: (event) => events.push(event),
@@ -83,7 +86,7 @@ describe('Workflow run supervisor', () => {
         const events: WorkflowRunLifecycleEvent[] = [];
         let activeSignal: AbortSignal | undefined;
         const supervisor = createWorkflowRunSupervisor({
-            workflowId: 'workflow-1',
+            workflowId: WORKFLOW_ID,
             pipelineId: 'pipeline-1',
             policy: { concurrency: 1, queueLimit: 1 },
             onEvent: (event) => events.push(event),
@@ -145,7 +148,7 @@ describe('Workflow run supervisor', () => {
         const second = deferred<WorkflowRunExecutionResult>();
         const executions: string[] = [];
         const supervisor = createWorkflowRunSupervisor({
-            workflowId: 'workflow-1',
+            workflowId: WORKFLOW_ID,
             pipelineId: 'pipeline-1',
             policy: { concurrency: 1, queueLimit: 1 },
             execute: async ({ runId }) => {

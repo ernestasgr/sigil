@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import Database from 'better-sqlite3';
 import { Effect, Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -15,9 +16,13 @@ import { createWorkflowStore } from '../workflow/workflow-store.js';
 import type { AtomicFileWriter } from './atomic-file.js';
 import { createPermissionOverrideStore } from './permission-override-store.js';
 
+const CONTRACT_WORKFLOW_ID = WorkflowIdSchema.parse('wf-contract');
+const CONTRACT_WORKFLOW_A_ID = WorkflowIdSchema.parse('wf-contract-a');
+const CONTRACT_WORKFLOW_B_ID = WorkflowIdSchema.parse('wf-contract-b');
+
 const contractPipeline: CompiledPipeline = {
     id: 'pipeline-contract',
-    workflowId: 'wf-contract',
+    workflowId: CONTRACT_WORKFLOW_ID,
     schemaVersion: 1,
     nodes: [
         {
@@ -43,27 +48,27 @@ afterEach(() => {
 });
 
 function runWorkflowStateContract(store: WorkflowStateStore): void {
-    const first = store.forWorkflow('wf-contract-a');
+    const first = store.forWorkflow(CONTRACT_WORKFLOW_A_ID);
     first.set('empty', '');
     first.set('value', 'a-value');
-    store.setKey('wf-contract-b', 'survivor', 'b-value');
+    store.setKey(CONTRACT_WORKFLOW_B_ID, 'survivor', 'b-value');
     first.flush();
 
     expect(first.get('empty')).toEqual(Option.some(''));
-    expect(store.listKeys('wf-contract-a')).toEqual(
+    expect(store.listKeys(CONTRACT_WORKFLOW_A_ID)).toEqual(
         expect.arrayContaining([
             { key: 'empty', type: 'string', value: '' },
             { key: 'value', type: 'string', value: 'a-value' },
         ]),
     );
-    expect(store.listKeys('wf-contract-b')).toEqual([
+    expect(store.listKeys(CONTRACT_WORKFLOW_B_ID)).toEqual([
         { key: 'survivor', type: 'string', value: 'b-value' },
     ]);
 
-    store.deleteWorkflow('wf-contract-a');
+    store.deleteWorkflow(CONTRACT_WORKFLOW_A_ID);
 
-    expect(store.listKeys('wf-contract-a')).toEqual([]);
-    expect(store.listKeys('wf-contract-b')).toEqual([
+    expect(store.listKeys(CONTRACT_WORKFLOW_A_ID)).toEqual([]);
+    expect(store.listKeys(CONTRACT_WORKFLOW_B_ID)).toEqual([
         { key: 'survivor', type: 'string', value: 'b-value' },
     ]);
 }
@@ -205,18 +210,20 @@ describe('Persistence restart contract', () => {
         const databasePath = join(tempDir, 'sigil.db');
         const firstDatabase = new Database(databasePath);
         const first = createWorkflowStateStore(firstDatabase, { flushIntervalMs: 60_000 });
-        first.forWorkflow('wf-contract').set('last-run', '2026-07-12');
-        first.forWorkflow('wf-contract').set('empty', '');
+        first.forWorkflow(CONTRACT_WORKFLOW_ID).set('last-run', '2026-07-12');
+        first.forWorkflow(CONTRACT_WORKFLOW_ID).set('empty', '');
         first.dispose();
         firstDatabase.close();
 
         const restartedDatabase = new Database(databasePath);
         const restarted = createWorkflowStateStore(restartedDatabase, { flushIntervalMs: 60_000 });
         try {
-            expect(restarted.forWorkflow('wf-contract').get('last-run')).toEqual(
+            expect(restarted.forWorkflow(CONTRACT_WORKFLOW_ID).get('last-run')).toEqual(
                 Option.some('2026-07-12'),
             );
-            expect(restarted.forWorkflow('wf-contract').get('empty')).toEqual(Option.some(''));
+            expect(restarted.forWorkflow(CONTRACT_WORKFLOW_ID).get('empty')).toEqual(
+                Option.some(''),
+            );
         } finally {
             restarted.dispose();
             restartedDatabase.close();

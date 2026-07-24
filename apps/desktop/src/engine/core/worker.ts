@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parentPort, workerData } from 'node:worker_threads';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Effect, Match } from 'effect';
 import { z } from 'zod';
 import {
@@ -268,8 +269,17 @@ port.on('message', (raw: unknown) => {
 
 for (const wf of store.list()) {
     if (wf.enabled) {
+        const workflowId = WorkflowIdSchema.safeParse(wf.id);
+        if (!workflowId.success) {
+            const log: EngineLog = {
+                type: EngineChannel.Log,
+                line: `[worker] skipped workflow ${wf.id} (${wf.name}) because its id is invalid: ${workflowId.error.message}`,
+            };
+            port.postMessage(log);
+            continue;
+        }
         try {
-            lifecycle.activateEnabled(wf.id);
+            lifecycle.activateEnabled(workflowId.data);
         } catch (err) {
             const log: EngineLog = {
                 type: EngineChannel.Log,

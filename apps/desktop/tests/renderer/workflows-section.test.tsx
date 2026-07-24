@@ -1,4 +1,5 @@
 import type { CompiledPipeline } from '@sigil/schema';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,11 +8,13 @@ import { useAppStore } from '../../src/renderer/store/app-store.js';
 import { createTelemetryIndex } from '../../src/renderer/store/telemetry-index.js';
 import { useBuilderStore } from '../../src/renderer/workflow-builder/builder-store.js';
 import { DEFAULT_NODE_CATALOG } from '../../src/renderer/workflow-builder/node-catalog.js';
-import type { RendererResponse } from '../../src/shared/command-contracts.js';
+import type { GetWorkflowOutput } from '../../src/shared/trpc-contracts.js';
 
 import { createMockSigil, withSigil } from './test-support.js';
 
-type WorkflowLoadResult = RendererResponse<'getWorkflow'>;
+const WORKFLOW_ID = WorkflowIdSchema.parse('workflow-fixture');
+
+type WorkflowLoadResult = GetWorkflowOutput;
 
 interface Deferred<TValue> {
     readonly promise: Promise<TValue>;
@@ -32,7 +35,7 @@ function createDeferred<TValue>(): Deferred<TValue> {
 function createPipeline(): CompiledPipeline {
     return {
         id: 'pipeline-fixture',
-        workflowId: 'workflow-fixture',
+        workflowId: WORKFLOW_ID,
         schemaVersion: 1,
         nodes: [
             {
