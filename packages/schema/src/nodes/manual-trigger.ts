@@ -1,6 +1,6 @@
 import { z } from 'zod';
+import { FileEventNameSchema } from '../event-catalog.js';
 import { FileEventPayloadSchema } from '../file-event-payload.js';
-import { FileEventNameSchema } from './common.js';
 import { defineNode } from './types.js';
 
 export const ManualTriggerConfigSchema = z.object({

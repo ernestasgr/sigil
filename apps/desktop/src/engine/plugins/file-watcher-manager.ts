@@ -1,8 +1,8 @@
 import { watch as fsWatch, realpathSync, statSync } from 'node:fs';
 import { join, parse } from 'node:path';
+import { FileEventNameSchema } from '@sigil/schema/event-catalog';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import { FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
-import { FileEventNameSchema } from '@sigil/schema/nodes/common';
 import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
 import { Option } from 'effect';
 import { z } from 'zod';

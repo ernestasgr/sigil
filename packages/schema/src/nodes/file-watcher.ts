@@ -1,6 +1,5 @@
 import { z } from 'zod';
-
-import { FileEventNameSchema } from './common.js';
+import { FileEventNameSchema } from '../event-catalog.js';
 import { defineNode } from './types.js';
 
 export const FileWatcherConfigSchema = z.object({
