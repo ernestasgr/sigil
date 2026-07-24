@@ -767,6 +767,17 @@ export const CATEGORY_TOP_ACCENT: Readonly<Record<NodeCategory, string>> = {
     utility: 'border-t-[3px] border-t-utility',
 };
 
+// Fill (not border) version of the category accent, for surfaces that clip
+// their own corners — a `border-t` doesn't follow a diagonal clip-path, but
+// a background does. See pipeline-node-card.tsx.
+export const CATEGORY_ACCENT_BG: Readonly<Record<NodeCategory, string>> = {
+    trigger: 'bg-trigger',
+    logic: 'bg-logic',
+    system: 'bg-system',
+    state: 'bg-state',
+    utility: 'bg-utility',
+};
+
 export const CATEGORY_TEXT: Readonly<Record<NodeCategory, string>> = {
     trigger: 'text-trigger',
     logic: 'text-logic',
