@@ -327,6 +327,77 @@ describe('FileWatcherManager — watcher deduplication', () => {
         expect(closed).toContain('/shared');
         manager.dispose();
     });
+
+    it('revokes only one Plugin owner from a shared watcher and remains idempotent', () => {
+        const mock = createMockWatcher();
+        const closed: string[] = [];
+        const createWatcher: CreateWatcherFn = (watchPath, recursive, onEvent) => {
+            mock.watchers.push({
+                path: watchPath,
+                recursive,
+                triggerEvent: onEvent,
+            });
+            return { close: () => closed.push(watchPath) };
+        };
+        const manager = createFileWatcherManager(undefined, createWatcher, MOCK_STAT_FN);
+        const revokedOwner = collectFileEvents();
+        const survivingOwner = collectFileEvents();
+
+        manager.registerSubscriber(
+            {
+                id: 'revoked-subscription',
+                path: '/shared',
+                recursive: true,
+                events: ['file.created'],
+                ignorePatterns: [],
+            },
+            revokedOwner.onEvent,
+            'com.sigil.revoked',
+        );
+        manager.registerSubscriber(
+            {
+                id: 'surviving-subscription',
+                path: '/shared',
+                recursive: true,
+                events: ['file.created'],
+                ignorePatterns: [],
+            },
+            survivingOwner.onEvent,
+            'com.sigil.surviving',
+        );
+
+        expect(manager.getSubscriberIdsByOwner('com.sigil.revoked')).toEqual([
+            'revoked-subscription',
+        ]);
+        expect(manager.getWatcherCount()).toBe(1);
+        expect(manager.getSubscriberCount()).toBe(2);
+
+        const watcher = mock.watchers[0];
+        expect(watcher).toBeDefined();
+        watcher?.triggerEvent('rename', 'before.txt');
+
+        manager.unregisterSubscribersByOwner('com.sigil.revoked');
+        manager.unregisterSubscribersByOwner('com.sigil.revoked');
+
+        expect(manager.getSubscriberIdsByOwner('com.sigil.revoked')).toEqual([]);
+        expect(manager.getWatcherCount()).toBe(1);
+        expect(manager.getSubscriberCount()).toBe(1);
+        expect(closed).toEqual([]);
+
+        watcher?.triggerEvent('rename', 'after.txt');
+
+        expect(revokedOwner.events.map((event) => event.payload.name)).toEqual(['before.txt']);
+        expect(survivingOwner.events.map((event) => event.payload.name)).toEqual([
+            'before.txt',
+            'after.txt',
+        ]);
+
+        manager.unregisterSubscribersByOwner('com.sigil.surviving');
+        expect(manager.getWatcherCount()).toBe(0);
+        expect(manager.getSubscriberCount()).toBe(0);
+        expect(closed).toEqual(['/shared']);
+        manager.dispose();
+    });
 });
 
 describe('FileWatcherManager — per-subscriber ignorePatterns filtering', () => {

@@ -454,6 +454,7 @@ function handleFileWatcherRpc(
                             // The worker may have been retired after a non-cooperative cancellation.
                         }
                     },
+                    options.pluginId,
                 );
                 if (registration instanceof Promise) {
                     void registration.then(
@@ -473,7 +474,10 @@ function handleFileWatcherRpc(
             }
             case 'fileWatcherManager.unregisterSubscriber': {
                 const [id] = msg.args;
-                const unregistration = options.kernel.fileWatcherManager.unregisterSubscriber(id);
+                const unregistration = options.kernel.fileWatcherManager.unregisterSubscriber(
+                    id,
+                    options.pluginId,
+                );
                 if (unregistration instanceof Promise) {
                     void unregistration.then(
                         () => {

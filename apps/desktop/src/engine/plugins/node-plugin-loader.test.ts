@@ -2783,7 +2783,7 @@ describe('unbypassable enforcement', () => {
             expect(capabilityBroker.request).toHaveBeenCalledTimes(2);
         });
         expect(registerSubscriber).toHaveBeenCalledTimes(1);
-        expect(unregisterSubscriber).toHaveBeenCalledWith('forged-subscription');
+        expect(unregisterSubscriber).toHaveBeenCalledWith('forged-subscription', pluginId);
     });
 
     it('ignores malformed file watcher events before invoking a Plugin callback', async () => {

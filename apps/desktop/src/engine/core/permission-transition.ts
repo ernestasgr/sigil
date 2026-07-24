@@ -12,6 +12,7 @@ import type { ManifestRegistry } from '../plugins/manifest-registry.js';
 export interface PermissionOverrideTransitionDependencies {
     readonly registry: Pick<ManifestRegistry, 'get'>;
     readonly permissionOverrides: Pick<PermissionOverrideStore, 'get' | 'set'>;
+    readonly revokeFileWatcherSubscriptions: (pluginId: string) => void;
     readonly updatePluginPermissions: (
         pluginId: string,
         permissions: readonly Capability[],
@@ -48,6 +49,9 @@ export function applyPermissionOverride(
         manifest.value.permissions,
         dependencies.permissionOverrides.get(pluginId),
     );
+    if (!effectivePermissions.includes('filesystem.read')) {
+        dependencies.revokeFileWatcherSubscriptions(pluginId);
+    }
     dependencies.updatePluginPermissions(pluginId, effectivePermissions);
 
     return { ok: true, grantedPermissions: effectivePermissions };

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AtomicFileWriter } from '../persistence/atomic-file.js';
 import { createCapabilityBroker } from '../persistence/capability-broker.js';
 import { createPermissionOverrideStore } from '../persistence/permission-override-store.js';
+import { createFileWatcherManager } from '../plugins/file-watcher-manager.js';
 import { createManifestRegistry } from '../plugins/manifest-registry.js';
 import { applyPermissionOverride } from './permission-transition.js';
 
@@ -37,6 +38,7 @@ describe('applyPermissionOverride', () => {
         const permissionOverrides = createPermissionOverrideStore(overridesPath);
         const capabilityBroker = createCapabilityBroker(registry, permissionOverrides);
         const workerPermissions = new Set<Capability>();
+        const revokeFileWatcherSubscriptions = vi.fn();
         const updatePluginPermissions = vi.fn(
             (_pluginId: string, permissions: readonly Capability[]): void => {
                 workerPermissions.clear();
@@ -64,6 +66,7 @@ describe('applyPermissionOverride', () => {
                 {
                     registry,
                     permissionOverrides,
+                    revokeFileWatcherSubscriptions,
                     updatePluginPermissions,
                 },
                 pluginId,
@@ -105,12 +108,14 @@ describe('applyPermissionOverride', () => {
         expect(Either.isRight(registry.register(manifest))).toBe(true);
         const capabilityBroker = createCapabilityBroker(registry, permissionOverrides);
         const workerPermissions = new Set<Capability>(['filesystem.read']);
+        const revokeFileWatcherSubscriptions = vi.fn();
         const updatePluginPermissions = vi.fn();
 
         const result = applyPermissionOverride(
             {
                 registry,
                 permissionOverrides,
+                revokeFileWatcherSubscriptions,
                 updatePluginPermissions,
             },
             pluginId,
@@ -144,5 +149,107 @@ describe('applyPermissionOverride', () => {
             ),
         ).toBe(true);
         expect(updatePluginPermissions).not.toHaveBeenCalled();
+    });
+
+    it('revokes owned File Watcher subscriptions before notifying a worker about read removal', () => {
+        const registry = createManifestRegistry();
+        expect(Either.isRight(registry.register(manifest))).toBe(true);
+        const permissionOverrides = createPermissionOverrideStore();
+        const fileWatcherManager = createFileWatcherManager(
+            undefined,
+            () => ({ close: () => {} }),
+            () => ({ size: 1 }),
+        );
+        const order: string[] = [];
+
+        fileWatcherManager.registerSubscriber(
+            {
+                id: 'revoked-subscription',
+                path: '/shared',
+                recursive: true,
+                events: ['file.created'],
+                ignorePatterns: [],
+            },
+            () => {},
+            pluginId,
+        );
+        fileWatcherManager.registerSubscriber(
+            {
+                id: 'surviving-subscription',
+                path: '/shared',
+                recursive: true,
+                events: ['file.created'],
+                ignorePatterns: [],
+            },
+            () => {},
+            'com.sigil.other-plugin',
+        );
+
+        const result = applyPermissionOverride(
+            {
+                registry,
+                permissionOverrides,
+                revokeFileWatcherSubscriptions: (ownerPluginId) => {
+                    order.push('revoke');
+                    fileWatcherManager.unregisterSubscribersByOwner(ownerPluginId);
+                },
+                updatePluginPermissions: (_pluginId, permissions) => {
+                    order.push('update');
+                    expect(permissions).toEqual(['state.write']);
+                    expect(fileWatcherManager.getSubscriberCount()).toBe(1);
+                },
+            },
+            pluginId,
+            ['state.write'],
+        );
+
+        expect(result).toEqual({ ok: true, grantedPermissions: ['state.write'] });
+        expect(order).toEqual(['revoke', 'update']);
+        expect(fileWatcherManager.getSubscriberIdsByOwner(pluginId)).toEqual([]);
+        expect(fileWatcherManager.getSubscriberIdsByOwner('com.sigil.other-plugin')).toEqual([
+            'surviving-subscription',
+        ]);
+        fileWatcherManager.dispose();
+    });
+
+    it('preserves owned File Watcher subscriptions while filesystem.read remains effective', () => {
+        const registry = createManifestRegistry();
+        expect(Either.isRight(registry.register(manifest))).toBe(true);
+        const permissionOverrides = createPermissionOverrideStore();
+        const fileWatcherManager = createFileWatcherManager(
+            undefined,
+            () => ({ close: () => {} }),
+            () => ({ size: 1 }),
+        );
+        const revokeFileWatcherSubscriptions = vi.fn();
+        fileWatcherManager.registerSubscriber(
+            {
+                id: 'preserved-subscription',
+                path: '/preserved',
+                recursive: false,
+                events: ['file.created'],
+                ignorePatterns: [],
+            },
+            () => {},
+            pluginId,
+        );
+
+        const result = applyPermissionOverride(
+            {
+                registry,
+                permissionOverrides,
+                revokeFileWatcherSubscriptions,
+                updatePluginPermissions: vi.fn(),
+            },
+            pluginId,
+            ['filesystem.read'],
+        );
+
+        expect(result).toEqual({ ok: true, grantedPermissions: ['filesystem.read'] });
+        expect(revokeFileWatcherSubscriptions).not.toHaveBeenCalled();
+        expect(fileWatcherManager.getSubscriberIdsByOwner(pluginId)).toEqual([
+            'preserved-subscription',
+        ]);
+        fileWatcherManager.dispose();
     });
 });

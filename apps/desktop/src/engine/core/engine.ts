@@ -320,6 +320,8 @@ export function createEngine(options?: EngineOptions): Engine {
             {
                 registry,
                 permissionOverrides,
+                revokeFileWatcherSubscriptions: (ownerPluginId) =>
+                    fileWatcherManager.unregisterSubscribersByOwner(ownerPluginId),
                 updatePluginPermissions,
             },
             pluginId,

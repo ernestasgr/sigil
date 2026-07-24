@@ -43,6 +43,7 @@ export type FileEventCallback = (event: FileEvent) => void;
 interface SubscriberEntry {
     readonly config: SubscriberRegistration;
     readonly onEvent: FileEventCallback;
+    readonly ownerPluginId?: string;
 }
 
 interface WatcherEntry {
@@ -54,8 +55,11 @@ export interface FileWatcherManager {
     readonly registerSubscriber: (
         config: SubscriberRegistration,
         onEvent: FileEventCallback,
+        ownerPluginId?: string,
     ) => void | Promise<void>;
-    readonly unregisterSubscriber: (id: string) => void | Promise<void>;
+    readonly unregisterSubscriber: (id: string, ownerPluginId?: string) => void | Promise<void>;
+    readonly unregisterSubscribersByOwner: (ownerPluginId: string) => void | Promise<void>;
+    readonly getSubscriberIdsByOwner: (ownerPluginId: string) => readonly string[];
     readonly getWatcherCount: () => number;
     readonly getSubscriberCount: () => number;
     readonly setDefaultIgnorePatterns: (patterns: readonly string[]) => void;
@@ -64,6 +68,10 @@ export interface FileWatcherManager {
 
 function watcherKey(path: string, recursive: boolean): string {
     return `${path}::${recursive}`;
+}
+
+function subscriberKey(id: string, ownerPluginId: string | undefined): string {
+    return JSON.stringify([ownerPluginId ?? null, id]);
 }
 
 function resolveWatcherPath(path: string): string {
@@ -205,20 +213,54 @@ export function createFileWatcherManager(
         }
     }
 
-    return {
-        registerSubscriber: (config, onEvent) => {
-            const entry = ensureWatcher(config.path, config.recursive);
-            entry.subscribers.set(config.id, { config, onEvent });
-        },
-
-        unregisterSubscriber: (id) => {
-            for (const [key, entry] of watchers) {
-                if (entry.subscribers.has(id)) {
+    function removeMatchingSubscribers(predicate: (subscriber: SubscriberEntry) => boolean): void {
+        for (const [key, entry] of watchers) {
+            for (const [id, subscriber] of entry.subscribers) {
+                if (predicate(subscriber)) {
                     entry.subscribers.delete(id);
-                    removeWatcherIfEmpty(key);
-                    return;
                 }
             }
+            removeWatcherIfEmpty(key);
+        }
+    }
+
+    return {
+        registerSubscriber: (config, onEvent, ownerPluginId) => {
+            removeMatchingSubscribers(
+                (subscriber) =>
+                    subscriber.config.id === config.id &&
+                    subscriber.ownerPluginId === ownerPluginId,
+            );
+            const entry = ensureWatcher(config.path, config.recursive);
+            entry.subscribers.set(subscriberKey(config.id, ownerPluginId), {
+                config,
+                onEvent,
+                ownerPluginId,
+            });
+        },
+
+        unregisterSubscriber: (id, ownerPluginId) => {
+            removeMatchingSubscribers(
+                (subscriber) =>
+                    subscriber.config.id === id &&
+                    (ownerPluginId === undefined || subscriber.ownerPluginId === ownerPluginId),
+            );
+        },
+
+        unregisterSubscribersByOwner: (ownerPluginId) => {
+            removeMatchingSubscribers((subscriber) => subscriber.ownerPluginId === ownerPluginId);
+        },
+
+        getSubscriberIdsByOwner: (ownerPluginId) => {
+            const subscriberIds: string[] = [];
+            for (const entry of watchers.values()) {
+                for (const subscriber of entry.subscribers.values()) {
+                    if (subscriber.ownerPluginId === ownerPluginId) {
+                        subscriberIds.push(subscriber.config.id);
+                    }
+                }
+            }
+            return subscriberIds;
         },
 
         getWatcherCount: () => watchers.size,
