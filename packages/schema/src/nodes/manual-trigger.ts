@@ -17,5 +17,4 @@ export const ManualTriggerDescriptor = defineNode({
         eventName: 'file.created',
         payload: { path: '/', name: 'file', ext: 'txt', size: 0, dir: '/' },
     },
-    getOutputPorts: () => ['out'],
 });

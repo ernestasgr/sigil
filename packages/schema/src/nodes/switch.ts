@@ -201,7 +201,4 @@ export const SwitchDescriptor = defineNode({
         target: 'event',
         cases: [{ id: 'case-1', value: 'file.created' }],
     },
-    getOutputPorts: (config) => {
-        return [SWITCH_DEFAULT_PORT, ...config.cases.map((switchCase) => switchCase.id)];
-    },
 });

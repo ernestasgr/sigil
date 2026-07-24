@@ -13,5 +13,4 @@ export const StateGetDescriptor = defineNode({
     type: 'state-get',
     configSchema: StateGetConfigSchema,
     defaultConfig: { key: 'key', assignTo: 'value' },
-    getOutputPorts: () => ['out'],
 });

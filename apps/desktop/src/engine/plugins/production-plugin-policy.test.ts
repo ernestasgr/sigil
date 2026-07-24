@@ -23,7 +23,6 @@ export const descriptor = {
     type: 'external-node' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler: NodeHandler = {

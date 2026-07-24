@@ -15,5 +15,4 @@ export const FileWatcherDescriptor = defineNode({
     type: 'file-watcher',
     configSchema: FileWatcherConfigSchema,
     defaultConfig: { path: '/', recursive: true, events: ['file.created'] },
-    getOutputPorts: () => ['out'],
 });

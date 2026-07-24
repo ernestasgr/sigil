@@ -12,5 +12,4 @@ export const LogDescriptor = defineNode({
     type: 'log',
     configSchema: LogConfigSchema,
     defaultConfig: { message: 'Log message' },
-    getOutputPorts: () => ['out'],
 });

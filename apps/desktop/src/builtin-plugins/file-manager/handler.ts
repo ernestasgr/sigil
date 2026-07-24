@@ -166,7 +166,6 @@ export const descriptor = {
     type: 'file-manager' as const,
     configSchema: FileManagerConfigSchema,
     defaultConfig: { action: 'move', destination: '/', onConflict: 'skip' },
-    getOutputPorts: () => ['out'] as const,
     properties: [
         PROPERTY_DESCRIPTORS['file-manager.defaultOnConflict'],
         PROPERTY_DESCRIPTORS['file-manager.collisionSuffixStyle'],

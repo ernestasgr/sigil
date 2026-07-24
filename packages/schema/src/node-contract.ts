@@ -222,8 +222,8 @@ export type ParsedNodeContract = z.output<typeof NodeContractSchema>;
 
 /**
  * The contract representation that may cross a worker or Electron Bridge.
- * Runtime config schemas, output-port functions, and UI components are
- * intentionally not part of this value.
+ * Runtime config schemas and UI components are intentionally not part of this
+ * value.
  */
 export const SerializableNodeContractSchema = NodeContractSchema.superRefine((contract, ctx) => {
     const parsedDefault = SerializableJsonValueSchema.safeParse(contract.defaultConfig);
@@ -368,10 +368,6 @@ export type NodeContractResolution =
 export interface NodeContractRegistration<TSchema extends z.ZodType = z.ZodType> {
     readonly contract: NodeContract;
     readonly configSchema: TSchema;
-    /** Compatibility hook for descriptors while their output logic migrates. */
-    readonly resolveOutputPorts?: (
-        config: z.output<TSchema>,
-    ) => readonly NodeOutputPort[] | 'dynamic';
     readonly validateConfig?: (config: z.output<TSchema>) => readonly NodeContractIssue[];
 }
 
@@ -566,9 +562,7 @@ function resolveRegistration(
         };
     }
 
-    const resolved = registration.resolveOutputPorts
-        ? { ok: true as const, value: registration.resolveOutputPorts(parsed.data) }
-        : resolveDeclarativeOutputPorts(registration.contract.outputPorts, parsed.data);
+    const resolved = resolveDeclarativeOutputPorts(registration.contract.outputPorts, parsed.data);
 
     const customIssues = registration.validateConfig?.(parsed.data) ?? [];
     if (!resolved.ok) {
@@ -621,16 +615,14 @@ export function createNodeContractRegistry(
             );
         }
 
-        if (!registration.resolveOutputPorts) {
-            const defaultPorts = resolveDeclarativeOutputPorts(
-                parsedContract.data.outputPorts,
-                defaultConfig.data,
+        const defaultPorts = resolveDeclarativeOutputPorts(
+            parsedContract.data.outputPorts,
+            defaultConfig.data,
+        );
+        if (!defaultPorts.ok) {
+            throw new Error(
+                `Invalid default output-port configuration for ${formatNodeIdentity(parsedContract.data.identity)}: ${defaultPorts.issues.map((issue) => issue.message).join('; ')}`,
             );
-            if (!defaultPorts.ok) {
-                throw new Error(
-                    `Invalid default output-port configuration for ${formatNodeIdentity(parsedContract.data.identity)}: ${defaultPorts.issues.map((issue) => issue.message).join('; ')}`,
-                );
-            }
         }
 
         const key = nodeIdentityKey(parsedContract.data.identity);
@@ -711,52 +703,6 @@ export function outputPortLabelForNode(
     const ports = outputPortDescriptorsForNode(node, registry);
     if (ports === 'dynamic') return portId;
     return ports.find((port) => port.id === portId)?.label ?? portId;
-}
-
-export interface NodeDescriptorAdapterOptions {
-    readonly namespace?: NodeNamespace;
-    readonly pluginId?: string;
-    readonly role?: NodeRole;
-    readonly display?: Partial<NodeContractDisplay>;
-    readonly outputPortLabel?: (config: unknown, portId: string) => string;
-}
-
-/**
- * @deprecated Compatibility Adapter for descriptor-shaped registrations during
- * migration. The declarative contract is marked dynamic because descriptor
- * functions are not serializable; the registry still resolves their concrete
- * ports in-process.
- */
-export function adaptNodeDescriptor<TType extends string, TSchema extends z.ZodType>(
-    descriptor: NodeDescriptor<TType, TSchema>,
-    options: NodeDescriptorAdapterOptions = {},
-): NodeContractRegistration<TSchema> {
-    const namespace = options.namespace ?? 'builtin';
-    const identity =
-        namespace === 'plugin'
-            ? pluginNodeIdentity(options.pluginId ?? '', descriptor.type)
-            : builtinNodeIdentity(descriptor.type);
-
-    return {
-        contract: {
-            identity,
-            version: 1,
-            role: options.role ?? 'action',
-            defaultConfig: descriptor.defaultConfig,
-            outputPorts: { kind: 'dynamic' },
-            display: {
-                label: options.display?.label ?? descriptor.type,
-                description: options.display?.description ?? '',
-                category: options.display?.category ?? 'utility',
-            },
-        },
-        configSchema: descriptor.configSchema,
-        resolveOutputPorts: (config) =>
-            descriptor.getOutputPorts(config).map((port) => ({
-                id: port,
-                label: options.outputPortLabel?.(config, port) ?? port,
-            })),
-    };
 }
 
 export const BUILTIN_NODE_TYPE_VALUES = [

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { SwitchConfigSchema, SwitchDescriptor, validateSwitchConfig } from './switch.js';
+import { outputPortDescriptorsForNode } from '../node-contract.js';
+import { SwitchConfigSchema, validateSwitchConfig } from './switch.js';
 
 describe('Switch descriptor', () => {
     it('keeps output-port identity separate from the editable match value', () => {
@@ -12,7 +13,10 @@ describe('Switch descriptor', () => {
 
         expect(parsed.success).toBe(true);
         if (parsed.success) {
-            expect(SwitchDescriptor.getOutputPorts(parsed.data)).toEqual(['default', 'case-pdf']);
+            expect(outputPortDescriptorsForNode({ type: 'switch', config: parsed.data })).toEqual([
+                { id: 'default', label: 'default' },
+                { id: 'case-pdf', label: 'pdf' },
+            ]);
         }
     });
 

@@ -150,7 +150,6 @@ interface RawPluginDescriptor {
             | { readonly success: false; readonly error: { readonly message: string } };
     };
     readonly defaultConfig?: unknown;
-    readonly getOutputPorts?: (config: unknown) => unknown;
     readonly properties?: unknown;
     readonly propertyDescriptors?: unknown;
 }
@@ -1001,10 +1000,10 @@ function validateRuntimeContract(
     const identity = validatePluginNodeContract(contract, pluginId, nodeType);
     if (!identity.ok) return identity;
 
-    if (descriptor.defaultConfig === undefined || !isCallable(descriptor.getOutputPorts)) {
+    if (descriptor.defaultConfig === undefined) {
         return {
             ok: false,
-            error: 'The runtime descriptor must expose defaultConfig and getOutputPorts to validate its Node Contract.',
+            error: 'The runtime descriptor must expose defaultConfig to validate its Node Contract.',
         };
     }
 
@@ -1031,33 +1030,6 @@ function validateRuntimeContract(
         };
     }
 
-    let runtimePorts: unknown;
-    try {
-        runtimePorts = descriptor.getOutputPorts(parsedDefault.data);
-    } catch (error) {
-        return {
-            ok: false,
-            error: `Runtime descriptor output-port declaration failed: ${error instanceof Error ? error.message : String(error)}`,
-        };
-    }
-    if (!Array.isArray(runtimePorts)) {
-        return {
-            ok: false,
-            error: 'Runtime descriptor must declare a unique non-empty string output-port list.',
-        };
-    }
-
-    const runtimePortValues: readonly unknown[] = runtimePorts;
-    if (
-        !runtimePortValues.every((port: unknown) => typeof port === 'string' && port.length > 0) ||
-        new Set(runtimePortValues).size !== runtimePortValues.length
-    ) {
-        return {
-            ok: false,
-            error: 'Runtime descriptor must declare a unique non-empty string output-port list.',
-        };
-    }
-
     const resolvedDefaultPorts = resolveDeclarativeOutputPorts(
         identity.contract.outputPorts,
         parsedDefault.data,
@@ -1069,15 +1041,6 @@ function validateRuntimeContract(
                 .map((issue) => issue.message)
                 .join('; ')}`,
         };
-    }
-    if (resolvedDefaultPorts.value !== 'dynamic') {
-        const declaredPorts = resolvedDefaultPorts.value.map((port) => port.id);
-        if (!jsonEqual(runtimePortValues, declaredPorts)) {
-            return {
-                ok: false,
-                error: `Contract output ports [${declaredPorts.join(', ')}] do not match runtime descriptor ports [${runtimePortValues.join(', ')}].`,
-            };
-        }
     }
 
     return { ok: true, contract: identity.contract };

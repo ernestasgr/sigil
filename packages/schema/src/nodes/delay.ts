@@ -12,5 +12,4 @@ export const DelayDescriptor = defineNode({
     type: 'delay',
     configSchema: DelayConfigSchema,
     defaultConfig: { ms: 1000 },
-    getOutputPorts: () => ['out'],
 });

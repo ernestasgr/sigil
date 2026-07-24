@@ -30,7 +30,6 @@ export const descriptor = {
     type: 'rpc-execution' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler = {

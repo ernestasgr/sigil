@@ -29,7 +29,6 @@ export const descriptor = {
     type: 'isolated-boundary-node',
     configSchema: z.object({}),
     defaultConfig: {},
-    getOutputPorts: () => ['out'],
 };
 
 export const handler = {
@@ -46,7 +45,6 @@ export const descriptor = {
     type: 'isolated-boundary-trigger',
     configSchema: z.object({}),
     defaultConfig: {},
-    getOutputPorts: () => ['out'],
 };
 
 export function handler(kernel) {
@@ -109,7 +107,6 @@ export const descriptor = {
     type: 'partial-registration-failure-trigger',
     configSchema: z.object({}),
     defaultConfig: {},
-    getOutputPorts: () => ['out'],
 };
 
 export function handler(kernel) {
@@ -183,7 +180,6 @@ export const descriptor = {
     type: 'concurrent-activation-trigger',
     configSchema: z.object({ id: z.string() }),
     defaultConfig: { id: 'default' },
-    getOutputPorts: () => ['out'],
 };
 
 export function handler(kernel) {

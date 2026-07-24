@@ -15,5 +15,4 @@ export const FileManagerDescriptor = defineNode({
     type: 'file-manager',
     configSchema: FileManagerConfigSchema,
     defaultConfig: { action: 'move', destination: '/', onConflict: 'skip' },
-    getOutputPorts: () => ['out'],
 });

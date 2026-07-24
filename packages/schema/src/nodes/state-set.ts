@@ -18,5 +18,4 @@ export const StateSetDescriptor = defineNode({
     type: 'state-set',
     configSchema: StateSetConfigSchema,
     defaultConfig: { key: 'key', valueTemplate: '', valueType: 'string' },
-    getOutputPorts: () => ['out'],
 });

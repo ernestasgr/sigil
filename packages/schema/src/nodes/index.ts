@@ -34,7 +34,6 @@ export type {
     SerializableNodeContractInput,
 } from '../node-contract.js';
 export {
-    adaptNodeDescriptor,
     BUILTIN_NODE_CONTRACT_REGISTRATIONS,
     BUILTIN_NODE_CONTRACT_REGISTRY,
     BUILTIN_NODE_DESCRIPTORS,

@@ -13,5 +13,4 @@ export const NotificationDescriptor = defineNode({
     type: 'notification',
     configSchema: NotificationConfigSchema,
     defaultConfig: { title: 'Notification', body: 'Body' },
-    getOutputPorts: () => ['out'],
 });

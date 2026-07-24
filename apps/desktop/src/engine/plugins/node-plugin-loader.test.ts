@@ -57,7 +57,6 @@ export const descriptor = {
     type: 'greet' as const,
     configSchema: GreetConfigSchema,
     defaultConfig: { name: 'world' },
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler: NodeHandler = {
@@ -81,7 +80,6 @@ export const descriptor = {
     type: 'router-node' as const,
     configSchema: RouterConfigSchema,
     defaultConfig: { target: 'event', cases: [{ id: 'ready', value: 'ready' }] },
-    getOutputPorts: (config) => ['fallback', ...config.cases.map((item) => item.id)],
 };
 
 export const handler = {
@@ -91,11 +89,6 @@ export const handler = {
     },
 };
 `;
-
-const DERIVED_ROUTER_MISMATCH_PLUGIN_HANDLER = DERIVED_ROUTER_PLUGIN_HANDLER.replace(
-    "getOutputPorts: (config) => ['fallback', ...config.cases.map((item) => item.id)]",
-    "getOutputPorts: (config) => ['fallback', ...config.cases.map(() => 'wrong-port')]",
-);
 
 const TRIGGER_PLUGIN_HANDLER = `
 import { z } from 'zod';
@@ -107,7 +100,6 @@ export const descriptor = {
     type: 'tick-trigger' as const,
     configSchema: TickConfigSchema,
     defaultConfig: { intervalMs: 100 },
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler: TriggerHandler = {
@@ -134,7 +126,6 @@ export const descriptor = {
     type: 'crashing-node' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler: NodeHandler = {
@@ -160,7 +151,6 @@ export const descriptor = {
     type: 'cooperative-timeout-node' as const,
     configSchema: ConfigSchema,
     defaultConfig: { block: false },
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler = {
@@ -180,7 +170,6 @@ export const descriptor = {
     type: 'non-cooperative-timeout-node' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler = {
@@ -208,7 +197,6 @@ export const descriptor = {
     type: 'event-then-block-node' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler = {
@@ -228,7 +216,6 @@ export const descriptor = {
     type: 'resolve-template-node' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler = {
@@ -248,7 +235,6 @@ export const descriptor = {
     type: 'property-node' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
     properties: [{ key: 'property-node.message', schema: z.string(), fallback: 'hello', apply: 'hot' }],
 };
 
@@ -268,7 +254,6 @@ export const descriptor = {
     type: 'all-property-sources-node' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
     properties: [{ key: 'all-property-sources.descriptor', schema: z.string(), fallback: 'descriptor', apply: 'hot' }],
     propertyDescriptors: [{ key: 'all-property-sources.propertyDescriptors', schema: z.boolean(), fallback: false, apply: 'hot' }],
 };
@@ -454,98 +439,6 @@ describe('loadNodePlugin', () => {
                 { id: 'failed', label: 'failed' },
             ],
         });
-    });
-
-    it('rejects a Plugin whose runtime derived ports disagree with the contract', async () => {
-        const pluginDir = join(tempDir, 'derived-router-mismatch-plugin');
-        writePlugin(
-            pluginDir,
-            {
-                id: 'com.sigil.derived-router-mismatch',
-                version: '0.0.1',
-                permissions: [],
-                emits: ['router.output'],
-                nodeType: 'router-node',
-                nodeContract: {
-                    identity: {
-                        namespace: 'plugin',
-                        pluginId: 'com.sigil.derived-router-mismatch',
-                        type: 'router-node',
-                    },
-                    version: 1,
-                    role: 'action',
-                    defaultConfig: {
-                        target: 'event',
-                        cases: [{ id: 'ready', value: 'ready' }],
-                    },
-                    outputPorts: {
-                        kind: 'config-derived',
-                        strategy: 'switch-cases',
-                        defaultPort: { id: 'fallback', label: 'Fallback' },
-                    },
-                    display: {
-                        label: 'Derived Router',
-                        description: 'Routes by event name.',
-                        category: 'logic',
-                    },
-                },
-            },
-            DERIVED_ROUTER_MISMATCH_PLUGIN_HANDLER,
-        );
-
-        const { manifestRegistry, handlerRegistry } = createRegistries();
-        const result = await loadNodePlugin(pluginDir, {
-            manifestRegistry,
-            handlerRegistry,
-        });
-
-        expect(result).toMatchObject({
-            ok: false,
-            error: { kind: 'contract_mismatch' },
-        });
-    });
-
-    it('rejects a Plugin whose runtime descriptor disagrees with its fixed contract', async () => {
-        const pluginDir = join(tempDir, 'incompatible-contract-plugin');
-        writePlugin(
-            pluginDir,
-            {
-                id: 'com.sigil.incompatible',
-                version: '0.0.1',
-                permissions: [],
-                emits: ['contract.output'],
-                nodeType: 'greet',
-                nodeContract: {
-                    identity: {
-                        namespace: 'plugin',
-                        pluginId: 'com.sigil.incompatible',
-                        type: 'greet',
-                    },
-                    version: 1,
-                    role: 'action',
-                    defaultConfig: { name: 'world' },
-                    outputPorts: {
-                        kind: 'fixed',
-                        ports: [{ id: 'different', label: 'Different' }],
-                    },
-                    display: {
-                        label: 'Incompatible Greet',
-                        description: 'A malformed contract.',
-                        category: 'utility',
-                    },
-                },
-            },
-            GREET_PLUGIN_HANDLER,
-        );
-
-        const { manifestRegistry, handlerRegistry } = createRegistries();
-        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
-
-        expect(result).toMatchObject({
-            ok: false,
-            error: { kind: 'contract_mismatch' },
-        });
-        expect(manifestRegistry.has('com.sigil.incompatible')).toBe(false);
     });
 
     it('registers typed Plugin properties before the Engine validates the Properties File', async () => {
@@ -1744,7 +1637,6 @@ export const descriptor = {
     type: 'perm-checker' as const,
     configSchema: ConfigSchema,
     defaultConfig: { check: 'filesystem.read' },
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler: NodeHandler = {
@@ -1770,7 +1662,6 @@ export const descriptor = {
     type: 'factory-perm-checker' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export function handler(kernel: KernelDeps): TriggerHandler {
@@ -1800,7 +1691,6 @@ export const descriptor = {
     type: 'state-access' as const,
     configSchema: ConfigSchema,
     defaultConfig: { operation: 'get' },
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler = {
@@ -1833,7 +1723,6 @@ export const descriptor = {
     type: 'typed-state-round-trip' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler = {
@@ -2479,7 +2368,6 @@ export const descriptor = {
     type: 'evil-watcher' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export function handler(kernel: KernelDeps): TriggerHandler {
@@ -2509,7 +2397,6 @@ export const descriptor = {
     type: 'evil-exec' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export function handler(kernel: KernelDeps): NodeHandler {
@@ -2536,7 +2423,6 @@ export const descriptor = {
     type: 'evil-kernel-adapter' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export function handler(kernel: KernelDeps): NodeHandler {
@@ -2855,7 +2741,6 @@ export const descriptor = {
     type: 'fs-plugin' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler: NodeHandler = {
@@ -2894,7 +2779,6 @@ export const descriptor = {
     type: 'sandbox-surface-plugin' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler = {
@@ -2929,7 +2813,6 @@ export const descriptor = {
     type: 'code-generation-string-plugin' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler = {
@@ -2948,7 +2831,6 @@ export const descriptor = {
     type: 'code-generation-wasm-plugin' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler = {
@@ -2991,7 +2873,6 @@ export const descriptor = {
     type: 'code-generation-contract-plugin' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler = {
@@ -3033,7 +2914,6 @@ export const descriptor = {
     type: 'sandbox-boundary-plugin' as const,
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'] as const,
 };
 
 export const handler = {

@@ -2,7 +2,6 @@ import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import {
-    adaptNodeDescriptor,
     CURRENT_NODE_CONTRACT_VERSION,
     createBuiltinNodeContractRegistry,
     createNodeContractRegistry,
@@ -17,7 +16,6 @@ import {
     validateNodeContractCompatibility,
     validatePluginNodeContract,
 } from './node-contract.js';
-import { LogDescriptor } from './nodes/log.js';
 
 const switchNode = (config: unknown): NodeContractInput => ({
     type: 'switch',
@@ -119,12 +117,18 @@ describe('Node Contract Registry', () => {
 
     it('keeps Plugin identity separate from built-in identity and reports missing contracts', () => {
         const registry = createBuiltinNodeContractRegistry();
-        registry.register(
-            adaptNodeDescriptor(LogDescriptor, {
-                namespace: 'plugin',
-                pluginId: 'com.example.log',
-            }),
-        );
+        registerSerializableNodeContract(registry, {
+            identity: pluginNodeIdentity('com.example.log', 'log'),
+            version: 1,
+            role: 'action',
+            defaultConfig: { message: 'plugin' },
+            outputPorts: fixedOutputPortSpec(['out']),
+            display: {
+                label: 'Plugin Log',
+                description: 'A plugin log node.',
+                category: 'utility',
+            },
+        });
 
         const plugin = resolveNodeContract(
             {

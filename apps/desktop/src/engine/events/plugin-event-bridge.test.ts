@@ -21,7 +21,6 @@ export const descriptor = {
     type: '${NODE_TYPE}',
     configSchema: ConfigSchema,
     defaultConfig: {},
-    getOutputPorts: () => ['out'],
 };
 `;
 

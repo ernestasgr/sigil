@@ -16,7 +16,6 @@ export const descriptor = {
     type: 'file-watcher' as const,
     configSchema: FileWatcherConfigSchema,
     defaultConfig: { path: '/', recursive: true, events: ['file.created'] },
-    getOutputPorts: () => ['out'] as const,
     properties: [PROPERTY_DESCRIPTORS['file-watcher.ignorePatterns']],
 };
 

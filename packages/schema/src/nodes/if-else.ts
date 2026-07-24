@@ -15,5 +15,4 @@ export const IfElseDescriptor = defineNode({
     defaultConfig: {
         condition: { target: 'event', operator: 'equals', value: 'file.created' },
     },
-    getOutputPorts: () => ['true', 'false'],
 });
