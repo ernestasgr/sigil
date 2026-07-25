@@ -1,10 +1,12 @@
-import { type DragEvent, type ReactElement, useId, useState } from 'react';
+import type { CSSProperties, DragEvent, ReactElement } from 'react';
+import { useId, useState } from 'react';
 
 import { cn } from '../../lib/utils.js';
 import { useBuilderStore } from '../builder-store.js';
 import { NODE_DRAG_MIME } from '../constants.js';
 import {
     CATEGORIES,
+    CATEGORY_ACCENT_BG,
     CATEGORY_TEXT,
     DEFAULT_NODE_CATALOG,
     type NodeCatalog,
@@ -12,6 +14,23 @@ import {
     type NodeCategory,
     serializeNodeCatalogEntry,
 } from '../node-catalog.js';
+
+// The same light-frame idea as PipelineNodeCard's canvas nodes (a single
+// top-left chamfer traced by a fill, not a border — see that file for why
+// a plain `border` doesn't survive a clip-path cleanly), scaled down for a
+// list row. Keeping the palette and the canvas cards visually related
+// means a Node doesn't change families the moment it's dropped.
+const PALETTE_ITEM_CHAMFER = 6;
+const PALETTE_ITEM_RING_WIDTH = 1;
+
+function paletteChamferClip(cut: number): string {
+    return `polygon(${cut}px 0, 100% 0, 100% 100%, 0 100%, 0 ${cut}px)`;
+}
+
+const PALETTE_RING_CLIP: CSSProperties = { clipPath: paletteChamferClip(PALETTE_ITEM_CHAMFER) };
+const PALETTE_CONTENT_CLIP: CSSProperties = {
+    clipPath: paletteChamferClip(PALETTE_ITEM_CHAMFER - PALETTE_ITEM_RING_WIDTH),
+};
 
 function nodeCatalogEntryKey(entry: NodeCatalogEntry): string {
     return `${entry.pluginId ?? 'builtin'}:${entry.type}`;
@@ -107,19 +126,28 @@ function PaletteItem({
             aria-describedby={`${entryKey}-palette-description`}
             aria-keyshortcuts="Enter Space"
             className={cn(
-                'group flex cursor-grab appearance-none flex-col gap-0.5 border border-veil/40 bg-obsidian-ink/60 px-3 py-2 text-left transition-colors hover:border-gilt/60',
+                'group block w-full cursor-grab appearance-none bg-veil/40 p-px text-left transition-colors hover:bg-gilt/60 focus-visible:bg-gilt/60',
                 'active:cursor-grabbing',
             )}
+            style={PALETTE_RING_CLIP}
         >
-            <span
-                className={cn(
-                    'text-sm tracking-wide text-parchment group-hover:text-gilt',
-                    CATEGORY_TEXT[entry.category],
-                )}
-            >
-                {entry.label}
+            <span className="flex flex-col gap-0.5 bg-obsidian-ink/70" style={PALETTE_CONTENT_CLIP}>
+                <span
+                    aria-hidden="true"
+                    className={cn('block h-[2px] w-full', CATEGORY_ACCENT_BG[entry.category])}
+                />
+                <span className="flex flex-col gap-0.5 px-3 pt-1.5 pb-2">
+                    <span
+                        className={cn(
+                            'text-sm tracking-wide text-parchment group-hover:text-gilt',
+                            CATEGORY_TEXT[entry.category],
+                        )}
+                    >
+                        {entry.label}
+                    </span>
+                    <span className="font-data text-[10px] text-veil-foreground">{entry.type}</span>
+                </span>
             </span>
-            <span className="font-data text-[10px] text-veil-foreground">{entry.type}</span>
             <span id={`${entryKey}-palette-description`} className="sr-only">
                 {entry.description} Press Enter or Space to add this Node without dragging.
             </span>

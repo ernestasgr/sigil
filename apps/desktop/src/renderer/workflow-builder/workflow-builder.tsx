@@ -54,7 +54,12 @@ export function WorkflowBuilder({
 
     return (
         <div className="flex h-full flex-col bg-obsidian-ink p-2">
-            <div className="border-gilt/40 mb-2 flex items-center gap-3 border px-4 py-2">
+            <SigilFrame
+                as="div"
+                className="mb-2 shrink-0"
+                bodyClassName="flex-row items-center gap-3 px-4 py-2"
+                chamfer={12}
+            >
                 <Button size="sm" variant="ghost" onClick={handleCancel}>
                     ← Back
                 </Button>
@@ -106,7 +111,7 @@ export function WorkflowBuilder({
                 >
                     {showInspector ? 'Hide Inspector' : 'Inspector'}
                 </button>
-            </div>
+            </SigilFrame>
             <div className="flex flex-1 gap-2 overflow-hidden">
                 <SigilFrame as="aside" className="w-60 shrink-0">
                     <NodePalette catalog={nodeCatalog} />

@@ -57,6 +57,34 @@ body {
     outline-offset: 2px;
 }
 
+/*
+ * A stock light-grey scrollbar is the fastest way to break the ritual —
+ * thin gilt-on-obsidian instead, in both engines Electron ships with.
+ */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--color-gilt) 45%, transparent) transparent;
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--color-gilt) 45%, transparent);
+    border: 2px solid var(--color-obsidian-ink);
+    border-radius: 0;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--color-gilt) 70%, transparent);
+}
+
 .sigil-ley-line-field {
     background-color: var(--color-obsidian-ink);
     background-image:

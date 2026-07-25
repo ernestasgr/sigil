@@ -25,22 +25,33 @@ export function Nav(): ReactElement {
                 <h1 className="font-display text-gilt text-xl tracking-[0.3em] uppercase">Sigil</h1>
             </div>
             <ul className="flex-1 py-4">
-                {SECTIONS.map((section) => (
-                    <li key={section.id}>
-                        <button
-                            type="button"
-                            onClick={() => handleNavigate(section.id)}
-                            className={cn(
-                                'border-l-2 font-ui text-sm tracking-widest uppercase transition-colors w-full px-6 py-3 text-left',
-                                activeSection === section.id
-                                    ? 'border-gilt text-gilt bg-gilt/10'
-                                    : 'border-transparent text-veil hover:text-parchment',
-                            )}
-                        >
-                            {section.label}
-                        </button>
-                    </li>
-                ))}
+                {SECTIONS.map((section) => {
+                    const active = activeSection === section.id;
+                    return (
+                        <li key={section.id}>
+                            <button
+                                type="button"
+                                onClick={() => handleNavigate(section.id)}
+                                aria-current={active ? 'page' : undefined}
+                                className={cn(
+                                    'relative font-ui text-sm tracking-widest uppercase transition-colors w-full py-3 pr-6 pl-8 text-left',
+                                    active
+                                        ? 'text-gilt bg-gilt/10'
+                                        : 'text-veil hover:text-parchment',
+                                )}
+                            >
+                                <span
+                                    aria-hidden="true"
+                                    className={cn(
+                                        'absolute top-1/2 left-3 h-1.5 w-1.5 -translate-y-1/2 rotate-45 transition-colors',
+                                        active ? 'bg-gilt' : 'bg-transparent',
+                                    )}
+                                />
+                                {section.label}
+                            </button>
+                        </li>
+                    );
+                })}
             </ul>
             <WorkflowStatus />
         </SigilFrame>
