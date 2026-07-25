@@ -1,7 +1,7 @@
+import type { DatabaseSync } from 'node:sqlite';
 import type { WorkflowId } from '@sigil/schema/workflow-id';
-import type { Database } from 'better-sqlite3';
 import { and, eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { drizzle } from 'drizzle-orm/node-sqlite';
 import { primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { Option } from 'effect';
 import { z } from 'zod';
@@ -172,7 +172,22 @@ function decodeWorkflowStateValue(raw: string): WorkflowStatePrimitive {
     return parseEncodedWorkflowStateValue(raw)?.value ?? raw;
 }
 
-function migrateLegacyWorkflowState(database: Database): void {
+function runSqliteTransaction(database: DatabaseSync, operation: () => void): void {
+    database.exec('BEGIN');
+    try {
+        operation();
+        database.exec('COMMIT');
+    } catch (error: unknown) {
+        try {
+            database.exec('ROLLBACK');
+        } catch {
+            // Preserve the original operation error if rollback also fails.
+        }
+        throw error;
+    }
+}
+
+function migrateLegacyWorkflowState(database: DatabaseSync): void {
     database.exec(CREATE_MIGRATION_TABLE_SQL);
 
     const marker = z
@@ -184,7 +199,7 @@ function migrateLegacyWorkflowState(database: Database): void {
         );
     if (marker.success && marker.data.value === WORKFLOW_STATE_MIGRATION_COMPLETE) return;
 
-    const migrate = database.transaction(() => {
+    runSqliteTransaction(database, () => {
         const rows = database.prepare('SELECT workflow_id, key, value FROM workflow_state').all();
         const update = database.prepare(
             'UPDATE workflow_state SET value = ? WHERE workflow_id = ? AND key = ?',
@@ -203,8 +218,6 @@ function migrateLegacyWorkflowState(database: Database): void {
             )
             .run(WORKFLOW_STATE_MIGRATION_KEY, WORKFLOW_STATE_MIGRATION_COMPLETE);
     });
-
-    migrate();
 }
 
 function workflowStateEntry(key: string, value: WorkflowStatePrimitive): WorkflowStateEntry {
@@ -221,20 +234,23 @@ function workflowStateEntry(key: string, value: WorkflowStatePrimitive): Workflo
 }
 
 export function createWorkflowStateStore(
-    database: Database,
+    database: DatabaseSync,
     options?: CreateWorkflowStateStoreOptions,
 ): WorkflowStateStore {
     database.exec(CREATE_TABLE_SQL);
     migrateLegacyWorkflowState(database);
-    const db = drizzle(database);
+    const db = drizzle({ client: database });
     const buffer = new Map<WorkflowId, Map<string, WorkflowStatePrimitive>>();
     const flushIntervalMs = options?.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;
 
-    const upsert = database.transaction(
-        (entries: ReadonlyMap<string, WorkflowStatePrimitive>, workflowId: WorkflowId) => {
+    const upsert = (
+        entries: ReadonlyMap<string, WorkflowStatePrimitive>,
+        workflowId: WorkflowId,
+    ): void => {
+        db.transaction((tx) => {
             for (const [key, value] of entries) {
                 const encodedValue = encodeWorkflowStateValue(value);
-                db.insert(workflowStateTable)
+                tx.insert(workflowStateTable)
                     .values({ workflowId, key, value: encodedValue })
                     .onConflictDoUpdate({
                         target: [workflowStateTable.workflowId, workflowStateTable.key],
@@ -242,8 +258,8 @@ export function createWorkflowStateStore(
                     })
                     .run();
             }
-        },
-    );
+        });
+    };
 
     function flushWorkflow(workflowId: WorkflowId): void {
         const entries = buffer.get(workflowId);

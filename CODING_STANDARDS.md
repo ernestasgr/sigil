@@ -89,7 +89,7 @@ type FileCondition = z.infer<typeof FileConditionSchema>;
 **No classes for domain logic.** Plugins, nodes, and the executor are
 functions operating on plain data, not objects with methods and
 internal mutable state. Reach for a class only when wrapping a genuinely
-stateful native resource (a `worker_thread` handle, a `better-sqlite3`
+stateful native resource (a `worker_thread` handle, a `node:sqlite`
 connection) — and even then, expose a functional API over it.
 
 ```typescript

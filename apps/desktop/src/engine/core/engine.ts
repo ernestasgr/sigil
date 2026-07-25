@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import type { Capability } from '@sigil/schema/manifest';
 import {
@@ -17,7 +18,6 @@ import {
 } from '@sigil/schema/properties-file';
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import Database from 'better-sqlite3';
 import type {
     EngineDiagnosticPayload,
     PermissionTransitionActor,
@@ -207,7 +207,7 @@ export function createEngine(options?: EngineOptions): Engine {
     let { resolved: resolvedProperties, properties } = resolveConfiguredProperties();
 
     let settings = resolveSettings(resolvedProperties, properties, propertyRegistry);
-    const database = new Database(resolvedProperties.databasePath);
+    const database = new DatabaseSync(resolvedProperties.databasePath);
     const workflowStateStore = createWorkflowStateStore(database);
 
     const fileWatcherManager = createFileWatcherManager(

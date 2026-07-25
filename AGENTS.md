@@ -14,14 +14,14 @@ Multi-context project layout using `CONTEXT-MAP.md` and context-specific `CONTEX
 
 ### Testing native SQLite
 
-The desktop test package depends on the native `better-sqlite3` module. Its `pretest` script rebuilds that module, so run the complete suite from the repository root:
+The desktop package uses Node's built-in `node:sqlite` driver. Run the complete suite from the repository root:
 
 ```powershell
 pnpm -r test
 ```
 
-If Vitest/esbuild or pnpm reports `EPERM` / `Access is denied` while traversing pnpm-linked paths or the pnpm store, rerun the same command with elevated filesystem access. Do not skip the rebuild; a missing or incompatible SQLite binding can otherwise look like an unrelated test failure. For a manual rebuild before retrying:
+If Vitest/esbuild or pnpm reports `EPERM` / `Access is denied` while traversing pnpm-linked paths or the pnpm store, rerun the same command with elevated filesystem access. The supported runtime is enforced by `pnpm check:node`.
 
 ```powershell
-pnpm rebuild better-sqlite3
+pnpm check:node
 ```

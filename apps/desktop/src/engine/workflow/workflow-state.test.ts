@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync as Database } from 'node:sqlite';
 import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 
-import Database from 'better-sqlite3';
 import { Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowStatePrimitive } from './workflow-state.js';
@@ -18,7 +18,7 @@ import {
 const WF_A = WorkflowIdSchema.parse('wf-a');
 const WF_B = WorkflowIdSchema.parse('wf-b');
 
-function createStore(database: Database.Database) {
+function createStore(database: Database) {
     return createWorkflowStateStore(database, { flushIntervalMs: 60_000 });
 }
 
@@ -369,7 +369,11 @@ describe('createWorkflowStateStore — flush', () => {
         );
         state.set('k', 'retryable');
 
-        expect(() => state.flush()).toThrow('flush failed');
+        expect(() => state.flush()).toThrow(
+            expect.objectContaining({
+                cause: expect.objectContaining({ message: 'flush failed' }),
+            }),
+        );
         expect(state.get('k')).toEqual(Option.some('retryable'));
 
         database.exec('DROP TRIGGER fail_workflow_state_insert');
@@ -565,7 +569,11 @@ describe('createWorkflowStateStore — listKeys / setKey / deleteKey', () => {
             "CREATE TRIGGER fail_workflow_state_delete BEFORE DELETE ON workflow_state BEGIN SELECT RAISE(ABORT, 'delete failed'); END;",
         );
 
-        expect(() => store.deleteWorkflow(WF_A)).toThrow('delete failed');
+        expect(() => store.deleteWorkflow(WF_A)).toThrow(
+            expect.objectContaining({
+                cause: expect.objectContaining({ message: 'delete failed' }),
+            }),
+        );
 
         database.exec('DROP TRIGGER fail_workflow_state_delete');
         store.flushAll();

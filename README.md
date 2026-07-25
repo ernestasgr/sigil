@@ -205,7 +205,7 @@ Ten node types, grouped by category. Eight are builtin handlers; File Watcher an
 
 ## Tech Stack
 
-TypeScript 6 · Electron 42 · React 19 · Zustand 5 · @xyflow/react 12 · Zod 4 · RxJS 7 · Effect 3 · better-sqlite3 12 · Drizzle ORM · Tailwind CSS 4 · Biome · Vitest 4
+TypeScript 6 · Electron 42 · React 19 · Zustand 5 · @xyflow/react 12 · Zod 4 · RxJS 7 · Effect 3 · Node:SQLite · Drizzle ORM · Tailwind CSS 4 · Biome · Vitest 4
 
 ## Repository Layout
 
@@ -234,10 +234,8 @@ The shared contract: `@sigil/schema` defines `CompiledPipeline`, `PipelineNode` 
 - **Windows** 10 or 11 (the MVP target platform)
 - **Node.js** `>=24.15.0 <25` (the repository recommends the latest Node 24 patch in [`.node-version`](.node-version))
 - **pnpm** `11.8.0` (enforced via `packageManager`)
-- **Python** 3.x available on `PATH` for `node-gyp` native builds
-- **Visual Studio 2022 Build Tools** with the **Desktop development with C++** workload, MSVC v143, and a Windows 10/11 SDK
 
-The repository follows Electron 42.4.1's embedded Node 24 runtime. Run `pnpm check:node` before installing dependencies; it fails early with an actionable message when the current Node version is outside the supported range. `pnpm install` runs the same check automatically. The desktop app uses `better-sqlite3`, a native Node module. `pnpm install` may use a prebuilt binary, but `pnpm setup:native` rebuilds it for the current Node runtime. `pnpm build` runs `electron-rebuild` so the module also matches the Electron ABI; both paths need the Windows C++ toolchain when a prebuilt binary is unavailable.
+The repository follows Electron 42.4.1's embedded Node 24 runtime. Run `pnpm check:node` before installing dependencies; it fails early with an actionable message when the current Node version is outside the supported range. `pnpm install` runs the same check automatically. The desktop app uses Node's built-in `node:sqlite` driver through Drizzle ORM, so it needs no addon rebuild or C++ toolchain.
 
 ## Getting Started
 
@@ -274,15 +272,12 @@ Windows.
 | `pnpm structure:codemod` | Preview the checked-in codemod recipes.                 |
 | `pnpm structure:codemod:write` | Apply codemods only with an explicit write command.       |
 | `pnpm check:fast`   | Run lint, format, architecture, structural checks, workflow validation, typecheck, and fast tests. |
-| `pnpm test:fast`    | Run schema and renderer tests without a native rebuild.   |
+| `pnpm test:fast`    | Run schema and renderer tests.                         |
 | `pnpm coverage`     | Run schema, desktop, and renderer Vitest coverage.        |
 | `pnpm coverage:check` | Enforce the committed aggregate coverage baselines.       |
 | `pnpm test:e2e`     | Build the app and run the Windows Electron Workflow smoke test. |
-| `pnpm check:coverage` | Run native tests, report coverage, and enforce the measured baseline. |
+| `pnpm check:coverage` | Run all tests with coverage and enforce the measured baseline. |
 | `pnpm verify:production` | Check production files and launch the built Electron app briefly. |
-| `pnpm setup:native` | Rebuild `better-sqlite3` for the current Node runtime.    |
-| `pnpm check:native` | Load SQLite in memory and run a native binding preflight. |
-| `pnpm test:native`  | Setup/check SQLite, then run the full desktop test suite. |
 | `pnpm test`         | Run tests across every workspace package (Vitest).        |
 | `pnpm test:ui`      | Open the interactive Vitest UI for all test projects.     |
 | `pnpm test:watch`   | Watch tests for `@sigil/schema`.                          |
@@ -297,15 +292,13 @@ Tests target architectural seams — feeding input into one side of a boundary a
 - **DAG Executor** — feed a compiled Pipeline + trigger payload, assert node sequence, branching, outputs, error handling, and State mutations.
 - **Event Bus + Bridge** — Events arrive with correct payloads, undeclared emissions are blocked, subscribers receive matching Events.
 
-Use `pnpm check:fast` for the quick feedback loop. It runs lint, formatting, architecture, structural checks and fixtures, workflow validation, typechecking, and then `pnpm test:fast`; the schema and renderer tests do not invoke the desktop package's native rebuild. Run `pnpm --filter @sigil/desktop test:renderer:dom` for the isolated jsdom project; it uses DOM Testing Library without loading Electron or `better-sqlite3`. `pnpm --filter @sigil/desktop test:renderer` runs the existing renderer unit tests plus that DOM project. Use `pnpm coverage` for text, JSON-summary, and LCOV reports across the schema, desktop, and renderer projects, then `pnpm coverage:check` to enforce [`docs/coverage-baseline.json`](docs/coverage-baseline.json). The critical seam floors are centralized in [`vitest.coverage.ts`](vitest.coverage.ts). Use `pnpm check:coverage` when a change needs the full native suite and coverage trend check; it prepares `better-sqlite3`, writes package coverage reports, and enforces the baseline. The exact formatting, dependency-analysis, structural-check, coverage, and production verification scope is documented in [`docs/quality-gates.md`](docs/quality-gates.md). Before changing engine persistence or other native code, run `pnpm test:native`. It rebuilds and checks `better-sqlite3` first, then runs the desktop tests. `pnpm test` remains the complete workspace suite: the desktop package runs its Node-oriented suite and then the dedicated renderer project.
+Use `pnpm check:fast` for the quick feedback loop. It runs lint, formatting, architecture, structural checks and fixtures, workflow validation, typechecking, and then `pnpm test:fast`. Run `pnpm --filter @sigil/desktop test:renderer:dom` for the isolated jsdom project; it uses DOM Testing Library without loading Electron or `node:sqlite`. `pnpm --filter @sigil/desktop test:renderer` runs the existing renderer unit tests plus that DOM project. Use `pnpm coverage` for text, JSON-summary, and LCOV reports across the schema, desktop, and renderer projects, then `pnpm coverage:check` to enforce [`docs/coverage-baseline.json`](docs/coverage-baseline.json). The critical seam floors are centralized in [`vitest.coverage.ts`](vitest.coverage.ts). Use `pnpm check:coverage` when a change needs the full native suite and coverage trend check; it writes package coverage reports and enforces the baseline. The exact formatting, dependency-analysis, structural-check, coverage, and production verification scope is documented in [`docs/quality-gates.md`](docs/quality-gates.md). `pnpm test` remains the complete workspace suite: the desktop package runs its Node-oriented suite and then the dedicated renderer project.
 
 For interactive test discovery and debugging, run `pnpm test:ui`. It opens the Vitest UI with the schema, desktop, and renderer projects, including filters for project, file, test name, and failures plus reruns that do not rebuild the production Electron bundle. Use the targeted CLI commands in [`docs/quality-gates.md`](docs/quality-gates.md) for deterministic checks, CI, and agent automation; the UI is a local development aid only.
 
 After `pnpm build`, `pnpm verify:production` checks the expected `out/` files, renderer asset references, and built Electron startup. GitHub Actions runs the static checks, full native test suite with coverage, production build, and startup verification in one Windows quality-gates job; the coverage reports are preserved as an artifact.
 
 Run `pnpm test:e2e -- tests/e2e/workflow-lifecycle.spec.ts` for the complete Electron Workflow lifecycle smoke test. Its isolated-data harness, launch path, native-dialog seam, and failure artifacts are documented in [`docs/electron-smoke-tests.md`](docs/electron-smoke-tests.md). GitHub Actions runs the Electron smoke test in the Windows quality-gates job and preserves its diagnostics on failure.
-
-If `pnpm check:native` fails, follow the prerequisite message it prints, install the Windows C++/Python toolchain above, and rerun `pnpm setup:native` before retrying `pnpm test:native`.
 
 ## Project Docs
 

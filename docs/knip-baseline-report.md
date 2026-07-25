@@ -71,7 +71,6 @@
 | PersistenceDiagnosticSchema             | apps/desktop/src/shared/ipc-channels.ts:10:10                              | warn     |
 | CommandCorrelationIdSchema              | apps/desktop/src/shared/ipc-channels.ts:94:14                              | warn     |
 | DEFAULT_EXECUTOR_SETTINGS               | apps/desktop/src/engine/dag-executor.ts:46:14                              | warn     |
-| formatNativeSqliteError                 | apps/desktop/src/native-sqlite-check.ts:17:17                              | warn     |
 | nodeAtomicFileSystem                    | apps/desktop/src/engine/atomic-file.ts:49:14                               | warn     |
 | PersistenceOperationSchema              | apps/desktop/src/shared/persistence.ts:3:14                                | warn     |
 | PersistencePhaseSchema                  | apps/desktop/src/shared/persistence.ts:6:14                                | warn     |
@@ -196,9 +195,7 @@
 | WorkflowWriteOutcome               | apps/desktop/src/shared/ipc-channels.ts:34:13                              | warn     |
 | CommandCorrelationId               | apps/desktop/src/shared/ipc-channels.ts:95:13                              | warn     |
 | CorrelationId                      | apps/desktop/src/shared/ipc-channels.ts:93:13                              | warn     |
-| NativeSqliteStatement              | apps/desktop/src/native-sqlite-check.ts:1:18                               | warn     |
 | PersistenceDiagnostic              | apps/desktop/src/shared/ipc-channels.ts:9:15                               | warn     |
-| NativeSqliteDatabase               | apps/desktop/src/native-sqlite-check.ts:5:18                               | warn     |
 | AtomicFileDescriptor               | apps/desktop/src/engine/atomic-file.ts:16:13                               | warn     |
 | NativeOpenDialogResult             | apps/desktop/src/main/native-dialog.ts:3:18                                | warn     |
 | PersistenceOperation               | apps/desktop/src/shared/persistence.ts:4:13                                | warn     |

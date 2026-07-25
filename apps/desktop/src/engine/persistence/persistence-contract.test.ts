@@ -1,9 +1,9 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync as Database } from 'node:sqlite';
 import type { CompiledPipeline } from '@sigil/schema';
 import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
-import Database from 'better-sqlite3';
 import { Effect, Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readPropertiesFile, writePropertiesFile } from '../core/properties-loader.js';

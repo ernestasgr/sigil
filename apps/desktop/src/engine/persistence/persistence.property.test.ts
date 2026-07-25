@@ -1,5 +1,5 @@
+import { DatabaseSync as Database } from 'node:sqlite';
 import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/workflow-id';
-import Database from 'better-sqlite3';
 import { Option } from 'effect';
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';

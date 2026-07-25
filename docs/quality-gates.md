@@ -19,8 +19,8 @@ It runs the following checks in order:
 
 The renderer-only DOM project is available as
 `pnpm --filter @sigil/desktop test:renderer:dom`. It runs the tests under
-`apps/desktop/tests/renderer/` in jsdom without the desktop package's native
-SQLite setup. `pnpm --filter @sigil/desktop test:renderer` runs those tests
+`apps/desktop/tests/renderer/` in jsdom without loading the desktop package's
+SQLite runtime. `pnpm --filter @sigil/desktop test:renderer` runs those tests
 alongside the existing Node-oriented renderer tests; `pnpm test` runs the
 complete workspace suite, including both desktop test projects.
 
@@ -57,7 +57,7 @@ The supported local command for the full native coverage gate is:
 pnpm check:coverage
 ```
 
-It builds the shared schema package, prepares and checks the native SQLite binding, runs the schema, desktop, and renderer Vitest projects with V8 coverage, and compares all three reports with the committed baseline. `pnpm coverage` is a short alias for the report-only command.
+It builds the shared schema package, runs the schema, desktop, and renderer Vitest projects with V8 coverage, and compares all three reports with the committed baseline. `pnpm coverage` is a short alias for the report-only command.
 
 ## Scope decisions
 
@@ -99,15 +99,14 @@ The `Quality gates (Windows)` job runs every required check sequentially on a fr
 1. install the frozen workspace dependencies with lifecycle scripts disabled;
 2. build the shared schema package;
 3. run lint, formatting, architecture, structural checks and fixtures, workflow validation, typecheck, and `pnpm test:fast`, whose composed renderer test command runs the renderer unit and DOM projects;
-4. prepare and preflight `better-sqlite3`;
-5. run the schema, desktop, and renderer test projects with coverage;
-6. enforce the measured project baselines and per-file seam thresholds;
-7. build the production Electron output; and
-8. verify the production artifacts and startup marker.
+4. run the schema, desktop, and renderer test projects with coverage;
+5. enforce the measured project baselines and per-file seam thresholds;
+6. build the production Electron output; and
+7. verify the production artifacts and startup marker.
 
-The single job keeps the quality contract easy to find and preserves the intended order: fast static and pure checks run before native setup, while build and release verification run only after tests and coverage pass.
+The single job keeps the quality contract easy to find and preserves the intended order: fast static and pure checks run before the SQLite-backed tests, while build and release verification run only after tests and coverage pass.
 
-Bootstrap steps are explicitly named and call [`.github/scripts/verify-windows-bootstrap.ps1`](../.github/scripts/verify-windows-bootstrap.ps1). Missing Node.js, pnpm, Python, or the Visual Studio C++ toolchain is reported as `BOOTSTRAP FAILURE`; static checks, native tests, coverage, build, and production-startup failures are reported by their `Fast`, `Native`, `Build`, or `Release` gate. This keeps environment failures distinguishable from product failures for both humans and AI agents.
+Bootstrap steps are explicitly named and call [`.github/scripts/verify-windows-bootstrap.ps1`](../.github/scripts/verify-windows-bootstrap.ps1). Missing Node.js or pnpm is reported as `BOOTSTRAP FAILURE`; static checks, native tests, coverage, build, and production-startup failures are reported by their `Fast`, `Native`, `Build`, or `Release` gate. This keeps environment failures distinguishable from product failures for both humans and AI agents.
 
 ## Production artifact checks
 
@@ -120,4 +119,4 @@ pnpm build
 pnpm verify:production
 ```
 
-When a gate fails, start with the first failed stage: `Bootstrap` indicates prerequisites or dependency setup, `Fast` indicates static/pure checks, `Native` indicates the Windows native test/coverage path, `Build` indicates production compilation, and `Release` indicates artifact completeness or startup viability.
+When a gate fails, start with the first failed stage: `Bootstrap` indicates prerequisites or dependency setup, `Fast` indicates static/pure checks, `Native` indicates the SQLite-backed test/coverage path, `Build` indicates production compilation, and `Release` indicates artifact completeness or startup viability.

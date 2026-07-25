@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync as Database } from 'node:sqlite';
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineEdge } from '@sigil/schema/edges';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
@@ -14,7 +15,6 @@ import {
 import type { PipelineNode } from '@sigil/schema/nodes';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
-import Database from 'better-sqlite3';
 import { Either, Option } from 'effect';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { BusEvent } from '../events/event-bus.js';

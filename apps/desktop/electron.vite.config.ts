@@ -19,7 +19,7 @@ export default defineConfig({
                 formats: ['es'],
             },
             rollupOptions: {
-                external: ['better-sqlite3', '@sigil/schema'],
+                external: ['node:sqlite', '@sigil/schema'],
             },
         },
         resolve: {

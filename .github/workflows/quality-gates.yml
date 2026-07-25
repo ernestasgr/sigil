@@ -92,12 +92,6 @@ jobs:
             - name: Fast gate - schema and renderer tests
               run: pnpm test:fast
 
-            - name: Bootstrap - prepare native SQLite runtime
-              run: pnpm setup:native
-
-            - name: Bootstrap - verify native SQLite runtime
-              run: pnpm check:native
-
             - name: Native gate - all Vitest projects with coverage
               run: pnpm test:coverage
 
@@ -130,18 +124,13 @@ jobs:
               shell: pwsh
               run: |
                   $diagnostics = Join-Path $env:RUNNER_TEMP 'sigil-quality-gates-diagnostics.txt'
-                  $pythonVersion = if ($null -ne (Get-Command python -ErrorAction SilentlyContinue)) { (python --version 2>&1 | Out-String).Trim() } else { 'unavailable' }
                   $nodeVersion = if ($null -ne (Get-Command node -ErrorAction SilentlyContinue)) { (node --version 2>&1 | Out-String).Trim() } else { 'unavailable' }
                   $pnpmVersion = if ($null -ne (Get-Command pnpm -ErrorAction SilentlyContinue)) { (pnpm --version 2>&1 | Out-String).Trim() } else { 'unavailable' }
-                  $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-                  $visualStudio = if (Test-Path -LiteralPath $vswhere) { (& $vswhere -latest -products '*' -property installationPath | Select-Object -First 1 | Out-String).Trim() } else { 'unavailable' }
 
                   @(
                       "Runner: $env:RUNNER_OS"
                       "Node: $nodeVersion"
                       "pnpm: $pnpmVersion"
-                      "Python: $pythonVersion"
-                      "Visual Studio: $visualStudio"
                       "Commit: $env:GITHUB_SHA"
                   ) | Set-Content -Path $diagnostics -Encoding utf8
 
@@ -156,10 +145,10 @@ jobs:
                       '',
                       "- **Status:** $env:JOB_STATUS",
                       "- **Runner:** $env:RUNNER_OS",
-                      '- **Commands:** `pnpm lint`, `pnpm format:check`, `pnpm architecture:check`, `pnpm structure:check`, `pnpm structure:test`, `pnpm structure:check:json`, `pnpm workflows:check`, `pnpm typecheck`, `pnpm test:fast` (including the composed renderer unit and DOM tests), native setup/check, `pnpm test:coverage` (schema, desktop, and renderer projects), `pnpm coverage:check`, `pnpm build`, `pnpm --filter @sigil/desktop test:e2e`, and `pnpm verify:production`',
-                      '- **Bootstrap ownership:** Node.js, pnpm, Python, Visual Studio C++ prerequisites, dependency installation, ast-grep CLI preparation, schema build, and native SQLite setup.',
+                      '- **Commands:** `pnpm lint`, `pnpm format:check`, `pnpm architecture:check`, `pnpm structure:check`, `pnpm structure:test`, `pnpm structure:check:json`, `pnpm workflows:check`, `pnpm typecheck`, `pnpm test:fast` (including the composed renderer unit and DOM tests), `pnpm test:coverage` (schema, desktop, and renderer projects), `pnpm coverage:check`, `pnpm build`, `pnpm --filter @sigil/desktop test:e2e`, and `pnpm verify:production`',
+                      '- **Bootstrap ownership:** Node.js, pnpm, dependency installation, ast-grep CLI preparation, and schema build.',
                       '- **Product ownership:** static checks, pure tests, native tests, coverage baseline, production build, artifact completeness, and Electron startup.',
-                      '- **Native isolation:** dependency lifecycle scripts are disabled during install; native setup runs explicitly after the fast checks.'
+                      '- **Native isolation:** dependency lifecycle scripts are disabled during install; native tests run after the fast checks.'
                   ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 
             - name: Upload quality-gate diagnostics
