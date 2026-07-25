@@ -1,12 +1,10 @@
 import { z } from 'zod';
+import { type PipelineNodeId, PipelineNodeIdSchema } from '../ids.js';
 import { BUILTIN_NODE_DESCRIPTORS, BUILTIN_NODE_TYPE_VALUES } from '../node-contract.js';
-import {
-    NodeOutputPortIdSchema,
-    PipelineEdgeIdSchema,
-    PipelineNodeIdSchema,
-} from '../ids.js';
 import type { NodeDescriptor } from './types.js';
 
+export type { NodeOutputPortId, PipelineEdgeId, PipelineNodeId } from '../ids.js';
+export { NodeOutputPortIdSchema, PipelineNodeIdSchema } from '../ids.js';
 export type {
     DeclarativeOutputPortResolution,
     NodeCategory,
@@ -24,8 +22,9 @@ export type {
     NodeIdentity,
     NodeNamespace,
     NodeOutputPort,
-    NodeOutputPortId,
+    NodeOutputPortInput,
     NodeOutputPortSpec,
+    NodeOutputPortSpecInput,
     NodeRole,
     NodeType,
     OutputPortIdResolution,
@@ -34,7 +33,6 @@ export type {
     SerializableNodeContract,
     SerializableNodeContractInput,
 } from '../node-contract.js';
-export type { PipelineEdgeId, PipelineNodeId } from '../ids.js';
 export {
     BUILTIN_NODE_CONTRACT_REGISTRATIONS,
     BUILTIN_NODE_CONTRACT_REGISTRY,
@@ -77,12 +75,6 @@ export {
     validateNodeContractCompatibility,
     validatePluginNodeContract,
 } from '../node-contract.js';
-export {
-    NodeOutputPortIdSchema,
-    PipelineEdgeIdSchema,
-    PipelineNodeIdSchema,
-} from '../ids.js';
-export type { NodeOutputPortId } from '../ids.js';
 export type { DelayConfig } from './delay.js';
 export type { FileManagerConfig } from './file-manager.js';
 export type { FileWatcherConfig } from './file-watcher.js';

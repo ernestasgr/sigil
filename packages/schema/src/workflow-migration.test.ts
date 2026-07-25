@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';
 import {
     createBuiltinNodeContractRegistry,
     getBuiltinNodeContract,
@@ -25,18 +26,22 @@ describe('Workflow contract migrations', () => {
             schemaVersion: 1,
             nodes: [
                 {
-                    id: 'watcher',
+                    id: PipelineNodeIdSchema.parse('watcher'),
                     type: 'file-watcher',
                     config: FileWatcherDescriptor.defaultConfig,
                 },
-                { id: 'log', type: 'log', config: { message: 'migrated' } },
+                {
+                    id: PipelineNodeIdSchema.parse('log'),
+                    type: 'log',
+                    config: { message: 'migrated' },
+                },
             ],
             edges: [
                 {
-                    id: 'watcher-log',
-                    source: 'watcher',
-                    target: 'log',
-                    sourcePort: 'Output',
+                    id: PipelineEdgeIdSchema.parse('watcher-log'),
+                    source: PipelineNodeIdSchema.parse('watcher'),
+                    target: PipelineNodeIdSchema.parse('log'),
+                    sourcePort: NodeOutputPortIdSchema.parse('Output'),
                 },
             ],
         };

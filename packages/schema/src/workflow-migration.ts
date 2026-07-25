@@ -1,5 +1,5 @@
 import { z } from 'zod';
-
+import { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';
 import {
     BUILTIN_NODE_CONTRACT_REGISTRY,
     type NodeContractRegistry,
@@ -15,7 +15,7 @@ export const WorkflowMigrationSchema = z.discriminatedUnion('kind', [
     z
         .object({
             kind: z.literal('node-identity'),
-            nodeId: z.string().min(1),
+            nodeId: PipelineNodeIdSchema,
             from: z.object({ namespace: z.literal('builtin'), type: z.string().min(1) }),
             to: z.object({
                 namespace: z.literal('plugin'),
@@ -28,10 +28,10 @@ export const WorkflowMigrationSchema = z.discriminatedUnion('kind', [
     z
         .object({
             kind: z.literal('port-alias'),
-            nodeId: z.string().min(1),
-            edgeId: z.string().min(1),
-            fromPort: z.string().min(1),
-            toPort: z.string().min(1),
+            nodeId: PipelineNodeIdSchema,
+            edgeId: PipelineEdgeIdSchema,
+            fromPort: NodeOutputPortIdSchema,
+            toPort: NodeOutputPortIdSchema,
             reason: z.string().min(1),
         })
         .readonly(),

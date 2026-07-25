@@ -2,6 +2,7 @@ import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import type { PipelineEdge } from './edges.js';
+import { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';
 import type { PipelineNode } from './nodes/index.js';
 import { type CompiledPipeline, parsePipeline } from './pipeline.js';
 import { validateWorkflowTopology } from './topology.js';
@@ -13,7 +14,7 @@ const PROPERTY_OPTIONS = {
 };
 
 const trigger = (id: string): PipelineNode => ({
-    id,
+    id: PipelineNodeIdSchema.parse(id),
     type: 'manual-trigger',
     config: {
         eventName: 'file.created',
@@ -22,16 +23,16 @@ const trigger = (id: string): PipelineNode => ({
 });
 
 const log = (id: string): PipelineNode => ({
-    id,
+    id: PipelineNodeIdSchema.parse(id),
     type: 'log',
     config: { message: id },
 });
 
 const edge = (id: string, source: string, target: string, sourcePort = 'out'): PipelineEdge => ({
-    id,
-    source,
-    target,
-    sourcePort,
+    id: PipelineEdgeIdSchema.parse(id),
+    source: PipelineNodeIdSchema.parse(source),
+    target: PipelineNodeIdSchema.parse(target),
+    sourcePort: NodeOutputPortIdSchema.parse(sourcePort),
 });
 
 function pipeline(

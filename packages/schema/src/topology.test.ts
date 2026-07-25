@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PipelineEdge } from './edges.js';
+import { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';
 import {
     createBuiltinNodeContractRegistry,
     pluginNodeIdentity,
@@ -17,7 +18,7 @@ import {
 import { WorkflowIdSchema } from './workflow-id.js';
 
 const trigger = (id: string): PipelineNode => ({
-    id,
+    id: PipelineNodeIdSchema.parse(id),
     type: 'manual-trigger',
     config: {
         eventName: 'file.created',
@@ -26,16 +27,16 @@ const trigger = (id: string): PipelineNode => ({
 });
 
 const log = (id: string): PipelineNode => ({
-    id,
+    id: PipelineNodeIdSchema.parse(id),
     type: 'log',
     config: { message: id },
 });
 
 const edge = (id: string, source: string, target: string, sourcePort = 'out'): PipelineEdge => ({
-    id,
-    source,
-    target,
-    sourcePort,
+    id: PipelineEdgeIdSchema.parse(id),
+    source: PipelineNodeIdSchema.parse(source),
+    target: PipelineNodeIdSchema.parse(target),
+    sourcePort: NodeOutputPortIdSchema.parse(sourcePort),
 });
 
 function pipeline(
@@ -243,7 +244,7 @@ describe('validateWorkflowTopology', () => {
                 [
                     trigger('trigger'),
                     {
-                        id: 'switch',
+                        id: PipelineNodeIdSchema.parse('switch'),
                         type: 'switch',
                         config: {
                             target: 'payload',
@@ -312,7 +313,7 @@ describe('validateWorkflowTopology', () => {
 
     it('allows a plugin Node to declare trigger and output-port capabilities', () => {
         const plugin: PipelineNode = {
-            id: 'plugin-trigger',
+            id: PipelineNodeIdSchema.parse('plugin-trigger'),
             type: 'tick-trigger',
             pluginId: 'com.example.tick',
             config: {},
@@ -366,7 +367,7 @@ describe('validateWorkflowTopology', () => {
                 [
                     trigger('trigger'),
                     {
-                        id: 'router',
+                        id: PipelineNodeIdSchema.parse('router'),
                         type: 'router-node',
                         pluginId: 'com.example.router',
                         config: {
@@ -412,7 +413,7 @@ describe('validateWorkflowTopology', () => {
                 [
                     trigger('trigger'),
                     {
-                        id: 'unknown',
+                        id: PipelineNodeIdSchema.parse('unknown'),
                         type: 'unknown-node',
                         pluginId: 'com.example.missing',
                         config: {},
@@ -445,7 +446,7 @@ describe('validateWorkflowTopology', () => {
                 [
                     trigger('trigger'),
                     {
-                        id: 'unknown',
+                        id: PipelineNodeIdSchema.parse('unknown'),
                         type: 'unknown-node',
                         pluginId: 'com.example.missing',
                         config: {},
@@ -495,7 +496,7 @@ describe('validateWorkflowTopology', () => {
 
     it('reports an unsupported Node handler as a structured diagnostic', () => {
         const unsupported: PipelineNode = {
-            id: 'missing',
+            id: PipelineNodeIdSchema.parse('missing'),
             type: 'missing-node',
             pluginId: 'com.example.missing',
             config: {},
@@ -527,8 +528,8 @@ describe('validateWorkflowTopology', () => {
             {
                 severity: 'error',
                 code: 'invalid_node_contract',
-                target: { kind: 'node', nodeId: 'router' },
-                nodeId: 'router',
+                target: { kind: 'node', nodeId: PipelineNodeIdSchema.parse('router') },
+                nodeId: PipelineNodeIdSchema.parse('router'),
                 fieldPath: 'config.cases[0].value',
                 message: 'The match value is empty.',
                 repairHint: 'Enter a non-empty match value.',
@@ -536,8 +537,8 @@ describe('validateWorkflowTopology', () => {
             {
                 severity: 'warning',
                 code: 'invalid_edge',
-                target: { kind: 'edge', edgeId: 'edge-1' },
-                edgeId: 'edge-1',
+                target: { kind: 'edge', edgeId: PipelineEdgeIdSchema.parse('edge-1') },
+                edgeId: PipelineEdgeIdSchema.parse('edge-1'),
                 message: 'Reconnect the Edge.',
             },
         ] as const;

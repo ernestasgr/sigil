@@ -1,3 +1,4 @@
+import { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';
 import type { CompiledPipeline } from './pipeline.js';
 import { WorkflowIdSchema } from './workflow-id.js';
 
@@ -7,7 +8,7 @@ export const sampleManualTriggerToLog: CompiledPipeline = {
     schemaVersion: 1,
     nodes: [
         {
-            id: 'trigger',
+            id: PipelineNodeIdSchema.parse('trigger'),
             type: 'manual-trigger',
             config: {
                 eventName: 'file.created',
@@ -21,7 +22,7 @@ export const sampleManualTriggerToLog: CompiledPipeline = {
             },
         },
         {
-            id: 'log',
+            id: PipelineNodeIdSchema.parse('log'),
             type: 'log',
             config: {
                 message: 'Manual trigger fired for {{payload.name}} ({{payload.size}} bytes)',
@@ -30,10 +31,10 @@ export const sampleManualTriggerToLog: CompiledPipeline = {
     ],
     edges: [
         {
-            id: 'trigger-to-log',
-            source: 'trigger',
-            target: 'log',
-            sourcePort: 'out',
+            id: PipelineEdgeIdSchema.parse('trigger-to-log'),
+            source: PipelineNodeIdSchema.parse('trigger'),
+            target: PipelineNodeIdSchema.parse('log'),
+            sourcePort: NodeOutputPortIdSchema.parse('out'),
         },
     ],
 };

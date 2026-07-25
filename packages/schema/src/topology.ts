@@ -1,5 +1,12 @@
 import { z } from 'zod';
 import {
+    type NodeOutputPortId,
+    type PipelineEdgeId,
+    PipelineEdgeIdSchema,
+    type PipelineNodeId,
+    PipelineNodeIdSchema,
+} from './ids.js';
+import {
     BUILTIN_NODE_CONTRACT_REGISTRY,
     formatNodeIdentity,
     type NodeContractRegistry,
@@ -47,8 +54,8 @@ export type TopologyDiagnosticCode = z.infer<typeof TopologyDiagnosticCodeSchema
 
 const TopologyDiagnosticTargetSchema = z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('pipeline') }),
-    z.object({ kind: z.literal('node'), nodeId: z.string().min(1) }),
-    z.object({ kind: z.literal('edge'), edgeId: z.string().min(1) }),
+    z.object({ kind: z.literal('node'), nodeId: PipelineNodeIdSchema }),
+    z.object({ kind: z.literal('edge'), edgeId: PipelineEdgeIdSchema }),
 ]);
 
 export const TopologyDiagnosticSchema = z
@@ -56,8 +63,8 @@ export const TopologyDiagnosticSchema = z
         severity: TopologyDiagnosticSeveritySchema,
         code: TopologyDiagnosticCodeSchema,
         target: TopologyDiagnosticTargetSchema,
-        nodeId: z.string().min(1).optional(),
-        edgeId: z.string().min(1).optional(),
+        nodeId: PipelineNodeIdSchema.optional(),
+        edgeId: PipelineEdgeIdSchema.optional(),
         caseId: z.string().min(1).optional(),
         fieldPath: z.string().min(1).optional(),
         message: z.string().min(1),
@@ -67,7 +74,7 @@ export const TopologyDiagnosticSchema = z
 
 export type TopologyDiagnostic = z.infer<typeof TopologyDiagnosticSchema>;
 
-export type TopologyOutputPorts = readonly string[] | 'dynamic';
+export type TopologyOutputPorts = readonly NodeOutputPortId[] | 'dynamic';
 
 export interface WorkflowTopologyOptions {
     /** Shared Node Contract Registry used for built-in and registered Plugin Nodes. */
@@ -83,8 +90,8 @@ export interface WorkflowTopologyOptions {
 
 export interface ExecutableWorkflow {
     readonly pipeline: CompiledPipeline;
-    readonly triggerId: string;
-    readonly executionOrder: readonly string[];
+    readonly triggerId: PipelineNodeId;
+    readonly executionOrder: readonly PipelineNodeId[];
 }
 
 export type WorkflowTopologyResult =
@@ -102,7 +109,7 @@ function pipelineDiagnostic(code: TopologyDiagnosticCode, message: string): Topo
 
 function nodeDiagnostic(
     code: TopologyDiagnosticCode,
-    nodeId: string,
+    nodeId: PipelineNodeId,
     message: string,
 ): TopologyDiagnostic {
     return {
@@ -116,9 +123,9 @@ function nodeDiagnostic(
 
 function edgeDiagnostic(
     code: TopologyDiagnosticCode,
-    edgeId: string,
+    edgeId: PipelineEdgeId,
     message: string,
-    nodeId?: string,
+    nodeId?: PipelineNodeId,
 ): TopologyDiagnostic {
     return {
         severity: 'error',
@@ -184,14 +191,14 @@ function appendUnique(diagnostics: TopologyDiagnostic[], diagnostic: TopologyDia
 
 function stableExecutionOrder(
     nodes: readonly PipelineNode[],
-    incoming: ReadonlyMap<string, readonly string[]>,
-    outgoing: ReadonlyMap<string, readonly string[]>,
-): readonly string[] {
-    const remaining = new Map<string, number>(
+    incoming: ReadonlyMap<PipelineNodeId, readonly PipelineEdgeId[]>,
+    outgoing: ReadonlyMap<PipelineNodeId, readonly PipelineNodeId[]>,
+): readonly PipelineNodeId[] {
+    const remaining = new Map<PipelineNodeId, number>(
         nodes.map((node) => [node.id, incoming.get(node.id)?.length ?? 0]),
     );
     const queue = nodes.filter((node) => remaining.get(node.id) === 0).map((node) => node.id);
-    const order: string[] = [];
+    const order: PipelineNodeId[] = [];
 
     while (queue.length > 0) {
         const nodeId = queue.shift();
@@ -209,10 +216,10 @@ function stableExecutionOrder(
 }
 
 function reachableFrom(
-    seeds: readonly string[],
-    outgoing: ReadonlyMap<string, readonly string[]>,
-): ReadonlySet<string> {
-    const reachable = new Set<string>();
+    seeds: readonly PipelineNodeId[],
+    outgoing: ReadonlyMap<PipelineNodeId, readonly PipelineNodeId[]>,
+): ReadonlySet<PipelineNodeId> {
+    const reachable = new Set<PipelineNodeId>();
     const queue = [...seeds];
 
     while (queue.length > 0) {
@@ -242,7 +249,7 @@ export function validateWorkflowTopology(
     }
 
     const diagnostics: TopologyDiagnostic[] = [];
-    const nodeById = new Map<string, PipelineNode>();
+    const nodeById = new Map<PipelineNodeId, PipelineNode>();
     for (const node of pipeline.nodes) {
         if (nodeById.has(node.id)) {
             appendUnique(
@@ -313,14 +320,14 @@ export function validateWorkflowTopology(
         }
     }
 
-    const incoming = new Map<string, string[]>();
-    const outgoing = new Map<string, string[]>();
+    const incoming = new Map<PipelineNodeId, PipelineEdgeId[]>();
+    const outgoing = new Map<PipelineNodeId, PipelineNodeId[]>();
     for (const node of nodeById.values()) {
         incoming.set(node.id, []);
         outgoing.set(node.id, []);
     }
 
-    const edgeIds = new Set<string>();
+    const edgeIds = new Set<PipelineEdgeId>();
     for (const edge of pipeline.edges) {
         if (edgeIds.has(edge.id)) {
             appendUnique(

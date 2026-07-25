@@ -1,10 +1,6 @@
 import { z } from 'zod';
 
-import {
-    NodeOutputPortIdSchema,
-    PipelineEdgeIdSchema,
-    PipelineNodeIdSchema,
-} from './ids.js';
+import { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';
 
 export const PipelineEdgeSchema = z.object({
     id: PipelineEdgeIdSchema,

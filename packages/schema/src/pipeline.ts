@@ -117,6 +117,8 @@ export function parsePersistedPipeline(
     };
 }
 
+export type { NodeOutputPortId, PipelineEdgeId, PipelineNodeId } from './ids.js';
+export { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';
 export type {
     ExecutableWorkflow,
     TopologyDiagnostic,
