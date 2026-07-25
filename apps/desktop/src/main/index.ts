@@ -2,11 +2,11 @@ import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Either } from 'effect';
 import { app, BrowserWindow, Notification } from 'electron';
-import { createIPCHandler } from 'electron-trpc/main';
 
 import { safeParsePayload } from '../shared/event-payload-schemas.js';
 import type { EngineBusEventPayload } from '../shared/ipc-channels.js';
 import { WorkflowIdSchema, type WorkflowSummary } from '../shared/workflow.js';
+import { electronTrpcMain } from './electron-trpc-main.js';
 import { type EngineHandle, spawnEngine } from './engine-client.js';
 import { createQuitCoordinator } from './quit-coordinator.js';
 import { createTray, type TrayController } from './tray/tray.js';
@@ -130,7 +130,7 @@ app.whenReady().then(() => {
         getMainWindow: () => mainWindow,
         getWorkflows: () => workflows,
     });
-    trpcHandler = createIPCHandler({ router });
+    trpcHandler = electronTrpcMain.createIPCHandler({ router });
 
     engine.onReady(() => {
         console.log('[main] engine worker ready');
