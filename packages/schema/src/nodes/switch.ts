@@ -192,11 +192,6 @@ export function validateSwitchConfig(config: SwitchConfig): readonly SwitchDiagn
     return diagnostics;
 }
 
-export function switchPortLabel(config: SwitchConfig, port: string): string {
-    if (port === SWITCH_DEFAULT_PORT) return SWITCH_DEFAULT_PORT;
-    return config.cases.find((switchCase) => switchCase.id === port)?.value || '(empty)';
-}
-
 export const SwitchDescriptor = defineNode({
     type: 'switch',
     configSchema: SwitchConfigSchema,

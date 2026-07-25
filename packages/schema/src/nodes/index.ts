@@ -105,7 +105,6 @@ export {
     SWITCH_DIAGNOSTIC_CODES,
     SwitchCaseIdSchema,
     SwitchCaseSchema,
-    switchPortLabel,
     validateSwitchConfig,
 } from './switch.js';
 export type { NodeDescriptor, UnknownNodeDescriptor } from './types.js';
