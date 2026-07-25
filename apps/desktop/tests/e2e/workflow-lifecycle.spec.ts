@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures.js';
+import { connectCanvasHandles } from './workflow-canvas-helpers.js';
 
 test('completes a Workflow lifecycle through the Electron UI', async ({ electron }) => {
     const page = electron.window;
@@ -22,9 +23,13 @@ test('completes a Workflow lifecycle through the Electron UI', async ({ electron
     await expect(logNode).toBeVisible();
     await page.getByLabel('Message', { exact: true }).fill('Smoke run: {{payload.name}}');
 
-    await triggerNode
-        .getByLabel('Manual Trigger output out')
-        .dragTo(logNode.getByLabel('Log input'));
+    await page.getByRole('button', { name: 'Fit View', exact: true }).click();
+    await connectCanvasHandles(
+        page,
+        triggerNode.getByLabel('Manual Trigger output out'),
+        logNode.getByLabel('Log input'),
+        1,
+    );
     await expect(page.getByText(/Valid.*2 nodes, 1 edge/)).toBeVisible();
     await page.getByRole('button', { name: 'Save', exact: true }).click();
 

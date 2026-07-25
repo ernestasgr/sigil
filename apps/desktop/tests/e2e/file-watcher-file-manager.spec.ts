@@ -3,6 +3,7 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { expect, test } from './fixtures.js';
+import { connectCanvasHandles } from './workflow-canvas-helpers.js';
 
 test('moves a real Downloads file through a packaged File Watcher Workflow', async ({
     electron,
@@ -39,9 +40,13 @@ test('moves a real Downloads file through a packaged File Watcher Workflow', asy
     await page.getByLabel('Action', { exact: true }).selectOption('move');
     await page.getByLabel('Destination', { exact: true }).fill(destinationDirectory);
 
-    await fileWatcherNode
-        .getByLabel('File Watcher output out')
-        .dragTo(fileManagerNode.getByLabel('File Manager input'));
+    await page.getByRole('button', { name: 'Fit View', exact: true }).click();
+    await connectCanvasHandles(
+        page,
+        fileWatcherNode.getByLabel('File Watcher output out'),
+        fileManagerNode.getByLabel('File Manager input'),
+        1,
+    );
     await expect(page.getByText(/Valid.*2 nodes, 1 edge/)).toBeVisible();
     await page.getByRole('button', { name: 'Save', exact: true }).click();
 

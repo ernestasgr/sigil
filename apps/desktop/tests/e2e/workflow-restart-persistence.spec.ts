@@ -1,7 +1,8 @@
-import type { Locator, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 import { type ElectronApplicationExit, launchElectron } from './electron-harness.js';
 import { expect, test } from './fixtures.js';
+import { connectCanvasHandles, waitForCanvasHandlesToSettle } from './workflow-canvas-helpers.js';
 
 const WORKFLOW_STATE_KEY = 'restart-marker';
 const WORKFLOW_STATE_VALUE = 'restart-seed';
@@ -22,50 +23,6 @@ async function openWorkflows(page: Page): Promise<void> {
     await expect(page.getByRole('heading', { name: 'Sigil', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Workflows', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Workflows', exact: true })).toBeVisible();
-}
-
-async function waitForCanvasHandlesToSettle(
-    page: Page,
-    handles: readonly Locator[],
-): Promise<void> {
-    const canvas = page.getByRole('region', { name: 'Workflow canvas', exact: true });
-    let previousSignature: string | undefined;
-
-    await expect
-        .poll(
-            async () => {
-                const [canvasBox, ...handleBoxes] = await Promise.all([
-                    canvas.boundingBox(),
-                    ...handles.map((handle) => handle.boundingBox()),
-                ]);
-                const boxes = handleBoxes.filter(
-                    (box): box is NonNullable<typeof box> => box !== null,
-                );
-                if (!canvasBox || boxes.length !== handles.length) {
-                    previousSignature = undefined;
-                    return false;
-                }
-
-                const signature = boxes
-                    .map((box) => `${Math.round(box.x)}:${Math.round(box.y)}`)
-                    .join('|');
-                const insideCanvas = boxes.every((box) => {
-                    const centerX = box.x + box.width / 2;
-                    const centerY = box.y + box.height / 2;
-                    return (
-                        centerX >= canvasBox.x &&
-                        centerX <= canvasBox.x + canvasBox.width &&
-                        centerY >= canvasBox.y &&
-                        centerY <= canvasBox.y + canvasBox.height
-                    );
-                });
-                const settled = signature === previousSignature;
-                previousSignature = signature;
-                return insideCanvas && settled;
-            },
-            { timeout: 5_000, intervals: [50, 100, 200] },
-        )
-        .toBe(true);
 }
 
 async function createRestartWorkflow(page: Page, workflowName: string): Promise<void> {
@@ -104,11 +61,24 @@ async function createRestartWorkflow(page: Page, workflowName: string): Promise<
         logNode.getByLabel('Log output out'),
         stateSetNode.getByLabel('State Set input'),
     ]);
-    await triggerNode
-        .getByLabel('Manual Trigger output out')
-        .dragTo(stateGetNode.getByLabel('State Get input'));
-    await stateGetNode.getByLabel('State Get output out').dragTo(logNode.getByLabel('Log input'));
-    await logNode.getByLabel('Log output out').dragTo(stateSetNode.getByLabel('State Set input'));
+    await connectCanvasHandles(
+        page,
+        triggerNode.getByLabel('Manual Trigger output out'),
+        stateGetNode.getByLabel('State Get input'),
+        1,
+    );
+    await connectCanvasHandles(
+        page,
+        stateGetNode.getByLabel('State Get output out'),
+        logNode.getByLabel('Log input'),
+        2,
+    );
+    await connectCanvasHandles(
+        page,
+        logNode.getByLabel('Log output out'),
+        stateSetNode.getByLabel('State Set input'),
+        3,
+    );
 
     await expect(page.getByText(/Valid.*4 nodes, 3 edges/)).toBeVisible();
     await page.getByRole('button', { name: 'Save', exact: true }).click();

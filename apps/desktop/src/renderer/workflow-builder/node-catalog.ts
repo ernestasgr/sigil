@@ -4,6 +4,7 @@ import {
     BUILTIN_NODE_CONTRACT_REGISTRY,
     createBuiltinNodeContractRegistry,
     getBuiltinNodeContract,
+    getNodeDescriptor,
     type NodeContractRegistry,
     pluginNodeIdentity,
     registerSerializableNodeContract,
@@ -12,7 +13,6 @@ import {
 } from '@sigil/schema/node-contract';
 import {
     type BuiltinPipelineNode,
-    getNodeDescriptor,
     isPluginNode,
     type NodeDescriptor,
     type NodeType,
