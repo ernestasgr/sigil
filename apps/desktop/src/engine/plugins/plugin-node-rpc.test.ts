@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import { Option } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { testNodeId } from '../../test-support/pipeline-fixtures.js';
@@ -19,6 +20,8 @@ import {
     NodePluginWorkerLoadedSchema,
     NodePluginWorkerToMainSchema,
 } from './plugin-node-rpc.js';
+
+const pid = (id: string) => PluginIdSchema.parse(id);
 
 const workflowContext = { event: 'file.created', payload: {}, vars: {} };
 
@@ -99,7 +102,7 @@ describe('NodePluginWorker contract transport', () => {
         const contract = {
             identity: {
                 namespace: 'plugin' as const,
-                pluginId: 'com.sigil.transport',
+                pluginId: pid('com.sigil.transport'),
                 type: 'transport-node',
             },
             version: 1,
@@ -392,7 +395,7 @@ describe('NodePluginDepsRpcSchema', () => {
                     node: {
                         id: testNodeId('n1'),
                         type: 'rpc-execution',
-                        pluginId: 'com.sigil.rpc-execution',
+                        pluginId: pid('com.sigil.rpc-execution'),
                         config: {},
                     },
                     ctx: workflowContext,

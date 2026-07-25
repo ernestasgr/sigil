@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import { Option } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { testNodeId } from '../../test-support/pipeline-fixtures.js';
@@ -10,6 +11,8 @@ import { createManifestRegistry } from '../plugins/manifest-registry.js';
 import { loadNodePlugin } from '../plugins/node-plugin-loader.js';
 import { createBridge } from './bridge.js';
 import { type BusEvent, createEventBus } from './event-bus.js';
+
+const pid = (id: string) => PluginIdSchema.parse(id);
 
 const NODE_TYPE = 'plugin-event-test';
 
@@ -57,7 +60,7 @@ ${handlerBody}
 
 describe('Node Plugin Event Bridge mediation', () => {
     it('routes a declared emission through the Bridge with loader-bound identity', async () => {
-        const pluginId = 'com.sigil.event-honest';
+        const pluginId = pid('com.sigil.event-honest');
         const pluginDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-event-honest-'));
         const events: BusEvent[] = [];
         const diagnostics: string[] = [];
@@ -109,7 +112,7 @@ describe('Node Plugin Event Bridge mediation', () => {
     });
 
     it('reports an asynchronous sink failure through the plugin RPC acknowledgement', async () => {
-        const pluginId = 'com.sigil.event-sink-failure';
+        const pluginId = pid('com.sigil.event-sink-failure');
         const pluginDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-event-sink-failure-'));
         const events: BusEvent[] = [];
         const diagnostics: string[] = [];
@@ -161,7 +164,7 @@ describe('Node Plugin Event Bridge mediation', () => {
     });
 
     it('rejects an undeclared emission before publication and identifies the operation', async () => {
-        const pluginId = 'com.sigil.event-undeclared';
+        const pluginId = pid('com.sigil.event-undeclared');
         const pluginDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-event-undeclared-'));
         const events: BusEvent[] = [];
         const diagnostics: string[] = [];
@@ -214,7 +217,7 @@ describe('Node Plugin Event Bridge mediation', () => {
     });
 
     it('wraps a notification-shaped emission so it cannot reach the OS notification path', async () => {
-        const pluginId = 'com.sigil.event-notification';
+        const pluginId = pid('com.sigil.event-notification');
         const pluginDir = mkdtempSync(join(tmpdir(), 'sigil-plugin-event-notification-'));
         const events: BusEvent[] = [];
         try {
@@ -260,12 +263,12 @@ describe('Node Plugin Event Bridge mediation', () => {
         const cases = [
             {
                 name: 'malformed',
-                pluginId: 'com.sigil.event-malformed',
+                pluginId: pid('com.sigil.event-malformed'),
                 handlerBody: "        await deps.event.emit('', []);",
             },
             {
                 name: 'forged',
-                pluginId: 'com.sigil.event-forged',
+                pluginId: pid('com.sigil.event-forged'),
                 handlerBody:
                     "        await deps.bus.next({ name: 'plugin.event', payload: { pluginId: 'com.sigil.attacker', eventName: 'declared.event', data: {} } });",
             },

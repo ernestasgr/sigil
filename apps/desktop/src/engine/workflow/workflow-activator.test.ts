@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import {
     fixedOutputPortSpec,
@@ -21,6 +22,7 @@ import { createWorkflowActivator, getDeactivationHook } from './workflow-activat
 import { createWorkflowStore } from './workflow-store.js';
 
 const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
+const pid = (id: string) => PluginIdSchema.parse(id);
 
 describe('WorkflowActivator lifecycle', () => {
     it('tears down only the Workflow whose Trigger activation failed', () => {
@@ -45,7 +47,7 @@ describe('WorkflowActivator lifecycle', () => {
             };
             engine.handlerRegistry.register('test-trigger', triggerHandler);
             registerSerializableNodeContract(engine.contractRegistry, {
-                identity: pluginNodeIdentity('com.sigil.test-trigger', 'test-trigger'),
+                identity: pluginNodeIdentity(pid('com.sigil.test-trigger'), 'test-trigger'),
                 version: 1,
                 role: 'trigger',
                 defaultConfig: {},
@@ -72,7 +74,7 @@ describe('WorkflowActivator lifecycle', () => {
                         {
                             id: 'trigger',
                             type: 'test-trigger',
-                            pluginId: 'com.sigil.test-trigger',
+                            pluginId: pid('com.sigil.test-trigger'),
                             config: {},
                         },
                     ],
@@ -116,7 +118,7 @@ describe('WorkflowActivator lifecycle', () => {
 
     it('cancels dependent active and queued runs through the Engine permission transition', async () => {
         const storageDir = mkdtempSync(join(tmpdir(), 'sigil-activator-permission-revocation-'));
-        const pluginId = 'com.sigil.permission-dependent';
+        const pluginId = pid('com.sigil.permission-dependent');
         const workflowId = testWorkflowId('workflow-permission-dependent');
         const pipelineId = 'pipeline-permission-dependent';
         const unaffectedWorkflowId = testWorkflowId('workflow-permission-independent');
@@ -184,7 +186,7 @@ describe('WorkflowActivator lifecycle', () => {
             engine.handlerRegistry.register('test-permission-action', actionHandler);
             registerSerializableNodeContract(engine.contractRegistry, {
                 identity: pluginNodeIdentity(
-                    'com.sigil.test-permission-trigger',
+                    pid('com.sigil.test-permission-trigger'),
                     'test-permission-trigger',
                 ),
                 version: 1,
@@ -212,7 +214,7 @@ describe('WorkflowActivator lifecycle', () => {
                     {
                         id: 'trigger',
                         type: 'test-permission-trigger',
-                        pluginId: 'com.sigil.test-permission-trigger',
+                        pluginId: pid('com.sigil.test-permission-trigger'),
                         config: {},
                     },
                     {
@@ -241,7 +243,7 @@ describe('WorkflowActivator lifecycle', () => {
                         {
                             id: 'trigger',
                             type: 'test-permission-trigger',
-                            pluginId: 'com.sigil.test-permission-trigger',
+                            pluginId: pid('com.sigil.test-permission-trigger'),
                             config: {},
                         },
                     ],

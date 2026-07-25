@@ -1,10 +1,15 @@
 import { z } from 'zod';
-import { type PipelineNodeId, PipelineNodeIdSchema } from '../ids.js';
+import {
+    type PipelineNodeId,
+    PipelineNodeIdSchema,
+    type PluginId,
+    PluginIdSchema,
+} from '../ids.js';
 import { BUILTIN_NODE_DESCRIPTORS, BUILTIN_NODE_TYPE_VALUES } from '../node-contract.js';
 import type { NodeDescriptor } from './types.js';
 
-export type { NodeOutputPortId, PipelineEdgeId, PipelineNodeId } from '../ids.js';
-export { NodeOutputPortIdSchema, PipelineNodeIdSchema } from '../ids.js';
+export type { NodeOutputPortId, PipelineEdgeId, PipelineNodeId, PluginId } from '../ids.js';
+export { NodeOutputPortIdSchema, PipelineNodeIdSchema, PluginIdSchema } from '../ids.js';
 export type {
     DeclarativeOutputPortResolution,
     NodeCategory,
@@ -137,7 +142,7 @@ export type BuiltinPipelineNode = {
 export interface PluginPipelineNode {
     readonly id: PipelineNodeId;
     readonly type: string;
-    readonly pluginId: string;
+    readonly pluginId: PluginId;
     readonly config: unknown;
 }
 
@@ -183,7 +188,7 @@ const BuiltinPipelineNodeSchema = z.discriminatedUnion('type', builtinNodeSchema
 const PluginPipelineNodeSchema = z.object({
     id: PipelineNodeIdSchema,
     type: z.string().min(1),
-    pluginId: z.string().min(1),
+    pluginId: PluginIdSchema,
     config: z.unknown(),
 });
 

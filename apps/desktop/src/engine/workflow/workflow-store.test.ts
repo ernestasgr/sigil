@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
 import { parsePipeline } from '@sigil/schema';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import {
     createBuiltinNodeContractRegistry,
     createNodeContractRegistry,
@@ -26,6 +27,7 @@ import {
 import { isWorkflowTopologyError } from './workflow-topology-error.js';
 
 const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
+const pid = (id: string) => PluginIdSchema.parse(id);
 
 function randomDir(): string {
     return join(tmpdir(), `sigil-test-workflow-store-${crypto.randomUUID()}`);
@@ -131,7 +133,7 @@ describe('WorkflowStore', () => {
                 testNode({
                     id: 'missing',
                     type: 'missing-node',
-                    pluginId: 'com.example.missing',
+                    pluginId: pid('com.example.missing'),
                     config: {},
                 }),
             ],
@@ -677,7 +679,7 @@ describe('WorkflowStore', () => {
         const legacyContract = getBuiltinNodeContract('file-watcher');
         registerSerializableNodeContract(registry, {
             ...legacyContract,
-            identity: pluginNodeIdentity('com.sigil.file-watcher', 'file-watcher'),
+            identity: pluginNodeIdentity(pid('com.sigil.file-watcher'), 'file-watcher'),
         });
 
         const pipeline = {
@@ -760,7 +762,7 @@ describe('WorkflowStore', () => {
     it('keeps a Workflow disabled with an explicit diagnostic when a persisted port was removed', () => {
         const registry = createNodeContractRegistry();
         registerSerializableNodeContract(registry, {
-            identity: pluginNodeIdentity('com.example.removed-port', 'trigger'),
+            identity: pluginNodeIdentity(pid('com.example.removed-port'), 'trigger'),
             version: 1,
             role: 'trigger',
             defaultConfig: {},
@@ -785,7 +787,7 @@ describe('WorkflowStore', () => {
                     {
                         id: 'trigger',
                         type: 'trigger',
-                        pluginId: 'com.example.removed-port',
+                        pluginId: pid('com.example.removed-port'),
                         config: {},
                     },
                     { id: 'log', type: 'log', config: { message: 'unreachable' } },

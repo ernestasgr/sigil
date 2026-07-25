@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -24,6 +25,7 @@ import {
 import { NodePluginWorkerKind } from './plugin-node-rpc.js';
 
 const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
+const pid = (id: string) => PluginIdSchema.parse(id);
 
 const HANDLER = `
 import { z } from 'zod';
@@ -155,7 +157,7 @@ function writePartialRegistrationFailurePlugin(dir: string): void {
             nodeContract: {
                 identity: {
                     namespace: 'plugin',
-                    pluginId: 'com.sigil.partial-registration-failure',
+                    pluginId: pid('com.sigil.partial-registration-failure'),
                     type: 'partial-registration-failure-trigger',
                 },
                 version: 1,
@@ -219,7 +221,7 @@ function writeConcurrentActivationPlugin(dir: string): void {
             nodeContract: {
                 identity: {
                     namespace: 'plugin',
-                    pluginId: 'com.sigil.concurrent-activation',
+                    pluginId: pid('com.sigil.concurrent-activation'),
                     type: 'concurrent-activation-trigger',
                 },
                 version: 1,
@@ -287,7 +289,7 @@ describe('Plugin discovery and preparation seams', () => {
         });
 
         expect(preparation).toMatchObject({
-            pluginId: 'com.sigil.boundary',
+            pluginId: pid('com.sigil.boundary'),
             manifestNodeType: 'isolated-boundary-node',
             workerScriptPath: 'worker.js',
             permissions: [],
@@ -322,7 +324,7 @@ describe('typed Plugin RPC authorization router', () => {
             ],
         ]);
         const router = createNodePluginRpcRouter({
-            pluginId: 'com.sigil.boundary',
+            pluginId: pid('com.sigil.boundary'),
             pendingExecutions,
             post,
             kernel: createKernel(request),
@@ -339,7 +341,7 @@ describe('typed Plugin RPC authorization router', () => {
         });
 
         expect(request).toHaveBeenCalledWith({
-            pluginId: 'com.sigil.boundary',
+            pluginId: pid('com.sigil.boundary'),
             capability: 'state.read',
         });
         expect(get).toHaveBeenCalledWith('key');
@@ -401,7 +403,7 @@ describe('typed Plugin RPC authorization router', () => {
         );
         const get = vi.fn(() => Option.some('should-not-run'));
         const router = createNodePluginRpcRouter({
-            pluginId: 'com.sigil.boundary',
+            pluginId: pid('com.sigil.boundary'),
             pendingExecutions: new Map([
                 [
                     'execute:1',
@@ -484,7 +486,7 @@ describe('instance-owned Plugin loader supervision', () => {
             node: {
                 id: testNodeId('node'),
                 type: 'isolated-boundary-node',
-                pluginId: 'com.sigil.boundary',
+                pluginId: pid('com.sigil.boundary'),
                 config: {},
             },
             ctx: { event: '', payload: {}, vars: {} },
@@ -530,7 +532,7 @@ describe('instance-owned Plugin loader supervision', () => {
                     node: {
                         id: testNodeId('node'),
                         type: 'isolated-boundary-node',
-                        pluginId: 'com.sigil.boundary',
+                        pluginId: pid('com.sigil.boundary'),
                         config: {},
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -561,7 +563,7 @@ describe('instance-owned Plugin loader supervision', () => {
                     node: {
                         id: testNodeId('node'),
                         type: 'isolated-boundary-node',
-                        pluginId: 'com.sigil.boundary',
+                        pluginId: pid('com.sigil.boundary'),
                         config: {},
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -647,7 +649,7 @@ describe('instance-owned Plugin loader supervision', () => {
                     {
                         id: 'trigger',
                         type: 'partial-registration-failure-trigger',
-                        pluginId: 'com.sigil.partial-registration-failure',
+                        pluginId: pid('com.sigil.partial-registration-failure'),
                         config: {},
                     },
                 ],
@@ -734,7 +736,7 @@ describe('instance-owned Plugin loader supervision', () => {
                         {
                             id: 'trigger',
                             type: 'concurrent-activation-trigger',
-                            pluginId: 'com.sigil.concurrent-activation',
+                            pluginId: pid('com.sigil.concurrent-activation'),
                             config: { id },
                         },
                     ],

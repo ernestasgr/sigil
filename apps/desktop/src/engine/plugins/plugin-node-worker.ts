@@ -5,7 +5,8 @@ import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import vm from 'node:vm';
 import { parentPort, workerData } from 'node:worker_threads';
-import { PipelineNodeIdSchema } from '@sigil/schema/ids';
+import type { PluginId } from '@sigil/schema/ids';
+import { PipelineNodeIdSchema, PluginIdSchema } from '@sigil/schema/ids';
 import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
 import {
     NodeContractSnapshotSchema,
@@ -71,7 +72,7 @@ if (!parentPort) {
 const port = parentPort;
 
 const WorkerDataSchema = z.object({
-    pluginId: z.string().min(1),
+    pluginId: PluginIdSchema,
     manifestNodeType: z.string().min(1),
     nodeContract: NodeContractSnapshotSchema.optional(),
     handlerPath: z.string().min(1),
@@ -993,7 +994,7 @@ type RuntimeContractValidation =
 
 function validateRuntimeContract(
     contract: SerializableNodeContract,
-    pluginId: string,
+    pluginId: PluginId,
     nodeType: string,
     descriptor: RawPluginDescriptor,
     isTrigger: boolean,

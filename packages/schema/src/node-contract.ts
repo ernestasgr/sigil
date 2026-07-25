@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-import { type NodeOutputPortId, NodeOutputPortIdSchema } from './ids.js';
+import {
+    type NodeOutputPortId,
+    NodeOutputPortIdSchema,
+    type PluginId,
+    PluginIdSchema,
+} from './ids.js';
 import { DelayDescriptor } from './nodes/delay.js';
 import { FileManagerDescriptor } from './nodes/file-manager.js';
 import { FileWatcherDescriptor } from './nodes/file-watcher.js';
@@ -92,7 +97,7 @@ const BuiltinNodeIdentitySchema = z
 const PluginNodeIdentitySchema = z
     .object({
         namespace: z.literal('plugin'),
-        pluginId: z.string().min(1),
+        pluginId: PluginIdSchema,
         type: z.string().min(1),
     })
     .readonly();
@@ -105,7 +110,7 @@ export type NodeIdentity = z.infer<typeof NodeIdentitySchema>;
 
 export interface NodeContractInput {
     readonly type: string;
-    readonly pluginId?: string;
+    readonly pluginId?: PluginId;
     readonly config: unknown;
 }
 
@@ -285,7 +290,7 @@ export function validateNodeContractCompatibility(
 
 export function validatePluginNodeContract(
     unknown: unknown,
-    pluginId: string,
+    pluginId: PluginId,
     nodeType: string,
 ): PluginNodeContractValidation {
     const parsed = SerializableNodeContractSchema.safeParse(unknown);
@@ -388,7 +393,7 @@ export function builtinNodeIdentity(type: string): NodeIdentity {
     return { namespace: 'builtin', type };
 }
 
-export function pluginNodeIdentity(pluginId: string, type: string): NodeIdentity {
+export function pluginNodeIdentity(pluginId: PluginId, type: string): NodeIdentity {
     return { namespace: 'plugin', pluginId, type };
 }
 

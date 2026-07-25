@@ -1,7 +1,10 @@
 import { createEventCatalog, DEFAULT_EVENT_CATALOG } from '@sigil/schema/event-catalog';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import { describe, expect, it } from 'vitest';
 
 import { updateFieldCondition } from './condition-authoring.js';
+
+const pid = (id: string) => PluginIdSchema.parse(id);
 
 describe('condition authoring catalog adapter', () => {
     it('uses a known field kind when changing a payload condition field', () => {
@@ -49,7 +52,7 @@ describe('condition authoring catalog adapter', () => {
             {
                 name: 'plugin.received',
                 source: 'plugin',
-                pluginId: 'com.example.events',
+                pluginId: pid('com.example.events'),
                 fields: [
                     {
                         path: 'count',

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { type PluginId, PluginIdSchema } from './ids.js';
+
 export const FILE_EVENT_NAMES = ['file.created', 'file.modified', 'file.deleted'] as const;
 export const FileEventNameSchema = z.enum(FILE_EVENT_NAMES);
 
@@ -26,7 +28,7 @@ export const EventCatalogEntrySchema = z
         label: z.string().min(1),
         description: z.string().min(1),
         source: EventCatalogSourceSchema,
-        pluginId: z.string().min(1).optional(),
+        pluginId: PluginIdSchema.optional(),
         fields: z.array(EventFieldMetadataSchema).readonly(),
     })
     .strict()
@@ -49,7 +51,7 @@ export type EventCatalogEntryInput = {
     readonly label?: string;
     readonly description?: string;
     readonly source?: Exclude<EventCatalogSource, 'opaque'>;
-    readonly pluginId?: string;
+    readonly pluginId?: PluginId;
     readonly fields?: readonly EventFieldMetadata[];
 };
 
@@ -136,7 +138,7 @@ function normalizeEntry(input: EventCatalogEntryInput): EventCatalogEntry | null
 
 export function createPluginEventCatalogEntries(
     eventNames: readonly string[],
-    pluginId?: string,
+    pluginId?: PluginId,
 ): readonly EventCatalogEntryInput[] {
     return eventNames.map((name) => ({
         name,

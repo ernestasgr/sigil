@@ -1,3 +1,4 @@
+import { type PluginId, PluginIdSchema } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import {
     BUILTIN_NODE_CONTRACT_REGISTRY,
@@ -100,7 +101,7 @@ export interface BuiltinNodeCatalogEntry extends NodeCatalogEntryFields {
 export interface PluginNodeCatalogEntry extends NodeCatalogEntryFields {
     readonly source: 'plugin';
     readonly type: string;
-    readonly pluginId: string;
+    readonly pluginId: PluginId;
 }
 
 export type NodeCatalogEntry = BuiltinNodeCatalogEntry | PluginNodeCatalogEntry;
@@ -235,7 +236,7 @@ export function createPluginNodeCatalogEntry<TConfig>(
             : undefined;
     return {
         source: 'plugin',
-        pluginId: adapter.pluginId,
+        pluginId: PluginIdSchema.parse(adapter.pluginId),
         type: adapter.type,
         label: adapter.label ?? adapter.type,
         category: adapter.category ?? 'utility',
@@ -311,7 +312,7 @@ const BUILTIN_NODE_CATALOG_ENTRIES: readonly BuiltinNodeCatalogEntry[] = [
 export const BUILTIN_NODE_CATALOG: readonly BuiltinNodeCatalogEntry[] =
     BUILTIN_NODE_CATALOG_ENTRIES;
 
-function pluginEntryFromBuiltin(pluginId: string, type: NodeType): PluginNodeCatalogEntry {
+function pluginEntryFromBuiltin(pluginId: PluginId, type: NodeType): PluginNodeCatalogEntry {
     const builtin = BUILTIN_NODE_CATALOG.find((entry) => entry.type === type);
     if (!builtin) throw new Error(`Missing built-in Node catalog entry for "${type}"`);
 
@@ -334,8 +335,8 @@ function pluginEntryFromBuiltin(pluginId: string, type: NodeType): PluginNodeCat
 }
 
 export const BUILTIN_PLUGIN_NODE_CATALOG: readonly PluginNodeCatalogEntry[] = [
-    pluginEntryFromBuiltin('com.sigil.file-watcher', 'file-watcher'),
-    pluginEntryFromBuiltin('com.sigil.file-manager', 'file-manager'),
+    pluginEntryFromBuiltin(PluginIdSchema.parse('com.sigil.file-watcher'), 'file-watcher'),
+    pluginEntryFromBuiltin(PluginIdSchema.parse('com.sigil.file-manager'), 'file-manager'),
 ];
 
 function pluginKey(pluginId: string, type: string): string {
@@ -485,7 +486,8 @@ function pluginEntryFromContract(
     if (contract.identity.namespace !== 'plugin') {
         throw new Error('Only Plugin Node Contracts can create Plugin catalog entries.');
     }
-    const { pluginId, type } = contract.identity;
+    const { pluginId: rawPluginId, type } = contract.identity;
+    const pluginId = PluginIdSchema.parse(rawPluginId);
 
     return {
         source: 'plugin',
@@ -582,7 +584,7 @@ export function resolveNodeCatalogEntry(
     const contractResolution = resolveNodeContract(
         {
             type: spec.type,
-            ...(isPluginNodeSpec(spec) ? { pluginId: spec.pluginId } : {}),
+            ...(isPluginNodeSpec(spec) ? { pluginId: PluginIdSchema.parse(spec.pluginId) } : {}),
             config: spec.config,
         },
         catalog.contractRegistry,
@@ -635,7 +637,9 @@ export function resolveNodeCatalogEntry(
             const resolved = resolveNodeContract(
                 {
                     type: spec.type,
-                    ...(isPluginNodeSpec(spec) ? { pluginId: spec.pluginId } : {}),
+                    ...(isPluginNodeSpec(spec)
+                        ? { pluginId: PluginIdSchema.parse(spec.pluginId) }
+                        : {}),
                     config: parsed.value,
                 },
                 catalog.contractRegistry,

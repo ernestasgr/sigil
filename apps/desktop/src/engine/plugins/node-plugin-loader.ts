@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
 import {
     type NodeContractRegistry,
@@ -171,7 +172,7 @@ async function loadDiscoveredPlugin(
     if (manifest.nodeContract !== undefined) {
         const contract = validatePluginNodeContract(
             manifest.nodeContract,
-            manifest.id,
+            PluginIdSchema.parse(manifest.id),
             manifest.nodeType,
         );
         if (!contract.ok) {

@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import {
     type NodeContractRegistry,
     pluginNodeIdentity,
@@ -11,7 +12,6 @@ import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
-
 import { EngineChannel } from '../../shared/ipc-channels.js';
 import { testNode } from '../../test-support/pipeline-fixtures.js';
 import { type DispatchSubsystems, dispatch } from '../core/dispatch.js';
@@ -23,6 +23,7 @@ import { createWorkflowLifecycle } from './workflow-lifecycle.js';
 import { createWorkflowStore } from './workflow-store.js';
 
 const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
+const pid = (id: string) => PluginIdSchema.parse(id);
 
 const context: WorkflowContext = {
     event: 'file.created',
@@ -39,7 +40,7 @@ function testPipeline(): CompiledPipeline {
             testNode({
                 id: 'trigger',
                 type: 'test-trigger',
-                pluginId: 'com.sigil.test-trigger',
+                pluginId: pid('com.sigil.test-trigger'),
                 config: {},
             }),
         ],
@@ -49,7 +50,7 @@ function testPipeline(): CompiledPipeline {
 
 function registerTestTriggerContract(contractRegistry: NodeContractRegistry): void {
     registerSerializableNodeContract(contractRegistry, {
-        identity: pluginNodeIdentity('com.sigil.test-trigger', 'test-trigger'),
+        identity: pluginNodeIdentity(pid('com.sigil.test-trigger'), 'test-trigger'),
         version: 1,
         role: 'trigger',
         defaultConfig: {},

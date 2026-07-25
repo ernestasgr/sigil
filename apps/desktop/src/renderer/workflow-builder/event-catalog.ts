@@ -11,6 +11,7 @@ import {
     type FileEventName,
     findEventField,
 } from '@sigil/schema/event-catalog';
+import { type PluginId, PluginIdSchema } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 
 export type {
@@ -41,7 +42,7 @@ export const EVENT_NAME_OPTIONS: readonly {
 
 export function createBuilderEventCatalog(
     pluginEventNames: readonly string[] = [],
-    pluginId?: string,
+    pluginId?: PluginId,
 ): EventCatalog {
     return createEventCatalog(createPluginEventCatalogEntries(pluginEventNames, pluginId));
 }
@@ -50,7 +51,7 @@ export function createBuilderEventCatalogFromManifests(
     manifests: readonly EventCatalogManifest[],
 ): EventCatalog {
     const entries = manifests.flatMap((manifest) =>
-        createPluginEventCatalogEntries(manifest.emits, manifest.id),
+        createPluginEventCatalogEntries(manifest.emits, PluginIdSchema.parse(manifest.id)),
     );
     return createEventCatalog(entries);
 }

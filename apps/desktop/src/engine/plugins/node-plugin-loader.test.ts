@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import { createNodeContractRegistry, resolveNodeContract } from '@sigil/schema/node-contract';
 import {
     createPropertyRegistry,
@@ -36,6 +37,7 @@ import {
 import { NodePluginWorkerKind } from './plugin-node-rpc.js';
 
 const TYPED_PLUGIN_WORKFLOW_ID = WorkflowIdSchema.parse('wf-typed-plugin');
+const pid = (id: string) => PluginIdSchema.parse(id);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -323,7 +325,7 @@ describe('loadNodePlugin', () => {
                 nodeContract: {
                     identity: {
                         namespace: 'plugin',
-                        pluginId: 'com.sigil.contract',
+                        pluginId: pid('com.sigil.contract'),
                         type: 'greet',
                     },
                     version: 1,
@@ -356,14 +358,14 @@ describe('loadNodePlugin', () => {
         expect(result.contract).toMatchObject({
             identity: {
                 namespace: 'plugin',
-                pluginId: 'com.sigil.contract',
+                pluginId: pid('com.sigil.contract'),
                 type: 'greet',
             },
             outputPorts: { kind: 'fixed', ports: [{ id: 'out', label: 'Output' }] },
         });
         expect(
             resolveNodeContract(
-                { type: 'greet', pluginId: 'com.sigil.contract', config: { name: 'Ada' } },
+                { type: 'greet', pluginId: pid('com.sigil.contract'), config: { name: 'Ada' } },
                 contractRegistry,
             ),
         ).toMatchObject({
@@ -385,7 +387,7 @@ describe('loadNodePlugin', () => {
                 nodeContract: {
                     identity: {
                         namespace: 'plugin',
-                        pluginId: 'com.sigil.derived-router',
+                        pluginId: pid('com.sigil.derived-router'),
                         type: 'router-node',
                     },
                     version: 1,
@@ -424,7 +426,7 @@ describe('loadNodePlugin', () => {
             resolveNodeContract(
                 {
                     type: 'router-node',
-                    pluginId: 'com.sigil.derived-router',
+                    pluginId: pid('com.sigil.derived-router'),
                     config: {
                         target: 'event',
                         cases: [
@@ -796,7 +798,7 @@ describe('loadNodePlugin', () => {
                 node: {
                     id: testNodeId('n1'),
                     type: 'crashing-node',
-                    pluginId: 'com.sigil.crashing',
+                    pluginId: pid('com.sigil.crashing'),
                     config: {},
                 },
                 ctx: { event: '', payload: {}, vars: {} },
@@ -850,7 +852,7 @@ describe('loadNodePlugin', () => {
                     node: {
                         id: testNodeId('n1'),
                         type: 'cooperative-timeout-node',
-                        pluginId: 'com.sigil.cooperative-timeout',
+                        pluginId: pid('com.sigil.cooperative-timeout'),
                         config: { block: true },
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -869,7 +871,7 @@ describe('loadNodePlugin', () => {
                     node: {
                         id: testNodeId('n2'),
                         type: 'cooperative-timeout-node',
-                        pluginId: 'com.sigil.cooperative-timeout',
+                        pluginId: pid('com.sigil.cooperative-timeout'),
                         config: { block: false },
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -908,7 +910,7 @@ describe('loadNodePlugin', () => {
             node: {
                 id: testNodeId('n1'),
                 type: 'greet',
-                pluginId: 'com.sigil.already-cancelled',
+                pluginId: pid('com.sigil.already-cancelled'),
                 config: { name: 'world' },
             },
             ctx: { event: '', payload: {}, vars: {} },
@@ -986,7 +988,7 @@ describe('loadNodePlugin', () => {
                 node: {
                     id: testNodeId('n1'),
                     type: 'cooperative-timeout-node',
-                    pluginId: 'com.sigil.signal-cancellation',
+                    pluginId: pid('com.sigil.signal-cancellation'),
                     config: { block: true },
                 },
                 ctx: { event: '', payload: {}, vars: {} },
@@ -1003,7 +1005,7 @@ describe('loadNodePlugin', () => {
                 node: {
                     id: testNodeId('n2'),
                     type: 'cooperative-timeout-node',
-                    pluginId: 'com.sigil.signal-cancellation',
+                    pluginId: pid('com.sigil.signal-cancellation'),
                     config: { block: false },
                 },
                 ctx: { event: '', payload: {}, vars: {} },
@@ -1041,7 +1043,7 @@ describe('loadNodePlugin', () => {
                     node: {
                         id: testNodeId('n1'),
                         type: 'cooperative-timeout-node',
-                        pluginId: 'com.sigil.string-dependency-error',
+                        pluginId: pid('com.sigil.string-dependency-error'),
                         config: { block: true },
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -1077,7 +1079,7 @@ describe('loadNodePlugin', () => {
                 node: {
                     id: testNodeId('n1'),
                     type: 'resolve-template-node',
-                    pluginId: 'com.sigil.resolve-template',
+                    pluginId: pid('com.sigil.resolve-template'),
                     config: {},
                 },
                 ctx: { event: '', payload: {}, vars: {} },
@@ -1125,7 +1127,7 @@ describe('loadNodePlugin', () => {
                 node: {
                     id: testNodeId('n1'),
                     type: 'non-cooperative-timeout-node',
-                    pluginId: 'com.sigil.non-cooperative-timeout',
+                    pluginId: pid('com.sigil.non-cooperative-timeout'),
                     config: {},
                 },
                 ctx: { event: '', payload: {}, vars: {} },
@@ -1196,7 +1198,7 @@ describe('loadNodePlugin', () => {
                 node: {
                     id: testNodeId('n1'),
                     type: 'event-then-block-node',
-                    pluginId: 'com.sigil.event-then-block',
+                    pluginId: pid('com.sigil.event-then-block'),
                     config: {},
                 },
                 ctx: { event: '', payload: {}, vars: {} },
@@ -1238,7 +1240,7 @@ describe('loadNodePlugin', () => {
                     node: {
                         id: testNodeId('n1'),
                         type: 'event-then-block-node',
-                        pluginId: 'com.sigil.event-without-bridge',
+                        pluginId: pid('com.sigil.event-without-bridge'),
                         config: {},
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -1283,7 +1285,7 @@ describe('loadNodePlugin', () => {
                     node: {
                         id: testNodeId('n1'),
                         type: 'event-then-block-node',
-                        pluginId: 'com.sigil.string-bridge-error',
+                        pluginId: pid('com.sigil.string-bridge-error'),
                         config: {},
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -1801,7 +1803,7 @@ describe('capabilityBroker sandbox sync', () => {
                     node: {
                         id: testNodeId('n1'),
                         type: 'perm-checker',
-                        pluginId: 'com.sigil.perm-checker',
+                        pluginId: pid('com.sigil.perm-checker'),
                         config: { check: 'filesystem.read' },
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -1838,7 +1840,7 @@ describe('capabilityBroker sandbox sync', () => {
                         node: {
                             id: testNodeId('n1'),
                             type: 'perm-checker',
-                            pluginId: 'com.sigil.perm-checker',
+                            pluginId: pid('com.sigil.perm-checker'),
                             config: { check: 'filesystem.read' },
                         },
                         ctx: { event: '', payload: {}, vars: {} },
@@ -1888,7 +1890,7 @@ describe('Workflow State authorization for Node Plugins', () => {
     });
 
     it('routes an honest Plugin state read through the Engine Capability Broker', async () => {
-        const pluginId = 'com.sigil.state-honest-read';
+        const pluginId = pid('com.sigil.state-honest-read');
         const pluginDir = join(tempDir, 'state-access');
         writePlugin(
             pluginDir,
@@ -1944,7 +1946,7 @@ describe('Workflow State authorization for Node Plugins', () => {
     });
 
     it('rejects a malformed Workflow State read result before it reaches the worker', async () => {
-        const pluginId = 'com.sigil.state-malformed-read';
+        const pluginId = pid('com.sigil.state-malformed-read');
         const pluginDir = join(tempDir, 'state-malformed-read');
         writePlugin(
             pluginDir,
@@ -2006,7 +2008,7 @@ describe('Workflow State authorization for Node Plugins', () => {
     });
 
     it('rejects a malformed Workflow State mutation result', async () => {
-        const pluginId = 'com.sigil.state-malformed-mutation';
+        const pluginId = pid('com.sigil.state-malformed-mutation');
         const pluginDir = join(tempDir, 'state-malformed-mutation');
         writePlugin(
             pluginDir,
@@ -2058,7 +2060,7 @@ describe('Workflow State authorization for Node Plugins', () => {
     });
 
     it('round-trips typed Workflow State values through the real Plugin Bridge path', async () => {
-        const pluginId = 'com.sigil.typed-state-round-trip';
+        const pluginId = pid('com.sigil.typed-state-round-trip');
         const pluginDir = join(tempDir, 'typed-state-round-trip');
         writePlugin(
             pluginDir,
@@ -2117,7 +2119,7 @@ describe('Workflow State authorization for Node Plugins', () => {
     });
 
     it('rejects a crafted state read without state.read before reaching the state adapter', async () => {
-        const pluginId = 'com.sigil.state-crafted-read';
+        const pluginId = pid('com.sigil.state-crafted-read');
         const pluginDir = join(tempDir, 'state-access');
         writePlugin(
             pluginDir,
@@ -2178,7 +2180,7 @@ describe('Workflow State authorization for Node Plugins', () => {
     });
 
     it('rejects a state write without state.write before mutating the state adapter', async () => {
-        const pluginId = 'com.sigil.state-crafted-write';
+        const pluginId = pid('com.sigil.state-crafted-write');
         const pluginDir = join(tempDir, 'state-access');
         writePlugin(
             pluginDir,
@@ -2239,7 +2241,7 @@ describe('Workflow State authorization for Node Plugins', () => {
     });
 
     it('routes state.set and state.flush through state.write authorization', async () => {
-        const pluginId = 'com.sigil.state-honest-write';
+        const pluginId = pid('com.sigil.state-honest-write');
         const pluginDir = join(tempDir, 'state-access');
         writePlugin(
             pluginDir,
@@ -2305,7 +2307,7 @@ describe('Workflow State authorization for Node Plugins', () => {
     });
 
     it('applies a permission revocation to the next state read without restarting the Plugin', async () => {
-        const pluginId = 'com.sigil.state-revoked-read';
+        const pluginId = pid('com.sigil.state-revoked-read');
         const pluginDir = join(tempDir, 'state-access');
         writePlugin(
             pluginDir,
@@ -2489,7 +2491,7 @@ describe('unbypassable enforcement', () => {
                     node: {
                         id: testNodeId('n1'),
                         type: 'evil-exec',
-                        pluginId: 'com.sigil.evil-exec',
+                        pluginId: pid('com.sigil.evil-exec'),
                         config: {},
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -2540,7 +2542,7 @@ describe('unbypassable enforcement', () => {
     });
 
     it('authorizes every kernel adapter operation through the Engine Capability Broker', async () => {
-        const pluginId = 'com.sigil.evil-kernel-adapter';
+        const pluginId = pid('com.sigil.evil-kernel-adapter');
         const pluginDir = join(tempDir, 'evil-kernel-adapter');
         writePlugin(
             pluginDir,
@@ -2587,7 +2589,7 @@ describe('unbypassable enforcement', () => {
                 node: {
                     id: testNodeId('n1'),
                     type: 'evil-kernel-adapter',
-                    pluginId: 'com.sigil.authorized',
+                    pluginId: pid('com.sigil.authorized'),
                     config: {},
                 },
                 ctx: { event: '', payload: {}, vars: {} },
@@ -2625,7 +2627,7 @@ describe('unbypassable enforcement', () => {
     });
 
     it('allows kernel adapter operations after the mapped capability is granted', async () => {
-        const pluginId = 'com.sigil.allowed-kernel-adapter';
+        const pluginId = pid('com.sigil.allowed-kernel-adapter');
         const pluginDir = join(tempDir, 'allowed-kernel-adapter');
         writePlugin(
             pluginDir,
@@ -2680,7 +2682,7 @@ describe('unbypassable enforcement', () => {
     });
 
     it('ignores malformed file watcher events before invoking a Plugin callback', async () => {
-        const pluginId = 'com.sigil.file-watcher-malformed-event';
+        const pluginId = pid('com.sigil.file-watcher-malformed-event');
         const pluginDir = join(tempDir, 'file-watcher-malformed-event');
         writePlugin(
             pluginDir,
@@ -3014,7 +3016,7 @@ describe('Plugin Sandbox Surface', () => {
                 node: {
                     id: testNodeId('n1'),
                     type: 'sandbox-surface-plugin',
-                    pluginId: 'com.sigil.sandbox-surface',
+                    pluginId: pid('com.sigil.sandbox-surface'),
                     config: {},
                 },
                 ctx: { event: '', payload: {}, vars: {} },
@@ -3082,7 +3084,7 @@ describe('Plugin Sandbox Surface', () => {
                 node: {
                     id: testNodeId('n1'),
                     type: 'code-generation-wasm-plugin',
-                    pluginId: 'com.sigil.code-generation-wasm',
+                    pluginId: pid('com.sigil.code-generation-wasm'),
                     config: {},
                 },
                 ctx: { event: '', payload: {}, vars: {} },
@@ -3118,7 +3120,7 @@ describe('Plugin Sandbox Surface', () => {
                 node: {
                     id: testNodeId('n1'),
                     type: 'code-generation-contract-plugin',
-                    pluginId: 'com.sigil.code-generation-contract',
+                    pluginId: pid('com.sigil.code-generation-contract'),
                     config: {},
                 },
                 ctx: { event: '', payload: {}, vars: {} },
@@ -3165,7 +3167,7 @@ describe('Plugin Sandbox Surface', () => {
                 node: {
                     id: testNodeId('n1'),
                     type: 'sandbox-boundary-plugin',
-                    pluginId: 'com.sigil.sandbox-boundary',
+                    pluginId: pid('com.sigil.sandbox-boundary'),
                     config: {},
                 },
                 ctx: { event: '', payload: {}, vars: {} },
@@ -3269,7 +3271,7 @@ describe('updatePluginPermissions', () => {
                 node: {
                     id: testNodeId('n1'),
                     type: 'perm-checker',
-                    pluginId: 'com.sigil.perm-checker',
+                    pluginId: pid('com.sigil.perm-checker'),
                     config: { check: 'filesystem.read' },
                 },
                 ctx: { event: '', payload: {}, vars: {} },
@@ -3289,7 +3291,7 @@ describe('updatePluginPermissions', () => {
                     node: {
                         id: testNodeId('n2'),
                         type: 'perm-checker',
-                        pluginId: 'com.sigil.perm-checker',
+                        pluginId: pid('com.sigil.perm-checker'),
                         config: { check: 'filesystem.read' },
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -3330,7 +3332,7 @@ describe('updatePluginPermissions', () => {
                     node: {
                         id: testNodeId('n1'),
                         type: 'fs-plugin',
-                        pluginId: 'com.sigil.fs-plugin',
+                        pluginId: pid('com.sigil.fs-plugin'),
                         config: {},
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -3353,7 +3355,7 @@ describe('updatePluginPermissions', () => {
                     node: {
                         id: testNodeId('n2'),
                         type: 'fs-plugin',
-                        pluginId: 'com.sigil.fs-plugin',
+                        pluginId: pid('com.sigil.fs-plugin'),
                         config: {},
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -3397,7 +3399,7 @@ describe('updatePluginPermissions', () => {
                     node: {
                         id: testNodeId('n1'),
                         type: 'fs-plugin',
-                        pluginId: 'com.sigil.fs-plugin',
+                        pluginId: pid('com.sigil.fs-plugin'),
                         config: {},
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -3419,7 +3421,7 @@ describe('updatePluginPermissions', () => {
                     node: {
                         id: testNodeId('n2'),
                         type: 'fs-plugin',
-                        pluginId: 'com.sigil.fs-plugin',
+                        pluginId: pid('com.sigil.fs-plugin'),
                         config: {},
                     },
                     ctx: { event: '', payload: {}, vars: {} },
@@ -3435,7 +3437,7 @@ describe('updatePluginPermissions', () => {
 
     it('keeps the legacy module-level permission update facade connected to loaded workers', async () => {
         const pluginDir = join(tempDir, 'legacy-perm-propagation');
-        const pluginId = 'com.sigil.legacy-perm-checker';
+        const pluginId = pid('com.sigil.legacy-perm-checker');
         writePlugin(
             pluginDir,
             {

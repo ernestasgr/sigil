@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';
+import {
+    NodeOutputPortIdSchema,
+    PipelineEdgeIdSchema,
+    PipelineNodeIdSchema,
+    PluginIdSchema,
+} from './ids.js';
 import {
     createBuiltinNodeContractRegistry,
     getBuiltinNodeContract,
@@ -11,13 +16,15 @@ import type { PersistedPipeline } from './pipeline.js';
 import { WorkflowIdSchema } from './workflow-id.js';
 import { migrateWorkflowContracts } from './workflow-migration.js';
 
+const pid = (id: string) => PluginIdSchema.parse(id);
+
 describe('Workflow contract migrations', () => {
     it('migrates legacy bundled identities and aliased ports with an idempotent audit report', () => {
         const registry = createBuiltinNodeContractRegistry();
         const legacyContract = getBuiltinNodeContract('file-watcher');
         registerSerializableNodeContract(registry, {
             ...legacyContract,
-            identity: pluginNodeIdentity('com.sigil.file-watcher', 'file-watcher'),
+            identity: pluginNodeIdentity(pid('com.sigil.file-watcher'), 'file-watcher'),
         });
 
         const pipeline: PersistedPipeline = {

@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PipelineEdge } from './edges.js';
-import { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';
+import {
+    NodeOutputPortIdSchema,
+    PipelineEdgeIdSchema,
+    PipelineNodeIdSchema,
+    PluginIdSchema,
+} from './ids.js';
 import {
     createBuiltinNodeContractRegistry,
     pluginNodeIdentity,
@@ -17,6 +22,8 @@ import {
     validateWorkflowTopology,
 } from './topology.js';
 import { WorkflowIdSchema } from './workflow-id.js';
+
+const pid = (id: string) => PluginIdSchema.parse(id);
 
 const trigger = (id: string): PipelineNode => ({
     id: PipelineNodeIdSchema.parse(id),
@@ -316,12 +323,12 @@ describe('validateWorkflowTopology', () => {
         const plugin: PipelineNode = {
             id: PipelineNodeIdSchema.parse('plugin-trigger'),
             type: 'tick-trigger',
-            pluginId: 'com.example.tick',
+            pluginId: pid('com.example.tick'),
             config: {},
         };
         const contractRegistry = createBuiltinNodeContractRegistry();
         registerSerializableNodeContract(contractRegistry, {
-            identity: pluginNodeIdentity('com.example.tick', 'tick-trigger'),
+            identity: pluginNodeIdentity(pid('com.example.tick'), 'tick-trigger'),
             version: 1,
             role: 'trigger',
             defaultConfig: {},
@@ -348,7 +355,7 @@ describe('validateWorkflowTopology', () => {
     it('reports invalid configuration for a derived Plugin contract before Edge admission', () => {
         const contractRegistry = createBuiltinNodeContractRegistry();
         registerSerializableNodeContract(contractRegistry, {
-            identity: pluginNodeIdentity('com.example.router', 'router-node'),
+            identity: pluginNodeIdentity(pid('com.example.router'), 'router-node'),
             version: 1,
             role: 'action',
             defaultConfig: {
@@ -370,7 +377,7 @@ describe('validateWorkflowTopology', () => {
                     {
                         id: PipelineNodeIdSchema.parse('router'),
                         type: 'router-node',
-                        pluginId: 'com.example.router',
+                        pluginId: pid('com.example.router'),
                         config: {
                             target: 'event',
                             cases: [{ id: 'empty', value: '' }],
@@ -416,7 +423,7 @@ describe('validateWorkflowTopology', () => {
                     {
                         id: PipelineNodeIdSchema.parse('unknown'),
                         type: 'unknown-node',
-                        pluginId: 'com.example.missing',
+                        pluginId: pid('com.example.missing'),
                         config: {},
                     },
                     log('log'),
@@ -449,7 +456,7 @@ describe('validateWorkflowTopology', () => {
                     {
                         id: PipelineNodeIdSchema.parse('unknown'),
                         type: 'unknown-node',
-                        pluginId: 'com.example.missing',
+                        pluginId: pid('com.example.missing'),
                         config: {},
                     },
                 ],
@@ -499,7 +506,7 @@ describe('validateWorkflowTopology', () => {
         const unsupported: PipelineNode = {
             id: PipelineNodeIdSchema.parse('missing'),
             type: 'missing-node',
-            pluginId: 'com.example.missing',
+            pluginId: pid('com.example.missing'),
             config: {},
         };
         const result = validateWorkflowTopology(

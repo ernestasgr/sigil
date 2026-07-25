@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';
+import {
+    NodeOutputPortIdSchema,
+    PipelineEdgeIdSchema,
+    PipelineNodeIdSchema,
+    PluginIdSchema,
+} from './ids.js';
 import {
     BUILTIN_NODE_CONTRACT_REGISTRY,
     type NodeContractRegistry,
@@ -19,7 +24,7 @@ export const WorkflowMigrationSchema = z.discriminatedUnion('kind', [
             from: z.object({ namespace: z.literal('builtin'), type: z.string().min(1) }),
             to: z.object({
                 namespace: z.literal('plugin'),
-                pluginId: z.string().min(1),
+                pluginId: PluginIdSchema,
                 type: z.string().min(1),
             }),
             reason: z.string().min(1),
@@ -55,12 +60,20 @@ export interface LegacyNodeIdentityMigration {
 export const LEGACY_BUNDLED_NODE_IDENTITY_MIGRATIONS: readonly LegacyNodeIdentityMigration[] = [
     {
         from: { namespace: 'builtin', type: 'file-watcher' },
-        to: { namespace: 'plugin', pluginId: 'com.sigil.file-watcher', type: 'file-watcher' },
+        to: {
+            namespace: 'plugin',
+            pluginId: PluginIdSchema.parse('com.sigil.file-watcher'),
+            type: 'file-watcher',
+        },
         reason: 'Bundled File Watcher Nodes now execute through their namespaced Plugin identity.',
     },
     {
         from: { namespace: 'builtin', type: 'file-manager' },
-        to: { namespace: 'plugin', pluginId: 'com.sigil.file-manager', type: 'file-manager' },
+        to: {
+            namespace: 'plugin',
+            pluginId: PluginIdSchema.parse('com.sigil.file-manager'),
+            type: 'file-manager',
+        },
         reason: 'Bundled File Manager Nodes now execute through their namespaced Plugin identity.',
     },
 ];

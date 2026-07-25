@@ -6,6 +6,7 @@ import { DatabaseSync as Database } from 'node:sqlite';
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineEdge } from '@sigil/schema/edges';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import {
     createBuiltinNodeContractRegistry,
     fixedOutputPortSpec,
@@ -28,6 +29,7 @@ import { createNodeHandlerRegistry } from './node-registry.js';
 
 const TEST_WORKFLOW_ID = WorkflowIdSchema.parse('test-workflow');
 const DOWNLOAD_WORKFLOW_ID = WorkflowIdSchema.parse('workflow-download-sorter');
+const pid = (id: string) => PluginIdSchema.parse(id);
 const AUTHORITATIVE_WORKFLOW_ID = WorkflowIdSchema.parse('authoritative-workflow');
 
 function captureEvents(bus: ReturnType<typeof createEventBus>): BusEvent[] {
@@ -148,7 +150,7 @@ describe('dag-executor', () => {
         it('reports an undeclared runtime output and does not silently skip downstream work', async () => {
             const contractRegistry = createBuiltinNodeContractRegistry();
             registerSerializableNodeContract(contractRegistry, {
-                identity: pluginNodeIdentity('com.example.contract', 'contracted-action'),
+                identity: pluginNodeIdentity(pid('com.example.contract'), 'contracted-action'),
                 version: 1,
                 role: 'action',
                 defaultConfig: {},
@@ -178,7 +180,7 @@ describe('dag-executor', () => {
                         {
                             id: 'contracted',
                             type: 'contracted-action',
-                            pluginId: 'com.example.contract',
+                            pluginId: pid('com.example.contract'),
                             config: {},
                         },
                         log('downstream', 'must not run'),
@@ -220,7 +222,7 @@ describe('dag-executor', () => {
         it('normalizes a declared runtime port alias before scheduling persisted Edges', async () => {
             const contractRegistry = createBuiltinNodeContractRegistry();
             registerSerializableNodeContract(contractRegistry, {
-                identity: pluginNodeIdentity('com.example.alias', 'aliased-action'),
+                identity: pluginNodeIdentity(pid('com.example.alias'), 'aliased-action'),
                 version: 1,
                 role: 'action',
                 defaultConfig: {},
@@ -249,7 +251,7 @@ describe('dag-executor', () => {
                         {
                             id: 'aliased',
                             type: 'aliased-action',
-                            pluginId: 'com.example.alias',
+                            pluginId: pid('com.example.alias'),
                             config: {},
                         },
                         log('downstream', 'alias reached'),

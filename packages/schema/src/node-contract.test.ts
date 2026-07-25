@@ -1,6 +1,7 @@
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
+import { PluginIdSchema } from './ids.js';
 import {
     CURRENT_NODE_CONTRACT_VERSION,
     createBuiltinNodeContractRegistry,
@@ -16,6 +17,8 @@ import {
     validateNodeContractCompatibility,
     validatePluginNodeContract,
 } from './node-contract.js';
+
+const pid = (id: string) => PluginIdSchema.parse(id);
 
 const switchNode = (config: unknown): NodeContractInput => ({
     type: 'switch',
@@ -118,7 +121,7 @@ describe('Node Contract Registry', () => {
     it('keeps Plugin identity separate from built-in identity and reports missing contracts', () => {
         const registry = createBuiltinNodeContractRegistry();
         registerSerializableNodeContract(registry, {
-            identity: pluginNodeIdentity('com.example.log', 'log'),
+            identity: pluginNodeIdentity(pid('com.example.log'), 'log'),
             version: 1,
             role: 'action',
             defaultConfig: { message: 'plugin' },
@@ -133,24 +136,24 @@ describe('Node Contract Registry', () => {
         const plugin = resolveNodeContract(
             {
                 type: 'log',
-                pluginId: 'com.example.log',
+                pluginId: pid('com.example.log'),
                 config: { message: 'plugin' },
             },
             registry,
         );
         expect(plugin).toMatchObject({
             status: 'available',
-            identity: pluginNodeIdentity('com.example.log', 'log'),
+            identity: pluginNodeIdentity(pid('com.example.log'), 'log'),
             outputPorts: [{ id: 'out', label: 'out' }],
         });
 
         const unavailable = resolveNodeContract(
-            { type: 'log', pluginId: 'com.example.missing', config: { message: 'missing' } },
+            { type: 'log', pluginId: pid('com.example.missing'), config: { message: 'missing' } },
             registry,
         );
         expect(unavailable).toEqual({
             status: 'unavailable',
-            identity: { namespace: 'plugin', pluginId: 'com.example.missing', type: 'log' },
+            identity: { namespace: 'plugin', pluginId: pid('com.example.missing'), type: 'log' },
             reason: 'unregistered',
         });
     });
@@ -158,14 +161,14 @@ describe('Node Contract Registry', () => {
     it('registers a serializable Plugin contract without importing runtime functions', () => {
         const validation = validatePluginNodeContract(
             {
-                identity: pluginNodeIdentity('com.example.file', 'file-node'),
+                identity: pluginNodeIdentity(pid('com.example.file'), 'file-node'),
                 version: 1,
                 role: 'action',
                 defaultConfig: { path: '/tmp' },
                 outputPorts: fixedOutputPortSpec([{ id: 'out', label: 'Output' }]),
                 display: { label: 'File Node', description: 'Moves a file.', category: 'system' },
             },
-            'com.example.file',
+            pid('com.example.file'),
             'file-node',
         );
 
@@ -177,7 +180,7 @@ describe('Node Contract Registry', () => {
 
         expect(
             resolveNodeContract(
-                { type: 'file-node', pluginId: 'com.example.file', config: { path: '/tmp' } },
+                { type: 'file-node', pluginId: pid('com.example.file'), config: { path: '/tmp' } },
                 registry,
             ),
         ).toMatchObject({
@@ -189,7 +192,7 @@ describe('Node Contract Registry', () => {
     it('resolves and validates a Plugin config-derived contract through the Switch strategy', () => {
         const validation = validatePluginNodeContract(
             {
-                identity: pluginNodeIdentity('com.example.router', 'router-node'),
+                identity: pluginNodeIdentity(pid('com.example.router'), 'router-node'),
                 version: 1,
                 role: 'action',
                 defaultConfig: {
@@ -203,7 +206,7 @@ describe('Node Contract Registry', () => {
                     category: 'logic',
                 },
             },
-            'com.example.router',
+            pid('com.example.router'),
             'router-node',
         );
 
@@ -217,7 +220,7 @@ describe('Node Contract Registry', () => {
             resolveNodeContract(
                 {
                     type: 'router-node',
-                    pluginId: 'com.example.router',
+                    pluginId: pid('com.example.router'),
                     config: {
                         target: 'event',
                         cases: [
@@ -240,7 +243,7 @@ describe('Node Contract Registry', () => {
         const invalid = resolveNodeContract(
             {
                 type: 'router-node',
-                pluginId: 'com.example.router',
+                pluginId: pid('com.example.router'),
                 config: {
                     target: 'event',
                     cases: [{ id: 'empty', value: '' }],
@@ -263,7 +266,7 @@ describe('Node Contract Registry', () => {
     it('keeps derived port identity and ordering deterministic across built-in and Plugin contracts', () => {
         const pluginRegistry = createNodeContractRegistry();
         registerSerializableNodeContract(pluginRegistry, {
-            identity: pluginNodeIdentity('com.example.router', 'router-node'),
+            identity: pluginNodeIdentity(pid('com.example.router'), 'router-node'),
             version: 1,
             role: 'action',
             defaultConfig: { target: 'event', cases: [] },
@@ -287,7 +290,7 @@ describe('Node Contract Registry', () => {
                 const config = { target: 'event' as const, cases: derivedCases };
                 const builtin = resolveNodeContract({ type: 'switch', config });
                 const plugin = resolveNodeContract(
-                    { type: 'router-node', pluginId: 'com.example.router', config },
+                    { type: 'router-node', pluginId: pid('com.example.router'), config },
                     pluginRegistry,
                 );
 
@@ -298,7 +301,7 @@ describe('Node Contract Registry', () => {
                 expect(plugin.outputPorts).toEqual(builtin.outputPorts);
                 expect(
                     resolveNodeContract(
-                        { type: 'router-node', pluginId: 'com.example.router', config },
+                        { type: 'router-node', pluginId: pid('com.example.router'), config },
                         pluginRegistry,
                     ),
                 ).toEqual(plugin);
@@ -310,7 +313,7 @@ describe('Node Contract Registry', () => {
     it('distinguishes an explicitly dynamic contract from an unavailable contract', () => {
         const registry = createNodeContractRegistry();
         registerSerializableNodeContract(registry, {
-            identity: pluginNodeIdentity('com.example.dynamic', 'dynamic-node'),
+            identity: pluginNodeIdentity(pid('com.example.dynamic'), 'dynamic-node'),
             version: 1,
             role: 'action',
             defaultConfig: {},
@@ -324,20 +327,20 @@ describe('Node Contract Registry', () => {
 
         expect(
             resolveNodeContract(
-                { type: 'dynamic-node', pluginId: 'com.example.dynamic', config: {} },
+                { type: 'dynamic-node', pluginId: pid('com.example.dynamic'), config: {} },
                 registry,
             ),
         ).toMatchObject({ status: 'available', outputPorts: 'dynamic' });
         expect(
             resolveNodeContract(
-                { type: 'dynamic-node', pluginId: 'com.example.missing', config: {} },
+                { type: 'dynamic-node', pluginId: pid('com.example.missing'), config: {} },
                 registry,
             ),
         ).toEqual({
             status: 'unavailable',
             identity: {
                 namespace: 'plugin',
-                pluginId: 'com.example.missing',
+                pluginId: pid('com.example.missing'),
                 type: 'dynamic-node',
             },
             reason: 'unregistered',
@@ -348,14 +351,14 @@ describe('Node Contract Registry', () => {
         expect(
             validatePluginNodeContract(
                 {
-                    identity: pluginNodeIdentity('com.example.other', 'file-node'),
+                    identity: pluginNodeIdentity(pid('com.example.other'), 'file-node'),
                     version: 1,
                     role: 'action',
                     defaultConfig: {},
                     outputPorts: fixedOutputPortSpec(['out']),
                     display: { label: 'File Node', description: '', category: 'system' },
                 },
-                'com.example.file',
+                pid('com.example.file'),
                 'file-node',
             ),
         ).toMatchObject({ ok: false, error: expect.stringContaining('pluginId') });
@@ -363,14 +366,14 @@ describe('Node Contract Registry', () => {
         expect(
             validatePluginNodeContract(
                 {
-                    identity: pluginNodeIdentity('com.example.file', 'file-node'),
+                    identity: pluginNodeIdentity(pid('com.example.file'), 'file-node'),
                     version: 2,
                     role: 'action',
                     defaultConfig: {},
                     outputPorts: fixedOutputPortSpec(['out']),
                     display: { label: 'File Node', description: '', category: 'system' },
                 },
-                'com.example.file',
+                pid('com.example.file'),
                 'file-node',
             ),
         ).toMatchObject({ ok: false, error: expect.stringContaining('version') });
@@ -379,7 +382,7 @@ describe('Node Contract Registry', () => {
     it('carries and validates an explicit reader compatibility policy at registration and transport', () => {
         const registry = createNodeContractRegistry();
         const contract = {
-            identity: pluginNodeIdentity('com.example.compatible', 'compatible-node'),
+            identity: pluginNodeIdentity(pid('com.example.compatible'), 'compatible-node'),
             version: CURRENT_NODE_CONTRACT_VERSION,
             compatibility: {
                 minimumReaderVersion: CURRENT_NODE_CONTRACT_VERSION,
@@ -445,7 +448,7 @@ describe('Node Contract Registry', () => {
 
         expect(() =>
             registerSerializableNodeContract(registry, {
-                identity: pluginNodeIdentity('com.example.conflicting-ports', 'node'),
+                identity: pluginNodeIdentity(pid('com.example.conflicting-ports'), 'node'),
                 version: 1,
                 role: 'action',
                 defaultConfig: {},

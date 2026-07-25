@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import {
     type NodeContractRegistry,
     pluginNodeIdentity,
@@ -20,6 +21,7 @@ import { createWorkflowLifecycle } from './workflow-lifecycle.js';
 import { createWorkflowStore } from './workflow-store.js';
 
 const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
+const pid = (id: string) => PluginIdSchema.parse(id);
 
 function testPipeline(pipelineId: string, workflowId: string): CompiledPipeline {
     return {
@@ -30,7 +32,7 @@ function testPipeline(pipelineId: string, workflowId: string): CompiledPipeline 
             testNode({
                 id: 'trigger',
                 type: 'test-trigger',
-                pluginId: 'com.sigil.test-trigger',
+                pluginId: pid('com.sigil.test-trigger'),
                 config: {},
             }),
         ],
@@ -40,7 +42,7 @@ function testPipeline(pipelineId: string, workflowId: string): CompiledPipeline 
 
 function registerTestTriggerContract(contractRegistry: NodeContractRegistry): void {
     registerSerializableNodeContract(contractRegistry, {
-        identity: pluginNodeIdentity('com.sigil.test-trigger', 'test-trigger'),
+        identity: pluginNodeIdentity(pid('com.sigil.test-trigger'), 'test-trigger'),
         version: 1,
         role: 'trigger',
         defaultConfig: {},
