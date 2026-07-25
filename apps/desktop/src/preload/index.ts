@@ -1,3 +1,5 @@
 import { exposeElectronTRPC } from 'electron-trpc/main';
 
-exposeElectronTRPC();
+process.once('loaded', () => {
+    exposeElectronTRPC();
+});

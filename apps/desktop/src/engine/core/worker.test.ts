@@ -24,6 +24,7 @@ import {
 } from '../../shared/ipc-channels.js';
 import { createWorkflowTopologyError } from '../workflow/workflow-topology-error.js';
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
+import { activateEnabledWorkflows } from './worker-startup.js';
 
 const WORKFLOW_ID = WorkflowIdSchema.parse('wf-1');
 const MISSING_WORKFLOW_ID = WorkflowIdSchema.parse('missing');
@@ -1189,6 +1190,75 @@ describe('dispatch', () => {
             correlationId: 'corr-manual-error',
             ok: false,
             error: 'manual trigger error',
+        });
+    });
+
+    it('skips an enabled persisted workflow with an invalid id during startup', () => {
+        const port = { postMessage: vi.fn() };
+        const lifecycle = { activateEnabled: vi.fn() };
+
+        activateEnabledWorkflows(
+            [
+                {
+                    id: 'invalid workflow id',
+                    name: 'Corrupt workflow',
+                    enabled: true,
+                    activation: { kind: 'disabled' },
+                },
+            ],
+            lifecycle,
+            (message) => port.postMessage(message),
+        );
+
+        expect(lifecycle.activateEnabled).not.toHaveBeenCalled();
+        expect(port.postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.Log,
+            line: expect.stringContaining(
+                '[worker] skipped workflow invalid workflow id (Corrupt workflow) because its id is invalid:',
+            ),
+        });
+    });
+
+    it('activates valid enabled workflows and reports activation failures', () => {
+        const port = { postMessage: vi.fn() };
+        const lifecycle = { activateEnabled: vi.fn() };
+        lifecycle.activateEnabled.mockImplementation((workflowId: unknown) => {
+            if (workflowId === 'failing-workflow') {
+                throw new Error('activation failed');
+            }
+        });
+
+        activateEnabledWorkflows(
+            [
+                {
+                    id: 'valid-workflow',
+                    name: 'Valid workflow',
+                    enabled: true,
+                    activation: { kind: 'disabled' },
+                },
+                {
+                    id: 'failing-workflow',
+                    name: 'Failing workflow',
+                    enabled: true,
+                    activation: { kind: 'disabled' },
+                },
+                {
+                    id: 'disabled-workflow',
+                    name: 'Disabled workflow',
+                    enabled: false,
+                    activation: { kind: 'disabled' },
+                },
+            ],
+            lifecycle,
+            (message) => port.postMessage(message),
+        );
+
+        expect(lifecycle.activateEnabled).toHaveBeenNthCalledWith(1, 'valid-workflow');
+        expect(lifecycle.activateEnabled).toHaveBeenNthCalledWith(2, 'failing-workflow');
+        expect(lifecycle.activateEnabled).not.toHaveBeenCalledWith('disabled-workflow');
+        expect(port.postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.Log,
+            line: '[worker] failed to activate workflow failing-workflow (Failing workflow): activation failed',
         });
     });
 });

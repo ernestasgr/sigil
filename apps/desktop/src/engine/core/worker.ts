@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parentPort, workerData } from 'node:worker_threads';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Effect, Match } from 'effect';
 import { z } from 'zod';
 import {
@@ -30,6 +29,7 @@ import { createWorkflowStore } from '../workflow/workflow-store.js';
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
 import { createEngine } from './engine.js';
 import { readPropertiesFile } from './properties-loader.js';
+import { activateEnabledWorkflows } from './worker-startup.js';
 
 if (!parentPort) {
     throw new Error('engine worker must be spawned as a worker_thread');
@@ -267,28 +267,7 @@ port.on('message', (raw: unknown) => {
     enqueueDispatch(message);
 });
 
-for (const wf of store.list()) {
-    if (wf.enabled) {
-        const workflowId = WorkflowIdSchema.safeParse(wf.id);
-        if (!workflowId.success) {
-            const log: EngineLog = {
-                type: EngineChannel.Log,
-                line: `[worker] skipped workflow ${wf.id} (${wf.name}) because its id is invalid: ${workflowId.error.message}`,
-            };
-            port.postMessage(log);
-            continue;
-        }
-        try {
-            lifecycle.activateEnabled(workflowId.data);
-        } catch (err) {
-            const log: EngineLog = {
-                type: EngineChannel.Log,
-                line: `[worker] failed to activate workflow ${wf.id} (${wf.name}): ${err instanceof Error ? err.message : String(err)}`,
-            };
-            port.postMessage(log);
-        }
-    }
-}
+activateEnabledWorkflows(store.list(), lifecycle, (message) => port.postMessage(message));
 
 broadcastWorkflowsList();
 

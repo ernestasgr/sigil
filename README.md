@@ -139,7 +139,7 @@ The Electron preload (`apps/desktop/src/preload/index.ts`) exposes only the `ele
 
 Example: Manual Trigger → Log workflow ("Fire test event" button):
 
-```
+```text
 User clicks "Fire test event"
   → renderer: typed tRPC mutation
   → electron-trpc IPC → main: engine.fireTestEvent()

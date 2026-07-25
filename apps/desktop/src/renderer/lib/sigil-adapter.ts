@@ -178,22 +178,39 @@ const adapter = {
     ) => client.deleteWorkflowStateKey.mutate({ workflowId, key }),
     onEngineLog: (handler: (line: string) => void): (() => void) => {
         const subscription = client.onEngineLog.subscribe(undefined, {
-            onData: (result) => handler(z.string().parse(result)),
+            onData: (result) => {
+                try {
+                    handler(z.string().parse(result));
+                } catch (error) {
+                    reportSubscriptionError('onEngineLog', error);
+                }
+            },
             onError: (error) => reportSubscriptionError('onEngineLog', error),
         });
         return () => subscription.unsubscribe();
     },
     onWorkflowsList: (handler: (workflows: readonly WorkflowSummary[]) => void): (() => void) => {
         const subscription = client.onWorkflowsList.subscribe(undefined, {
-            onData: (result) =>
-                handler(parseResult(z.array(WorkflowSummarySchema).readonly(), result)),
+            onData: (result) => {
+                try {
+                    handler(parseResult(z.array(WorkflowSummarySchema).readonly(), result));
+                } catch (error) {
+                    reportSubscriptionError('onWorkflowsList', error);
+                }
+            },
             onError: (error) => reportSubscriptionError('onWorkflowsList', error),
         });
         return () => subscription.unsubscribe();
     },
     onBusEvent: (handler: (event: EngineBusEventPayload) => void): (() => void) => {
         const subscription = client.onBusEvent.subscribe(undefined, {
-            onData: (result) => handler(parseResult(EngineBusEventPayloadSchema, result)),
+            onData: (result) => {
+                try {
+                    handler(parseResult(EngineBusEventPayloadSchema, result));
+                } catch (error) {
+                    reportSubscriptionError('onBusEvent', error);
+                }
+            },
             onError: (error) => reportSubscriptionError('onBusEvent', error),
         });
         return () => subscription.unsubscribe();

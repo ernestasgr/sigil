@@ -142,7 +142,10 @@ function subscribeToEngine<TValue>(
 ) {
     return observable<TValue>((emit) => {
         const engine = getEngine();
-        if (!engine) return;
+        if (!engine) {
+            emit.error(new Error('Engine not ready'));
+            return;
+        }
         return subscribe(engine, (value) => emit.next(value));
     });
 }
@@ -253,7 +256,7 @@ export function createAppRouter(deps: AppRouterDependencies) {
                     return await engine.getWorkflow(input.id);
                 } catch (error) {
                     console.error('[main] getWorkflow failed:', error);
-                    return null;
+                    throw error;
                 }
             }),
 
@@ -264,7 +267,7 @@ export function createAppRouter(deps: AppRouterDependencies) {
                 return await engine.listPlugins();
             } catch (error) {
                 console.error('[main] listPlugins failed:', error);
-                return [];
+                throw error;
             }
         }),
 
@@ -289,7 +292,7 @@ export function createAppRouter(deps: AppRouterDependencies) {
                 return await engine.readProperties();
             } catch (error) {
                 console.error('[main] readProperties failed:', error);
-                return { properties: {} } satisfies PropertiesReadOutput;
+                throw error;
             }
         }),
 
@@ -353,7 +356,7 @@ export function createAppRouter(deps: AppRouterDependencies) {
                     return await engine.readWorkflowState(input.id);
                 } catch (error) {
                     console.error('[main] readWorkflowState failed:', error);
-                    return [];
+                    throw error;
                 }
             }),
 
@@ -393,11 +396,9 @@ export function createAppRouter(deps: AppRouterDependencies) {
         ),
 
         onWorkflowsList: procedure.subscription(() =>
-            observable<readonly WorkflowSummary[]>((emit) => {
-                emit.next(deps.getWorkflows());
-                const engine = deps.getEngine();
-                if (!engine) return;
-                return engine.onWorkflowsList((workflows) => emit.next(workflows));
+            subscribeToEngine<readonly WorkflowSummary[]>(deps.getEngine, (engine, emit) => {
+                emit(deps.getWorkflows());
+                return engine.onWorkflowsList(emit);
             }),
         ),
 
