@@ -86,7 +86,22 @@ body {
 }
 
 .sigil-ley-line-field {
+    position: relative;
+    overflow: hidden;
     background-color: var(--color-obsidian-ink);
+}
+
+/*
+ * The ley-line field lives on its own oversized, rotating layer instead of
+ * directly on the canvas element — rotating the element itself would carry
+ * every child (nodes, edges, controls) around with it. `inset: -35%` keeps
+ * the corners covered through a full turn.
+ */
+.sigil-ley-line-field::before {
+    content: "";
+    position: absolute;
+    inset: -35%;
+    z-index: 0;
     background-image:
         repeating-radial-gradient(
             circle at 50% 50%,
@@ -98,9 +113,13 @@ body {
             rgba(201, 162, 39, 0.06) 0deg 1deg,
             transparent 1deg 45deg
         );
+    animation: sigil-ley-line-spin 220s linear infinite;
+    pointer-events: none;
 }
 
 .sigil-flow-surface {
+    position: relative;
+    z-index: 1;
     background: transparent;
 }
 
@@ -118,9 +137,221 @@ body {
     animation: sigil-glyph-breathe 2.4s ease-in-out infinite;
 }
 
+/* The working table's floor turns, slow enough that it reads as alive
+   rather than distracting — a ritual circle underneath the graph. */
+@keyframes sigil-ley-line-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* A trace is drawn from `stroke-dashoffset: length` down to `0`; each
+   component that draws a glyph/rule/line supplies the length via the
+   `--sigil-trace-length` custom property. */
+@keyframes sigil-trace-draw {
+    from {
+        stroke-dashoffset: var(--sigil-trace-length, 1);
+    }
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+.sigil-glyph-trace {
+    stroke-dasharray: var(--sigil-trace-length, 1);
+    animation: sigil-trace-draw 720ms cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+
+@keyframes sigil-dot-pop {
+    from {
+        transform: scale(0);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.sigil-glyph-dot {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: sigil-dot-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Generic entrance for panels, workflow cards, and node cards — a beat of
+   materializing rather than simply popping into the layout. */
+@keyframes sigil-materialize {
+    from {
+        opacity: 0;
+        transform: scale(0.94) translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.sigil-materialize {
+    animation: sigil-materialize 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes sigil-rule-draw {
+    from {
+        transform: scaleX(0);
+    }
+    to {
+        transform: scaleX(1);
+    }
+}
+
+.sigil-panel-heading-rule {
+    transform-origin: left center;
+    animation: sigil-rule-draw 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes sigil-keystone-pop {
+    0% {
+        transform: translateX(-50%) rotate(45deg) scale(0);
+        opacity: 0;
+    }
+    60% {
+        transform: translateX(-50%) rotate(45deg) scale(1.3);
+        opacity: 1;
+    }
+    100% {
+        transform: translateX(-50%) rotate(45deg) scale(1);
+        opacity: 1;
+    }
+}
+
+.sigil-panel-heading-keystone {
+    animation: sigil-keystone-pop 480ms cubic-bezier(0.34, 1.56, 0.64, 1) 220ms both;
+}
+
+/* A wax-seal stamp: one expanding, fading ring the instant a node is
+   selected. Runs once — it doesn't loop while the selection persists. */
+@keyframes sigil-stamp-pulse {
+    0% {
+        opacity: 0.9;
+        transform: scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.4);
+    }
+}
+
+.sigil-node-card-stamp {
+    animation: sigil-stamp-pulse 550ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* An igniting diamond for the active nav item, and a soft expanding ring
+   behind the WorkflowStatus indicator while anything is active. */
+@keyframes sigil-nav-ignite {
+    0% {
+        transform: translateY(-50%) rotate(45deg) scale(0.3);
+    }
+    55% {
+        transform: translateY(-50%) rotate(45deg) scale(1.4);
+    }
+    100% {
+        transform: translateY(-50%) rotate(45deg) scale(1);
+    }
+}
+
+.sigil-nav-ignite {
+    animation: sigil-nav-ignite 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes sigil-status-pulse {
+    0% {
+        opacity: 0.7;
+        transform: rotate(45deg) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: rotate(45deg) scale(1.9);
+    }
+}
+
+.sigil-status-pulse {
+    position: relative;
+}
+
+.sigil-status-pulse::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border: 1px solid var(--color-gilt);
+    animation: sigil-status-pulse 2.2s ease-out infinite;
+}
+
+/* A diagonal shine that sweeps across buttons on hover/focus, in the
+   button's own current color rather than a fixed gilt so destructive and
+   ghost variants pick up their own tint instead of a stray gold flash. */
+.sigil-btn-shine {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    transition:
+        transform 150ms ease,
+        background-color 150ms ease;
+}
+
+.sigil-btn-shine::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        115deg,
+        transparent 30%,
+        color-mix(in oklab, currentColor 45%, transparent) 50%,
+        transparent 70%
+    );
+    transform: translateX(-130%);
+    transition: transform 550ms cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+}
+
+.sigil-btn-shine:hover::after,
+.sigil-btn-shine:focus-visible::after {
+    transform: translateX(130%);
+}
+
+.sigil-btn-shine:active:not(:disabled) {
+    transform: scale(0.97);
+}
+
 @media (prefers-reduced-motion: reduce) {
-    .sigil-glyph-running {
+    .sigil-glyph-running,
+    .sigil-ley-line-field::before,
+    .sigil-glyph-trace,
+    .sigil-glyph-dot,
+    .sigil-materialize,
+    .sigil-panel-heading-rule,
+    .sigil-panel-heading-keystone,
+    .sigil-nav-ignite {
         animation: none;
         opacity: 1;
+        transform: none;
+    }
+
+    .sigil-node-card-stamp,
+    .sigil-status-pulse::before {
+        animation: none;
+        opacity: 0;
+    }
+
+    .sigil-btn-shine::after {
+        transition: none;
+        opacity: 0;
+    }
+
+    .sigil-btn-shine:active:not(:disabled) {
+        transform: none;
     }
 }

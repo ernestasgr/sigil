@@ -15,22 +15,29 @@ export function WorkflowStatus(): ReactElement {
     return (
         <div className="border-gilt/40 border-t px-6 py-4">
             <div className="flex items-center gap-3">
-                <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 14 14"
-                    fill="none"
-                    className={cn(statusColor)}
-                    aria-hidden="true"
+                <div
+                    className={cn(
+                        'flex h-3.5 w-3.5 shrink-0 items-center justify-center',
+                        active && 'sigil-status-pulse',
+                    )}
                 >
-                    <polygon
-                        points="7,1 13,7 7,13 1,7"
-                        stroke="currentColor"
-                        strokeWidth="1"
+                    <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 14 14"
                         fill="none"
-                    />
-                    <line x1="1" y1="7" x2="13" y2="7" stroke="currentColor" strokeWidth="1" />
-                </svg>
+                        className={cn(statusColor)}
+                        aria-hidden="true"
+                    >
+                        <polygon
+                            points="7,1 13,7 7,13 1,7"
+                            stroke="currentColor"
+                            strokeWidth="1"
+                            fill="none"
+                        />
+                        <line x1="1" y1="7" x2="13" y2="7" stroke="currentColor" strokeWidth="1" />
+                    </svg>
+                </div>
                 <span className={cn('font-ui text-xs tracking-widest uppercase', statusColor)}>
                     {active
                         ? `${activeCount} ${activeCount === 1 ? 'workflow' : 'workflows'} active`

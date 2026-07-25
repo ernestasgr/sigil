@@ -54,6 +54,19 @@ function anchorPoints(center: number, radius: number): readonly Point[] {
     });
 }
 
+/** Total length of the traced polyline, in user units — feeds the CSS
+ *  stroke-draw animation so the glyph looks traced rather than pasted in. */
+function traceLength(trace: readonly Point[]): number {
+    let total = 0;
+    for (let i = 1; i < trace.length; i++) {
+        const a = trace[i - 1];
+        const b = trace[i];
+        if (!a || !b) continue;
+        total += Math.hypot(b.x - a.x, b.y - a.y);
+    }
+    return total;
+}
+
 /** Walks a random, non-repeating path across the anchors — the traced sigil line. */
 function traceGlyph(seed: string, center: number, radius: number): readonly Point[] {
     const rng = mulberry32(hashSeed(seed));
@@ -109,6 +122,7 @@ export function SigilGlyph({
     const trace = traceGlyph(seed, center, radius);
     const points = trace.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
     const strokeWidth = state === 'dormant' ? 1 : 1.5;
+    const length = traceLength(trace) || 1;
 
     return (
         <svg
@@ -140,14 +154,18 @@ export function SigilGlyph({
                 strokeWidth={strokeWidth}
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                className="sigil-glyph-trace"
+                style={{ ['--sigil-trace-length' as string]: length }}
             />
-            {trace.map((point) => (
+            {trace.map((point, index) => (
                 <circle
                     key={`${point.x.toFixed(2)}-${point.y.toFixed(2)}`}
                     cx={point.x}
                     cy={point.y}
                     r={state === 'dormant' ? 0.75 : 1.15}
                     fill="currentColor"
+                    className="sigil-glyph-dot"
+                    style={{ animationDelay: `${120 + index * 90}ms` }}
                 />
             ))}
             {state === 'error' ? (

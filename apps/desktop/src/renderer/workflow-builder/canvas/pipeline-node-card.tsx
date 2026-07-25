@@ -65,12 +65,15 @@ export function PipelineNodeCard({
                 event.preventDefault();
                 selectNode(id);
             }}
-            className="relative min-w-52 font-ui"
+            className="sigil-materialize relative min-w-52 font-ui transition-transform duration-200 ease-out hover:-translate-y-0.5"
         >
             {/* Ring: traces the chamfer as a fill, so the cut corner reads as a
                 deliberate edge instead of a border stroke stopping short. */}
             <div
-                className={cn('h-full w-full', selected ? 'bg-gilt' : 'bg-veil/40')}
+                className={cn(
+                    'h-full w-full transition-colors duration-200',
+                    selected ? 'bg-gilt' : 'bg-veil/40',
+                )}
                 style={{ ...RING_CLIP, padding: NODE_RING_WIDTH }}
             >
                 <div className="flex h-full flex-col bg-obsidian-ink/95" style={CONTENT_CLIP}>
@@ -133,6 +136,13 @@ export function PipelineNodeCard({
                 position. */}
             {showInput ? (
                 <Handle type="target" position={Position.Left} aria-label={`${def.label} input`} />
+            ) : null}
+            {selected ? (
+                <div
+                    aria-hidden="true"
+                    className="sigil-node-card-stamp border-gilt pointer-events-none absolute inset-0 border"
+                    style={RING_CLIP}
+                />
             ) : null}
         </div>
     );

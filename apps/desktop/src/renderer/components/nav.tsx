@@ -34,17 +34,17 @@ export function Nav(): ReactElement {
                                 onClick={() => handleNavigate(section.id)}
                                 aria-current={active ? 'page' : undefined}
                                 className={cn(
-                                    'relative font-ui text-sm tracking-widest uppercase transition-colors w-full py-3 pr-6 pl-8 text-left',
+                                    'relative font-ui text-sm tracking-widest uppercase transition-[color,background-color,transform] duration-200 w-full py-3 pr-6 pl-8 text-left',
                                     active
                                         ? 'text-gilt bg-gilt/10'
-                                        : 'text-veil hover:text-parchment',
+                                        : 'text-veil hover:text-parchment hover:translate-x-1',
                                 )}
                             >
                                 <span
                                     aria-hidden="true"
                                     className={cn(
                                         'absolute top-1/2 left-3 h-1.5 w-1.5 -translate-y-1/2 rotate-45 transition-colors',
-                                        active ? 'bg-gilt' : 'bg-transparent',
+                                        active ? 'bg-gilt sigil-nav-ignite' : 'bg-transparent',
                                     )}
                                 />
                                 {section.label}

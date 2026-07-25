@@ -14,9 +14,12 @@ export function PanelHeading({ children }: PanelHeadingProps): ReactElement {
         <div className="px-4 pt-3">
             <h2 className="font-ui text-veil text-xs tracking-widest uppercase">{children}</h2>
             <div className="relative mt-3 h-2">
-                <div className="bg-gilt/70 absolute inset-x-0 top-0 h-[1.5px]" />
-                <div className="bg-gilt/30 absolute inset-x-0 top-[5px] h-px" />
-                <div className="bg-obsidian-ink border-gilt absolute top-[-3px] left-1/2 h-2.5 w-2.5 -translate-x-1/2 rotate-45 border-[1.5px]" />
+                <div className="bg-gilt/70 sigil-panel-heading-rule absolute inset-x-0 top-0 h-[1.5px]" />
+                <div
+                    className="bg-gilt/30 sigil-panel-heading-rule absolute inset-x-0 top-[5px] h-px"
+                    style={{ animationDelay: '70ms' }}
+                />
+                <div className="bg-obsidian-ink border-gilt sigil-panel-heading-keystone absolute top-[-3px] left-1/2 h-2.5 w-2.5 border-[1.5px]" />
             </div>
         </div>
     );
