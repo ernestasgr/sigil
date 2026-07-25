@@ -2,6 +2,7 @@ import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 
 import type { PipelineNode } from '@sigil/schema/nodes';
 import { describe, expect, it, vi } from 'vitest';
+import { testNode } from '../../test-support/pipeline-fixtures.js';
 import type { BusEvent } from '../events/event-bus.js';
 import { createEventBus } from '../events/event-bus.js';
 import type { NodeHandlerDeps } from './types.js';
@@ -14,11 +15,11 @@ const payload: FileEventPayload = {
     dir: '/Users/dev/Downloads',
 };
 
-const triggerNode: PipelineNode = {
+const triggerNode: PipelineNode = testNode({
     id: 'trigger',
     type: 'manual-trigger',
     config: { eventName: 'file.created', payload },
-};
+});
 
 function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
     return {

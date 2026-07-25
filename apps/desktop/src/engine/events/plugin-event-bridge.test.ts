@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Option } from 'effect';
 import { describe, expect, it } from 'vitest';
+import { testNodeId } from '../../test-support/pipeline-fixtures.js';
 import { createNodeHandlerRegistry } from '../execution/node-registry.js';
 import { createBuiltinHandlers } from '../node-handlers/registry.js';
 import { createManifestRegistry } from '../plugins/manifest-registry.js';
@@ -86,7 +87,7 @@ describe('Node Plugin Event Bridge mediation', () => {
             const handler = Option.getOrThrow(handlerRegistry.get(NODE_TYPE));
             await handler.execute(
                 {
-                    node: { id: 'node-1', type: NODE_TYPE, pluginId, config: {} },
+                    node: { id: testNodeId('node-1'), type: NODE_TYPE, pluginId, config: {} },
                     ctx: { event: '', payload: {}, vars: {} },
                 },
                 {} as never,
@@ -139,7 +140,7 @@ describe('Node Plugin Event Bridge mediation', () => {
             await expect(
                 handler.execute(
                     {
-                        node: { id: 'node-1', type: NODE_TYPE, pluginId, config: {} },
+                        node: { id: testNodeId('node-1'), type: NODE_TYPE, pluginId, config: {} },
                         ctx: { event: '', payload: {}, vars: {} },
                     },
                     {
@@ -191,7 +192,7 @@ describe('Node Plugin Event Bridge mediation', () => {
             await expect(
                 handler.execute(
                     {
-                        node: { id: 'node-1', type: NODE_TYPE, pluginId, config: {} },
+                        node: { id: testNodeId('node-1'), type: NODE_TYPE, pluginId, config: {} },
                         ctx: { event: '', payload: {}, vars: {} },
                     },
                     {} as never,
@@ -241,7 +242,7 @@ describe('Node Plugin Event Bridge mediation', () => {
             const handler = Option.getOrThrow(handlerRegistry.get(NODE_TYPE));
             await handler.execute(
                 {
-                    node: { id: 'node-1', type: NODE_TYPE, pluginId, config: {} },
+                    node: { id: testNodeId('node-1'), type: NODE_TYPE, pluginId, config: {} },
                     ctx: { event: '', payload: {}, vars: {} },
                 },
                 {} as never,
@@ -297,7 +298,7 @@ describe('Node Plugin Event Bridge mediation', () => {
                     handler.execute(
                         {
                             node: {
-                                id: 'node-1',
+                                id: testNodeId('node-1'),
                                 type: NODE_TYPE,
                                 pluginId: testCase.pluginId,
                                 config: {},

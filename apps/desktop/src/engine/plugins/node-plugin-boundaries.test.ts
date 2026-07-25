@@ -5,7 +5,7 @@ import type { CompiledPipeline } from '@sigil/schema';
 import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
+import { testNodeId, testPipeline } from '../../test-support/pipeline-fixtures.js';
 import { createEngine } from '../core/engine.js';
 import { createNodeHandlerRegistry } from '../execution/node-registry.js';
 import { createBuiltinHandlers } from '../node-handlers/registry.js';
@@ -482,7 +482,7 @@ describe('instance-owned Plugin loader supervision', () => {
 
         const input = {
             node: {
-                id: 'node',
+                id: testNodeId('node'),
                 type: 'isolated-boundary-node',
                 pluginId: 'com.sigil.boundary',
                 config: {},
@@ -528,7 +528,7 @@ describe('instance-owned Plugin loader supervision', () => {
             successful[0].handler.execute(
                 {
                     node: {
-                        id: 'node',
+                        id: testNodeId('node'),
                         type: 'isolated-boundary-node',
                         pluginId: 'com.sigil.boundary',
                         config: {},
@@ -559,7 +559,7 @@ describe('instance-owned Plugin loader supervision', () => {
             result.handler.execute(
                 {
                     node: {
-                        id: 'node',
+                        id: testNodeId('node'),
                         type: 'isolated-boundary-node',
                         pluginId: 'com.sigil.boundary',
                         config: {},
@@ -640,10 +640,9 @@ describe('instance-owned Plugin loader supervision', () => {
                 join(tempDir, 'workflows'),
                 workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
             );
-            const pipeline: CompiledPipeline = {
+            const pipeline: CompiledPipeline = testPipeline({
                 id: 'pipeline-activation-failure',
-                workflowId: testWorkflowId('workflow-activation-failure'),
-                schemaVersion: 1,
+                workflowId: 'workflow-activation-failure',
                 nodes: [
                     {
                         id: 'trigger',
@@ -653,7 +652,7 @@ describe('instance-owned Plugin loader supervision', () => {
                     },
                 ],
                 edges: [],
-            };
+            });
             const workflow = store.create('Activation Failure Workflow', pipeline, {});
             const workflowId = testWorkflowId(workflow.id);
             activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
@@ -727,20 +726,20 @@ describe('instance-owned Plugin loader supervision', () => {
                 pipelineId: string,
                 workflowId: string,
                 id: string,
-            ): CompiledPipeline => ({
-                id: pipelineId,
-                workflowId: testWorkflowId(workflowId),
-                schemaVersion: 1,
-                nodes: [
-                    {
-                        id: 'trigger',
-                        type: 'concurrent-activation-trigger',
-                        pluginId: 'com.sigil.concurrent-activation',
-                        config: { id },
-                    },
-                ],
-                edges: [],
-            });
+            ): CompiledPipeline =>
+                testPipeline({
+                    id: pipelineId,
+                    workflowId,
+                    nodes: [
+                        {
+                            id: 'trigger',
+                            type: 'concurrent-activation-trigger',
+                            pluginId: 'com.sigil.concurrent-activation',
+                            config: { id },
+                        },
+                    ],
+                    edges: [],
+                });
             const first = store.create(
                 'First Concurrent Workflow',
                 createPipeline('pipeline-first', 'workflow-first', 'first'),

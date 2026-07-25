@@ -17,6 +17,7 @@ import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { testEdge, testNode } from '../../test-support/pipeline-fixtures.js';
 import type { BusEvent } from '../events/event-bus.js';
 import { createEventBus } from '../events/event-bus.js';
 import { createBuiltinHandlers } from '../node-handlers/registry.js';
@@ -45,31 +46,26 @@ const payload: FileEventPayload = {
     dir: '/Users/dev/Downloads',
 };
 
-const trigger = (id = 'trigger'): PipelineNode => ({
-    id,
-    type: 'manual-trigger',
-    config: { eventName: 'file.created', payload },
-});
-const log = (id: string, message: string): PipelineNode => ({
-    id,
-    type: 'log',
-    config: { message },
-});
-const edge = (id: string, source: string, target: string, sourcePort: string): PipelineEdge => ({
-    id,
-    source,
-    target,
-    sourcePort,
-});
-const pipeline = (
-    nodes: readonly PipelineNode[],
-    edges: readonly PipelineEdge[],
-): CompiledPipeline => ({
+const trigger = (id = 'trigger'): PipelineNode =>
+    testNode({
+        id,
+        type: 'manual-trigger',
+        config: { eventName: 'file.created', payload },
+    });
+const log = (id: string, message: string): PipelineNode =>
+    testNode({
+        id,
+        type: 'log',
+        config: { message },
+    });
+const edge = (id: string, source: string, target: string, sourcePort: string): PipelineEdge =>
+    testEdge({ id, source, target, sourcePort });
+const pipeline = (nodes: readonly unknown[], edges: readonly unknown[]): CompiledPipeline => ({
     id: 'test-pipeline',
     workflowId: TEST_WORKFLOW_ID,
     schemaVersion: 1,
-    nodes: [...nodes],
-    edges: [...edges],
+    nodes: nodes.map(testNode),
+    edges: edges.map(testEdge),
 });
 
 describe('dag-executor', () => {
@@ -695,16 +691,18 @@ describe('dag-executor', () => {
             key: string,
             valueTemplate: string,
             valueType?: 'string' | 'number' | 'boolean',
-        ): PipelineNode => ({
-            id,
-            type: 'state-set',
-            config: { key, valueTemplate, ...(valueType ? { valueType } : {}) },
-        });
-        const stateGet = (id: string, key: string, assignTo: string): PipelineNode => ({
-            id,
-            type: 'state-get',
-            config: { key, assignTo },
-        });
+        ): PipelineNode =>
+            testNode({
+                id,
+                type: 'state-set',
+                config: { key, valueTemplate, ...(valueType ? { valueType } : {}) },
+            });
+        const stateGet = (id: string, key: string, assignTo: string): PipelineNode =>
+            testNode({
+                id,
+                type: 'state-get',
+                config: { key, assignTo },
+            });
 
         it.each([
             { valueType: 'number' as const, template: '42', matchValue: '042', expected: 42 },
@@ -1067,17 +1065,19 @@ describe('dag-executor', () => {
             action: 'move' | 'copy' | 'rename',
             destination: string,
             onConflict: 'skip' | 'overwrite' | 'auto-rename' | 'error',
-        ): PipelineNode => ({
-            id,
-            type: 'file-manager',
-            config: { action, destination, onConflict },
-        });
+        ): PipelineNode =>
+            testNode({
+                id,
+                type: 'file-manager',
+                config: { action, destination, onConflict },
+            });
 
-        const triggerWithPayload = (payload: FileEventPayload, id = 'trigger'): PipelineNode => ({
-            id,
-            type: 'manual-trigger',
-            config: { eventName: 'file.created' as const, payload },
-        });
+        const triggerWithPayload = (payload: FileEventPayload, id = 'trigger'): PipelineNode =>
+            testNode({
+                id,
+                type: 'manual-trigger',
+                config: { eventName: 'file.created' as const, payload },
+            });
 
         it('moves a file through the DAG', async () => {
             const dir = tmpDir();

@@ -11,6 +11,7 @@ import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileGraph } from '../../renderer/workflow-builder/compile.js';
 import { createNodeCatalogFromManifests } from '../../renderer/workflow-builder/node-catalog.js';
+import { testEdge, testNode, testPipeline } from '../../test-support/pipeline-fixtures.js';
 import type { BusEvent } from '../events/event-bus.js';
 import { isTriggerHandler } from '../node-handlers/types.js';
 import type { FileEvent } from '../plugins/file-watcher-manager.js';
@@ -164,12 +165,12 @@ describe('createEngine', () => {
             const execute = (): Promise<unknown> =>
                 handler.value.execute(
                     {
-                        node: {
+                        node: testNode({
                             id: 'permission-contract',
                             type: 'file-manager',
                             pluginId,
                             config: { action: 'copy', destination: tempDir },
-                        },
+                        }),
                         ctx: {
                             event: 'file.created',
                             payload: { path: join(tempDir, 'source.txt') },
@@ -321,12 +322,12 @@ describe('createEngine', () => {
         await expect(
             loaded.handler.execute(
                 {
-                    node: {
+                    node: testNode({
                         id: 'shutdown-node',
                         type: loaded.descriptor.type,
                         pluginId: loaded.manifest.id,
                         config: {},
-                    },
+                    }),
                     ctx: { event: '', payload: {}, vars: {} },
                 },
                 {} as never,
@@ -423,10 +424,9 @@ describe('createEngine', () => {
 
         try {
             await engine.loadBuiltinPlugins();
-            const pipeline: CompiledPipeline = {
+            const pipeline: CompiledPipeline = testPipeline({
                 id: 'bundled-action',
-                workflowId: testWorkflowId('bundled-action'),
-                schemaVersion: 1,
+                workflowId: 'bundled-action',
                 nodes: [
                     {
                         id: 'trigger',
@@ -461,7 +461,7 @@ describe('createEngine', () => {
                         sourcePort: 'out',
                     },
                 ],
-            };
+            });
 
             const result = await engine.execute(pipeline);
 
@@ -506,16 +506,21 @@ describe('createEngine', () => {
             ...sampleManualTriggerToLog,
             nodes: [
                 ...sampleManualTriggerToLog.nodes,
-                {
+                testNode({
                     id: 'missing',
                     type: 'missing-node',
                     pluginId: 'com.example.missing',
                     config: {},
-                },
+                }),
             ],
             edges: [
                 ...sampleManualTriggerToLog.edges,
-                { id: 'log-missing', source: 'log', target: 'missing', sourcePort: 'out' },
+                testEdge({
+                    id: 'log-missing',
+                    source: 'log',
+                    target: 'missing',
+                    sourcePort: 'out',
+                }),
             ],
         };
 
@@ -546,21 +551,21 @@ describe('createEngine', () => {
             ...sampleManualTriggerToLog,
             nodes: [
                 ...sampleManualTriggerToLog.nodes,
-                {
+                testNode({
                     id: 'contractless',
                     type: 'contractless-node',
                     pluginId: 'com.example.contractless',
                     config: {},
-                },
+                }),
             ],
             edges: [
                 ...sampleManualTriggerToLog.edges,
-                {
+                testEdge({
                     id: 'log-contractless',
                     source: 'log',
                     target: 'contractless',
                     sourcePort: 'out',
-                },
+                }),
             ],
         };
 
@@ -589,12 +594,22 @@ describe('createEngine', () => {
             ...sampleManualTriggerToLog,
             nodes: [
                 trigger,
-                { id: 'log-a', type: 'log', config: { message: 'a' } },
-                { id: 'log-b', type: 'log', config: { message: 'b' } },
+                testNode({ id: 'log-a', type: 'log', config: { message: 'a' } }),
+                testNode({ id: 'log-b', type: 'log', config: { message: 'b' } }),
             ],
             edges: [
-                { id: 'trigger-a', source: trigger.id, target: 'log-a', sourcePort: 'out' },
-                { id: 'trigger-b', source: trigger.id, target: 'log-b', sourcePort: 'out' },
+                testEdge({
+                    id: 'trigger-a',
+                    source: trigger.id,
+                    target: 'log-a',
+                    sourcePort: 'out',
+                }),
+                testEdge({
+                    id: 'trigger-b',
+                    source: trigger.id,
+                    target: 'log-b',
+                    sourcePort: 'out',
+                }),
             ],
         };
 

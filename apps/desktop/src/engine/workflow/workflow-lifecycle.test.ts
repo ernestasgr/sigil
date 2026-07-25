@@ -10,6 +10,7 @@ import {
 import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { testNode } from '../../test-support/pipeline-fixtures.js';
 import { createEngine } from '../core/engine.js';
 import type { NodeRunResult, TriggerHandler } from '../node-handlers/types.js';
 import type { AtomicWriteFailure } from '../persistence/atomic-file.js';
@@ -26,12 +27,12 @@ function testPipeline(pipelineId: string, workflowId: string): CompiledPipeline 
         workflowId: testWorkflowId(workflowId),
         schemaVersion: 1,
         nodes: [
-            {
+            testNode({
                 id: 'trigger',
                 type: 'test-trigger',
                 pluginId: 'com.sigil.test-trigger',
                 config: {},
-            },
+            }),
         ],
         edges: [],
     };

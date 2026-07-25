@@ -529,6 +529,27 @@ describe('createWorkflowStateStore — listKeys / setKey / deleteKey', () => {
         database.close();
     });
 
+    it('listKeys preserves the primitive type of persisted values', () => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+
+        store.setKey(WF_A, 'count', 42);
+        store.setKey(WF_A, 'enabled', false);
+        store.setKey(WF_A, 'label', 'ready');
+
+        expect(store.listKeys(WF_A)).toHaveLength(3);
+        expect(store.listKeys(WF_A)).toEqual(
+            expect.arrayContaining([
+                { key: 'count', type: 'number', value: 42 },
+                { key: 'enabled', type: 'boolean', value: false },
+                { key: 'label', type: 'string', value: 'ready' },
+            ]),
+        );
+
+        store.dispose();
+        database.close();
+    });
+
     it('setKey overwrites an existing key', () => {
         const database = new Database(':memory:');
         const store = createStore(database);

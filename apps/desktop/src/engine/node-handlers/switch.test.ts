@@ -1,7 +1,7 @@
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { describe, expect, it, vi } from 'vitest';
-
+import { testNode } from '../../test-support/pipeline-fixtures.js';
 import { createEventBus } from '../events/event-bus.js';
 import type { NodeHandlerDeps } from './types.js';
 
@@ -17,7 +17,7 @@ const ctx: WorkflowContext = {
     vars: {},
 };
 
-const switchNode: PipelineNode = {
+const switchNode: PipelineNode = testNode({
     id: 'sw',
     type: 'switch',
     config: {
@@ -27,7 +27,7 @@ const switchNode: PipelineNode = {
             { id: 'case-deleted', value: 'file.deleted' },
         ],
     },
-};
+});
 
 function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
     return {

@@ -1,7 +1,7 @@
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { describe, expect, it, vi } from 'vitest';
-
+import { testNode } from '../../test-support/pipeline-fixtures.js';
 import { createEventBus } from '../events/event-bus.js';
 import type { NodeHandlerDeps } from './types.js';
 
@@ -17,11 +17,11 @@ const ctx: WorkflowContext = {
     vars: {},
 };
 
-const delayNode: PipelineNode = {
+const delayNode: PipelineNode = testNode({
     id: 'wait',
     type: 'delay',
     config: { ms: 50 },
-};
+});
 
 function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
     return {

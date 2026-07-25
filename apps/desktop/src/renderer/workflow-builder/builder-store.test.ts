@@ -1,8 +1,7 @@
 import type { CompiledPipeline } from '@sigil/schema';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-
+import { testNodeId, testPipeline } from '../../test-support/pipeline-fixtures.js';
 import { useBuilderStore } from './builder-store.js';
 import {
     BUILTIN_PLUGIN_NODE_CATALOG,
@@ -15,8 +14,6 @@ import type {
     WorkflowDraftSaveCommand,
     WorkflowDraftSaveResult,
 } from './workflow-draft.js';
-
-const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
 
 describe('useBuilderStore', () => {
     beforeEach(() => {
@@ -496,10 +493,9 @@ describe('useBuilderStore', () => {
             .onNodesChange([{ id, type: 'position', position: { x: 80, y: 40 }, dragging: true }]);
 
         useBuilderStore.getState().loadPipeline(
-            {
+            testPipeline({
                 id: 'pipeline-replaced',
-                workflowId: testWorkflowId('workflow-replaced'),
-                schemaVersion: 1,
+                workflowId: 'workflow-replaced',
                 nodes: [
                     {
                         id: 'trigger',
@@ -511,7 +507,7 @@ describe('useBuilderStore', () => {
                     },
                 ],
                 edges: [],
-            },
+            }),
             'Replaced Workflow',
         );
 
@@ -564,13 +560,12 @@ describe('useBuilderStore', () => {
     });
 
     it('loads a saved baseline including positions and tracks later node movement', () => {
-        const pipeline: CompiledPipeline = {
+        const pipeline: CompiledPipeline = testPipeline({
             id: 'pipeline-loaded',
-            workflowId: testWorkflowId('workflow-loaded'),
-            schemaVersion: 1,
+            workflowId: 'workflow-loaded',
             nodes: [{ id: 'log', type: 'log', config: { message: 'Loaded' } }],
             edges: [],
-        };
+        });
 
         useBuilderStore
             .getState()
@@ -591,10 +586,9 @@ describe('useBuilderStore', () => {
     });
 
     it('preserves a bundled Plugin Node through load, edit, compile, and save', async () => {
-        const pipeline: CompiledPipeline = {
+        const pipeline: CompiledPipeline = testPipeline({
             id: 'pipeline-plugin',
-            workflowId: testWorkflowId('workflow-plugin'),
-            schemaVersion: 1,
+            workflowId: 'workflow-plugin',
             nodes: [
                 {
                     id: 'file-trigger',
@@ -609,7 +603,7 @@ describe('useBuilderStore', () => {
                 { id: 'log', type: 'log', config: { message: 'Loaded' } },
             ],
             edges: [{ id: 'edge-1', source: 'file-trigger', target: 'log', sourcePort: 'out' }],
-        };
+        });
 
         useBuilderStore.getState().setNodeCatalog(
             createNodeCatalogFromManifests([
@@ -696,10 +690,9 @@ describe('useBuilderStore', () => {
     });
 
     it('fills missing loaded positions with a deterministic topology layout', () => {
-        const pipeline: CompiledPipeline = {
+        const pipeline: CompiledPipeline = testPipeline({
             id: 'pipeline-layout',
-            workflowId: testWorkflowId('workflow-layout'),
-            schemaVersion: 1,
+            workflowId: 'workflow-layout',
             nodes: [
                 {
                     id: 'trigger',
@@ -712,7 +705,7 @@ describe('useBuilderStore', () => {
                 { id: 'log', type: 'log', config: { message: 'Loaded' } },
             ],
             edges: [{ id: 'edge-1', source: 'trigger', target: 'log', sourcePort: 'out' }],
-        };
+        });
 
         useBuilderStore.getState().loadPipeline(pipeline, 'Layout Workflow');
 
@@ -812,10 +805,9 @@ describe('useBuilderStore', () => {
             vi.fn(async () => pendingResult),
         );
 
-        const loadedPipeline: CompiledPipeline = {
+        const loadedPipeline: CompiledPipeline = testPipeline({
             id: 'pipeline-new',
-            workflowId: testWorkflowId('workflow-new'),
-            schemaVersion: 1,
+            workflowId: 'workflow-new',
             nodes: [
                 {
                     id: 'loaded-trigger',
@@ -827,7 +819,7 @@ describe('useBuilderStore', () => {
                 },
             ],
             edges: [],
-        };
+        });
         useBuilderStore.getState().loadPipeline(loadedPipeline, 'Loaded Workflow');
 
         resolvePending?.({ ok: false, error: 'Stale save', diagnostics: [] });
@@ -898,8 +890,8 @@ describe('useBuilderStore', () => {
         const diagnostic: WorkflowDraftDiagnostic = {
             severity: 'error',
             code: 'invalid_pipeline',
-            target: { kind: 'node', nodeId: 'trigger' },
-            nodeId: 'trigger',
+            target: { kind: 'node', nodeId: testNodeId('trigger') },
+            nodeId: testNodeId('trigger'),
             fieldPath: 'config.eventName',
             message: 'The Trigger event is invalid.',
             repairHint: 'Choose a supported event name.',

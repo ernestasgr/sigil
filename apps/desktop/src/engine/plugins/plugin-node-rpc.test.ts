@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Option } from 'effect';
 import { describe, expect, it } from 'vitest';
+import { testNodeId } from '../../test-support/pipeline-fixtures.js';
 import { createNodeHandlerRegistry } from '../execution/node-registry.js';
 import { createBuiltinHandlers } from '../node-handlers/registry.js';
 import { createManifestRegistry } from './manifest-registry.js';
@@ -389,7 +390,7 @@ describe('NodePluginDepsRpcSchema', () => {
             const output = await handler.execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'rpc-execution',
                         pluginId: 'com.sigil.rpc-execution',
                         config: {},

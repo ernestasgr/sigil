@@ -15,7 +15,7 @@ import { isPluginNode } from '@sigil/schema/nodes';
 import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
+import { testEdge, testNode, testPipeline } from '../../test-support/pipeline-fixtures.js';
 import type { AtomicFileWriter, AtomicWriteFailure } from '../persistence/atomic-file.js';
 import {
     createWorkflowStore,
@@ -31,10 +31,9 @@ function randomDir(): string {
     return join(tmpdir(), `sigil-test-workflow-store-${crypto.randomUUID()}`);
 }
 
-const samplePipeline: CompiledPipeline = {
+const samplePipeline: CompiledPipeline = testPipeline({
     id: 'pipeline-1',
-    workflowId: testWorkflowId('wf-1'),
-    schemaVersion: 1,
+    workflowId: 'wf-1',
     nodes: [
         {
             id: 'node-1',
@@ -50,18 +49,17 @@ const samplePipeline: CompiledPipeline = {
             config: { message: 'hello' },
         },
     ],
-    edges: [{ id: 'edge-1', source: 'node-1', target: 'node-2', sourcePort: 'out' }],
-};
+    edges: [testEdge({ id: 'edge-1', source: 'node-1', target: 'node-2', sourcePort: 'out' })],
+});
 
 const samplePositions: Record<string, { x: number; y: number }> = {
     'node-1': { x: 100, y: 200 },
     'node-2': { x: 400, y: 200 },
 };
 
-const samplePipeline2: CompiledPipeline = {
+const samplePipeline2: CompiledPipeline = testPipeline({
     id: 'pipeline-2',
-    workflowId: testWorkflowId('wf-2'),
-    schemaVersion: 1,
+    workflowId: 'wf-2',
     nodes: [
         {
             id: 'node-1',
@@ -73,7 +71,7 @@ const samplePipeline2: CompiledPipeline = {
         },
     ],
     edges: [],
-};
+});
 
 describe('WorkflowStore', () => {
     let dir: string;
@@ -130,16 +128,21 @@ describe('WorkflowStore', () => {
             ...samplePipeline,
             nodes: [
                 ...samplePipeline.nodes,
-                {
+                testNode({
                     id: 'missing',
                     type: 'missing-node',
                     pluginId: 'com.example.missing',
                     config: {},
-                },
+                }),
             ],
             edges: [
                 ...samplePipeline.edges,
-                { id: 'log-missing', source: 'node-2', target: 'missing', sourcePort: 'out' },
+                testEdge({
+                    id: 'log-missing',
+                    source: 'node-2',
+                    target: 'missing',
+                    sourcePort: 'out',
+                }),
             ],
         };
         const handlerAwareStore = createWorkflowStore(dir, {
@@ -303,10 +306,9 @@ describe('WorkflowStore', () => {
     });
 
     it('preserves Switch case identities when a persisted match value is edited and saved', () => {
-        const switchPipeline: CompiledPipeline = {
+        const switchPipeline: CompiledPipeline = testPipeline({
             id: 'pipeline-switch',
-            workflowId: testWorkflowId('wf-switch'),
-            schemaVersion: 1,
+            workflowId: 'wf-switch',
             nodes: [
                 {
                     id: 'trigger',
@@ -336,7 +338,7 @@ describe('WorkflowStore', () => {
                     sourcePort: 'case-pdf',
                 },
             ],
-        };
+        });
 
         store.create('Switch Workflow', switchPipeline, {});
         const editedPipeline: CompiledPipeline = {
@@ -520,20 +522,22 @@ describe('WorkflowStore', () => {
     it('saves an updated pipeline via save()', () => {
         const summary = store.create('Original', samplePipeline, samplePositions);
 
-        const updatedPipeline: CompiledPipeline = {
-            ...samplePipeline,
+        const updatedPipeline: CompiledPipeline = testPipeline({
+            id: samplePipeline.id,
+            workflowId: 'wf-1',
+            edges: samplePipeline.edges,
             nodes: [
-                {
+                testNode({
                     id: 'node-1',
                     type: 'manual-trigger',
                     config: {
                         eventName: 'file.created',
                         payload: { path: '/x', name: 'x', ext: 'x', size: 1, dir: '/x' },
                     },
-                },
-                { id: 'node-2', type: 'delay', config: { ms: 5000 } },
+                }),
+                testNode({ id: 'node-2', type: 'delay', config: { ms: 5000 } }),
             ],
-        };
+        });
         const updatedPositions: Record<string, { x: number; y: number }> = {
             'node-1': { x: 50, y: 100 },
             'node-2': { x: 300, y: 100 },

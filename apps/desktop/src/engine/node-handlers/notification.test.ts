@@ -1,7 +1,7 @@
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { describe, expect, it, vi } from 'vitest';
-
+import { testNode } from '../../test-support/pipeline-fixtures.js';
 import { createEventBus } from '../events/event-bus.js';
 import type { NodeHandlerDeps } from './types.js';
 
@@ -17,11 +17,11 @@ const ctx: WorkflowContext = {
     vars: {},
 };
 
-const notificationNode: PipelineNode = {
+const notificationNode: PipelineNode = testNode({
     id: 'notify',
     type: 'notification',
     config: { title: 'Sorted {{payload.name}}', body: 'Moved {{payload.size}} bytes' },
-};
+});
 
 function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
     return {

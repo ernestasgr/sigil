@@ -9,7 +9,7 @@ import { createTelemetryIndex } from '../../src/renderer/store/telemetry-index.j
 import { useBuilderStore } from '../../src/renderer/workflow-builder/builder-store.js';
 import { DEFAULT_NODE_CATALOG } from '../../src/renderer/workflow-builder/node-catalog.js';
 import type { GetWorkflowOutput } from '../../src/shared/trpc-contracts.js';
-
+import { testNodeId } from '../../src/test-support/pipeline-fixtures.js';
 import { createMockSigil, withSigil } from './test-support.js';
 
 const WORKFLOW_ID = WorkflowIdSchema.parse('workflow-fixture');
@@ -39,7 +39,7 @@ function createPipeline(): CompiledPipeline {
         schemaVersion: 1,
         nodes: [
             {
-                id: 'trigger',
+                id: testNodeId('trigger'),
                 type: 'manual-trigger',
                 config: {
                     eventName: 'file.created',

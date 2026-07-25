@@ -6,6 +6,7 @@ import type { CompiledPipeline } from '@sigil/schema';
 import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Effect, Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { testPipeline } from '../../test-support/pipeline-fixtures.js';
 import { readPropertiesFile, writePropertiesFile } from '../core/properties-loader.js';
 import {
     createInMemoryWorkflowStateStore,
@@ -20,10 +21,9 @@ const CONTRACT_WORKFLOW_ID = WorkflowIdSchema.parse('wf-contract');
 const CONTRACT_WORKFLOW_A_ID = WorkflowIdSchema.parse('wf-contract-a');
 const CONTRACT_WORKFLOW_B_ID = WorkflowIdSchema.parse('wf-contract-b');
 
-const contractPipeline: CompiledPipeline = {
+const contractPipeline: CompiledPipeline = testPipeline({
     id: 'pipeline-contract',
-    workflowId: CONTRACT_WORKFLOW_ID,
-    schemaVersion: 1,
+    workflowId: 'wf-contract',
     nodes: [
         {
             id: 'trigger',
@@ -35,7 +35,7 @@ const contractPipeline: CompiledPipeline = {
         },
     ],
     edges: [],
-};
+});
 
 let tempDir: string;
 

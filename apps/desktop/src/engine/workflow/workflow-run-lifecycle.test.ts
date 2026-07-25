@@ -13,6 +13,7 @@ import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 
 import { EngineChannel } from '../../shared/ipc-channels.js';
+import { testNode } from '../../test-support/pipeline-fixtures.js';
 import { type DispatchSubsystems, dispatch } from '../core/dispatch.js';
 import { createEngine } from '../core/engine.js';
 import type { NodeRunResult, TriggerHandler } from '../node-handlers/types.js';
@@ -35,12 +36,12 @@ function testPipeline(): CompiledPipeline {
         workflowId: testWorkflowId('workflow-run-lifecycle'),
         schemaVersion: 1,
         nodes: [
-            {
+            testNode({
                 id: 'trigger',
                 type: 'test-trigger',
                 pluginId: 'com.sigil.test-trigger',
                 config: {},
-            },
+            }),
         ],
         edges: [],
     };

@@ -1,4 +1,5 @@
 import { type CompiledPipeline, parsePipeline } from '@sigil/schema';
+import { PipelineEdgeIdSchema } from '@sigil/schema/ids';
 import { isPluginNode, type PipelineNode } from '@sigil/schema/nodes';
 import {
     type ExecutableWorkflow,
@@ -64,11 +65,12 @@ function structuralDiagnostic(error: string): TopologyDiagnostic {
 }
 
 function droppedEdgeDiagnostic(edge: VisualEdge): TopologyDiagnostic {
+    const edgeId = PipelineEdgeIdSchema.parse(edge.id);
     return {
         severity: 'warning',
         code: 'invalid_edge',
-        target: { kind: 'edge', edgeId: edge.id },
-        edgeId: edge.id,
+        target: { kind: 'edge', edgeId },
+        edgeId,
         message: `Edge "${edge.id}" has no source port and was omitted from the compiled Workflow; reconnect it to a declared output port.`,
     };
 }

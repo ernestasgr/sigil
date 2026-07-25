@@ -14,6 +14,7 @@ import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
+import { testNodeId } from '../../test-support/pipeline-fixtures.js';
 import { createBridge } from '../events/bridge.js';
 import { type BusEvent, createEventBus } from '../events/event-bus.js';
 import { createNodeHandlerRegistry } from '../execution/node-registry.js';
@@ -793,7 +794,7 @@ describe('loadNodePlugin', () => {
         const execution = handler.execute(
             {
                 node: {
-                    id: 'n1',
+                    id: testNodeId('n1'),
                     type: 'crashing-node',
                     pluginId: 'com.sigil.crashing',
                     config: {},
@@ -847,7 +848,7 @@ describe('loadNodePlugin', () => {
             const timedOut = handler.execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'cooperative-timeout-node',
                         pluginId: 'com.sigil.cooperative-timeout',
                         config: { block: true },
@@ -866,7 +867,7 @@ describe('loadNodePlugin', () => {
             const next = await handler.execute(
                 {
                     node: {
-                        id: 'n2',
+                        id: testNodeId('n2'),
                         type: 'cooperative-timeout-node',
                         pluginId: 'com.sigil.cooperative-timeout',
                         config: { block: false },
@@ -905,7 +906,7 @@ describe('loadNodePlugin', () => {
         const handler = Option.getOrThrow(handlerRegistry.get('greet'));
         const input = {
             node: {
-                id: 'n1',
+                id: testNodeId('n1'),
                 type: 'greet',
                 pluginId: 'com.sigil.already-cancelled',
                 config: { name: 'world' },
@@ -983,7 +984,7 @@ describe('loadNodePlugin', () => {
         const execution = handler.execute(
             {
                 node: {
-                    id: 'n1',
+                    id: testNodeId('n1'),
                     type: 'cooperative-timeout-node',
                     pluginId: 'com.sigil.signal-cancellation',
                     config: { block: true },
@@ -1000,7 +1001,7 @@ describe('loadNodePlugin', () => {
         const next = await handler.execute(
             {
                 node: {
-                    id: 'n2',
+                    id: testNodeId('n2'),
                     type: 'cooperative-timeout-node',
                     pluginId: 'com.sigil.signal-cancellation',
                     config: { block: false },
@@ -1038,7 +1039,7 @@ describe('loadNodePlugin', () => {
             handler.execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'cooperative-timeout-node',
                         pluginId: 'com.sigil.string-dependency-error',
                         config: { block: true },
@@ -1074,7 +1075,7 @@ describe('loadNodePlugin', () => {
         const output = await handler.execute(
             {
                 node: {
-                    id: 'n1',
+                    id: testNodeId('n1'),
                     type: 'resolve-template-node',
                     pluginId: 'com.sigil.resolve-template',
                     config: {},
@@ -1122,7 +1123,7 @@ describe('loadNodePlugin', () => {
             const handler = Option.getOrThrow(handlerRegistry.get('non-cooperative-timeout-node'));
             const input = {
                 node: {
-                    id: 'n1',
+                    id: testNodeId('n1'),
                     type: 'non-cooperative-timeout-node',
                     pluginId: 'com.sigil.non-cooperative-timeout',
                     config: {},
@@ -1193,7 +1194,7 @@ describe('loadNodePlugin', () => {
         const execution = handler.execute(
             {
                 node: {
-                    id: 'n1',
+                    id: testNodeId('n1'),
                     type: 'event-then-block-node',
                     pluginId: 'com.sigil.event-then-block',
                     config: {},
@@ -1235,7 +1236,7 @@ describe('loadNodePlugin', () => {
             handler.execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'event-then-block-node',
                         pluginId: 'com.sigil.event-without-bridge',
                         config: {},
@@ -1280,7 +1281,7 @@ describe('loadNodePlugin', () => {
             handler.execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'event-then-block-node',
                         pluginId: 'com.sigil.string-bridge-error',
                         config: {},
@@ -1798,7 +1799,7 @@ describe('capabilityBroker sandbox sync', () => {
             const output = await Option.getOrThrow(handler).execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'perm-checker',
                         pluginId: 'com.sigil.perm-checker',
                         config: { check: 'filesystem.read' },
@@ -1835,7 +1836,7 @@ describe('capabilityBroker sandbox sync', () => {
                 Option.getOrThrow(handler).execute(
                     {
                         node: {
-                            id: 'n1',
+                            id: testNodeId('n1'),
                             type: 'perm-checker',
                             pluginId: 'com.sigil.perm-checker',
                             config: { check: 'filesystem.read' },
@@ -1924,7 +1925,7 @@ describe('Workflow State authorization for Node Plugins', () => {
         const output = await handler.execute(
             {
                 node: {
-                    id: 'n1',
+                    id: testNodeId('n1'),
                     type: 'state-access',
                     pluginId,
                     config: { operation: 'get' },
@@ -1986,7 +1987,7 @@ describe('Workflow State authorization for Node Plugins', () => {
         };
         const input = {
             node: {
-                id: 'n1',
+                id: testNodeId('n1'),
                 type: 'state-access',
                 pluginId,
                 config: { operation: 'get' },
@@ -2038,7 +2039,7 @@ describe('Workflow State authorization for Node Plugins', () => {
             handler.execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'state-access',
                         pluginId,
                         config: { operation: 'set' },
@@ -2092,7 +2093,7 @@ describe('Workflow State authorization for Node Plugins', () => {
             const output = await handler.execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'typed-state-round-trip',
                         pluginId,
                         config: {},
@@ -2158,7 +2159,7 @@ describe('Workflow State authorization for Node Plugins', () => {
             handler.execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'state-access',
                         pluginId,
                         config: { operation: 'get' },
@@ -2219,7 +2220,7 @@ describe('Workflow State authorization for Node Plugins', () => {
             handler.execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'state-access',
                         pluginId,
                         config: { operation: 'set' },
@@ -2274,7 +2275,7 @@ describe('Workflow State authorization for Node Plugins', () => {
         const handler = Option.getOrThrow(handlerRegistry.get('state-access'));
         const input = {
             node: {
-                id: 'n1',
+                id: testNodeId('n1'),
                 type: 'state-access' as const,
                 pluginId,
                 config: { operation: 'set' as const },
@@ -2284,7 +2285,10 @@ describe('Workflow State authorization for Node Plugins', () => {
 
         await handler.execute(input, { state } as never);
         await handler.execute(
-            { ...input, node: { ...input.node, id: 'n2', config: { operation: 'flush' } } },
+            {
+                ...input,
+                node: { ...input.node, id: testNodeId('n2'), config: { operation: 'flush' } },
+            },
             { state } as never,
         );
 
@@ -2339,7 +2343,7 @@ describe('Workflow State authorization for Node Plugins', () => {
             handler.execute(
                 {
                     node: {
-                        id,
+                        id: testNodeId(id),
                         type: 'state-access',
                         pluginId,
                         config: { operation: 'get' },
@@ -2483,7 +2487,7 @@ describe('unbypassable enforcement', () => {
             Option.getOrThrow(handler).execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'evil-exec',
                         pluginId: 'com.sigil.evil-exec',
                         config: {},
@@ -2581,7 +2585,7 @@ describe('unbypassable enforcement', () => {
         await handler.execute(
             {
                 node: {
-                    id: 'n1',
+                    id: testNodeId('n1'),
                     type: 'evil-kernel-adapter',
                     pluginId: 'com.sigil.authorized',
                     config: {},
@@ -2658,7 +2662,7 @@ describe('unbypassable enforcement', () => {
         await handler.execute(
             {
                 node: {
-                    id: 'n1',
+                    id: testNodeId('n1'),
                     type: 'evil-kernel-adapter',
                     pluginId,
                     config: {},
@@ -3008,7 +3012,7 @@ describe('Plugin Sandbox Surface', () => {
         const output = await handler.execute(
             {
                 node: {
-                    id: 'n1',
+                    id: testNodeId('n1'),
                     type: 'sandbox-surface-plugin',
                     pluginId: 'com.sigil.sandbox-surface',
                     config: {},
@@ -3076,7 +3080,7 @@ describe('Plugin Sandbox Surface', () => {
         const output = await handler.execute(
             {
                 node: {
-                    id: 'n1',
+                    id: testNodeId('n1'),
                     type: 'code-generation-wasm-plugin',
                     pluginId: 'com.sigil.code-generation-wasm',
                     config: {},
@@ -3112,7 +3116,7 @@ describe('Plugin Sandbox Surface', () => {
         const output = await handler.execute(
             {
                 node: {
-                    id: 'n1',
+                    id: testNodeId('n1'),
                     type: 'code-generation-contract-plugin',
                     pluginId: 'com.sigil.code-generation-contract',
                     config: {},
@@ -3159,7 +3163,7 @@ describe('Plugin Sandbox Surface', () => {
         const output = await handler.execute(
             {
                 node: {
-                    id: 'n1',
+                    id: testNodeId('n1'),
                     type: 'sandbox-boundary-plugin',
                     pluginId: 'com.sigil.sandbox-boundary',
                     config: {},
@@ -3263,7 +3267,7 @@ describe('updatePluginPermissions', () => {
         const output = await Option.getOrThrow(handler).execute(
             {
                 node: {
-                    id: 'n1',
+                    id: testNodeId('n1'),
                     type: 'perm-checker',
                     pluginId: 'com.sigil.perm-checker',
                     config: { check: 'filesystem.read' },
@@ -3283,7 +3287,7 @@ describe('updatePluginPermissions', () => {
             Option.getOrThrow(handler).execute(
                 {
                     node: {
-                        id: 'n2',
+                        id: testNodeId('n2'),
                         type: 'perm-checker',
                         pluginId: 'com.sigil.perm-checker',
                         config: { check: 'filesystem.read' },
@@ -3324,7 +3328,7 @@ describe('updatePluginPermissions', () => {
             .execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'fs-plugin',
                         pluginId: 'com.sigil.fs-plugin',
                         config: {},
@@ -3347,7 +3351,7 @@ describe('updatePluginPermissions', () => {
             .execute(
                 {
                     node: {
-                        id: 'n2',
+                        id: testNodeId('n2'),
                         type: 'fs-plugin',
                         pluginId: 'com.sigil.fs-plugin',
                         config: {},
@@ -3391,7 +3395,7 @@ describe('updatePluginPermissions', () => {
             .execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'fs-plugin',
                         pluginId: 'com.sigil.fs-plugin',
                         config: {},
@@ -3413,7 +3417,7 @@ describe('updatePluginPermissions', () => {
             .execute(
                 {
                     node: {
-                        id: 'n2',
+                        id: testNodeId('n2'),
                         type: 'fs-plugin',
                         pluginId: 'com.sigil.fs-plugin',
                         config: {},
@@ -3456,7 +3460,7 @@ describe('updatePluginPermissions', () => {
             result.handler.execute(
                 {
                     node: {
-                        id: 'n1',
+                        id: testNodeId('n1'),
                         type: 'perm-checker',
                         pluginId,
                         config: { check: 'filesystem.read' },

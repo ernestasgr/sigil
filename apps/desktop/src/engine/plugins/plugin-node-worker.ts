@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import vm from 'node:vm';
 import { parentPort, workerData } from 'node:worker_threads';
+import { PipelineNodeIdSchema } from '@sigil/schema/ids';
 import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
 import {
     NodeContractSnapshotSchema,
@@ -1306,7 +1307,7 @@ async function handleExecute(
         }
 
         const node: PluginPipelineNode = {
-            id: '',
+            id: PipelineNodeIdSchema.parse(msg.requestId),
             type: msg.nodeType,
             pluginId: data.pluginId,
             config: msg.nodeConfig,

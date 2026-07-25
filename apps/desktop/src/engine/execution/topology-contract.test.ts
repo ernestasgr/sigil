@@ -7,6 +7,7 @@ import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 
 import { compileGraph } from '../../renderer/workflow-builder/compile.js';
+import { testPipeline } from '../../test-support/pipeline-fixtures.js';
 import { createEngine } from '../core/engine.js';
 import { workflowTopologyOptions } from '../workflow/workflow-acceptance.js';
 import { createWorkflowActivator, type WorkflowActivator } from '../workflow/workflow-activator.js';
@@ -119,24 +120,24 @@ describe('Workflow topology contract', () => {
             const createFileWatcherPipeline = (
                 pipelineId: string,
                 workflowId: string,
-            ): CompiledPipeline => ({
-                id: pipelineId,
-                workflowId: testWorkflowId(workflowId),
-                schemaVersion: 1,
-                nodes: [
-                    {
-                        id: 'trigger',
-                        type: 'file-watcher',
-                        config: {
-                            path: storageDir,
-                            recursive: false,
-                            events: ['file.created'],
-                            ignorePatterns: [],
+            ): CompiledPipeline =>
+                testPipeline({
+                    id: pipelineId,
+                    workflowId: workflowId,
+                    nodes: [
+                        {
+                            id: 'trigger',
+                            type: 'file-watcher',
+                            config: {
+                                path: storageDir,
+                                recursive: false,
+                                events: ['file.created'],
+                                ignorePatterns: [],
+                            },
                         },
-                    },
-                ],
-                edges: [],
-            });
+                    ],
+                    edges: [],
+                });
 
             const first = store.create(
                 'First File Watcher Workflow',

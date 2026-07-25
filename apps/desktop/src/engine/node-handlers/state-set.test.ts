@@ -1,7 +1,7 @@
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { describe, expect, it, vi } from 'vitest';
-
+import { testNode } from '../../test-support/pipeline-fixtures.js';
 import { createEventBus } from '../events/event-bus.js';
 import type { NodeHandlerDeps } from './types.js';
 
@@ -17,23 +17,23 @@ const ctx: WorkflowContext = {
     vars: { counter: '41' },
 };
 
-const stateSetNode: PipelineNode = {
+const stateSetNode: PipelineNode = testNode({
     id: 'set-counter',
     type: 'state-set',
     config: { key: 'counter', valueTemplate: '{{event}}:{{payload.name}}' },
-};
+});
 
-const typedStateSetNode: PipelineNode = {
+const typedStateSetNode: PipelineNode = testNode({
     id: 'set-typed-counter',
     type: 'state-set',
     config: { key: 'counter', valueTemplate: '{{payload.size}}', valueType: 'number' },
-};
+});
 
-const booleanStateSetNode: PipelineNode = {
+const booleanStateSetNode: PipelineNode = testNode({
     id: 'set-enabled',
     type: 'state-set',
     config: { key: 'enabled', valueTemplate: 'false', valueType: 'boolean' },
-};
+});
 
 function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
     return {

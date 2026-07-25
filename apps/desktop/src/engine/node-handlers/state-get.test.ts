@@ -2,7 +2,7 @@ import type { PipelineNode } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
-
+import { testNode } from '../../test-support/pipeline-fixtures.js';
 import { createEventBus } from '../events/event-bus.js';
 import type { NodeHandlerDeps } from './types.js';
 
@@ -18,11 +18,11 @@ const ctx: WorkflowContext = {
     vars: { existing: 'keep-me' },
 };
 
-const stateGetNode: PipelineNode = {
+const stateGetNode: PipelineNode = testNode({
     id: 'get-counter',
     type: 'state-get',
     config: { key: 'counter', assignTo: 'counter' },
-};
+});
 
 function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
     return {

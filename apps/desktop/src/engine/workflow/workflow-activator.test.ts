@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
 import type { Manifest } from '@sigil/schema/manifest';
 import {
+    fixedOutputPortSpec,
     pluginNodeIdentity,
     registerSerializableNodeContract,
     type SerializableNodeContractInput,
@@ -12,7 +13,7 @@ import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
-
+import { testPipeline } from '../../test-support/pipeline-fixtures.js';
 import { createEngine } from '../core/engine.js';
 import type { NodeHandler, NodeRunResult, TriggerHandler } from '../node-handlers/types.js';
 import { workflowTopologyOptions } from './workflow-acceptance.js';
@@ -63,20 +64,20 @@ describe('WorkflowActivator lifecycle', () => {
                 storageDir,
                 workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
             );
-            const createPipeline = (pipelineId: string, workflowId: string): CompiledPipeline => ({
-                id: pipelineId,
-                workflowId: testWorkflowId(workflowId),
-                schemaVersion: 1,
-                nodes: [
-                    {
-                        id: 'trigger',
-                        type: 'test-trigger',
-                        pluginId: 'com.sigil.test-trigger',
-                        config: {},
-                    },
-                ],
-                edges: [],
-            });
+            const createPipeline = (pipelineId: string, workflowId: string): CompiledPipeline =>
+                testPipeline({
+                    id: pipelineId,
+                    workflowId,
+                    nodes: [
+                        {
+                            id: 'trigger',
+                            type: 'test-trigger',
+                            pluginId: 'com.sigil.test-trigger',
+                            config: {},
+                        },
+                    ],
+                    edges: [],
+                });
             const firstSummary = store.create(
                 'First Workflow',
                 createPipeline('pipeline-first', 'workflow-first'),
@@ -136,10 +137,7 @@ describe('WorkflowActivator lifecycle', () => {
                 compatibility: { minimumReaderVersion: 1, maximumReaderVersion: 1 },
                 role: 'action',
                 defaultConfig: {},
-                outputPorts: {
-                    kind: 'fixed',
-                    ports: [{ id: 'out', label: 'Output' }],
-                },
+                outputPorts: fixedOutputPortSpec(['out']),
                 display: {
                     label: 'Permission Action',
                     description: 'Action used for permission revocation coverage.',
@@ -207,10 +205,9 @@ describe('WorkflowActivator lifecycle', () => {
                 storageDir,
                 workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
             );
-            const pipeline: CompiledPipeline = {
+            const pipeline: CompiledPipeline = testPipeline({
                 id: pipelineId,
                 workflowId,
-                schemaVersion: 1,
                 nodes: [
                     {
                         id: 'trigger',
@@ -233,14 +230,13 @@ describe('WorkflowActivator lifecycle', () => {
                         sourcePort: 'out',
                     },
                 ],
-            };
+            });
             store.create('Permission Dependent Workflow', pipeline, {});
             store.create(
                 'Permission Independent Workflow',
-                {
+                testPipeline({
                     id: 'pipeline-permission-independent',
                     workflowId: unaffectedWorkflowId,
-                    schemaVersion: 1,
                     nodes: [
                         {
                             id: 'trigger',
@@ -250,7 +246,7 @@ describe('WorkflowActivator lifecycle', () => {
                         },
                     ],
                     edges: [],
-                },
+                }),
                 {},
             );
             activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
