@@ -9,7 +9,7 @@ export type StateSetValueType = z.infer<typeof StateSetValueTypeSchema>;
 export const StateSetConfigSchema = z.object({
     key: z.string().min(1),
     valueTemplate: z.string(),
-    valueType: StateSetValueTypeSchema.optional(),
+    valueType: StateSetValueTypeSchema,
 });
 
 export type StateSetConfig = z.infer<typeof StateSetConfigSchema>;

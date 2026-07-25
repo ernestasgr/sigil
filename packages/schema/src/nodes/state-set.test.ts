@@ -1,20 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { StateSetConfigSchema, StateSetDescriptor } from './state-set.js';
+import { StateSetConfigSchema } from './state-set.js';
 
 describe('StateSetConfigSchema', () => {
-    it('keeps legacy configurations valid and gives new nodes a Text default', () => {
-        const result = StateSetConfigSchema.safeParse({
-            key: 'last-file',
-            valueTemplate: '{{payload.name}}',
-        });
-
-        expect(result.success).toBe(true);
-        expect(result.success && result.data.valueType).toBeUndefined();
-        expect(StateSetDescriptor.defaultConfig.valueType).toBe('string');
-    });
-
-    it('accepts an optional value type for typed state values', () => {
+    it('accepts a value type for typed state values', () => {
         const result = StateSetConfigSchema.safeParse({
             key: 'retry-count',
             valueTemplate: '3',
