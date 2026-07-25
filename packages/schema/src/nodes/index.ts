@@ -121,8 +121,6 @@ type NodeConfigMap = {
     [K in NodeType]: z.infer<(typeof NODE_DESCRIPTORS)[K]['configSchema']>;
 };
 
-export { getNodeDescriptor } from '../node-contract.js';
-
 // ─── NodeTypeSchema ─────────────────────────────────────────────
 
 export const NodeTypeSchema = z.enum(NODE_TYPE_VALUES);
