@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +11,8 @@ import { createEngine } from '../core/engine.js';
 import { workflowTopologyOptions } from '../workflow/workflow-acceptance.js';
 import { createWorkflowActivator, type WorkflowActivator } from '../workflow/workflow-activator.js';
 import { createWorkflowStore } from '../workflow/workflow-store.js';
+
+const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
 
 describe('Workflow topology contract', () => {
     it('reports the same empty-Pipeline rule from renderer compilation and Engine acceptance', async () => {
@@ -25,7 +28,7 @@ describe('Workflow topology contract', () => {
         const engine = createEngine();
         const emptyPipeline: CompiledPipeline = {
             id: 'pipeline-1',
-            workflowId: 'workflow-1',
+            workflowId: testWorkflowId('workflow-1'),
             schemaVersion: 1,
             nodes: [],
             edges: [],
@@ -82,8 +85,9 @@ describe('Workflow topology contract', () => {
             expect(loaded.value.executable.triggerId).toBe('trigger');
 
             const activator = createWorkflowActivator(engine, loadedStore, engine.handlerRegistry);
-            expect(activator.activate(summary.id)).toBe(true);
-            expect(activator.activeWorkflowIds()).toEqual([summary.id]);
+            const workflowId = testWorkflowId(summary.id);
+            expect(activator.activate(workflowId)).toBe(true);
+            expect(activator.activeWorkflowIds()).toEqual([workflowId]);
             expect(loaded.value.executable.executionOrder).toEqual(['trigger', 'log']);
 
             const messages: string[] = [];
@@ -93,7 +97,7 @@ describe('Workflow topology contract', () => {
             await engine.execute(loaded.value.executable);
 
             expect(messages).toEqual(['from contract']);
-            expect(activator.deactivate(summary.id)).toBe(true);
+            expect(activator.deactivate(workflowId)).toBe(true);
         } finally {
             engine.dispose();
             rmSync(storageDir, { recursive: true, force: true });
@@ -117,7 +121,7 @@ describe('Workflow topology contract', () => {
                 workflowId: string,
             ): CompiledPipeline => ({
                 id: pipelineId,
-                workflowId,
+                workflowId: testWorkflowId(workflowId),
                 schemaVersion: 1,
                 nodes: [
                     {
@@ -146,18 +150,20 @@ describe('Workflow topology contract', () => {
             );
 
             activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
-            expect(activator.activate(first.id)).toBe(true);
-            expect(activator.activate(second.id)).toBe(true);
+            const firstWorkflowId = testWorkflowId(first.id);
+            const secondWorkflowId = testWorkflowId(second.id);
+            expect(activator.activate(firstWorkflowId)).toBe(true);
+            expect(activator.activate(secondWorkflowId)).toBe(true);
 
             await vi.waitFor(() => {
                 expect(engine.fileWatcherManager.getSubscriberCount()).toBe(2);
             });
 
-            expect(activator.deactivate(first.id)).toBe(true);
+            expect(activator.deactivate(firstWorkflowId)).toBe(true);
             await vi.waitFor(() => {
                 expect(engine.fileWatcherManager.getSubscriberCount()).toBe(1);
             });
-            expect(activator.isActive(second.id)).toBe(true);
+            expect(activator.isActive(secondWorkflowId)).toBe(true);
 
             const startedPipelineIds: string[] = [];
             engine.bus.subscribe((event) => {
@@ -172,7 +178,7 @@ describe('Workflow topology contract', () => {
             });
             expect(startedPipelineIds).not.toContain('pipeline-first');
 
-            expect(activator.deactivate(second.id)).toBe(true);
+            expect(activator.deactivate(secondWorkflowId)).toBe(true);
             await vi.waitFor(() => {
                 expect(engine.fileWatcherManager.getSubscriberCount()).toBe(0);
             });

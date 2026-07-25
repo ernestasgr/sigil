@@ -1,4 +1,5 @@
 import type { Manifest } from '@sigil/schema/manifest';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { createManifestRegistry } from '../plugins/manifest-registry.js';
@@ -6,6 +7,8 @@ import { createBridge } from './bridge.js';
 import type { BusEvent } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
 import { createRunTelemetry } from './telemetry.js';
+
+const WORKFLOW_ID = WorkflowIdSchema.parse('workflow-1');
 
 const stubPingManifest: Manifest = {
     id: 'com.sigil.stub-ping',
@@ -70,7 +73,7 @@ describe('createBridge', () => {
         const bridge = createBridge(bus, registry);
         const telemetry = createRunTelemetry(
             bus,
-            { workflowId: 'workflow-1', pipelineId: 'pipeline-1', runId: 'run-1' },
+            { workflowId: WORKFLOW_ID, pipelineId: 'pipeline-1', runId: 'run-1' },
             { now: () => 1234, createEventId: () => 'event-1' },
         );
         const node = telemetry.forNode({

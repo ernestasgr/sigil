@@ -29,6 +29,7 @@ import { createWorkflowStore } from '../workflow/workflow-store.js';
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
 import { createEngine } from './engine.js';
 import { readPropertiesFile } from './properties-loader.js';
+import { activateEnabledWorkflows } from './worker-startup.js';
 
 if (!parentPort) {
     throw new Error('engine worker must be spawned as a worker_thread');
@@ -266,19 +267,7 @@ port.on('message', (raw: unknown) => {
     enqueueDispatch(message);
 });
 
-for (const wf of store.list()) {
-    if (wf.enabled) {
-        try {
-            lifecycle.activateEnabled(wf.id);
-        } catch (err) {
-            const log: EngineLog = {
-                type: EngineChannel.Log,
-                line: `[worker] failed to activate workflow ${wf.id} (${wf.name}): ${err instanceof Error ? err.message : String(err)}`,
-            };
-            port.postMessage(log);
-        }
-    }
-}
+activateEnabledWorkflows(store.list(), lifecycle, (message) => port.postMessage(message));
 
 broadcastWorkflowsList();
 

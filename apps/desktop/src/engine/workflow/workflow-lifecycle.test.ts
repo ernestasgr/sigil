@@ -7,6 +7,7 @@ import {
     pluginNodeIdentity,
     registerSerializableNodeContract,
 } from '@sigil/schema/node-contract';
+import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEngine } from '../core/engine.js';
@@ -17,10 +18,12 @@ import { createWorkflowActivator, getDeactivationHook } from './workflow-activat
 import { createWorkflowLifecycle } from './workflow-lifecycle.js';
 import { createWorkflowStore } from './workflow-store.js';
 
+const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
+
 function testPipeline(pipelineId: string, workflowId: string): CompiledPipeline {
     return {
         id: pipelineId,
-        workflowId,
+        workflowId: testWorkflowId(workflowId),
         schemaVersion: 1,
         nodes: [
             {
@@ -58,7 +61,7 @@ function createFixture(activate: TriggerHandler['activate']): {
     readonly store: ReturnType<typeof createWorkflowStore>;
     readonly activator: ReturnType<typeof createWorkflowActivator>;
     readonly lifecycle: ReturnType<typeof createWorkflowLifecycle>;
-    readonly workflowId: string;
+    readonly workflowId: WorkflowId;
     readonly dispose: () => void;
 } {
     const storageDir = mkdtempSync(join(tmpdir(), 'sigil-workflow-lifecycle-'));
@@ -78,11 +81,9 @@ function createFixture(activate: TriggerHandler['activate']): {
     );
     const activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
     const lifecycle = createWorkflowLifecycle(store, activator);
-    const workflowId = store.create(
-        'Test Workflow',
-        testPipeline('pipeline-1', 'workflow-1'),
-        {},
-    ).id;
+    const workflowId = testWorkflowId(
+        store.create('Test Workflow', testPipeline('pipeline-1', 'workflow-1'), {}).id,
+    );
 
     return {
         storageDir,
@@ -570,10 +571,10 @@ describe('WorkflowLifecycle transitions', () => {
         const fixture = createFixture(() => () => {});
         fixtures.push(fixture);
 
-        expect(fixture.lifecycle.enable('missing')).toEqual(Option.none());
-        expect(fixture.lifecycle.disable('missing')).toEqual(Option.none());
-        expect(fixture.lifecycle.toggle('missing')).toEqual(Option.none());
-        expect(fixture.lifecycle.activateEnabled('missing')).toEqual(Option.none());
+        expect(fixture.lifecycle.enable(testWorkflowId('missing'))).toEqual(Option.none());
+        expect(fixture.lifecycle.disable(testWorkflowId('missing'))).toEqual(Option.none());
+        expect(fixture.lifecycle.toggle(testWorkflowId('missing'))).toEqual(Option.none());
+        expect(fixture.lifecycle.activateEnabled(testWorkflowId('missing'))).toEqual(Option.none());
         expect(fixture.lifecycle.activateEnabled(fixture.workflowId)).toMatchObject(
             Option.some({ enabled: false }),
         );

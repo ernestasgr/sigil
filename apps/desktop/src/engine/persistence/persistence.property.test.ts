@@ -1,3 +1,4 @@
+import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import Database from 'better-sqlite3';
 import { Option } from 'effect';
 import * as fc from 'fast-check';
@@ -16,10 +17,12 @@ const PROPERTY_OPTIONS = {
     verbose: true,
 };
 
-const WORKFLOW_IDS = ['wf-a', 'wf-b', 'wf-c'] as const;
+const WF_A = WorkflowIdSchema.parse('wf-a');
+const WF_B = WorkflowIdSchema.parse('wf-b');
+const WF_C = WorkflowIdSchema.parse('wf-c');
+const WORKFLOW_IDS = [WF_A, WF_B, WF_C] as const;
 const KEYS = ['alpha', 'beta', 'gamma', 'empty'] as const;
 
-type WorkflowId = (typeof WORKFLOW_IDS)[number];
 type StateKey = (typeof KEYS)[number];
 
 type StateOperation =
@@ -115,7 +118,7 @@ describe('Workflow State adapter properties', () => {
                     for (const value of values) {
                         const operation: StateOperation = {
                             kind: 'setKey',
-                            workflowId: 'wf-a',
+                            workflowId: WF_A,
                             key: 'empty',
                             value,
                         };
@@ -123,8 +126,8 @@ describe('Workflow State adapter properties', () => {
                         applyWrite(sqlite, operation);
 
                         for (const observed of [
-                            memory.forWorkflow('wf-a').get('empty'),
-                            sqlite.forWorkflow('wf-a').get('empty'),
+                            memory.forWorkflow(WF_A).get('empty'),
+                            sqlite.forWorkflow(WF_A).get('empty'),
                         ]) {
                             expect(Option.isSome(observed)).toBe(true);
                             if (Option.isSome(observed)) {

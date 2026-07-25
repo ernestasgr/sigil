@@ -1,53 +1,22 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-type Listener = (...args: readonly unknown[]) => void;
-type PushMethod = 'onEngineLog' | 'onWorkflowsList' | 'onBusEvent';
-type PushAPI = Record<PushMethod, (handler: (value: unknown) => void) => () => void>;
-const listeners = new Map<string, Listener>();
-const exposed = { current: undefined as PushAPI | undefined };
+const exposeElectronTRPC = vi.hoisted(() => vi.fn());
+const contextBridge = vi.hoisted(() => ({ exposeInMainWorld: vi.fn() }));
 
+vi.mock('electron-trpc/main', () => ({
+    exposeElectronTRPC,
+}));
 vi.mock('electron', () => ({
-    contextBridge: {
-        exposeInMainWorld: (_name: string, api: unknown) => {
-            exposed.current = api as PushAPI;
-        },
-    },
-    ipcRenderer: {
-        invoke: vi.fn(),
-        on: (channel: string, listener: Listener) => {
-            listeners.set(channel, listener);
-        },
-        off: (channel: string) => {
-            listeners.delete(channel);
-        },
-    },
+    contextBridge,
 }));
 
-const { RendererChannel } = await import('../shared/ipc-channels.js');
 await import('./index.js');
 
-describe('preload push-channel validation', () => {
-    beforeEach(() => {
-        listeners.clear();
-        vi.restoreAllMocks();
+describe('preload bridge', () => {
+    it('exposes only electron-trpc to the isolated renderer', () => {
+        expect(exposeElectronTRPC).not.toHaveBeenCalled();
+        process.emit('loaded' as never);
+        expect(exposeElectronTRPC).toHaveBeenCalledOnce();
+        expect(contextBridge.exposeInMainWorld).not.toHaveBeenCalled();
     });
-
-    it.each([
-        ['onEngineLog', RendererChannel.EngineLog, 'valid log', 42],
-        ['onWorkflowsList', RendererChannel.WorkflowsList, [], { invalid: true }],
-        ['onBusEvent', RendererChannel.BusEvent, { name: 'x', payload: null }, { name: 1 }],
-    ] as const)(
-        '%s forwards valid payloads and drops malformed payloads',
-        (method, channel, valid, invalid) => {
-            const handler = vi.fn();
-            exposed.current?.[method](handler);
-            listeners.get(channel)?.({}, valid);
-            expect(handler).toHaveBeenCalledWith(valid);
-            handler.mockClear();
-            const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-            listeners.get(channel)?.({}, invalid);
-            expect(handler).not.toHaveBeenCalled();
-            expect(diagnostic).toHaveBeenCalledWith(expect.stringContaining('invalid'), invalid);
-        },
-    );
 });

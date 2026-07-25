@@ -8,6 +8,7 @@ import {
     registerSerializableNodeContract,
 } from '@sigil/schema/node-contract';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -20,6 +21,8 @@ import { createWorkflowActivator } from './workflow-activator.js';
 import { createWorkflowLifecycle } from './workflow-lifecycle.js';
 import { createWorkflowStore } from './workflow-store.js';
 
+const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
+
 const context: WorkflowContext = {
     event: 'file.created',
     payload: { name: 'burst.txt' },
@@ -29,7 +32,7 @@ const context: WorkflowContext = {
 function testPipeline(): CompiledPipeline {
     return {
         id: 'pipeline-run-lifecycle',
-        workflowId: 'workflow-run-lifecycle',
+        workflowId: testWorkflowId('workflow-run-lifecycle'),
         schemaVersion: 1,
         nodes: [
             {
@@ -71,7 +74,7 @@ interface RunFixture {
     readonly store: ReturnType<typeof createWorkflowStore>;
     readonly activator: ReturnType<typeof createWorkflowActivator>;
     readonly lifecycle: ReturnType<typeof createWorkflowLifecycle>;
-    readonly workflowId: string;
+    readonly workflowId: WorkflowId;
     readonly callbacks: readonly ((ctx: WorkflowContext) => void)[];
     readonly releases: readonly (() => void)[];
     readonly teardown: ReturnType<typeof vi.fn>;
@@ -118,7 +121,9 @@ function createRunFixture(cancelOnAbort: boolean, queueLimit = 1): RunFixture {
         storageDir,
         workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
     );
-    const workflowId = store.create('Run Lifecycle Workflow', testPipeline(), {}).id;
+    const workflowId = testWorkflowId(
+        store.create('Run Lifecycle Workflow', testPipeline(), {}).id,
+    );
     const activator = createWorkflowActivator(engine, store, engine.handlerRegistry, undefined, {
         runPolicy: { queueLimit },
     });

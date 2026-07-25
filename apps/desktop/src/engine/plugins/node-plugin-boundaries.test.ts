@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -21,6 +22,8 @@ import {
     NODE_PLUGIN_OPERATION_CAPABILITIES,
 } from './node-plugin-rpc-router.js';
 import { NodePluginWorkerKind } from './plugin-node-rpc.js';
+
+const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
 
 const HANDLER = `
 import { z } from 'zod';
@@ -639,7 +642,7 @@ describe('instance-owned Plugin loader supervision', () => {
             );
             const pipeline: CompiledPipeline = {
                 id: 'pipeline-activation-failure',
-                workflowId: 'workflow-activation-failure',
+                workflowId: testWorkflowId('workflow-activation-failure'),
                 schemaVersion: 1,
                 nodes: [
                     {
@@ -652,9 +655,10 @@ describe('instance-owned Plugin loader supervision', () => {
                 edges: [],
             };
             const workflow = store.create('Activation Failure Workflow', pipeline, {});
+            const workflowId = testWorkflowId(workflow.id);
             activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
 
-            expect(activator.activate(workflow.id)).toBe(true);
+            expect(activator.activate(workflowId)).toBe(true);
             await vi.waitFor(() => {
                 expect(store.getSummary(workflow.id)).toMatchObject({
                     value: {
@@ -663,7 +667,7 @@ describe('instance-owned Plugin loader supervision', () => {
                 });
             });
 
-            expect(activator.isActive(workflow.id)).toBe(false);
+            expect(activator.isActive(workflowId)).toBe(false);
             expect(registerSubscriber).toHaveBeenCalledTimes(2);
             expect(unregisterSubscriber).toHaveBeenCalledTimes(1);
             expect(unregisterSubscriber).toHaveBeenCalledWith(
@@ -725,7 +729,7 @@ describe('instance-owned Plugin loader supervision', () => {
                 id: string,
             ): CompiledPipeline => ({
                 id: pipelineId,
-                workflowId,
+                workflowId: testWorkflowId(workflowId),
                 schemaVersion: 1,
                 nodes: [
                     {
@@ -747,10 +751,12 @@ describe('instance-owned Plugin loader supervision', () => {
                 createPipeline('pipeline-second', 'workflow-second', 'second'),
                 {},
             );
+            const firstWorkflowId = testWorkflowId(first.id);
+            const secondWorkflowId = testWorkflowId(second.id);
             activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
 
-            expect(activator.activate(first.id)).toBe(true);
-            expect(activator.activate(second.id)).toBe(true);
+            expect(activator.activate(firstWorkflowId)).toBe(true);
+            expect(activator.activate(secondWorkflowId)).toBe(true);
             await vi.waitFor(() => expect(registerSubscriber).toHaveBeenCalledTimes(2));
 
             resolveSecond();
@@ -767,8 +773,8 @@ describe('instance-owned Plugin loader supervision', () => {
                 });
             });
 
-            expect(activator.isActive(first.id)).toBe(false);
-            expect(activator.isActive(second.id)).toBe(true);
+            expect(activator.isActive(firstWorkflowId)).toBe(false);
+            expect(activator.isActive(secondWorkflowId)).toBe(true);
             expect(unregisterSubscriber).toHaveBeenCalledWith(
                 'first',
                 'com.sigil.concurrent-activation',

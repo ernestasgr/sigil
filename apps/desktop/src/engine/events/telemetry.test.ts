@@ -1,7 +1,10 @@
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { describe, expect, it } from 'vitest';
 
 import { type BusEvent, createEventBus } from './event-bus.js';
 import { createRunTelemetry } from './telemetry.js';
+
+const WORKFLOW_ID = WorkflowIdSchema.parse('workflow-1');
 
 describe('run telemetry', () => {
     it('correlates events with engine time and a bounded redacted summary', () => {
@@ -11,7 +14,7 @@ describe('run telemetry', () => {
 
         const telemetry = createRunTelemetry(
             bus,
-            { workflowId: 'workflow-1', pipelineId: 'pipeline-1', runId: 'run-1' },
+            { workflowId: WORKFLOW_ID, pipelineId: 'pipeline-1', runId: 'run-1' },
             {
                 now: () => 1234,
                 createEventId: () => 'event-1',
@@ -41,7 +44,7 @@ describe('run telemetry', () => {
                 eventId: 'event-1',
                 timestamp: 1234,
                 kind: 'plugin',
-                workflowId: 'workflow-1',
+                workflowId: WORKFLOW_ID,
                 pipelineId: 'pipeline-1',
                 runId: 'run-1',
                 nodeId: 'node-1',
@@ -58,7 +61,7 @@ describe('run telemetry', () => {
 
         const telemetry = createRunTelemetry(
             bus,
-            { workflowId: 'workflow-1', pipelineId: 'pipeline-1', runId: 'run-1' },
+            { workflowId: WORKFLOW_ID, pipelineId: 'pipeline-1', runId: 'run-1' },
             { now: () => 1234, createEventId: () => 'event-1' },
         );
 
@@ -82,7 +85,7 @@ describe('run telemetry', () => {
 
         const telemetry = createRunTelemetry(
             bus,
-            { workflowId: 'workflow-1', pipelineId: 'pipeline-1', runId: 'run-1' },
+            { workflowId: WORKFLOW_ID, pipelineId: 'pipeline-1', runId: 'run-1' },
             {
                 now: () => times.shift() ?? 125,
                 createEventId: (() => {
@@ -118,7 +121,7 @@ describe('run telemetry', () => {
 
         const telemetry = createRunTelemetry(
             bus,
-            { workflowId: 'workflow-1', pipelineId: 'pipeline-1', runId: 'run-1' },
+            { workflowId: WORKFLOW_ID, pipelineId: 'pipeline-1', runId: 'run-1' },
             { now: () => 1234, createEventId: () => 'diagnostic-1' },
         );
 
@@ -151,7 +154,7 @@ describe('run telemetry', () => {
         expect(events[0]?.telemetry).toMatchObject({
             kind: 'diagnostic',
             severity: 'error',
-            workflowId: 'workflow-1',
+            workflowId: WORKFLOW_ID,
             runId: 'run-1',
             nodeId: 'node-1',
             pluginId: 'plugin-1',
@@ -160,7 +163,7 @@ describe('run telemetry', () => {
         expect(events[1]?.telemetry).toMatchObject({
             kind: 'diagnostic',
             severity: 'warn',
-            workflowId: 'workflow-1',
+            workflowId: WORKFLOW_ID,
             runId: 'run-1',
             nodeId: 'node-1',
             pluginId: 'plugin-1',

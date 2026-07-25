@@ -695,27 +695,3 @@ export const EngineToMainMessageOrReadySchema = z.union([
     EngineReadySchema,
 ]);
 export type EngineToMainMessageOrReady = z.infer<typeof EngineToMainMessageOrReadySchema>;
-
-export const RendererChannel = {
-    EnginePong: 'renderer:engine-pong',
-    FireTestEvent: 'renderer:fire-test-event',
-    EngineLog: 'renderer:engine-log',
-    WorkflowsList: 'renderer:workflows-list',
-    ToggleWorkflow: 'renderer:toggle-workflow',
-    RetryWorkflow: 'renderer:retry-workflow',
-    CreateWorkflow: 'renderer:create-workflow',
-    UpdateWorkflow: 'renderer:update-workflow',
-    DeleteWorkflow: 'renderer:delete-workflow',
-    GetWorkflow: 'renderer:get-workflow',
-    BusEvent: 'renderer:bus-event',
-    RendererReady: 'renderer:renderer-ready',
-    ListPlugins: 'renderer:list-plugins',
-    SetPermissionOverride: 'renderer:set-permission-override',
-    ReadProperties: 'renderer:read-properties',
-    SaveProperties: 'renderer:save-properties',
-    OpenFileDialog: 'renderer:open-file-dialog',
-    FireManualTrigger: 'renderer:fire-manual-trigger',
-    ReadWorkflowState: 'renderer:read-workflow-state',
-    SetWorkflowStateKey: 'renderer:set-workflow-state-key',
-    DeleteWorkflowStateKey: 'renderer:delete-workflow-state-key',
-} as const;

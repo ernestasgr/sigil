@@ -12,6 +12,7 @@ import {
     registerSerializableNodeContract,
 } from '@sigil/schema/node-contract';
 import { isPluginNode } from '@sigil/schema/nodes';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -24,13 +25,15 @@ import {
 } from './workflow-store.js';
 import { isWorkflowTopologyError } from './workflow-topology-error.js';
 
+const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
+
 function randomDir(): string {
     return join(tmpdir(), `sigil-test-workflow-store-${crypto.randomUUID()}`);
 }
 
 const samplePipeline: CompiledPipeline = {
     id: 'pipeline-1',
-    workflowId: 'wf-1',
+    workflowId: testWorkflowId('wf-1'),
     schemaVersion: 1,
     nodes: [
         {
@@ -57,7 +60,7 @@ const samplePositions: Record<string, { x: number; y: number }> = {
 
 const samplePipeline2: CompiledPipeline = {
     id: 'pipeline-2',
-    workflowId: 'wf-2',
+    workflowId: testWorkflowId('wf-2'),
     schemaVersion: 1,
     nodes: [
         {
@@ -204,6 +207,25 @@ describe('WorkflowStore', () => {
         expect(writer.write).toHaveBeenCalledOnce();
     });
 
+    it('reports a typed persistence failure when the Workflow cannot be serialized', () => {
+        const circular: Record<string, unknown> = {};
+        circular.self = circular;
+
+        expect(() =>
+            store.create(
+                'Circular Workflow',
+                samplePipeline,
+                circular as unknown as Readonly<Record<string, { x: number; y: number }>>,
+            ),
+        ).toThrow(
+            expect.objectContaining({
+                kind: 'workflow_persistence',
+                operation: 'create',
+            }),
+        );
+        expect(store.list()).toEqual([]);
+    });
+
     it('keeps the previous Workflow visible when replacement fails during save', () => {
         const summary = store.create('Original', samplePipeline, samplePositions);
         const replacementFailure: AtomicWriteFailure = {
@@ -283,7 +305,7 @@ describe('WorkflowStore', () => {
     it('preserves Switch case identities when a persisted match value is edited and saved', () => {
         const switchPipeline: CompiledPipeline = {
             id: 'pipeline-switch',
-            workflowId: 'wf-switch',
+            workflowId: testWorkflowId('wf-switch'),
             schemaVersion: 1,
             nodes: [
                 {
@@ -374,6 +396,14 @@ describe('WorkflowStore', () => {
         expect(removed).toBe(false);
     });
 
+    it('removes an in-memory Workflow when its file was already removed', () => {
+        const summary = store.create('My Workflow', samplePipeline, samplePositions);
+        rmSync(join(dir, `${summary.id}.json`));
+
+        expect(store.remove(summary.id)).toBe(true);
+        expect(store.getSummary(summary.id)).toEqual(Option.none());
+    });
+
     it('rejects traversal-shaped workflow ids without touching an external file', () => {
         const externalPath = join(dir, '..', `sigil-workflow-store-${crypto.randomUUID()}.json`);
         writeFileSync(externalPath, 'sentinel');
@@ -396,14 +426,20 @@ describe('WorkflowStore', () => {
     );
 
     it('rejects an unsafe Pipeline workflowId when creating a Workflow', () => {
-        const unsafePipeline = { ...samplePipeline, workflowId: '../outside' };
+        const unsafePipeline = {
+            ...samplePipeline,
+            workflowId: '../outside',
+        } as unknown as CompiledPipeline;
 
         expect(() => store.create('Unsafe Workflow', unsafePipeline, {})).toThrow();
         expect(store.list()).toEqual([]);
     });
 
     it('persists and retrieves a valid identifier without changing it', () => {
-        const pipeline = { ...samplePipeline, workflowId: 'safe_workflow-123' };
+        const pipeline = {
+            ...samplePipeline,
+            workflowId: testWorkflowId('safe_workflow-123'),
+        };
         const summary = store.create('Safe Workflow', pipeline, {});
 
         expect(summary.id).toBe('safe_workflow-123');
@@ -416,7 +452,7 @@ describe('WorkflowStore', () => {
         const second = store.create('Second', samplePipeline2, {});
         const updatedPipeline = {
             ...samplePipeline,
-            workflowId: first.id,
+            workflowId: testWorkflowId(first.id),
             nodes: [samplePipeline.nodes[0]],
             edges: [],
         };
@@ -454,6 +490,33 @@ describe('WorkflowStore', () => {
         expect(Option.isNone(toggled)).toBe(true);
     });
 
+    it('returns None when setting state on missing or invalid Workflows', () => {
+        expect(Option.isNone(store.setEnabled('missing', true))).toBe(true);
+        expect(Option.isNone(store.setActivation('missing', { kind: 'active' }))).toBe(true);
+
+        writeFileSync(join(dir, 'invalid-state.json'), '{invalid}');
+        const storeWithInvalidWorkflow = createWorkflowStore(dir);
+        expect(Option.isNone(storeWithInvalidWorkflow.setEnabled('invalid-state', true))).toBe(
+            true,
+        );
+        expect(
+            Option.isNone(
+                storeWithInvalidWorkflow.setActivation('invalid-state', { kind: 'active' }),
+            ),
+        ).toBe(true);
+    });
+
+    it('disables an enabled Workflow when toggled off', () => {
+        const summary = store.create('My Workflow', samplePipeline, samplePositions);
+        expect(Option.isSome(store.setEnabled(summary.id, true))).toBe(true);
+
+        const toggled = store.toggle(summary.id);
+
+        expect(toggled).toMatchObject(
+            Option.some({ enabled: false, activation: { kind: 'disabled' } }),
+        );
+    });
+
     it('saves an updated pipeline via save()', () => {
         const summary = store.create('Original', samplePipeline, samplePositions);
 
@@ -488,9 +551,28 @@ describe('WorkflowStore', () => {
         expect(Option.getOrThrow(loaded).positions).toEqual(updatedPositions);
     });
 
+    it('rejects an invalid topology when saving an existing Workflow', () => {
+        const summary = store.create('Original', samplePipeline, samplePositions);
+        const invalidPipeline: CompiledPipeline = {
+            ...samplePipeline,
+            nodes: [],
+            edges: [],
+        };
+
+        expect(() => store.save(summary.id, 'Invalid', invalidPipeline, {})).toThrow(
+            expect.objectContaining({ kind: 'workflow_topology' }),
+        );
+        expect(store.getSummary(summary.id)).toMatchObject(
+            Option.some({ id: summary.id, name: 'Original' }),
+        );
+    });
+
     it('rejects an update whose Pipeline identity does not match the Workflow id', () => {
         const summary = store.create('Original', samplePipeline, samplePositions);
-        const mismatchedPipeline = { ...samplePipeline, workflowId: 'another-workflow' };
+        const mismatchedPipeline = {
+            ...samplePipeline,
+            workflowId: testWorkflowId('another-workflow'),
+        };
 
         let error: unknown;
         try {
@@ -763,7 +845,7 @@ describe('WorkflowStore', () => {
         const supportedPipeline = {
             ...samplePipeline,
             id: 'pipeline-supported',
-            workflowId: 'wf-supported',
+            workflowId: testWorkflowId('wf-supported'),
         };
         store.create('Supported Workflow', supportedPipeline, {});
 
@@ -952,9 +1034,38 @@ describe('WorkflowStore', () => {
         expect(Option.isNone(store.get('wf-record'))).toBe(true);
     });
 
+    it('does not trust a persisted Pipeline workflowId that disagrees with its filename', () => {
+        writeFileSync(
+            join(dir, 'wf-pipeline-id.json'),
+            JSON.stringify({
+                id: 'wf-pipeline-id',
+                name: 'Mismatched Pipeline Identity',
+                pipelineId: 'pipeline-mismatch',
+                workflowId: 'wf-other',
+                schemaVersion: 1,
+                nodes: samplePipeline.nodes,
+                edges: samplePipeline.edges,
+            }),
+        );
+
+        store = createWorkflowStore(dir);
+
+        expect(store.get('wf-pipeline-id')).toEqual(Option.none());
+        expect(store.getSummary('wf-pipeline-id')).toMatchObject(
+            Option.some({
+                diagnostics: [
+                    expect.objectContaining({
+                        message: expect.stringContaining('Pipeline workflowId "wf-other"'),
+                    }),
+                ],
+            }),
+        );
+    });
+
     it('upserts a new workflow when save() is called with a non-existent id', () => {
-        const newPipeline = { ...samplePipeline, workflowId: 'new-id' };
-        const saved = store.save('new-id', 'New via save', newPipeline, samplePositions);
+        const newWorkflowId = testWorkflowId('new-id');
+        const newPipeline = { ...samplePipeline, workflowId: newWorkflowId };
+        const saved = store.save(newWorkflowId, 'New via save', newPipeline, samplePositions);
         expect(saved.id).toBe('new-id');
         expect(saved.name).toBe('New via save');
         expect(saved.enabled).toBe(false);

@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
 import {
     createEngineDiagnostic,
     EngineDiagnosticPayloadSchema,
 } from '../shared/event-payload-schemas.js';
-
 import {
     type EngineBusEvent,
     EngineChannel,
@@ -14,6 +12,7 @@ import {
     type EngineToggleWorkflowResult,
     type EngineWorkflowsList,
 } from '../shared/ipc-channels.js';
+import { WorkflowIdSchema } from '../shared/workflow.js';
 
 import {
     createRpcClient,
@@ -21,6 +20,8 @@ import {
     toPermissionOverrideOutcome,
     workerDiagnosticEvent,
 } from './engine-client.js';
+
+const WORKFLOW_ID = WorkflowIdSchema.parse('wf-1');
 
 function buildProps(): { props: RpcClientProps; sent: unknown[] } {
     const sent: unknown[] = [];
@@ -75,7 +76,7 @@ describe('rpc', () => {
         const { props, sent } = buildProps();
         const client = createRpcClient(props);
 
-        client.request('toggleWorkflow', { id: 'wf-1' }, 5000);
+        client.request('toggleWorkflow', { id: WORKFLOW_ID }, 5000);
 
         expect(sent).toHaveLength(1);
         const msg = sent[0] as Record<string, unknown>;
@@ -91,7 +92,7 @@ describe('rpc', () => {
         const { props, sent } = buildProps();
         const client = createRpcClient(props);
 
-        const promise = client.request('toggleWorkflow', { id: 'wf-1' }, 5000);
+        const promise = client.request('toggleWorkflow', { id: WORKFLOW_ID }, 5000);
 
         const correlationId = (sent[0] as Record<string, string>).correlationId;
 
@@ -142,7 +143,7 @@ describe('rpc', () => {
         const { props } = buildProps();
         const client = createRpcClient(props);
 
-        const promise = client.request('toggleWorkflow', { id: 'wf-1' }, 5000);
+        const promise = client.request('toggleWorkflow', { id: WORKFLOW_ID }, 5000);
 
         const nonMatching: EngineGetWorkflowResult = {
             type: EngineChannel.GetWorkflowResult,
@@ -163,7 +164,7 @@ describe('rpc', () => {
         const { props, sent } = buildProps();
         const client = createRpcClient(props);
 
-        const promise = client.request('toggleWorkflow', { id: 'wf-1' }, 5000);
+        const promise = client.request('toggleWorkflow', { id: WORKFLOW_ID }, 5000);
         const correlationId = (sent[0] as Record<string, string>).correlationId;
         const wrongResponse: EngineGetWorkflowResult = {
             type: EngineChannel.GetWorkflowResult,
@@ -325,7 +326,7 @@ describe('rejectAll', () => {
         const client = createRpcClient(props);
 
         const promise1 = client.request('ping', {}, 5000);
-        const promise2 = client.request('toggleWorkflow', { id: 'wf-1' }, 5000);
+        const promise2 = client.request('toggleWorkflow', { id: WORKFLOW_ID }, 5000);
 
         client.rejectAll('worker terminated');
 
@@ -349,7 +350,7 @@ describe('rejectAll', () => {
         const rejected = vi.fn();
 
         const first = client.request('ping', {}, 5000).catch(rejected);
-        const second = client.request('toggleWorkflow', { id: 'wf-1' }, 5000).catch(rejected);
+        const second = client.request('toggleWorkflow', { id: WORKFLOW_ID }, 5000).catch(rejected);
 
         client.rejectAll('engine worker error');
         client.rejectAll('engine worker exited with code 1');
@@ -502,7 +503,7 @@ describe('dispatch', () => {
         const client = createRpcClient(props);
         const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-        const pending = client.request('toggleWorkflow', { id: 'wf-1' });
+        const pending = client.request('toggleWorkflow', { id: WORKFLOW_ID });
         client.dispatch(sent[0]);
 
         const result = await Promise.race([

@@ -43,8 +43,8 @@ The shell manages the window, system tray, and IPC routing. It owns no domain lo
 **Boot sequence** (`apps/desktop/src/main/index.ts:140`):
 
 1. `spawnEngine()` spins up a `Worker` running the Engine
-2. IPC handlers are wired (`ipcMain.handle` for pong, fire-test-event, toggle-workflow)
-3. Engine logs and workflow lists are forwarded to all renderer windows
+2. The typed tRPC router is attached to renderer windows through `electron-trpc`
+3. Engine subscriptions expose logs, workflow lists, and bus events as typed tRPC streams
 4. System tray is created with workflow-toggle/open/quit menu
 5. Main `BrowserWindow` is created (loads React renderer or dev URL)
 6. On `before-quit`, tray is destroyed and engine worker is terminated
@@ -129,20 +129,20 @@ Three distinct IPC mechanisms:
 
 | Channel        | Between          | Mechanism                               | Purpose              |
 | -------------- | ---------------- | --------------------------------------- | -------------------- |
-| **IPC**        | Renderer ↔ Main  | `ipcMain.handle` / `ipcRenderer.invoke` | UI actions           |
-| **IPC (push)** | Main → Renderer  | `webContents.send` / `ipcRenderer.on`   | Logs, workflow lists |
+| **tRPC**       | Renderer ↔ Main  | `electron-trpc` queries and mutations  | UI actions           |
+| **tRPC stream**| Main → Renderer  | `electron-trpc` subscriptions          | Logs, workflow lists, bus events |
 | **Bridge**     | Engine ↔ Plugins | `worker_thread.postMessage` RPC         | Plugin events, state |
 
-The Electron preload (`apps/desktop/src/preload/index.ts`) uses `contextBridge.exposeInMainWorld` to expose a safe `window.sigil` API — no direct Node.js access from the renderer.
+The Electron preload (`apps/desktop/src/preload/index.ts`) exposes only the `electron-trpc` transport. The renderer owns an inferred `AppRouter` client and has no direct Node.js access.
 
 ## End-to-End Event Flow
 
 Example: Manual Trigger → Log workflow ("Fire test event" button):
 
-```
+```text
 User clicks "Fire test event"
-  → renderer: window.sigil.fireTestEvent()
-  → ipcRenderer.invoke → main: engine.fireTestEvent()
+  → renderer: typed tRPC mutation
+  → electron-trpc IPC → main: engine.fireTestEvent()
   → Worker.postMessage → worker: engine.execute(samplePipeline)
 
 DAG Executor:
@@ -158,7 +158,7 @@ DAG Executor:
 
 Event Bus subscriptions:
   → worker.ts forwards 'log.output' to main via postMessage
-  → main forwards to renderer via webContents.send
+  → main exposes the event through a typed tRPC subscription
   → renderer appends to Zustand store → HomeSection displays it
 ```
 
@@ -167,7 +167,7 @@ Event Bus subscriptions:
 | Layer                 | Protection                                                                                                  |
 | --------------------- | ----------------------------------------------------------------------------------------------------------- |
 | **Electron**          | `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`                                         |
-| **Preload**           | Only `window.sigil` API surface via `contextBridge`                                                         |
+| **Preload**           | Only the `electron-trpc` transport is exposed; the renderer uses the inferred router client                |
 | **Engine isolation**  | Separate `worker_thread` — independent heap, no shared state                                                |
 | **Plugin isolation**  | Own `worker_thread` + `vm.Context` with only registry-declared ambient globals                              |
 | **Plugin sandbox**    | Typed surface registry; registry-backed `codeGeneration` policy (`strings: false`, `wasm: false`); 5s eval timeout, 30s worker ready timeout |

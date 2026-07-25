@@ -22,7 +22,6 @@ function AppInner(): ReactElement {
         const unsubscribeBusEvents = sigil.onBusEvent((event) => {
             appendBusEvent(event);
         });
-        void sigil.rendererReady();
         return () => {
             unsubscribeWorkflows();
             unsubscribeLogs();

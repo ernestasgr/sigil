@@ -52,7 +52,7 @@ export const desktopCoverageThresholds = {
     },
     'src/engine/workflow/workflow-store.ts': {
         statements: 93,
-        branches: 85,
+        branches: 86,
         functions: 100,
         lines: 94,
     },

@@ -9,6 +9,7 @@ import {
     definePropertyDescriptor,
     type PropertyRegistry,
 } from '@sigil/schema/properties-file';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -32,6 +33,8 @@ import {
     updatePluginPermissions,
 } from './node-plugin-loader.js';
 import { NodePluginWorkerKind } from './plugin-node-rpc.js';
+
+const TYPED_PLUGIN_WORKFLOW_ID = WorkflowIdSchema.parse('wf-typed-plugin');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -2084,7 +2087,7 @@ describe('Workflow State authorization for Node Plugins', () => {
 
         const stateStore = createInMemoryWorkflowStateStore();
         try {
-            const state = stateStore.forWorkflow('wf-typed-plugin');
+            const state = stateStore.forWorkflow(TYPED_PLUGIN_WORKFLOW_ID);
             const handler = Option.getOrThrow(handlerRegistry.get('typed-state-round-trip'));
             const output = await handler.execute(
                 {

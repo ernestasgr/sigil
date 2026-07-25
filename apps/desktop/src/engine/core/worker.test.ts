@@ -1,5 +1,6 @@
 import type { CompiledPipeline } from '@sigil/schema';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
+import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Effect, Either, Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -23,6 +24,10 @@ import {
 } from '../../shared/ipc-channels.js';
 import { createWorkflowTopologyError } from '../workflow/workflow-topology-error.js';
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
+import { activateEnabledWorkflows } from './worker-startup.js';
+
+const WORKFLOW_ID = WorkflowIdSchema.parse('wf-1');
+const MISSING_WORKFLOW_ID = WorkflowIdSchema.parse('missing');
 
 const { readPropertiesFileMock, writePropertiesFileMock } = vi.hoisted(() => ({
     readPropertiesFileMock: vi.fn(),
@@ -249,22 +254,22 @@ describe('dispatch', () => {
     it('routes ToggleWorkflow and calls store.get, store.toggle, activator, broadcast, and posts result', () => {
         const { subsystems, postMessage, store, activator, broadcastWorkflowsList, log } =
             createFakeSubsystems();
-        const before = { id: 'wf-1', name: 'Test WF', enabled: false };
-        const toggled = { id: 'wf-1', name: 'Test WF', enabled: true };
+        const before = { id: WORKFLOW_ID, name: 'Test WF', enabled: false };
+        const toggled = { id: WORKFLOW_ID, name: 'Test WF', enabled: true };
         store.get.mockReturnValue(Option.some(before));
         store.toggle.mockReturnValue(Option.some(toggled));
 
         const message: EngineToggleWorkflow = {
             type: EngineChannel.ToggleWorkflow,
             correlationId: 'corr-1',
-            id: 'wf-1',
+            id: WORKFLOW_ID,
         };
         dispatch(message, subsystems);
 
-        expect(store.get).toHaveBeenCalledWith('wf-1');
-        expect(store.toggle).toHaveBeenCalledWith('wf-1');
+        expect(store.get).toHaveBeenCalledWith(WORKFLOW_ID);
+        expect(store.toggle).toHaveBeenCalledWith(WORKFLOW_ID);
         expect(log).toHaveBeenCalledWith('"Test WF" enabled');
-        expect(activator.activate).toHaveBeenCalledWith('wf-1');
+        expect(activator.activate).toHaveBeenCalledWith(WORKFLOW_ID);
         expect(activator.deactivate).not.toHaveBeenCalled();
         expect(broadcastWorkflowsList).toHaveBeenCalledTimes(1);
         expect(postMessage).toHaveBeenCalledWith({
@@ -276,18 +281,18 @@ describe('dispatch', () => {
 
     it('routes ToggleWorkflow and deactivates when workflow is disabled', () => {
         const { subsystems, store, activator, log } = createFakeSubsystems();
-        const before = { id: 'wf-1', name: 'Test WF', enabled: true };
-        const toggled = { id: 'wf-1', name: 'Test WF', enabled: false };
+        const before = { id: WORKFLOW_ID, name: 'Test WF', enabled: true };
+        const toggled = { id: WORKFLOW_ID, name: 'Test WF', enabled: false };
         store.get.mockReturnValue(Option.some(before));
         store.toggle.mockReturnValue(Option.some(toggled));
 
         dispatch(
-            { type: EngineChannel.ToggleWorkflow, correlationId: 'c-1', id: 'wf-1' },
+            { type: EngineChannel.ToggleWorkflow, correlationId: 'c-1', id: WORKFLOW_ID },
             subsystems,
         );
 
         expect(log).toHaveBeenCalledWith('"Test WF" disabled');
-        expect(activator.deactivate).toHaveBeenCalledWith('wf-1');
+        expect(activator.deactivate).toHaveBeenCalledWith(WORKFLOW_ID);
         expect(activator.activate).not.toHaveBeenCalled();
     });
 
@@ -297,7 +302,7 @@ describe('dispatch', () => {
         store.toggle.mockReturnValue(Option.none());
 
         dispatch(
-            { type: EngineChannel.ToggleWorkflow, correlationId: 'c-1', id: 'wf-1' },
+            { type: EngineChannel.ToggleWorkflow, correlationId: 'c-1', id: WORKFLOW_ID },
             subsystems,
         );
 
@@ -321,12 +326,12 @@ describe('dispatch', () => {
             {
                 type: EngineChannel.ToggleWorkflow,
                 correlationId: 'lifecycle-missing',
-                id: 'missing',
+                id: MISSING_WORKFLOW_ID,
             },
             subsystems,
         );
 
-        expect(toggle).toHaveBeenCalledWith('missing');
+        expect(toggle).toHaveBeenCalledWith(MISSING_WORKFLOW_ID);
         expect(postMessage).toHaveBeenCalledWith({
             type: EngineChannel.ToggleWorkflowResult,
             correlationId: 'lifecycle-missing',
@@ -337,13 +342,13 @@ describe('dispatch', () => {
     it('routes ToggleWorkflow through the lifecycle transition seam when available', () => {
         const { subsystems, postMessage, store, log } = createFakeSubsystems();
         const before = {
-            id: 'wf-1',
+            id: WORKFLOW_ID,
             name: 'Test WF',
             enabled: false,
             activation: { kind: 'disabled' } as const,
         };
         const after = {
-            id: 'wf-1',
+            id: WORKFLOW_ID,
             name: 'Test WF',
             enabled: true,
             activation: { kind: 'active' } as const,
@@ -353,11 +358,15 @@ describe('dispatch', () => {
         store.getSummary.mockReturnValue(Option.some(before));
 
         dispatch(
-            { type: EngineChannel.ToggleWorkflow, correlationId: 'lifecycle-toggle', id: 'wf-1' },
+            {
+                type: EngineChannel.ToggleWorkflow,
+                correlationId: 'lifecycle-toggle',
+                id: WORKFLOW_ID,
+            },
             subsystems,
         );
 
-        expect(toggle).toHaveBeenCalledWith('wf-1');
+        expect(toggle).toHaveBeenCalledWith(WORKFLOW_ID);
         expect(store.toggle).not.toHaveBeenCalled();
         expect(log).toHaveBeenCalledWith('"Test WF" enabled');
         expect(postMessage).toHaveBeenCalledWith({
@@ -376,12 +385,12 @@ describe('dispatch', () => {
             {
                 type: EngineChannel.RetryWorkflow,
                 correlationId: 'lifecycle-retry-missing',
-                id: 'missing',
+                id: MISSING_WORKFLOW_ID,
             },
             subsystems,
         );
 
-        expect(retry).toHaveBeenCalledWith('missing');
+        expect(retry).toHaveBeenCalledWith(MISSING_WORKFLOW_ID);
         expect(postMessage).toHaveBeenCalledWith({
             type: EngineChannel.RetryWorkflowResult,
             correlationId: 'lifecycle-retry-missing',
@@ -392,7 +401,7 @@ describe('dispatch', () => {
     it('routes RetryWorkflow through the lifecycle transition seam', () => {
         const { subsystems, postMessage, log } = createFakeSubsystems();
         const summary = {
-            id: 'wf-1',
+            id: WORKFLOW_ID,
             name: 'Test WF',
             enabled: true,
             activation: { kind: 'active' } as const,
@@ -403,7 +412,7 @@ describe('dispatch', () => {
         const message: EngineRetryWorkflow = {
             type: EngineChannel.RetryWorkflow,
             correlationId: 'lifecycle-retry',
-            id: 'wf-1',
+            id: WORKFLOW_ID,
         };
         dispatch(message, subsystems);
 
@@ -486,7 +495,7 @@ describe('dispatch', () => {
             throw Object.assign(new Error('Could not create Workflow "wf-1": replacement denied'), {
                 kind: 'workflow_persistence' as const,
                 operation: 'create' as const,
-                workflowId: 'wf-1',
+                workflowId: WORKFLOW_ID,
                 diagnostic,
                 diagnostics: [diagnostic],
             });
@@ -515,24 +524,24 @@ describe('dispatch', () => {
     it('routes UpdateWorkflow for an existing workflow', () => {
         const { subsystems, postMessage, store, activator, broadcastWorkflowsList, log } =
             createFakeSubsystems();
-        const existing = { id: 'wf-1', name: 'Old', enabled: true };
-        const summary = { id: 'wf-1', name: 'Updated', enabled: true };
+        const existing = { id: WORKFLOW_ID, name: 'Old', enabled: true };
+        const summary = { id: WORKFLOW_ID, name: 'Updated', enabled: true };
         store.get.mockReturnValue(Option.some(existing));
         store.save.mockReturnValue(summary);
 
         const message: EngineUpdateWorkflow = {
             type: EngineChannel.UpdateWorkflow,
             correlationId: 'corr-3',
-            id: 'wf-1',
+            id: WORKFLOW_ID,
             name: 'Updated',
             pipeline: { id: 'p-1' } as CompiledPipeline,
             positions: {},
         };
         dispatch(message, subsystems);
 
-        expect(activator.deactivate).toHaveBeenCalledWith('wf-1');
-        expect(store.get).toHaveBeenCalledWith('wf-1');
-        expect(store.save).toHaveBeenCalledWith('wf-1', 'Updated', message.pipeline, {});
+        expect(activator.deactivate).toHaveBeenCalledWith(WORKFLOW_ID);
+        expect(store.get).toHaveBeenCalledWith(WORKFLOW_ID);
+        expect(store.save).toHaveBeenCalledWith(WORKFLOW_ID, 'Updated', message.pipeline, {});
         expect(log).toHaveBeenCalledWith('Updated workflow "Updated" (wf-1)');
         expect(activator.activate).toHaveBeenCalledWith('wf-1');
         expect(broadcastWorkflowsList).toHaveBeenCalledTimes(1);
@@ -545,14 +554,14 @@ describe('dispatch', () => {
 
     it('routes UpdateWorkflow and reactivates only if enabled', () => {
         const { subsystems, activator, store } = createFakeSubsystems();
-        store.get.mockReturnValue(Option.some({ id: 'wf-1', name: 'Old', enabled: false }));
-        store.save.mockReturnValue({ id: 'wf-1', name: 'Updated', enabled: false });
+        store.get.mockReturnValue(Option.some({ id: WORKFLOW_ID, name: 'Old', enabled: false }));
+        store.save.mockReturnValue({ id: WORKFLOW_ID, name: 'Updated', enabled: false });
 
         dispatch(
             {
                 type: EngineChannel.UpdateWorkflow,
                 correlationId: 'c',
-                id: 'wf-1',
+                id: WORKFLOW_ID,
                 name: 'Updated',
                 pipeline: { id: 'p-1' } as CompiledPipeline,
                 positions: {},
@@ -566,13 +575,13 @@ describe('dispatch', () => {
     it('routes UpdateWorkflow and treats it as create when the id is missing', () => {
         const { subsystems, store, log } = createFakeSubsystems();
         store.get.mockReturnValue(Option.none());
-        store.save.mockReturnValue({ id: 'wf-1', name: 'New', enabled: false });
+        store.save.mockReturnValue({ id: WORKFLOW_ID, name: 'New', enabled: false });
 
         dispatch(
             {
                 type: EngineChannel.UpdateWorkflow,
                 correlationId: 'c',
-                id: 'wf-1',
+                id: WORKFLOW_ID,
                 name: 'New',
                 pipeline: { id: 'p-1' } as CompiledPipeline,
                 positions: {},
@@ -591,14 +600,14 @@ describe('dispatch', () => {
                 lifecycle: { updateAndDrain: typeof updateAndDrain };
             }
         ).lifecycle = { updateAndDrain };
-        store.get.mockReturnValue(Option.some({ id: 'wf-1', name: 'Old', enabled: false }));
-        store.save.mockReturnValue({ id: 'wf-1', name: 'Updated', enabled: false });
+        store.get.mockReturnValue(Option.some({ id: WORKFLOW_ID, name: 'Old', enabled: false }));
+        store.save.mockReturnValue({ id: WORKFLOW_ID, name: 'Updated', enabled: false });
 
         await dispatch(
             {
                 type: EngineChannel.UpdateWorkflow,
                 correlationId: 'lifecycle-update',
-                id: 'wf-1',
+                id: WORKFLOW_ID,
                 name: 'Updated',
                 pipeline: { id: 'p-1' } as CompiledPipeline,
                 positions: {},
@@ -606,8 +615,8 @@ describe('dispatch', () => {
             subsystems,
         );
 
-        expect(updateAndDrain).toHaveBeenCalledWith('wf-1', expect.any(Function));
-        expect(store.save).toHaveBeenCalledWith('wf-1', 'Updated', { id: 'p-1' }, {});
+        expect(updateAndDrain).toHaveBeenCalledWith(WORKFLOW_ID, expect.any(Function));
+        expect(store.save).toHaveBeenCalledWith(WORKFLOW_ID, 'Updated', { id: 'p-1' }, {});
     });
 
     it('routes DeleteWorkflow and calls remove, deactivates, broadcasts, and posts result', () => {
@@ -618,13 +627,13 @@ describe('dispatch', () => {
         const message: EngineDeleteWorkflow = {
             type: EngineChannel.DeleteWorkflow,
             correlationId: 'corr-4',
-            id: 'wf-1',
+            id: WORKFLOW_ID,
         };
         dispatch(message, subsystems);
 
-        expect(activator.deactivate).toHaveBeenCalledWith('wf-1');
-        expect(store.remove).toHaveBeenCalledWith('wf-1');
-        expect(engine.workflowStateStore.deleteWorkflow).toHaveBeenCalledWith('wf-1');
+        expect(activator.deactivate).toHaveBeenCalledWith(WORKFLOW_ID);
+        expect(store.remove).toHaveBeenCalledWith(WORKFLOW_ID);
+        expect(engine.workflowStateStore.deleteWorkflow).toHaveBeenCalledWith(WORKFLOW_ID);
         expect(log).toHaveBeenCalledWith('Deleted workflow (wf-1)');
         expect(broadcastWorkflowsList).toHaveBeenCalledTimes(1);
         expect(postMessage).toHaveBeenCalledWith({
@@ -639,7 +648,7 @@ describe('dispatch', () => {
         store.remove.mockReturnValue(false);
 
         dispatch(
-            { type: EngineChannel.DeleteWorkflow, correlationId: 'c', id: 'wf-1' },
+            { type: EngineChannel.DeleteWorkflow, correlationId: 'c', id: WORKFLOW_ID },
             subsystems,
         );
 
@@ -666,7 +675,11 @@ describe('dispatch', () => {
         store.remove.mockReturnValue(false);
 
         await dispatch(
-            { type: EngineChannel.DeleteWorkflow, correlationId: 'lifecycle-delete', id: 'wf-1' },
+            {
+                type: EngineChannel.DeleteWorkflow,
+                correlationId: 'lifecycle-delete',
+                id: WORKFLOW_ID,
+            },
             subsystems,
         );
 
@@ -689,7 +702,7 @@ describe('dispatch', () => {
         const message: EngineGetWorkflow = {
             type: EngineChannel.GetWorkflow,
             correlationId: 'corr-5',
-            id: 'wf-1',
+            id: WORKFLOW_ID,
         };
         dispatch(message, subsystems);
 
@@ -709,7 +722,7 @@ describe('dispatch', () => {
         store.get.mockReturnValue(Option.none());
 
         dispatch(
-            { type: EngineChannel.GetWorkflow, correlationId: 'c', id: 'missing' },
+            { type: EngineChannel.GetWorkflow, correlationId: 'c', id: MISSING_WORKFLOW_ID },
             subsystems,
         );
 
@@ -1078,7 +1091,7 @@ describe('dispatch', () => {
         const message: EngineReadWorkflowState = {
             type: EngineChannel.ReadWorkflowState,
             correlationId: 'corr-10',
-            workflowId: 'wf-1',
+            workflowId: WORKFLOW_ID,
         };
         dispatch(message, subsystems);
 
@@ -1096,7 +1109,7 @@ describe('dispatch', () => {
         const message: EngineSetWorkflowStateKey = {
             type: EngineChannel.SetWorkflowStateKey,
             correlationId: 'corr-11',
-            workflowId: 'wf-1',
+            workflowId: WORKFLOW_ID,
             key: 'k1',
             value: 'v1',
         };
@@ -1116,7 +1129,7 @@ describe('dispatch', () => {
         const message: EngineDeleteWorkflowStateKey = {
             type: EngineChannel.DeleteWorkflowStateKey,
             correlationId: 'corr-12',
-            workflowId: 'wf-1',
+            workflowId: WORKFLOW_ID,
             key: 'k1',
         };
         dispatch(message, subsystems);
@@ -1177,6 +1190,75 @@ describe('dispatch', () => {
             correlationId: 'corr-manual-error',
             ok: false,
             error: 'manual trigger error',
+        });
+    });
+
+    it('skips an enabled persisted workflow with an invalid id during startup', () => {
+        const port = { postMessage: vi.fn() };
+        const lifecycle = { activateEnabled: vi.fn() };
+
+        activateEnabledWorkflows(
+            [
+                {
+                    id: 'invalid workflow id',
+                    name: 'Corrupt workflow',
+                    enabled: true,
+                    activation: { kind: 'disabled' },
+                },
+            ],
+            lifecycle,
+            (message) => port.postMessage(message),
+        );
+
+        expect(lifecycle.activateEnabled).not.toHaveBeenCalled();
+        expect(port.postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.Log,
+            line: expect.stringContaining(
+                '[worker] skipped workflow invalid workflow id (Corrupt workflow) because its id is invalid:',
+            ),
+        });
+    });
+
+    it('activates valid enabled workflows and reports activation failures', () => {
+        const port = { postMessage: vi.fn() };
+        const lifecycle = { activateEnabled: vi.fn() };
+        lifecycle.activateEnabled.mockImplementation((workflowId: unknown) => {
+            if (workflowId === 'failing-workflow') {
+                throw new Error('activation failed');
+            }
+        });
+
+        activateEnabledWorkflows(
+            [
+                {
+                    id: 'valid-workflow',
+                    name: 'Valid workflow',
+                    enabled: true,
+                    activation: { kind: 'disabled' },
+                },
+                {
+                    id: 'failing-workflow',
+                    name: 'Failing workflow',
+                    enabled: true,
+                    activation: { kind: 'disabled' },
+                },
+                {
+                    id: 'disabled-workflow',
+                    name: 'Disabled workflow',
+                    enabled: false,
+                    activation: { kind: 'disabled' },
+                },
+            ],
+            lifecycle,
+            (message) => port.postMessage(message),
+        );
+
+        expect(lifecycle.activateEnabled).toHaveBeenNthCalledWith(1, 'valid-workflow');
+        expect(lifecycle.activateEnabled).toHaveBeenNthCalledWith(2, 'failing-workflow');
+        expect(lifecycle.activateEnabled).not.toHaveBeenCalledWith('disabled-workflow');
+        expect(port.postMessage).toHaveBeenCalledWith({
+            type: EngineChannel.Log,
+            line: '[worker] failed to activate workflow failing-workflow (Failing workflow): activation failed',
         });
     });
 });
