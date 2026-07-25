@@ -4,10 +4,13 @@ import { defineNode } from './types.js';
 
 export const SWITCH_DEFAULT_PORT = 'default' as const;
 
+export const SwitchCaseIdSchema = z.string().min(1).brand<'SwitchCaseId'>();
+export type SwitchCaseId = z.infer<typeof SwitchCaseIdSchema>;
+
 export const SwitchCaseSchema = z
     .object({
         /** Structural identity used by Edges and React Flow handles. */
-        id: z.string().min(1),
+        id: SwitchCaseIdSchema,
         /** User-editable value used by the executor when matching a Context. */
         value: z.string(),
     })
@@ -197,8 +200,8 @@ export function switchPortLabel(config: SwitchConfig, port: string): string {
 export const SwitchDescriptor = defineNode({
     type: 'switch',
     configSchema: SwitchConfigSchema,
-    defaultConfig: {
+    defaultConfig: SwitchConfigSchema.parse({
         target: 'event',
         cases: [{ id: 'case-1', value: 'file.created' }],
-    },
+    }),
 });

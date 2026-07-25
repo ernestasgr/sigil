@@ -1,4 +1,5 @@
 import type { CompiledPipeline } from '@sigil/schema';
+import { SwitchCaseIdSchema } from '@sigil/schema/nodes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { testNodeId, testPipeline } from '../../test-support/pipeline-fixtures.js';
@@ -158,7 +159,10 @@ describe('useBuilderStore', () => {
 
         useBuilderStore.getState().updateSpec(sw, {
             type: 'switch',
-            config: { target: 'event', cases: [{ id: 'case-png', value: 'png' }] },
+            config: {
+                target: 'event',
+                cases: [{ id: SwitchCaseIdSchema.parse('case-png'), value: 'png' }],
+            },
         });
 
         const state = useBuilderStore.getState();
@@ -173,7 +177,7 @@ describe('useBuilderStore', () => {
     it('keeps a connected Edge while a Switch case value is edited through an empty intermediate state', () => {
         const sw = useBuilderStore.getState().addNode('switch', { x: 0, y: 0 });
         const log = useBuilderStore.getState().addNode('log', { x: 100, y: 0 });
-        const caseId = 'case-1';
+        const caseId = SwitchCaseIdSchema.parse('case-1');
         useBuilderStore
             .getState()
             .connect({ source: sw, target: log, sourceHandle: caseId, targetHandle: null });
@@ -288,8 +292,8 @@ describe('useBuilderStore', () => {
             config: {
                 target: 'event',
                 cases: [
-                    { id: 'case-a', value: 'pdf' },
-                    { id: 'case-b', value: 'pdf' },
+                    { id: SwitchCaseIdSchema.parse('case-a'), value: 'pdf' },
+                    { id: SwitchCaseIdSchema.parse('case-b'), value: 'pdf' },
                 ],
             },
         });

@@ -11,7 +11,7 @@ import {
     pluginNodeIdentity,
     registerSerializableNodeContract,
 } from '@sigil/schema/node-contract';
-import { isPluginNode } from '@sigil/schema/nodes';
+import { isPluginNode, SwitchCaseIdSchema } from '@sigil/schema/nodes';
 import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -349,7 +349,12 @@ describe('WorkflowStore', () => {
                           ...node,
                           config: {
                               ...node.config,
-                              cases: [{ id: 'case-pdf', value: 'portable-document' }],
+                              cases: [
+                                  {
+                                      id: SwitchCaseIdSchema.parse('case-pdf'),
+                                      value: 'portable-document',
+                                  },
+                              ],
                           },
                       }
                     : node,

@@ -88,10 +88,17 @@ export {
     STATE_SET_VALUE_TYPES,
     StateSetValueTypeSchema,
 } from './state-set.js';
-export type { SwitchCase, SwitchConfig, SwitchDiagnostic, SwitchDiagnosticCode } from './switch.js';
+export type {
+    SwitchCase,
+    SwitchCaseId,
+    SwitchConfig,
+    SwitchDiagnostic,
+    SwitchDiagnosticCode,
+} from './switch.js';
 export {
     SWITCH_DEFAULT_PORT,
     SWITCH_DIAGNOSTIC_CODES,
+    SwitchCaseIdSchema,
     SwitchCaseSchema,
     switchPortLabel,
     validateSwitchConfig,

@@ -1,4 +1,4 @@
-import type { SwitchCase } from '@sigil/schema/nodes/switch';
+import { type SwitchCase, SwitchCaseIdSchema } from '@sigil/schema/nodes/switch';
 import type { ChangeEvent, ReactElement, ReactNode } from 'react';
 import { useEffect, useId, useState } from 'react';
 
@@ -351,7 +351,12 @@ export function SwitchCaseList({
                     type="button"
                     className="border-gilt/50 text-gilt focus-visible:outline-2 focus-visible:outline-gilt focus-visible:outline-offset-2 px-3 py-1.5 text-left font-ui text-xs tracking-widest uppercase hover:bg-gilt/10"
                     aria-label={`Add ${label} entry`}
-                    onClick={() => onChange([...values, { id: crypto.randomUUID(), value: '' }])}
+                    onClick={() =>
+                        onChange([
+                            ...values,
+                            { id: SwitchCaseIdSchema.parse(crypto.randomUUID()), value: '' },
+                        ])
+                    }
                 >
                     + Add
                 </button>

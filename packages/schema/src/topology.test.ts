@@ -9,6 +9,7 @@ import {
     switchOutputPortSpec,
 } from './node-contract.js';
 import type { PipelineNode } from './nodes/index.js';
+import { SwitchCaseIdSchema } from './nodes/switch.js';
 import type { CompiledPipeline } from './pipeline.js';
 import {
     formatTopologyDiagnostics,
@@ -250,11 +251,11 @@ describe('validateWorkflowTopology', () => {
                             target: 'payload',
                             field: 'ext',
                             cases: [
-                                { id: 'pdf', value: 'pdf' },
-                                { id: 'duplicate', value: 'PDF' },
-                                { id: 'empty', value: '' },
-                                { id: 'reserved', value: 'default' },
-                                { id: 'invalid', value: 'line\nbreak' },
+                                { id: SwitchCaseIdSchema.parse('pdf'), value: 'pdf' },
+                                { id: SwitchCaseIdSchema.parse('duplicate'), value: 'PDF' },
+                                { id: SwitchCaseIdSchema.parse('empty'), value: '' },
+                                { id: SwitchCaseIdSchema.parse('reserved'), value: 'default' },
+                                { id: SwitchCaseIdSchema.parse('invalid'), value: 'line\nbreak' },
                             ],
                         },
                     },

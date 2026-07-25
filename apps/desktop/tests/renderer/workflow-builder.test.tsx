@@ -331,10 +331,14 @@ describe('File-manager config form renderer behavior', () => {
 });
 
 describe('State Set config form renderer behavior', () => {
-    it('shows Text for legacy configs and persists a selected primitive type', async () => {
+    it('shows Text for string configs and persists a selected primitive type', async () => {
         const user = userEvent.setup();
         const onChange = vi.fn();
-        const config: StateSetConfig = { key: 'retry-count', valueTemplate: '3' };
+        const config: StateSetConfig = {
+            key: 'retry-count',
+            valueTemplate: '3',
+            valueType: 'string',
+        };
         render(<StateSetConfigForm config={config} onChange={onChange} />);
 
         const valueType = screen.getByRole('combobox', { name: 'Value type' });

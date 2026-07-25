@@ -1,5 +1,5 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
-import type { SwitchConfig } from '@sigil/schema/nodes/switch';
+import { SwitchCaseIdSchema, type SwitchConfig } from '@sigil/schema/nodes/switch';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
@@ -19,7 +19,10 @@ const ctx: WorkflowContext = {
 };
 
 function switchCases(...values: readonly string[]): SwitchConfig['cases'] {
-    return values.map((value, index) => ({ id: `case-${index + 1}`, value }));
+    return values.map((value, index) => ({
+        id: SwitchCaseIdSchema.parse(`case-${index + 1}`),
+        value,
+    }));
 }
 
 describe('coerceForComparison', () => {

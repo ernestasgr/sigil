@@ -547,7 +547,7 @@ export function StateSetConfigForm({
             />
             <SelectInput
                 label="Value type"
-                value={config.valueType ?? 'string'}
+                value={config.valueType}
                 options={VALUE_KIND_OPTIONS}
                 onChange={(valueType) => onChange({ ...config, valueType })}
             />
