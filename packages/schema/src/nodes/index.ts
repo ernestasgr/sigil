@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import { BUILTIN_NODE_DESCRIPTORS, BUILTIN_NODE_TYPE_VALUES } from '../node-contract.js';
+import {
+    NodeOutputPortIdSchema,
+    PipelineEdgeIdSchema,
+    PipelineNodeIdSchema,
+} from '../ids.js';
 import type { NodeDescriptor } from './types.js';
 
 export type {
@@ -19,6 +24,7 @@ export type {
     NodeIdentity,
     NodeNamespace,
     NodeOutputPort,
+    NodeOutputPortId,
     NodeOutputPortSpec,
     NodeRole,
     NodeType,
@@ -28,6 +34,7 @@ export type {
     SerializableNodeContract,
     SerializableNodeContractInput,
 } from '../node-contract.js';
+export type { PipelineEdgeId, PipelineNodeId } from '../ids.js';
 export {
     BUILTIN_NODE_CONTRACT_REGISTRATIONS,
     BUILTIN_NODE_CONTRACT_REGISTRY,
@@ -70,6 +77,12 @@ export {
     validateNodeContractCompatibility,
     validatePluginNodeContract,
 } from '../node-contract.js';
+export {
+    NodeOutputPortIdSchema,
+    PipelineEdgeIdSchema,
+    PipelineNodeIdSchema,
+} from '../ids.js';
+export type { NodeOutputPortId } from '../ids.js';
 export type { DelayConfig } from './delay.js';
 export type { FileManagerConfig } from './file-manager.js';
 export type { FileWatcherConfig } from './file-watcher.js';
@@ -114,7 +127,7 @@ export const NodeTypeSchema = z.enum(NODE_TYPE_VALUES);
 
 export type BuiltinPipelineNode = {
     [K in NodeType]: {
-        readonly id: string;
+        readonly id: PipelineNodeId;
         readonly type: K;
         readonly config: NodeConfigMap[K];
     };
@@ -123,7 +136,7 @@ export type BuiltinPipelineNode = {
 // ─── PluginPipelineNode ─────────────────────────────────────────
 
 export interface PluginPipelineNode {
-    readonly id: string;
+    readonly id: PipelineNodeId;
     readonly type: string;
     readonly pluginId: string;
     readonly config: unknown;
@@ -147,7 +160,7 @@ function createBuiltinNodeSchema<TType extends NodeType, TSchema extends z.ZodTy
     descriptor: NodeDescriptor<TType, TSchema>,
 ) {
     return z.object({
-        id: z.string().min(1),
+        id: PipelineNodeIdSchema,
         type: z.literal(descriptor.type),
         config: descriptor.configSchema,
     });
@@ -169,7 +182,7 @@ const builtinNodeSchemas = [
 const BuiltinPipelineNodeSchema = z.discriminatedUnion('type', builtinNodeSchemas);
 
 const PluginPipelineNodeSchema = z.object({
-    id: z.string().min(1),
+    id: PipelineNodeIdSchema,
     type: z.string().min(1),
     pluginId: z.string().min(1),
     config: z.unknown(),

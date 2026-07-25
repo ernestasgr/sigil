@@ -191,6 +191,35 @@ describe('createWorkflowStateStore — get/set', () => {
         database.close();
     });
 
+    it('rolls back a failed legacy migration and rethrows the migration error', () => {
+        const database = new Database(':memory:');
+        database.exec(`
+            CREATE TABLE workflow_state (
+                workflow_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                PRIMARY KEY (workflow_id, key)
+            );
+        `);
+        database
+            .prepare('INSERT INTO workflow_state (workflow_id, key, value) VALUES (?, ?, ?)')
+            .run('wf-a', 'legacy', 'value');
+        database.exec(
+            "CREATE TRIGGER fail_workflow_state_migration BEFORE UPDATE ON workflow_state BEGIN SELECT RAISE(ABORT, 'migration failed'); END;",
+        );
+
+        expect(() => createStore(database)).toThrow(
+            expect.objectContaining({ message: 'migration failed' }),
+        );
+        expect(
+            database
+                .prepare('SELECT value FROM workflow_state WHERE workflow_id = ? AND key = ?')
+                .get('wf-a', 'legacy'),
+        ).toEqual({ value: 'value' });
+
+        database.close();
+    });
+
     it('preserves typed values across SQLite close and reopen', () => {
         const storageDir = mkdtempSync(join(tmpdir(), 'sigil-workflow-state-'));
         const databasePath = join(storageDir, 'state.db');
@@ -423,6 +452,24 @@ describe('createWorkflowStateStore — interval flush', () => {
         reader.dispose();
         database.close();
     });
+
+    it('uses the default flush interval when no interval is configured', () => {
+        vi.useFakeTimers();
+        const database = new Database(':memory:');
+        const writer = createWorkflowStateStore(database);
+        const reader = createStore(database);
+
+        writer.forWorkflow(WF_A).set('k', 'default-interval');
+        vi.advanceTimersByTime(249);
+        expect(Option.isNone(reader.forWorkflow(WF_A).get('k'))).toBe(true);
+
+        vi.advanceTimersByTime(1);
+        expect(Option.getOrThrow(reader.forWorkflow(WF_A).get('k'))).toBe('default-interval');
+
+        writer.dispose();
+        reader.dispose();
+        database.close();
+    });
 });
 
 describe('createWorkflowStateStore — dispose', () => {
@@ -586,6 +633,14 @@ describe('createWorkflowStateStore — listKeys / setKey / deleteKey', () => {
 });
 
 describe('createInMemoryWorkflowStateStore — listKeys / setKey / deleteKey', () => {
+    it('supports the no-op flush and dispose methods', () => {
+        const store = createInMemoryWorkflowStateStore();
+        const state = store.forWorkflow(WF_A);
+
+        expect(() => state.flush()).not.toThrow();
+        expect(() => store.dispose()).not.toThrow();
+    });
+
     it.each([
         ['string', 'value'],
         ['number', 0],

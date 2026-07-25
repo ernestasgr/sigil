@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { NodeOutputPortIdSchema, type NodeOutputPortId } from './ids.js';
 import { DelayDescriptor } from './nodes/delay.js';
 import { FileManagerDescriptor } from './nodes/file-manager.js';
 import { FileWatcherDescriptor } from './nodes/file-watcher.js';
@@ -125,10 +126,10 @@ export type NodeContractDisplay = z.infer<typeof NodeContractDisplaySchema>;
 
 export const NodeOutputPortSchema = z
     .object({
-        id: z.string().min(1),
+        id: NodeOutputPortIdSchema,
         label: z.string().min(1),
         /** Previous persisted port IDs or labels that may be migrated to id. */
-        aliases: z.array(z.string().min(1)).readonly().optional(),
+        aliases: z.array(NodeOutputPortIdSchema).readonly().optional(),
     })
     .readonly();
 export type NodeOutputPort = z.infer<typeof NodeOutputPortSchema>;
@@ -417,11 +418,15 @@ export function fixedOutputPort(
     label = id,
     aliases: readonly string[] = [],
 ): NodeOutputPort {
-    return aliases.length > 0 ? { id, label, aliases: [...aliases] } : { id, label };
+    const parsedId = NodeOutputPortIdSchema.parse(id);
+    const parsedAliases = aliases.map((alias) => NodeOutputPortIdSchema.parse(alias));
+    return parsedAliases.length > 0
+        ? { id: parsedId, label, aliases: parsedAliases }
+        : { id: parsedId, label };
 }
 
 export type OutputPortIdResolution =
-    | { readonly ok: true; readonly portId: string; readonly matchedBy: 'id' | 'alias' }
+    | { readonly ok: true; readonly portId: NodeOutputPortId; readonly matchedBy: 'id' | 'alias' }
     | { readonly ok: false; readonly reason: 'unknown' };
 
 /** Resolve a persisted Edge value without making display labels topology. */
@@ -432,28 +437,40 @@ export function resolveOutputPortId(
     const direct = ports.find((port) => port.id === persistedPortId);
     if (direct) return { ok: true, portId: direct.id, matchedBy: 'id' };
 
-    const alias = ports.find((port) => port.aliases?.includes(persistedPortId) === true);
+    const alias = ports.find(
+        (port) => port.aliases?.some((candidate) => candidate === persistedPortId) === true,
+    );
     return alias
         ? { ok: true, portId: alias.id, matchedBy: 'alias' }
         : { ok: false, reason: 'unknown' };
 }
 
 export function fixedOutputPortSpec(
-    ports: readonly NodeOutputPort[] | readonly string[],
+    ports: readonly NodeOutputPortInput[] | readonly string[],
 ): NodeOutputPortSpec {
     return {
         kind: 'fixed',
-        ports: ports.map((port) => (typeof port === 'string' ? fixedOutputPort(port) : port)),
+        ports: ports.map((port) =>
+            typeof port === 'string'
+                ? fixedOutputPort(port)
+                : fixedOutputPort(port.id, port.label, port.aliases),
+        ),
     };
 }
 
+export type NodeOutputPortInput = {
+    readonly id: string;
+    readonly label: string;
+    readonly aliases?: readonly string[];
+};
+
 export function switchOutputPortSpec(
-    defaultPort: NodeOutputPort = fixedOutputPort(SWITCH_DEFAULT_PORT),
+    defaultPort: NodeOutputPortInput = fixedOutputPort(SWITCH_DEFAULT_PORT),
 ): NodeOutputPortSpec {
     return {
         kind: 'config-derived',
         strategy: 'switch-cases',
-        defaultPort,
+        defaultPort: fixedOutputPort(defaultPort.id, defaultPort.label, defaultPort.aliases),
     };
 }
 
@@ -523,7 +540,7 @@ export function resolveDeclarativeOutputPorts(
             const outputPorts = [
                 spec.defaultPort,
                 ...parsed.data.cases.map((switchCase) => ({
-                    id: switchCase.id,
+                    id: NodeOutputPortIdSchema.parse(switchCase.id),
                     label: switchCase.value || '(empty)',
                 })),
             ];
