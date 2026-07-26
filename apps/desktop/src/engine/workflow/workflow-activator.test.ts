@@ -136,7 +136,6 @@ describe('WorkflowActivator lifecycle', () => {
             const nodeContract = {
                 identity: pluginNodeIdentity(pluginId, 'test-permission-action'),
                 version: 1,
-                compatibility: { minimumReaderVersion: 1, maximumReaderVersion: 1 },
                 role: 'action',
                 defaultConfig: {},
                 outputPorts: fixedOutputPortSpec(['out']),

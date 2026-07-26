@@ -116,10 +116,6 @@ export interface PluginNodeCatalogAdapter<TConfig = unknown> {
     /** Authoring defaults win when supplied; the contract default is the fallback. */
     readonly defaultConfig?: TConfig;
     readonly configSchema?: z.ZodType<TConfig>;
-    /** @deprecated Contract role is authoritative when a snapshot is loaded. */
-    readonly isTrigger?: boolean;
-    /** @deprecated Contract output ports are authoritative when a snapshot is loaded. */
-    readonly outputPorts?: (config: TConfig) => readonly string[] | 'dynamic';
     readonly outputPortLabel?: (config: TConfig, port: string) => string;
     readonly showInPalette?: boolean;
     readonly Form?: ComponentType<ConfigFormProps<TConfig>>;
@@ -142,15 +138,6 @@ function validateConfig<TSchema extends z.ZodType>(
     return parsed.success
         ? { ok: true, value: parsed.data }
         : { ok: false, error: parsed.error.message };
-}
-
-function outputPortsForConfig<TSchema extends z.ZodType>(
-    configSchema: TSchema,
-    outputPorts: (config: z.output<TSchema>) => readonly string[] | 'dynamic',
-    config: unknown,
-): readonly string[] | 'dynamic' {
-    const validation = validateConfig(configSchema, config);
-    return validation.ok ? outputPorts(validation.value) : 'dynamic';
 }
 
 function builtinOutputPorts(
@@ -228,7 +215,6 @@ export function createPluginNodeCatalogEntry<TConfig>(
     adapter: PluginNodeCatalogAdapter<TConfig>,
 ): PluginNodeCatalogEntry {
     const configSchema = adapter.configSchema;
-    const outputPorts = adapter.outputPorts;
     const outputPortLabel = adapter.outputPortLabel;
     const Form =
         adapter.Form && configSchema
@@ -242,14 +228,11 @@ export function createPluginNodeCatalogEntry<TConfig>(
         category: adapter.category ?? 'utility',
         description: adapter.description ?? `Plugin Node ${adapter.type}.`,
         defaultConfig: adapter.defaultConfig,
-        isTrigger: adapter.isTrigger ?? false,
+        isTrigger: false,
         validateConfig: configSchema
             ? (config) => validateConfig(configSchema, config)
             : (config) => ({ ok: true, value: config }),
-        outputPorts:
-            configSchema && outputPorts
-                ? (config) => outputPortsForConfig(configSchema, outputPorts, config)
-                : () => 'dynamic',
+        outputPorts: () => 'dynamic',
         ...(configSchema && outputPortLabel
             ? {
                   outputPortLabel: (config: unknown, port: string): string => {
@@ -349,8 +332,6 @@ export interface NodeCatalog {
     readonly findBuiltin: (type: NodeType) => BuiltinNodeCatalogEntry | undefined;
     readonly findPlugin: (pluginId: string, type: string) => PluginNodeCatalogEntry | undefined;
     readonly findForSpec: (spec: NodeSpec) => NodeCatalogEntry | undefined;
-    /** Compatibility lookup for callers that already know a Plugin identity. */
-    readonly find: (pluginId: string, type: string) => PluginNodeCatalogEntry | undefined;
 }
 
 export interface NodeCatalogOptions {
@@ -403,7 +384,6 @@ export function createNodeCatalog(
             isPluginNodeSpec(spec)
                 ? findPlugin(spec.pluginId, spec.type)
                 : builtinEntries.get(spec.type),
-        find: findPlugin,
     };
 }
 

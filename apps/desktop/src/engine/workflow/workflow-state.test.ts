@@ -97,126 +97,24 @@ describe('createWorkflowStateStore — get/set', () => {
         database.close();
     });
 
-    it('reads legacy bare strings without re-typing them', () => {
-        const database = new Database(':memory:');
-        const store = createStore(database);
-        database
-            .prepare('INSERT INTO workflow_state (workflow_id, key, value) VALUES (?, ?, ?)')
-            .run('wf-a', 'empty', '');
-        database
-            .prepare('INSERT INTO workflow_state (workflow_id, key, value) VALUES (?, ?, ?)')
-            .run('wf-a', 'number-looking', '42');
-        database
-            .prepare('INSERT INTO workflow_state (workflow_id, key, value) VALUES (?, ?, ?)')
-            .run('wf-a', 'boolean-looking', 'false');
-
-        const state = store.forWorkflow(WF_A);
-        expect(state.get('empty')).toEqual(Option.some(''));
-        expect(state.get('number-looking')).toEqual(Option.some('42'));
-        expect(state.get('boolean-looking')).toEqual(Option.some('false'));
-
-        store.dispose();
-        database.close();
-    });
-
-    it('migrates envelope-shaped legacy strings before decoding and preserves encoded rows', () => {
+    it('rejects unencoded database rows instead of rewriting them', () => {
         const database = new Database(':memory:');
         database.exec(`
-            CREATE TABLE workflow_state (
-                workflow_id TEXT NOT NULL,
-                key TEXT NOT NULL,
-                value TEXT NOT NULL,
-                PRIMARY KEY (workflow_id, key)
-            );
-        `);
-
-        const legacyEnvelope = JSON.stringify({
-            format: WORKFLOW_STATE_VALUE_FORMAT,
-            version: WORKFLOW_STATE_VALUE_VERSION,
-            type: 'number',
-            value: 7,
-        });
-        const encodedTypedValue = `${WORKFLOW_STATE_VALUE_PREFIX}${JSON.stringify({
-            format: WORKFLOW_STATE_VALUE_FORMAT,
-            version: WORKFLOW_STATE_VALUE_VERSION,
-            type: 'number',
-            value: 42,
-        })}`;
-        const malformedEncodedValue = `${WORKFLOW_STATE_VALUE_PREFIX}not-json`;
-        const invalidEncodedValue = `${WORKFLOW_STATE_VALUE_PREFIX}${JSON.stringify({
-            format: WORKFLOW_STATE_VALUE_FORMAT,
-            version: WORKFLOW_STATE_VALUE_VERSION,
-            type: 'number',
-            value: '42',
-        })}`;
-        const insert = database.prepare(
-            'INSERT INTO workflow_state (workflow_id, key, value) VALUES (?, ?, ?)',
-        );
-        insert.run('wf-a', 'legacy-envelope', legacyEnvelope);
-        insert.run('wf-a', 'typed', encodedTypedValue);
-        insert.run('wf-a', 'malformed', malformedEncodedValue);
-        insert.run('wf-a', 'invalid', invalidEncodedValue);
-
-        const store = createStore(database);
-        const state = store.forWorkflow(WF_A);
-
-        expect(state.get('legacy-envelope')).toEqual(Option.some(legacyEnvelope));
-        expect(state.get('typed')).toEqual(Option.some(42));
-        expect(state.get('malformed')).toEqual(Option.some(malformedEncodedValue));
-        expect(state.get('invalid')).toEqual(Option.some(invalidEncodedValue));
-        expect(
-            database
-                .prepare('SELECT value FROM workflow_state WHERE workflow_id = ? AND key = ?')
-                .get('wf-a', 'legacy-envelope'),
-        ).toEqual({
-            value: `${WORKFLOW_STATE_VALUE_PREFIX}${JSON.stringify({
-                format: WORKFLOW_STATE_VALUE_FORMAT,
-                version: WORKFLOW_STATE_VALUE_VERSION,
-                type: 'string',
-                value: legacyEnvelope,
-            })}`,
-        });
-        expect(
-            database
-                .prepare('SELECT value FROM workflow_state WHERE workflow_id = ? AND key = ?')
-                .get('wf-a', 'typed'),
-        ).toEqual({ value: encodedTypedValue });
-        expect(
-            database
-                .prepare('SELECT value FROM workflow_state_metadata WHERE key = ?')
-                .get('typed-value-envelope-v1'),
-        ).toEqual({ value: 'complete' });
-
-        store.dispose();
-        database.close();
-    });
-
-    it('rolls back a failed legacy migration and rethrows the migration error', () => {
-        const database = new Database(':memory:');
-        database.exec(`
-            CREATE TABLE workflow_state (
-                workflow_id TEXT NOT NULL,
-                key TEXT NOT NULL,
-                value TEXT NOT NULL,
-                PRIMARY KEY (workflow_id, key)
-            );
-        `);
+                CREATE TABLE workflow_state (
+                    workflow_id TEXT NOT NULL,
+                    key TEXT NOT NULL,
+                    value TEXT NOT NULL,
+                    PRIMARY KEY (workflow_id, key)
+                );
+            `);
         database
             .prepare('INSERT INTO workflow_state (workflow_id, key, value) VALUES (?, ?, ?)')
-            .run('wf-a', 'legacy', 'value');
-        database.exec(
-            "CREATE TRIGGER fail_workflow_state_migration BEFORE UPDATE ON workflow_state BEGIN SELECT RAISE(ABORT, 'migration failed'); END;",
-        );
+            .run('wf-a', 'unencoded', 'value');
 
-        expect(() => createStore(database)).toThrow(
-            expect.objectContaining({ message: 'migration failed' }),
-        );
-        expect(
-            database
-                .prepare('SELECT value FROM workflow_state WHERE workflow_id = ? AND key = ?')
-                .get('wf-a', 'legacy'),
-        ).toEqual({ value: 'value' });
+        const store = createStore(database);
+        expect(() => store.forWorkflow(WF_A).get('unencoded')).toThrow('invalid encoded value');
 
+        store.dispose();
         database.close();
     });
 
@@ -361,10 +259,17 @@ describe('createWorkflowStateStore — flush', () => {
         state.flush();
 
         database
-            .prepare(
-                "UPDATE workflow_state SET value = 'overwritten' WHERE workflow_id = 'wf-a' AND key = 'k'",
-            )
-            .run();
+            .prepare('UPDATE workflow_state SET value = ? WHERE workflow_id = ? AND key = ?')
+            .run(
+                `${WORKFLOW_STATE_VALUE_PREFIX}${JSON.stringify({
+                    format: WORKFLOW_STATE_VALUE_FORMAT,
+                    version: WORKFLOW_STATE_VALUE_VERSION,
+                    type: 'string',
+                    value: 'overwritten',
+                })}`,
+                'wf-a',
+                'k',
+            );
 
         expect(Option.getOrThrow(state.get('k'))).toBe('overwritten');
 

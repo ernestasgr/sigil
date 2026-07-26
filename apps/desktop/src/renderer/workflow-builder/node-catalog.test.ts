@@ -108,8 +108,6 @@ describe('Workflow Builder Node catalog', () => {
             description: 'Writes a message.',
             defaultConfig: { message: 'hello' },
             configSchema,
-            isTrigger: false,
-            outputPorts: () => ['out'],
             Form: () => null,
         });
         const catalog = createNodeCatalog([entry]);
@@ -156,8 +154,6 @@ describe('Workflow Builder Node catalog', () => {
             description: 'A declared Plugin Node.',
             defaultConfig: {},
             configSchema: z.object({}),
-            isTrigger: false,
-            outputPorts: () => ['out'],
         });
         const undeclared = createPluginNodeCatalogEntry({
             pluginId: 'com.example.undeclared',
@@ -167,8 +163,6 @@ describe('Workflow Builder Node catalog', () => {
             description: 'An undeclared Plugin Node.',
             defaultConfig: {},
             configSchema: z.object({}),
-            isTrigger: false,
-            outputPorts: () => ['out'],
         });
 
         const catalog = createNodeCatalogFromManifests(
@@ -192,8 +186,6 @@ describe('Workflow Builder Node catalog', () => {
             description: 'Adapter description.',
             defaultConfig: { enabled: false },
             configSchema: z.object({ enabled: z.boolean() }),
-            isTrigger: false,
-            outputPorts: () => ['wrong-port'],
             Form: () => null,
         });
         const catalog = createNodeCatalogFromManifests(

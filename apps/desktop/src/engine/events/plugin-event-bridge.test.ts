@@ -3,12 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PluginIdSchema } from '@sigil/schema/ids';
 import { Option } from 'effect';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { testNodeId } from '../../test-support/pipeline-fixtures.js';
 import { createNodeHandlerRegistry } from '../execution/node-registry.js';
 import { createBuiltinHandlers } from '../node-handlers/registry.js';
 import { createManifestRegistry } from '../plugins/manifest-registry.js';
-import { loadNodePlugin } from '../plugins/node-plugin-loader.js';
+import { createNodePluginLoader, type NodePluginLoader } from '../plugins/node-plugin-loader.js';
 import { createBridge } from './bridge.js';
 import { type BusEvent, createEventBus } from './event-bus.js';
 
@@ -57,6 +57,21 @@ ${handlerBody}
 `,
     );
 }
+
+const testLoaders = new Set<NodePluginLoader>();
+
+async function loadNodePlugin(
+    pluginDir: string,
+    deps: Parameters<NodePluginLoader['loadNodePlugin']>[1],
+): Promise<Awaited<ReturnType<NodePluginLoader['loadNodePlugin']>>> {
+    const loader = createNodePluginLoader();
+    testLoaders.add(loader);
+    return loader.loadNodePlugin(pluginDir, deps);
+}
+
+afterAll(async () => {
+    await Promise.all([...testLoaders].map((loader) => loader.shutdown()));
+});
 
 describe('Node Plugin Event Bridge mediation', () => {
     it('routes a declared emission through the Bridge with loader-bound identity', async () => {

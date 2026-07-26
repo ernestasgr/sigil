@@ -5,10 +5,8 @@ import type { CompiledPipeline } from '@sigil/schema';
 import { parsePipeline } from '@sigil/schema';
 import { PluginIdSchema } from '@sigil/schema/ids';
 import {
-    createBuiltinNodeContractRegistry,
     createNodeContractRegistry,
     fixedOutputPortSpec,
-    getBuiltinNodeContract,
     pluginNodeIdentity,
     registerSerializableNodeContract,
 } from '@sigil/schema/node-contract';
@@ -611,6 +609,7 @@ describe('WorkflowStore', () => {
             pipelineId: 'pipeline-pre',
             workflowId: 'wf-pre',
             schemaVersion: 1,
+            activation: { kind: 'disabled' },
             nodes: [
                 {
                     id: 'trigger',
@@ -642,123 +641,6 @@ describe('WorkflowStore', () => {
         expect(parsePipeline(Option.getOrThrow(loaded).pipeline).ok).toBe(true);
     });
 
-    it('loads legacy unversioned Workflows and canonicalizes them on the next successful write', () => {
-        const legacyPipeline = {
-            ...samplePipeline,
-            id: 'pipeline-legacy',
-            workflowId: 'wf-legacy',
-        };
-        writeFileSync(
-            join(dir, 'wf-legacy.json'),
-            JSON.stringify({
-                id: legacyPipeline.workflowId,
-                name: 'Legacy Workflow',
-                enabled: false,
-                positions: samplePositions,
-                pipelineId: legacyPipeline.id,
-                workflowId: legacyPipeline.workflowId,
-                nodes: legacyPipeline.nodes,
-                edges: legacyPipeline.edges,
-            }),
-        );
-
-        store = createWorkflowStore(dir);
-
-        const loaded = store.get('wf-legacy');
-        expect(Option.isSome(loaded)).toBe(true);
-        if (Option.isSome(loaded)) {
-            expect(loaded.value.pipeline.schemaVersion).toBe(1);
-        }
-
-        expect(Option.isSome(store.setActivation('wf-legacy', { kind: 'active' }))).toBe(true);
-        expect(JSON.parse(readFileSync(join(dir, 'wf-legacy.json'), 'utf8')).schemaVersion).toBe(1);
-    });
-
-    it('migrates legacy bundled Node identities and port aliases on the next successful write', () => {
-        const registry = createBuiltinNodeContractRegistry();
-        const legacyContract = getBuiltinNodeContract('file-watcher');
-        registerSerializableNodeContract(registry, {
-            ...legacyContract,
-            identity: pluginNodeIdentity(pid('com.sigil.file-watcher'), 'file-watcher'),
-        });
-
-        const pipeline = {
-            id: 'pipeline-legacy-node-contract',
-            workflowId: 'wf-legacy-node-contract',
-            schemaVersion: 1 as const,
-            nodes: [
-                {
-                    id: 'watcher',
-                    type: 'file-watcher',
-                    config: legacyContract.defaultConfig,
-                },
-                { id: 'log', type: 'log', config: { message: 'migrated' } },
-            ],
-            edges: [
-                {
-                    id: 'watcher-log',
-                    source: 'watcher',
-                    target: 'log',
-                    sourcePort: 'Output',
-                },
-            ],
-        };
-        writeFileSync(
-            join(dir, 'wf-legacy-node-contract.json'),
-            JSON.stringify({
-                id: pipeline.workflowId,
-                name: 'Legacy Node Contract Workflow',
-                pipelineId: pipeline.id,
-                workflowId: pipeline.workflowId,
-                schemaVersion: pipeline.schemaVersion,
-                nodes: pipeline.nodes,
-                edges: pipeline.edges,
-            }),
-        );
-
-        const migratedStore = createWorkflowStore(dir, { contractRegistry: registry });
-        const loaded = migratedStore.get('wf-legacy-node-contract');
-        expect(Option.isSome(loaded)).toBe(true);
-        if (Option.isNone(loaded)) return;
-
-        expect(loaded.value.pipeline.nodes[0]).toMatchObject({
-            pluginId: 'com.sigil.file-watcher',
-        });
-        expect(loaded.value.pipeline.edges[0]?.sourcePort).toBe('out');
-        expect(loaded.value.migration).toMatchObject({
-            changed: true,
-            migrations: expect.arrayContaining([
-                expect.objectContaining({ kind: 'node-identity', nodeId: 'watcher' }),
-                expect.objectContaining({ kind: 'port-alias', edgeId: 'watcher-log' }),
-            ]),
-        });
-
-        const rawBeforeWrite = JSON.parse(
-            readFileSync(join(dir, 'wf-legacy-node-contract.json'), 'utf8'),
-        );
-        expect(rawBeforeWrite.nodes[0].pluginId).toBeUndefined();
-        expect(rawBeforeWrite.edges[0].sourcePort).toBe('Output');
-
-        expect(
-            Option.isSome(
-                migratedStore.setActivation('wf-legacy-node-contract', { kind: 'active' }),
-            ),
-        ).toBe(true);
-        const rawAfterWrite = JSON.parse(
-            readFileSync(join(dir, 'wf-legacy-node-contract.json'), 'utf8'),
-        );
-        expect(rawAfterWrite.nodes[0].pluginId).toBe('com.sigil.file-watcher');
-        expect(rawAfterWrite.edges[0].sourcePort).toBe('out');
-
-        const reloaded = createWorkflowStore(dir, { contractRegistry: registry }).get(
-            'wf-legacy-node-contract',
-        );
-        expect(Option.isSome(reloaded)).toBe(true);
-        if (Option.isSome(reloaded)) {
-            expect(reloaded.value.migration).toEqual({ changed: false, migrations: [] });
-        }
-    });
-
     it('keeps a Workflow disabled with an explicit diagnostic when a persisted port was removed', () => {
         const registry = createNodeContractRegistry();
         registerSerializableNodeContract(registry, {
@@ -769,7 +651,7 @@ describe('WorkflowStore', () => {
             outputPorts: fixedOutputPortSpec(['current']),
             display: {
                 label: 'Removed Port Trigger',
-                description: 'A migration fixture.',
+                description: 'A current contract fixture.',
                 category: 'trigger',
             },
         });
@@ -783,6 +665,7 @@ describe('WorkflowStore', () => {
                 schemaVersion: 1,
                 pipelineId: 'pipeline-removed-port',
                 workflowId: 'wf-removed-port',
+                positions: {},
                 nodes: [
                     {
                         id: 'trigger',
@@ -800,6 +683,7 @@ describe('WorkflowStore', () => {
                         sourcePort: 'removed',
                     },
                 ],
+                activation: { kind: 'disabled' },
             }),
         );
 
@@ -821,38 +705,7 @@ describe('WorkflowStore', () => {
         );
     });
 
-    it('loads an explicit legacy schema version as the current in-memory Pipeline without rewriting on startup', () => {
-        const legacyPipeline = {
-            ...samplePipeline,
-            id: 'pipeline-legacy-zero',
-            workflowId: 'wf-legacy-zero',
-        };
-        writeFileSync(
-            join(dir, 'wf-legacy-zero.json'),
-            JSON.stringify({
-                id: legacyPipeline.workflowId,
-                name: 'Legacy Zero Workflow',
-                schemaVersion: 0,
-                pipelineId: legacyPipeline.id,
-                workflowId: legacyPipeline.workflowId,
-                nodes: legacyPipeline.nodes,
-                edges: legacyPipeline.edges,
-            }),
-        );
-
-        store = createWorkflowStore(dir);
-
-        const loaded = store.get('wf-legacy-zero');
-        expect(Option.isSome(loaded)).toBe(true);
-        if (Option.isSome(loaded)) {
-            expect(loaded.value.pipeline.schemaVersion).toBe(1);
-        }
-        expect(
-            JSON.parse(readFileSync(join(dir, 'wf-legacy-zero.json'), 'utf8')).schemaVersion,
-        ).toBe(0);
-    });
-
-    it('keeps unsupported schema versions visible with diagnostics without hiding valid Workflows', () => {
+    it('rejects files that do not use the current schema version without hiding valid Workflows', () => {
         const supportedPipeline = {
             ...samplePipeline,
             id: 'pipeline-supported',
@@ -872,10 +725,12 @@ describe('WorkflowStore', () => {
                 name: 'Future Workflow',
                 enabled: true,
                 schemaVersion: 2,
+                positions: {},
                 pipelineId: futurePipeline.id,
                 workflowId: futurePipeline.workflowId,
                 nodes: futurePipeline.nodes,
                 edges: futurePipeline.edges,
+                activation: { kind: 'disabled' },
             }),
         );
 
@@ -891,7 +746,7 @@ describe('WorkflowStore', () => {
                 enabled: false,
                 diagnostics: [
                     expect.objectContaining({
-                        code: 'unsupported_schema_version',
+                        code: 'invalid_pipeline',
                         target: { kind: 'pipeline' },
                     }),
                 ],
@@ -899,14 +754,18 @@ describe('WorkflowStore', () => {
         );
     });
 
-    it('keeps valid positions while ignoring malformed position entries', () => {
+    it('rejects files with malformed position entries', () => {
         const fileData = {
             id: 'wf-positions',
             name: 'Positions',
+            enabled: false,
+            schemaVersion: 1,
             positions: {
                 valid: { x: 10, y: 20 },
                 malformed: { x: '10', y: 20 },
             },
+            pipelineId: 'pipeline-positions',
+            workflowId: 'wf-positions',
             nodes: [
                 {
                     id: 'trigger',
@@ -918,14 +777,19 @@ describe('WorkflowStore', () => {
                 },
             ],
             edges: [],
+            activation: { kind: 'disabled' },
         };
         writeFileSync(join(dir, 'wf-positions.json'), JSON.stringify(fileData));
 
         store = createWorkflowStore(dir);
 
-        const loaded = store.get('wf-positions');
-        expect(Option.isSome(loaded)).toBe(true);
-        expect(Option.getOrThrow(loaded).positions).toEqual({ valid: { x: 10, y: 20 } });
+        expect(store.get('wf-positions')).toEqual(Option.none());
+        expect(store.getSummary('wf-positions')).toMatchObject(
+            Option.some({
+                enabled: false,
+                diagnostics: [expect.objectContaining({ code: 'invalid_pipeline' })],
+            }),
+        );
     });
 
     it('keeps invalid JSON files visible on startup', () => {
@@ -975,7 +839,18 @@ describe('WorkflowStore', () => {
     it('keeps topology-invalid stored Workflows visible with repair diagnostics', () => {
         writeFileSync(
             join(dir, 'wf-broken.json'),
-            JSON.stringify({ id: 'wf-broken', name: 'Broken', nodes: [], edges: [] }),
+            JSON.stringify({
+                id: 'wf-broken',
+                name: 'Broken',
+                enabled: false,
+                schemaVersion: 1,
+                positions: {},
+                pipelineId: 'pipeline-broken',
+                workflowId: 'wf-broken',
+                nodes: [],
+                edges: [],
+                activation: { kind: 'disabled' },
+            }),
         );
 
         store = createWorkflowStore(dir);
@@ -1023,8 +898,14 @@ describe('WorkflowStore', () => {
             JSON.stringify({
                 id: 'wf-record',
                 name: 'Mismatched',
+                enabled: false,
+                schemaVersion: 1,
+                positions: {},
+                pipelineId: 'pipeline-record',
+                workflowId: 'wf-file',
                 nodes: [],
                 edges: [],
+                activation: { kind: 'disabled' },
             }),
         );
 
@@ -1054,8 +935,11 @@ describe('WorkflowStore', () => {
                 pipelineId: 'pipeline-mismatch',
                 workflowId: 'wf-other',
                 schemaVersion: 1,
+                enabled: false,
+                positions: {},
                 nodes: samplePipeline.nodes,
                 edges: samplePipeline.edges,
+                activation: { kind: 'disabled' },
             }),
         );
 

@@ -45,11 +45,6 @@ export interface NodePluginWorkerLoadDependencies {
     readonly diagnosticEvent?: (event: EngineDiagnosticPayload) => void;
 }
 
-export interface NodePluginWorkerLoadOptions {
-    /** Replace an existing worker for the legacy module-level compatibility facade. */
-    readonly replaceExisting?: boolean;
-}
-
 export type NodePluginWorkerLoadResult =
     | {
           readonly ok: true;
@@ -76,7 +71,6 @@ export interface NodePluginWorkerSupervisor {
     readonly load: (
         preparation: NodePluginPreparation,
         deps: NodePluginWorkerLoadDependencies,
-        options?: NodePluginWorkerLoadOptions,
     ) => Promise<NodePluginWorkerLoadResult>;
     readonly disposePlugin: (pluginId: string) => Promise<void>;
     readonly updatePermissions: (
@@ -289,7 +283,6 @@ export function createNodePluginWorkerSupervisor(
     const load = async (
         preparation: NodePluginPreparation,
         deps: NodePluginWorkerLoadDependencies,
-        loadOptions: NodePluginWorkerLoadOptions = {},
     ): Promise<NodePluginWorkerLoadResult> => {
         if (isShuttingDown) {
             return {
@@ -307,7 +300,7 @@ export function createNodePluginWorkerSupervisor(
                 error: `Plugin worker "${pluginId}" is already loading.`,
             };
         }
-        if (workers.has(pluginId) && !loadOptions.replaceExisting) {
+        if (workers.has(pluginId)) {
             return {
                 ok: false,
                 kind: 'already_loaded',
@@ -317,14 +310,6 @@ export function createNodePluginWorkerSupervisor(
 
         loadingPluginIds.add(pluginId);
         try {
-            if (workers.has(pluginId)) await disposePlugin(pluginId);
-            if (isShuttingDown) {
-                return {
-                    ok: false,
-                    kind: 'worker_error',
-                    error: 'Plugin worker supervisor is shut down.',
-                };
-            }
             return await loadWorker(preparation, deps);
         } finally {
             loadingPluginIds.delete(pluginId);

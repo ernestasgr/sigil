@@ -15,7 +15,7 @@ import {
     type CompiledPipeline,
     type PipelineSchemaVersion,
     PipelineSchemaVersionSchema,
-    parsePersistedPipeline,
+    parsePipeline,
 } from '@sigil/schema';
 import { PipelineEdgeSchema } from '@sigil/schema/edges';
 import { PipelineNodeSchema } from '@sigil/schema/nodes';
@@ -27,10 +27,6 @@ import {
     type WorkflowTopologyOptions,
 } from '@sigil/schema/topology';
 import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/workflow-id';
-import {
-    migrateWorkflowContracts,
-    type WorkflowMigrationReport,
-} from '@sigil/schema/workflow-migration';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
 
@@ -60,7 +56,6 @@ export interface StoredWorkflow {
     readonly schemaVersion: PipelineSchemaVersion;
     readonly nodes: CompiledPipeline['nodes'];
     readonly edges: CompiledPipeline['edges'];
-    readonly migration: WorkflowMigrationReport;
     readonly executable: ExecutableWorkflow;
     readonly diagnostics: readonly TopologyDiagnostic[];
 }
@@ -112,7 +107,6 @@ export interface WorkflowStore {
         readonly executable: ExecutableWorkflow;
         readonly name: string;
         readonly positions: Readonly<Record<string, NodePosition>>;
-        readonly migration: WorkflowMigrationReport;
     }>;
     readonly getSummary: (id: string) => Option.Option<WorkflowSummary>;
     readonly save: (
@@ -243,21 +237,21 @@ function filePath(dir: string, id: string): string {
 }
 
 const NodePositionSchema = z.object({ x: z.number(), y: z.number() }).readonly();
-const CURRENT_WORKFLOW_SCHEMA_VERSION = PipelineSchemaVersionSchema.value;
-const LEGACY_WORKFLOW_SCHEMA_VERSION = 0;
 
-const StoredWorkflowFileSchema = z.object({
-    id: WorkflowIdSchema,
-    name: z.string(),
-    enabled: z.boolean().optional(),
-    schemaVersion: z.number().int().optional(),
-    positions: z.record(z.string(), z.unknown()).optional(),
-    pipelineId: z.string().min(1).optional(),
-    workflowId: WorkflowIdSchema.optional(),
-    nodes: z.array(PipelineNodeSchema).optional(),
-    edges: z.array(PipelineEdgeSchema).optional(),
-    activation: WorkflowActivationStateSchema.optional(),
-});
+const StoredWorkflowFileSchema = z
+    .object({
+        id: WorkflowIdSchema,
+        name: z.string(),
+        enabled: z.boolean(),
+        schemaVersion: PipelineSchemaVersionSchema,
+        positions: z.record(z.string(), NodePositionSchema),
+        pipelineId: z.string().min(1),
+        workflowId: WorkflowIdSchema,
+        nodes: z.array(PipelineNodeSchema),
+        edges: z.array(PipelineEdgeSchema),
+        activation: WorkflowActivationStateSchema,
+    })
+    .strict();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -299,30 +293,6 @@ function workflowReadFailureDetail(error: unknown): string {
     return `it could not be read: ${message}`;
 }
 
-function migrateSchemaVersion(
-    fileName: string,
-    schemaVersion: number | undefined,
-):
-    | { readonly ok: true; readonly value: PipelineSchemaVersion }
-    | { readonly ok: false; readonly diagnostic: TopologyDiagnostic } {
-    if (
-        schemaVersion === undefined ||
-        schemaVersion === LEGACY_WORKFLOW_SCHEMA_VERSION ||
-        schemaVersion === CURRENT_WORKFLOW_SCHEMA_VERSION
-    ) {
-        return { ok: true, value: CURRENT_WORKFLOW_SCHEMA_VERSION };
-    }
-
-    return {
-        ok: false,
-        diagnostic: storedWorkflowDiagnostic(
-            fileName,
-            `it uses unsupported schema version ${schemaVersion}. Supported versions are the legacy version ${LEGACY_WORKFLOW_SCHEMA_VERSION} and current version ${CURRENT_WORKFLOW_SCHEMA_VERSION}; leave the file unchanged for recovery.`,
-            'unsupported_schema_version',
-        ),
-    };
-}
-
 function invalidWorkflowRecord(
     storagePath: string,
     workflowId: string,
@@ -341,25 +311,11 @@ function invalidWorkflowRecord(
 
 function initialActivationState(
     enabled: boolean,
-    persisted: WorkflowActivationState | undefined,
+    persisted: WorkflowActivationState,
 ): WorkflowActivationState {
     if (!enabled) return { kind: 'disabled' };
-    if (persisted?.kind === 'failed') return persisted;
+    if (persisted.kind === 'failed') return persisted;
     return { kind: 'activating' };
-}
-
-function readPositions(
-    rawPositions: Readonly<Record<string, unknown>> | undefined,
-): Readonly<Record<string, NodePosition>> {
-    if (!rawPositions) return {};
-    const positions: Record<string, NodePosition> = {};
-    for (const [key, value] of Object.entries(rawPositions)) {
-        const parsed = NodePositionSchema.safeParse(value);
-        if (parsed.success) {
-            positions[key] = parsed.data;
-        }
-    }
-    return positions;
 }
 
 function readWorkflowFile(
@@ -406,11 +362,6 @@ function readWorkflowFile(
         ]);
     }
 
-    const schemaVersion = migrateSchemaVersion(fileName, parsedFile.data.schemaVersion);
-    if (!schemaVersion.ok) {
-        return invalidWorkflowRecord(storagePath, workflowId, raw, [schemaVersion.diagnostic]);
-    }
-
     if (parsedFile.data.id !== workflowId) {
         return invalidWorkflowRecord(storagePath, workflowId, raw, [
             storedWorkflowDiagnostic(
@@ -420,7 +371,7 @@ function readWorkflowFile(
         ]);
     }
 
-    const persistedWorkflowId = parsedFile.data.workflowId ?? parsedFile.data.id;
+    const persistedWorkflowId = parsedFile.data.workflowId;
     if (persistedWorkflowId !== workflowId) {
         return invalidWorkflowRecord(storagePath, workflowId, raw, [
             storedWorkflowDiagnostic(
@@ -441,21 +392,20 @@ function readWorkflowFile(
     }
 
     const parsedPipeline = {
-        id: parsedFile.data.pipelineId ?? parsedFile.data.id,
+        id: parsedFile.data.pipelineId,
         workflowId: persistedWorkflowId,
-        schemaVersion: schemaVersion.value,
-        nodes: parsedFile.data.nodes ?? [],
-        edges: parsedFile.data.edges ?? [],
+        schemaVersion: parsedFile.data.schemaVersion,
+        nodes: parsedFile.data.nodes,
+        edges: parsedFile.data.edges,
     };
-    const parseResult = parsePersistedPipeline(parsedPipeline);
+    const parseResult = parsePipeline(parsedPipeline);
     if (!parseResult.ok) {
         return invalidWorkflowRecord(storagePath, workflowId, raw, [
             storedWorkflowDiagnostic(fileName, parseResult.error),
         ]);
     }
 
-    const migration = migrateWorkflowContracts(parseResult.value, topologyOptions.contractRegistry);
-    const pipeline = migration.value;
+    const pipeline = parseResult.value;
     const topology = validateWorkflowTopology(pipeline, topologyOptions);
     if (!topology.ok) {
         return invalidWorkflowRecord(storagePath, workflowId, raw, topology.diagnostics);
@@ -464,18 +414,14 @@ function readWorkflowFile(
     return {
         id: filenameId.data,
         name: parsedFile.data.name,
-        enabled: parsedFile.data.enabled ?? false,
-        positions: readPositions(parsedFile.data.positions),
+        enabled: parsedFile.data.enabled,
+        positions: parsedFile.data.positions,
         pipelineId: pipeline.id,
         workflowId: pipeline.workflowId,
         schemaVersion: pipeline.schemaVersion,
         nodes: pipeline.nodes,
         edges: pipeline.edges,
-        migration: migration.report,
-        activation: initialActivationState(
-            parsedFile.data.enabled ?? false,
-            parsedFile.data.activation,
-        ),
+        activation: initialActivationState(parsedFile.data.enabled, parsedFile.data.activation),
         executable: topology.value,
         diagnostics: [],
         storagePath,
@@ -582,7 +528,6 @@ export function createWorkflowStore(
                 executable: stored.executable,
                 name: stored.name,
                 positions: stored.positions,
-                migration: stored.migration,
             });
         },
 
@@ -596,9 +541,7 @@ export function createWorkflowStore(
                     workflowId,
                 );
             }
-            const migration = migrateWorkflowContracts(pipeline, topologyOptions.contractRegistry);
-            const canonicalPipeline = migration.value;
-            const topology = validateWorkflowTopology(canonicalPipeline, topologyOptions);
+            const topology = validateWorkflowTopology(pipeline, topologyOptions);
             if (!topology.ok) {
                 throw createWorkflowTopologyError(topology.diagnostics);
             }
@@ -607,12 +550,11 @@ export function createWorkflowStore(
                 name,
                 enabled: false,
                 positions,
-                pipelineId: canonicalPipeline.id,
-                workflowId: canonicalPipeline.workflowId,
-                schemaVersion: canonicalPipeline.schemaVersion,
-                nodes: canonicalPipeline.nodes,
-                edges: canonicalPipeline.edges,
-                migration: migration.report,
+                pipelineId: pipeline.id,
+                workflowId: pipeline.workflowId,
+                schemaVersion: pipeline.schemaVersion,
+                nodes: pipeline.nodes,
+                edges: pipeline.edges,
                 activation: { kind: 'disabled' },
                 executable: topology.value,
                 diagnostics: [],
@@ -633,9 +575,7 @@ export function createWorkflowStore(
                     workflowId,
                 );
             }
-            const migration = migrateWorkflowContracts(pipeline, topologyOptions.contractRegistry);
-            const canonicalPipeline = migration.value;
-            const topology = validateWorkflowTopology(canonicalPipeline, topologyOptions);
+            const topology = validateWorkflowTopology(pipeline, topologyOptions);
             if (!topology.ok) {
                 throw createWorkflowTopologyError(topology.diagnostics);
             }
@@ -648,12 +588,11 @@ export function createWorkflowStore(
                       id: workflowId,
                       name,
                       positions,
-                      pipelineId: canonicalPipeline.id,
-                      workflowId: canonicalPipeline.workflowId,
-                      schemaVersion: canonicalPipeline.schemaVersion,
-                      nodes: canonicalPipeline.nodes,
-                      edges: canonicalPipeline.edges,
-                      migration: migration.report,
+                      pipelineId: pipeline.id,
+                      workflowId: pipeline.workflowId,
+                      schemaVersion: pipeline.schemaVersion,
+                      nodes: pipeline.nodes,
+                      edges: pipeline.edges,
                       activation: existingValid.activation,
                       executable: topology.value,
                       diagnostics: [],
@@ -664,12 +603,11 @@ export function createWorkflowStore(
                       name,
                       enabled: false,
                       positions,
-                      pipelineId: canonicalPipeline.id,
-                      workflowId: canonicalPipeline.workflowId,
-                      schemaVersion: canonicalPipeline.schemaVersion,
-                      nodes: canonicalPipeline.nodes,
-                      edges: canonicalPipeline.edges,
-                      migration: migration.report,
+                      pipelineId: pipeline.id,
+                      workflowId: pipeline.workflowId,
+                      schemaVersion: pipeline.schemaVersion,
+                      nodes: pipeline.nodes,
+                      edges: pipeline.edges,
                       activation: { kind: 'disabled' },
                       executable: topology.value,
                       diagnostics: [],

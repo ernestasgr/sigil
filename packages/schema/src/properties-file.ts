@@ -162,7 +162,7 @@ export interface PropertyResolutionSources<TKey extends string> {
 export interface PropertyRegistryOptions {
     readonly owner?: string;
     /**
-     * Builtin Plugins are loaded after the compatibility registry has seeded
+     * Builtin Plugins are loaded after the builtin registry has seeded
      * their descriptors. They may re-submit the exact descriptor; arbitrary
      * Plugins may not use this escape hatch.
      */

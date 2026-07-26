@@ -685,11 +685,6 @@ export const EngineToMainMessageSchema = z.union([
 ]);
 export type EngineToMainMessage = z.infer<typeof EngineToMainMessageSchema>;
 
-/** @deprecated Use MainToEngineMessageSchema or EngineToMainMessageSchema. */
-export const EngineMessageSchema = EngineToMainMessageSchema;
-/** @deprecated Use MainToEngineMessage or EngineToMainMessage. */
-export type EngineMessage = EngineToMainMessage;
-
 export const EngineToMainMessageOrReadySchema = z.union([
     EngineToMainMessageSchema,
     EngineReadySchema,

@@ -3,12 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PluginIdSchema } from '@sigil/schema/ids';
 import { Option } from 'effect';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { testNodeId } from '../../test-support/pipeline-fixtures.js';
 import { createNodeHandlerRegistry } from '../execution/node-registry.js';
 import { createBuiltinHandlers } from '../node-handlers/registry.js';
 import { createManifestRegistry } from './manifest-registry.js';
-import { loadNodePlugin } from './node-plugin-loader.js';
+import { createNodePluginLoader, type NodePluginLoader } from './node-plugin-loader.js';
 import {
     NodePluginDepsRpcSchema,
     NodePluginMainToWorkerSchema,
@@ -24,6 +24,21 @@ import {
 const pid = (id: string) => PluginIdSchema.parse(id);
 
 const workflowContext = { event: 'file.created', payload: {}, vars: {} };
+
+const testLoaders = new Set<NodePluginLoader>();
+
+async function loadNodePlugin(
+    pluginDir: string,
+    deps: Parameters<NodePluginLoader['loadNodePlugin']>[1],
+): Promise<Awaited<ReturnType<NodePluginLoader['loadNodePlugin']>>> {
+    const loader = createNodePluginLoader();
+    testLoaders.add(loader);
+    return loader.loadNodePlugin(pluginDir, deps);
+}
+
+afterAll(async () => {
+    await Promise.all([...testLoaders].map((loader) => loader.shutdown()));
+});
 
 const PROXIED_DEPENDENCY_HANDLER = `
 import { z } from 'zod';
@@ -127,30 +142,12 @@ describe('NodePluginWorker contract transport', () => {
 
         const parsed = NodePluginWorkerLoadedSchema.safeParse(loaded);
         expect(parsed.success).toBe(true);
-        if (parsed.success) {
-            expect(parsed.data.contract?.compatibility).toEqual({
-                minimumReaderVersion: 1,
-                maximumReaderVersion: 1,
-            });
-        }
         expect(
             NodePluginWorkerLoadedSchema.safeParse({
                 ...loaded,
                 contract: {
                     ...contract,
                     defaultConfig: { validate: () => true },
-                },
-            }).success,
-        ).toBe(false);
-        expect(
-            NodePluginWorkerLoadedSchema.safeParse({
-                ...loaded,
-                contract: {
-                    ...contract,
-                    compatibility: {
-                        minimumReaderVersion: 2,
-                        maximumReaderVersion: 2,
-                    },
                 },
             }).success,
         ).toBe(false);
@@ -267,7 +264,7 @@ describe('NodePluginDepsRpcSchema', () => {
         expect(parsed.success).toBe(false);
     });
 
-    it('does not accept the legacy reflective method envelope', () => {
+    it('does not accept a reflective method envelope', () => {
         const parsed = NodePluginWorkerToMainSchema.safeParse({
             kind: NodePluginWorkerKind.DepsRpc,
             requestId: 'request:1',

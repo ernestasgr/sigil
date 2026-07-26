@@ -2,7 +2,7 @@ import { CompiledPipelineSchema } from '@sigil/schema';
 import { NodeTypeSchema } from '@sigil/schema/nodes';
 import { describe, expect, it } from 'vitest';
 
-import { type NodeSpec, nodeTypeDef } from './node-registry.js';
+import { type NodeSpec, nodeTypeDef } from './node-catalog.js';
 
 const ALL_TYPES = NodeTypeSchema.options;
 

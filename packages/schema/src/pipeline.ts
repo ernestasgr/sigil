@@ -7,21 +7,16 @@ import { WorkflowIdSchema } from './workflow-id.js';
 export const PipelineSchemaVersionSchema = z.literal(1);
 export type PipelineSchemaVersion = z.infer<typeof PipelineSchemaVersionSchema>;
 
-export const PersistedPipelineSchema = z.object({
+const PipelineSchema = z.object({
     id: z.string().min(1),
     workflowId: WorkflowIdSchema,
     schemaVersion: PipelineSchemaVersionSchema,
     nodes: z.array(PipelineNodeSchema),
     edges: z.array(PipelineEdgeSchema),
 });
-export type PersistedPipeline = z.infer<typeof PersistedPipelineSchema>;
 
-/**
- * The executable schema keeps the current contract checks. Persistence uses
- * the structural schema first so aliases can be migrated before topology is
- * evaluated.
- */
-export const CompiledPipelineSchema = PersistedPipelineSchema.superRefine((pipeline, ctx) => {
+/** The executable schema keeps the current contract checks before topology validation. */
+export const CompiledPipelineSchema = PipelineSchema.superRefine((pipeline, ctx) => {
     const nodeById = new Map<string, string>();
     for (const node of pipeline.nodes) {
         if (nodeById.has(node.id)) {
@@ -95,19 +90,6 @@ export function parsePipeline(
     unknown: unknown,
 ): { ok: true; value: CompiledPipeline } | { ok: false; error: string } {
     const result = CompiledPipelineSchema.safeParse(unknown);
-    if (result.success) {
-        return { ok: true, value: result.data };
-    }
-    return {
-        ok: false,
-        error: result.error.issues.flatMap((issue) => formatPipelineIssue(issue)).join('\n'),
-    };
-}
-
-export function parsePersistedPipeline(
-    unknown: unknown,
-): { ok: true; value: PersistedPipeline } | { ok: false; error: string } {
-    const result = PersistedPipelineSchema.safeParse(unknown);
     if (result.success) {
         return { ok: true, value: result.data };
     }
