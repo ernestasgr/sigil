@@ -6,18 +6,15 @@ import {
     type PluginId,
     PluginIdSchema,
 } from './ids.js';
-import type { NodeType } from './nodes/catalog.js';
-import { BUILTIN_NODE_CONTRACT_REGISTRATIONS, BUILTIN_NODE_DESCRIPTORS } from './nodes/catalog.js';
-import {
-    SWITCH_DEFAULT_PORT,
-    type SwitchConfig,
-    SwitchConfigSchema,
-    validateSwitchConfig,
-} from './nodes/switch.js';
 
 export const NodeNamespaceSchema = z.enum(['builtin', 'plugin']);
 export type NodeNamespace = z.infer<typeof NodeNamespaceSchema>;
 
+/**
+ * The registry intentionally admits only this exact version. A future
+ * version must be introduced with an explicit migration/admission seam; the
+ * generic contract kernel does not silently reinterpret older contracts.
+ */
 export const CURRENT_NODE_CONTRACT_VERSION = 1 as const;
 
 export type SerializableJsonValue =
@@ -44,6 +41,7 @@ const BuiltinNodeIdentitySchema = z
         namespace: z.literal('builtin'),
         type: z.string().min(1),
     })
+    .strict()
     .readonly();
 
 const PluginNodeIdentitySchema = z
@@ -52,6 +50,7 @@ const PluginNodeIdentitySchema = z
         pluginId: PluginIdSchema,
         type: z.string().min(1),
     })
+    .strict()
     .readonly();
 
 export const NodeIdentitySchema = z.discriminatedUnion('namespace', [
@@ -78,6 +77,7 @@ export const NodeContractDisplaySchema = z
         description: z.string(),
         category: NodeCategorySchema,
     })
+    .strict()
     .readonly();
 export type NodeContractDisplay = z.infer<typeof NodeContractDisplaySchema>;
 
@@ -101,7 +101,7 @@ const FixedOutputPortSpecSchema = z
 const ConfigDerivedOutputPortSpecSchema = z
     .object({
         kind: z.literal('config-derived'),
-        strategy: z.literal('switch-cases'),
+        strategy: z.string().min(1),
         defaultPort: NodeOutputPortSchema,
     })
     .strict()
@@ -149,8 +149,9 @@ export const NodeContractSchema = z
         }
     })
     .readonly();
-export type NodeContract = z.input<typeof NodeContractSchema>;
+export type NodeContractDefinition = z.input<typeof NodeContractSchema>;
 export type ParsedNodeContract = z.output<typeof NodeContractSchema>;
+export type NodeContract = ParsedNodeContract;
 
 /**
  * The contract representation that may cross a worker or Electron Bridge.
@@ -165,20 +166,6 @@ export const SerializableNodeContractSchema = NodeContractSchema.superRefine((co
             path: ['defaultConfig'],
             message: 'Node Contract defaultConfig must contain JSON-serializable data only.',
         });
-    }
-
-    const resolvedDefault = resolveDeclarativeOutputPorts(
-        contract.outputPorts,
-        contract.defaultConfig,
-    );
-    if (!resolvedDefault.ok) {
-        for (const issue of resolvedDefault.issues) {
-            ctx.addIssue({
-                code: 'custom',
-                path: ['defaultConfig', ...issue.path.split('.').filter(Boolean)],
-                message: issue.message,
-            });
-        }
     }
 });
 export type SerializableNodeContractInput = z.input<typeof SerializableNodeContractSchema>;
@@ -241,7 +228,12 @@ export const NodeContractIssueSchema = z
         path: z.string(),
         message: z.string().min(1),
         repairHint: z.string().min(1).optional(),
+        /** Optional domain code supplied by a strategy adapter. */
+        diagnosticCode: z.string().min(1).optional(),
+        /** Optional domain identity supplied by a strategy adapter. */
+        caseId: z.string().min(1).optional(),
     })
+    .strict()
     .readonly();
 export type NodeContractIssue = z.infer<typeof NodeContractIssueSchema>;
 
@@ -268,9 +260,19 @@ export type NodeContractResolution =
       };
 
 export interface NodeContractRegistration<TSchema extends z.ZodType = z.ZodType> {
-    readonly contract: NodeContract;
+    readonly contract: NodeContractDefinition;
     readonly configSchema: TSchema;
     readonly validateConfig?: (config: z.output<TSchema>) => readonly NodeContractIssue[];
+    readonly resolveOutputPorts?: (config: z.output<TSchema>) => DeclarativeOutputPortResolution;
+}
+
+export type OutputPortStrategy = (
+    spec: Extract<NodeOutputPortSpecInput, { readonly kind: 'config-derived' }>,
+    config: unknown,
+) => DeclarativeOutputPortResolution;
+
+export interface NodeContractRegistryOptions {
+    readonly outputPortStrategies?: Readonly<Record<string, OutputPortStrategy>>;
 }
 
 export interface NodeContractRegistry {
@@ -334,33 +336,11 @@ function normalizeOutputPort(port: NodeOutputPortInput): NodeOutputPort {
     return fixedOutputPort(port.id, port.label);
 }
 
-export function switchOutputPortSpec(
-    defaultPort: NodeOutputPortInput = fixedOutputPort(SWITCH_DEFAULT_PORT),
-): NodeOutputPortSpec {
-    return {
-        kind: 'config-derived',
-        strategy: 'switch-cases',
-        defaultPort: fixedOutputPort(defaultPort.id, defaultPort.label),
-    };
-}
-
 function zodIssues(error: z.ZodError): readonly NodeContractIssue[] {
     return error.issues.map((issue) => ({
         code: 'invalid_configuration',
         path: issue.path.map(String).join('.'),
         message: issue.message,
-    }));
-}
-
-function switchConfigIssues(config: SwitchConfig): readonly NodeContractIssue[] {
-    return validateSwitchConfig(config).map((diagnostic) => ({
-        code: 'invalid_configuration',
-        path:
-            diagnostic.code === 'duplicate_case_id' || diagnostic.code === 'reserved_case_id'
-                ? `cases[${diagnostic.caseIndex}].id`
-                : `cases[${diagnostic.caseIndex}].value`,
-        message: diagnostic.message,
-        repairHint: diagnostic.repairHint,
     }));
 }
 
@@ -375,6 +355,7 @@ export type DeclarativeOutputPortResolution =
 export function resolveDeclarativeOutputPorts(
     spec: NodeOutputPortSpecInput,
     config: unknown,
+    outputPortStrategies: Readonly<Record<string, OutputPortStrategy>> = {},
 ): DeclarativeOutputPortResolution {
     switch (spec.kind) {
         case 'fixed':
@@ -382,48 +363,22 @@ export function resolveDeclarativeOutputPorts(
         case 'dynamic':
             return { ok: true, value: 'dynamic' };
         case 'config-derived': {
-            const parsed = SwitchConfigSchema.safeParse(config);
-            if (!parsed.success) {
-                return { ok: false, issues: zodIssues(parsed.error) };
-            }
-
-            const configIssues = switchConfigIssues(parsed.data);
-            const reservedDefaultIssues =
-                spec.defaultPort.id === SWITCH_DEFAULT_PORT
-                    ? []
-                    : parsed.data.cases.flatMap((switchCase, caseIndex) =>
-                          switchCase.id === spec.defaultPort.id
-                              ? [
-                                    {
-                                        code: 'invalid_configuration' as const,
-                                        path: `cases[${caseIndex}].id`,
-                                        message:
-                                            `Switch case identity "${switchCase.id}" is reserved for the ` +
-                                            'default output port.',
-                                        repairHint:
-                                            'Use a different case identity so the fallback output remains stable.',
-                                    },
-                                ]
-                              : [],
-                      );
-            const issues = [...configIssues, ...reservedDefaultIssues];
-            const outputPorts = [
-                normalizeOutputPort(spec.defaultPort),
-                ...parsed.data.cases.map((switchCase) => ({
-                    id: NodeOutputPortIdSchema.parse(switchCase.id),
-                    label: switchCase.value || '(empty)',
-                })),
-            ];
-            if (issues.length > 0) {
-                const hasUnresolvableIdentity = issues.some((issue) => issue.path.endsWith('.id'));
+            const strategy = outputPortStrategies[spec.strategy];
+            if (!strategy) {
                 return {
                     ok: false,
-                    issues,
-                    ...(hasUnresolvableIdentity ? {} : { outputPorts }),
+                    issues: [
+                        {
+                            code: 'invalid_contract',
+                            path: 'outputPorts.strategy',
+                            message: `No output-port strategy is registered for "${spec.strategy}".`,
+                            repairHint:
+                                'Register the strategy adapter before admitting this Node Contract.',
+                        },
+                    ],
                 };
             }
-
-            return { ok: true, value: outputPorts };
+            return strategy(spec, config);
         }
         default:
             return assertNever(spec);
@@ -435,9 +390,10 @@ function assertNever(value: never): never {
 }
 
 function resolveRegistration(
-    registration: NodeContractRegistration,
+    registration: Omit<NodeContractRegistration, 'contract'> & { readonly contract: NodeContract },
     identity: NodeIdentity,
     config: unknown,
+    outputPortStrategies: Readonly<Record<string, OutputPortStrategy>>,
 ): NodeContractResolution {
     const parsed = registration.configSchema.safeParse(config);
     if (!parsed.success) {
@@ -449,7 +405,13 @@ function resolveRegistration(
         };
     }
 
-    const resolved = resolveDeclarativeOutputPorts(registration.contract.outputPorts, parsed.data);
+    const resolved = registration.resolveOutputPorts
+        ? registration.resolveOutputPorts(parsed.data)
+        : resolveDeclarativeOutputPorts(
+              registration.contract.outputPorts,
+              parsed.data,
+              outputPortStrategies,
+          );
 
     const customIssues = registration.validateConfig?.(parsed.data) ?? [];
     if (!resolved.ok) {
@@ -482,8 +444,13 @@ function resolveRegistration(
 
 export function createNodeContractRegistry(
     registrations: readonly NodeContractRegistration[] = [],
+    options: NodeContractRegistryOptions = {},
 ): NodeContractRegistry {
-    const byIdentity = new Map<string, NodeContractRegistration>();
+    type RegisteredNodeContract = Omit<NodeContractRegistration, 'contract'> & {
+        readonly contract: NodeContract;
+    };
+
+    const byIdentity = new Map<string, RegisteredNodeContract>();
 
     const register = (registration: NodeContractRegistration): void => {
         const parsedContract = NodeContractSchema.safeParse(registration.contract);
@@ -502,13 +469,23 @@ export function createNodeContractRegistry(
             );
         }
 
-        const defaultPorts = resolveDeclarativeOutputPorts(
-            parsedContract.data.outputPorts,
-            defaultConfig.data,
-        );
+        const defaultPorts = registration.resolveOutputPorts
+            ? registration.resolveOutputPorts(defaultConfig.data)
+            : resolveDeclarativeOutputPorts(
+                  parsedContract.data.outputPorts,
+                  defaultConfig.data,
+                  options.outputPortStrategies,
+              );
         if (!defaultPorts.ok) {
             throw new Error(
                 `Invalid default output-port configuration for ${formatNodeIdentity(parsedContract.data.identity)}: ${defaultPorts.issues.map((issue) => issue.message).join('; ')}`,
+            );
+        }
+
+        const defaultConfigIssues = registration.validateConfig?.(defaultConfig.data) ?? [];
+        if (defaultConfigIssues.length > 0) {
+            throw new Error(
+                `Invalid default configuration for ${formatNodeIdentity(parsedContract.data.identity)}: ${defaultConfigIssues.map((issue) => issue.message).join('; ')}`,
             );
         }
 
@@ -529,7 +506,12 @@ export function createNodeContractRegistry(
         if (!registration) {
             return { status: 'unavailable', identity, reason: 'unregistered' };
         }
-        return resolveRegistration(registration, identity, config);
+        return resolveRegistration(
+            registration,
+            identity,
+            config,
+            options.outputPortStrategies ?? {},
+        );
     };
 
     return {
@@ -559,14 +541,14 @@ export function registerSerializableNodeContract(
 
 export function resolveNodeContract(
     node: NodeContractInput,
-    registry: NodeContractRegistry = BUILTIN_NODE_CONTRACT_REGISTRY,
+    registry: NodeContractRegistry,
 ): NodeContractResolution {
     return registry.resolve(node);
 }
 
 export function outputPortDescriptorsForNode(
     node: NodeContractInput,
-    registry: NodeContractRegistry = BUILTIN_NODE_CONTRACT_REGISTRY,
+    registry: NodeContractRegistry,
 ): readonly NodeOutputPort[] | 'dynamic' {
     const result = resolveNodeContract(node, registry);
     if (result.status === 'available') return result.outputPorts;
@@ -576,7 +558,7 @@ export function outputPortDescriptorsForNode(
 
 export function outputPortIdsForNode(
     node: NodeContractInput,
-    registry: NodeContractRegistry = BUILTIN_NODE_CONTRACT_REGISTRY,
+    registry: NodeContractRegistry,
 ): readonly NodeOutputPortId[] | 'dynamic' {
     const ports = outputPortDescriptorsForNode(node, registry);
     return ports === 'dynamic' ? 'dynamic' : ports.map((port) => port.id);
@@ -585,34 +567,9 @@ export function outputPortIdsForNode(
 export function outputPortLabelForNode(
     node: NodeContractInput,
     portId: string,
-    registry: NodeContractRegistry = BUILTIN_NODE_CONTRACT_REGISTRY,
+    registry: NodeContractRegistry,
 ): string {
     const ports = outputPortDescriptorsForNode(node, registry);
     if (ports === 'dynamic') return portId;
     return ports.find((port) => port.id === portId)?.label ?? portId;
-}
-
-export type { NodeType } from './nodes/catalog.js';
-export {
-    BUILTIN_NODE_CONTRACT_REGISTRATIONS,
-    BUILTIN_NODE_DESCRIPTORS,
-    BUILTIN_NODE_TYPE_VALUES,
-} from './nodes/catalog.js';
-
-export function createBuiltinNodeContractRegistry(): NodeContractRegistry {
-    return createNodeContractRegistry(BUILTIN_NODE_CONTRACT_REGISTRATIONS);
-}
-
-export const BUILTIN_NODE_CONTRACT_REGISTRY = createBuiltinNodeContractRegistry();
-
-export function getNodeDescriptor<K extends NodeType>(
-    type: K,
-): (typeof BUILTIN_NODE_DESCRIPTORS)[K] {
-    return BUILTIN_NODE_DESCRIPTORS[type];
-}
-
-export function getBuiltinNodeContract(type: NodeType): NodeContract {
-    const contract = BUILTIN_NODE_CONTRACT_REGISTRY.get(builtinNodeIdentity(type));
-    if (!contract) throw new Error(`Missing built-in Node Contract for "${type}".`);
-    return contract;
 }

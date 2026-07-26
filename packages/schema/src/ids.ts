@@ -12,6 +12,10 @@ export type PipelineEdgeId = z.infer<typeof PipelineEdgeIdSchema>;
 export const NodeOutputPortIdSchema = z.string().min(1).brand<'NodeOutputPortId'>();
 export type NodeOutputPortId = z.infer<typeof NodeOutputPortIdSchema>;
 
+/** The stable identity of an editable Switch case. */
+export const SwitchCaseIdSchema = z.string().min(1).brand<'SwitchCaseId'>();
+export type SwitchCaseId = z.infer<typeof SwitchCaseIdSchema>;
+
 /** The unique identifier of a Plugin (e.g. "com.sigil.file-watcher"). */
 export const PluginIdSchema = z.string().min(1).brand<'PluginId'>();
 export type PluginId = z.infer<typeof PluginIdSchema>;

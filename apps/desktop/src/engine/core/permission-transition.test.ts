@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
 import { Either } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,7 +14,7 @@ import { createFileWatcherManager } from '../plugins/file-watcher-manager.js';
 import { createManifestRegistry } from '../plugins/manifest-registry.js';
 import { applyPermissionOverride } from './permission-transition.js';
 
-const pluginId = 'com.sigil.permission-transition';
+const pluginId = PluginIdSchema.parse('com.sigil.permission-transition');
 const manifest: Manifest = {
     id: pluginId,
     version: '1.0.0',

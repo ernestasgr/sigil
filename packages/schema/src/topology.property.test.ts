@@ -169,7 +169,7 @@ describe('generated Workflow topology properties', () => {
         );
     });
 
-    it('rejects generated missing references and invalid ports at the schema boundary', () => {
+    it('rejects generated missing references and invalid ports during topology admission', () => {
         fc.assert(
             fc.property(
                 nonTrivialDagPipelineArbitrary,
@@ -194,13 +194,22 @@ describe('generated Workflow topology properties', () => {
                               };
                     const result = parsePipeline(malformedPipeline);
 
-                    expect(result.ok).toBe(false);
-                    if (!result.ok) {
-                        expect(result.error).toMatch(
-                            malformedKind === 'missing-reference'
-                                ? /unknown source node/
-                                : /invalid sourcePort "missing-port"/,
-                        );
+                    expect(result.ok).toBe(true);
+                    if (result.ok) {
+                        const topology = validateWorkflowTopology(result.value);
+                        expect(topology.ok).toBe(false);
+                        if (!topology.ok) {
+                            expect(topology.diagnostics).toEqual(
+                                expect.arrayContaining([
+                                    expect.objectContaining({
+                                        code:
+                                            malformedKind === 'missing-reference'
+                                                ? 'invalid_edge'
+                                                : 'invalid_output_port',
+                                    }),
+                                ]),
+                            );
+                        }
                     }
                 },
             ),

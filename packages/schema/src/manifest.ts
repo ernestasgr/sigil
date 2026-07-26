@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { PluginIdSchema } from './ids.js';
 import { SerializableNodeContractSchema } from './node-contract.js';
 
 export const CapabilitySchema = z.enum([
@@ -18,7 +19,7 @@ export type Capability = z.infer<typeof CapabilitySchema>;
 
 export const ManifestSchema = z
     .object({
-        id: z.string().min(1),
+        id: PluginIdSchema,
         version: z.string().min(1),
         permissions: z.array(CapabilitySchema),
         emits: z.array(z.string().min(1)).min(1),
@@ -26,6 +27,7 @@ export const ManifestSchema = z
         /** Plain-data Node Contract; runtime functions remain inside the worker. */
         nodeContract: SerializableNodeContractSchema.optional(),
     })
+    .strict()
     .superRefine((manifest, ctx) => {
         if (!manifest.nodeContract) return;
 

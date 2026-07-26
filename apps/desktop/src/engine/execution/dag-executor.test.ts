@@ -7,12 +7,9 @@ import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineEdge } from '@sigil/schema/edges';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
-import {
-    createBuiltinNodeContractRegistry,
-    pluginNodeIdentity,
-    registerSerializableNodeContract,
-} from '@sigil/schema/node-contract';
+import { pluginNodeIdentity, registerSerializableNodeContract } from '@sigil/schema/node-contract';
 import type { PipelineNode } from '@sigil/schema/nodes';
+import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import { Either, Option } from 'effect';
 import { beforeEach, describe, expect, it } from 'vitest';

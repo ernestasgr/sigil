@@ -26,7 +26,10 @@ export type {
 
 export const EVENT_CATALOG = DEFAULT_EVENT_CATALOG;
 
-export type EventCatalogManifest = Pick<Manifest, 'id' | 'emits'>;
+export type EventCatalogManifest = Omit<Pick<Manifest, 'id' | 'emits'>, 'id'> & {
+    /** UI callers may supply discovered manifest data before schema parsing. */
+    readonly id: string;
+};
 
 export type { EventCatalogSuggestion as CatalogSuggestion } from '@sigil/schema/event-catalog';
 

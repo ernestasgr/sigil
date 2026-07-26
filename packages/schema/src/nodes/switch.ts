@@ -1,11 +1,21 @@
 import { z } from 'zod';
 
-import { defineNode, defineNodeRegistration } from './types.js';
+import { NodeOutputPortIdSchema, SwitchCaseIdSchema } from '../ids.js';
+
+export type { SwitchCaseId } from '../ids.js';
+export { SwitchCaseIdSchema } from '../ids.js';
+
+import {
+    type DeclarativeOutputPortResolution,
+    fixedOutputPort,
+    type NodeContractIssue,
+    type NodeOutputPortInput,
+    type NodeOutputPortSpec,
+    type OutputPortStrategy,
+} from '../node-contract.js';
+import { defineBuiltinNode } from './types.js';
 
 export const SWITCH_DEFAULT_PORT = 'default' as const;
-
-export const SwitchCaseIdSchema = z.string().min(1).brand<'SwitchCaseId'>();
-export type SwitchCaseId = z.infer<typeof SwitchCaseIdSchema>;
 
 export const SwitchCaseSchema = z
     .object({
@@ -14,22 +24,29 @@ export const SwitchCaseSchema = z
         /** User-editable value used by the executor when matching a Context. */
         value: z.string(),
     })
+    .strict()
     .readonly();
 
 export type SwitchCase = z.infer<typeof SwitchCaseSchema>;
 
 const SwitchCasesSchema = z.array(SwitchCaseSchema).readonly();
 
-const EventNameSwitchSchema = z.object({
-    target: z.literal('event'),
-    cases: SwitchCasesSchema,
-});
+const EventNameSwitchSchema = z
+    .object({
+        target: z.literal('event'),
+        cases: SwitchCasesSchema,
+    })
+    .strict()
+    .readonly();
 
-const FieldSwitchSchema = z.object({
-    target: z.enum(['payload', 'vars']),
-    field: z.string().min(1),
-    cases: SwitchCasesSchema,
-});
+const FieldSwitchSchema = z
+    .object({
+        target: z.enum(['payload', 'vars']),
+        field: z.string().min(1),
+        cases: SwitchCasesSchema,
+    })
+    .strict()
+    .readonly();
 
 const SwitchConfigShapeSchema = z.union([EventNameSwitchSchema, FieldSwitchSchema]);
 
@@ -192,28 +209,116 @@ export function validateSwitchConfig(config: SwitchConfig): readonly SwitchDiagn
     return diagnostics;
 }
 
-export const SwitchDescriptor = defineNode({
+export function switchOutputPortSpec(
+    defaultPort: NodeOutputPortInput = fixedOutputPort(SWITCH_DEFAULT_PORT),
+): Extract<NodeOutputPortSpec, { readonly kind: 'config-derived' }> {
+    return {
+        kind: 'config-derived',
+        strategy: 'switch-cases',
+        defaultPort: fixedOutputPort(defaultPort.id, defaultPort.label),
+    };
+}
+
+function switchConfigIssues(config: SwitchConfig): readonly NodeContractIssue[] {
+    return validateSwitchConfig(config).map((diagnostic) => ({
+        code: 'invalid_configuration',
+        diagnosticCode: diagnostic.code,
+        caseId: diagnostic.caseId,
+        path:
+            diagnostic.code === 'duplicate_case_id' || diagnostic.code === 'reserved_case_id'
+                ? `cases[${diagnostic.caseIndex}].id`
+                : `cases[${diagnostic.caseIndex}].value`,
+        message: diagnostic.message,
+        repairHint: diagnostic.repairHint,
+    }));
+}
+
+function reservedDefaultPortIssues(
+    spec: Extract<Parameters<OutputPortStrategy>[0], { readonly kind: 'config-derived' }>,
+    config: SwitchConfig,
+): readonly NodeContractIssue[] {
+    if (spec.defaultPort.id === SWITCH_DEFAULT_PORT) return [];
+
+    return config.cases.flatMap((switchCase, caseIndex) =>
+        switchCase.id === spec.defaultPort.id
+            ? [
+                  {
+                      code: 'invalid_configuration' as const,
+                      diagnosticCode: 'reserved_case_id',
+                      caseId: switchCase.id,
+                      path: `cases[${caseIndex}].id`,
+                      message:
+                          `Switch case identity "${switchCase.id}" is reserved for the ` +
+                          'default output port.',
+                      repairHint:
+                          'Use a different case identity so the fallback output remains stable.',
+                  },
+              ]
+            : [],
+    );
+}
+
+export const switchOutputPortStrategy: OutputPortStrategy = (spec, config) => {
+    const parsed = SwitchConfigSchema.safeParse(config);
+    if (!parsed.success) {
+        return {
+            ok: false,
+            issues: parsed.error.issues.map((issue) => ({
+                code: 'invalid_configuration' as const,
+                path: issue.path.map(String).join('.'),
+                message: issue.message,
+            })),
+        };
+    }
+
+    const issues = [
+        ...switchConfigIssues(parsed.data),
+        ...reservedDefaultPortIssues(spec, parsed.data),
+    ];
+    const outputPorts = [
+        fixedOutputPort(spec.defaultPort.id, spec.defaultPort.label),
+        ...parsed.data.cases.map((switchCase) => ({
+            id: NodeOutputPortIdSchema.parse(switchCase.id),
+            label: switchCase.value || '(empty)',
+        })),
+    ];
+    if (issues.length > 0) {
+        const hasUnresolvableIdentity = issues.some((issue) => issue.path.endsWith('.id'));
+        return {
+            ok: false,
+            issues,
+            ...(hasUnresolvableIdentity ? {} : { outputPorts }),
+        };
+    }
+
+    return { ok: true, value: outputPorts };
+};
+
+function resolveBuiltinSwitchOutputPorts(config: SwitchConfig): DeclarativeOutputPortResolution {
+    return switchOutputPortStrategy(switchOutputPortSpec(), config);
+}
+
+export const SwitchNode = defineBuiltinNode({
     type: 'switch',
     configSchema: SwitchConfigSchema,
     defaultConfig: SwitchConfigSchema.parse({
         target: 'event',
         cases: [{ id: 'case-1', value: 'file.created' }],
     }),
+    contract: {
+        identity: { namespace: 'builtin', type: 'switch' },
+        version: 1,
+        role: 'action',
+        outputPorts: switchOutputPortSpec(),
+        display: {
+            label: 'Switch',
+            description:
+                'Routes the flow to one of several cases (plus default) by event name or field value.',
+            category: 'logic',
+        },
+    },
+    resolveOutputPorts: resolveBuiltinSwitchOutputPorts,
 });
 
-export const SwitchContractRegistration = defineNodeRegistration(SwitchDescriptor, {
-    identity: { namespace: 'builtin', type: 'switch' },
-    version: 1,
-    role: 'action',
-    outputPorts: {
-        kind: 'config-derived',
-        strategy: 'switch-cases',
-        defaultPort: { id: SWITCH_DEFAULT_PORT, label: SWITCH_DEFAULT_PORT },
-    },
-    display: {
-        label: 'Switch',
-        description:
-            'Routes the flow to one of several cases (plus default) by event name or field value.',
-        category: 'logic',
-    },
-});
+export const SwitchDescriptor = SwitchNode.descriptor;
+export const SwitchContractRegistration = SwitchNode.registration;

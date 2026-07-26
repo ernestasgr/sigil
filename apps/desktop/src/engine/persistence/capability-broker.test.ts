@@ -1,3 +1,4 @@
+import { PluginIdSchema } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
@@ -6,14 +7,14 @@ import { createCapabilityBroker } from './capability-broker.js';
 import { createPermissionOverrideStore } from './permission-override-store.js';
 
 const manifestWithRead: Manifest = {
-    id: 'com.sigil.reader',
+    id: PluginIdSchema.parse('com.sigil.reader'),
     version: '0.0.1',
     permissions: ['filesystem.read'],
     emits: ['file.created'],
 };
 
 const manifestWithNone: Manifest = {
-    id: 'com.sigil.bare',
+    id: PluginIdSchema.parse('com.sigil.bare'),
     version: '0.0.1',
     permissions: [],
     emits: ['stub.ping'],

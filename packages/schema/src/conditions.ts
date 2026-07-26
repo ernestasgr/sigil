@@ -7,32 +7,42 @@ const EventNameConditionSchema = z
         operator: StringOperatorSchema,
         value: z.string(),
     })
-    .strict();
+    .strict()
+    .readonly();
 
 export type EventNameCondition = z.infer<typeof EventNameConditionSchema>;
 
 const FieldTargetSchema = z.enum(['payload', 'vars']);
 
-const FieldStringConditionSchema = z.object({
-    target: FieldTargetSchema,
-    field: z.string().min(1),
-    operator: StringOperatorSchema,
-    value: z.string(),
-});
+const FieldStringConditionSchema = z
+    .object({
+        target: FieldTargetSchema,
+        field: z.string().min(1),
+        operator: StringOperatorSchema,
+        value: z.string(),
+    })
+    .strict()
+    .readonly();
 
-const FieldNumberConditionSchema = z.object({
-    target: FieldTargetSchema,
-    field: z.string().min(1),
-    operator: NumberOperatorSchema,
-    value: z.number(),
-});
+const FieldNumberConditionSchema = z
+    .object({
+        target: FieldTargetSchema,
+        field: z.string().min(1),
+        operator: NumberOperatorSchema,
+        value: z.number(),
+    })
+    .strict()
+    .readonly();
 
-const FieldBooleanConditionSchema = z.object({
-    target: FieldTargetSchema,
-    field: z.string().min(1),
-    operator: BooleanOperatorSchema,
-    value: z.boolean(),
-});
+const FieldBooleanConditionSchema = z
+    .object({
+        target: FieldTargetSchema,
+        field: z.string().min(1),
+        operator: BooleanOperatorSchema,
+        value: z.boolean(),
+    })
+    .strict()
+    .readonly();
 
 export const FieldConditionSchema = z.union([
     FieldStringConditionSchema,

@@ -155,6 +155,17 @@ describe('ManifestSchema', () => {
         });
         expect(result.success).toBe(true);
     });
+
+    it('rejects unknown manifest fields instead of silently dropping them', () => {
+        const result = ManifestSchema.safeParse({
+            id: 'com.sigil.stub-ping',
+            version: '0.0.1',
+            permissions: [],
+            emits: ['stub.ping'],
+            unexpected: true,
+        });
+        expect(result.success).toBe(false);
+    });
 });
 
 describe('parseManifest', () => {

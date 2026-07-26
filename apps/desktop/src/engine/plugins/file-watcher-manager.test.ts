@@ -1,6 +1,7 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
 import { Either } from 'effect';
@@ -11,7 +12,7 @@ import { createEventBus } from '../events/event-bus.js';
 import { FILE_WATCHER_PLUGIN_ID } from './plugin-ids.js';
 
 const fileWatcherManifest: Manifest = {
-    id: 'com.sigil.file-watcher',
+    id: PluginIdSchema.parse('com.sigil.file-watcher'),
     version: '0.0.1',
     permissions: ['state.write', 'filesystem.read'],
     emits: ['file.created', 'file.modified', 'file.deleted'],

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PipelineConditionSchema } from './conditions.js';
 import { FileEventPayloadSchema } from './file-event-payload.js';
 import { PipelineNodeSchema } from './nodes/index.js';
-import { CompiledPipelineSchema, parsePipeline } from './pipeline.js';
+import { CompiledPipelineSchema, PipelineDocumentSchema, parsePipeline } from './pipeline.js';
 import { sampleManualTriggerToLog } from './samples.js';
 import { validateWorkflowTopology } from './topology.js';
 import { WorkflowContextSchema } from './workflow-context.js';
@@ -155,6 +155,23 @@ describe('CompiledPipelineSchema', () => {
         expect(result.ok).toBe(true);
     });
 
+    it('rejects unknown persisted fields at the structural boundary', () => {
+        const result = PipelineDocumentSchema.safeParse({
+            ...sampleManualTriggerToLog,
+            unexpected: true,
+        });
+        expect(result.success).toBe(false);
+
+        const invalidNodeConfig = parsePipeline({
+            id: 'p',
+            workflowId: 'w',
+            schemaVersion: 1,
+            nodes: [{ id: 'log', type: 'log', config: { message: 'x', unexpected: true } }],
+            edges: [],
+        });
+        expect(invalidNodeConfig.ok).toBe(false);
+    });
+
     it('keeps a plugin node when its type matches a builtin node name', () => {
         const result = PipelineNodeSchema.safeParse({
             id: 'n',
@@ -196,7 +213,7 @@ describe('CompiledPipelineSchema', () => {
         }
     });
 
-    it('rejects an edge with an invalid source port for an if-else node', () => {
+    it('defers invalid source-port admission to topology validation', () => {
         const invalid = {
             id: 'p',
             workflowId: 'w',
@@ -219,9 +236,17 @@ describe('CompiledPipelineSchema', () => {
             edges: [{ id: 'e', source: 'branch', target: 'log', sourcePort: 'maybe' }],
         };
         const result = parsePipeline(invalid);
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-            expect(result.error).toMatch(/invalid sourcePort "maybe"/);
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            const topology = validateWorkflowTopology(result.value);
+            expect(topology.ok).toBe(false);
+            if (!topology.ok) {
+                expect(topology.diagnostics).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({ code: 'invalid_output_port' }),
+                    ]),
+                );
+            }
         }
     });
 
@@ -254,7 +279,7 @@ describe('CompiledPipelineSchema', () => {
         expect(result.success).toBe(true);
     });
 
-    it('rejects an edge referencing an unknown source node', () => {
+    it('defers missing edge references to topology validation', () => {
         const invalid = {
             id: 'p',
             workflowId: 'w',
@@ -263,13 +288,19 @@ describe('CompiledPipelineSchema', () => {
             edges: [{ id: 'e', source: 'ghost', target: 'log', sourcePort: 'out' }],
         };
         const result = parsePipeline(invalid);
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-            expect(result.error).toMatch(/unknown source node/);
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            const topology = validateWorkflowTopology(result.value);
+            expect(topology.ok).toBe(false);
+            if (!topology.ok) {
+                expect(topology.diagnostics).toEqual(
+                    expect.arrayContaining([expect.objectContaining({ code: 'invalid_edge' })]),
+                );
+            }
         }
     });
 
-    it('rejects duplicate node ids', () => {
+    it('defers duplicate node identity admission to topology validation', () => {
         const invalid = {
             id: 'p',
             workflowId: 'w',
@@ -281,9 +312,17 @@ describe('CompiledPipelineSchema', () => {
             edges: [],
         };
         const result = parsePipeline(invalid);
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-            expect(result.error).toMatch(/Duplicate node id/);
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            const topology = validateWorkflowTopology(result.value);
+            expect(topology.ok).toBe(false);
+            if (!topology.ok) {
+                expect(topology.diagnostics).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({ code: 'duplicate_node_id' }),
+                    ]),
+                );
+            }
         }
     });
 

@@ -127,7 +127,10 @@ describe('compileGraph', () => {
 
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.error).toMatch(/invalid sourcePort "bogus"/);
+            expect(result.error).toMatch(/uses output port "bogus"/);
+            expect(result.diagnostics).toEqual(
+                expect.arrayContaining([expect.objectContaining({ code: 'invalid_output_port' })]),
+            );
         }
     });
 

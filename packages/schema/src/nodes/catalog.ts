@@ -1,52 +1,89 @@
-import type { NodeContractRegistration } from '../node-contract.js';
-import { DelayContractRegistration, DelayDescriptor } from './delay.js';
-import { FileManagerContractRegistration, FileManagerDescriptor } from './file-manager.js';
-import { FileWatcherContractRegistration, FileWatcherDescriptor } from './file-watcher.js';
-import { IfElseContractRegistration, IfElseDescriptor } from './if-else.js';
-import { LogContractRegistration, LogDescriptor } from './log.js';
-import { ManualTriggerContractRegistration, ManualTriggerDescriptor } from './manual-trigger.js';
-import { NotificationContractRegistration, NotificationDescriptor } from './notification.js';
-import { StateGetContractRegistration, StateGetDescriptor } from './state-get.js';
-import { StateSetContractRegistration, StateSetDescriptor } from './state-set.js';
-import { SwitchContractRegistration, SwitchDescriptor } from './switch.js';
+import type { z } from 'zod';
 
-export const BUILTIN_NODE_TYPE_VALUES = [
-    'file-watcher',
-    'manual-trigger',
-    'if-else',
-    'switch',
-    'file-manager',
-    'notification',
-    'log',
-    'delay',
-    'state-get',
-    'state-set',
-] as const;
+import {
+    createNodeContractRegistry,
+    type NodeContract,
+    type NodeContractRegistration,
+    type NodeContractRegistry,
+} from '../node-contract.js';
+import { DelayNode } from './delay.js';
+import { FileManagerNode } from './file-manager.js';
+import { FileWatcherNode } from './file-watcher.js';
+import { IfElseNode } from './if-else.js';
+import { LogNode } from './log.js';
+import { ManualTriggerNode } from './manual-trigger.js';
+import { NotificationNode } from './notification.js';
+import { StateGetNode } from './state-get.js';
+import { StateSetNode } from './state-set.js';
+import { SwitchNode, switchOutputPortStrategy } from './switch.js';
+import type { BuiltinNodeDefinition } from './types.js';
 
-export type NodeType = (typeof BUILTIN_NODE_TYPE_VALUES)[number];
+/** The complete built-in catalog. Order is the stable registration order. */
+export const BUILTIN_NODE_DEFINITIONS = Object.freeze([
+    FileWatcherNode,
+    ManualTriggerNode,
+    IfElseNode,
+    SwitchNode,
+    FileManagerNode,
+    NotificationNode,
+    LogNode,
+    DelayNode,
+    StateGetNode,
+    StateSetNode,
+] as const) satisfies readonly BuiltinNodeDefinition<string, z.ZodType>[];
 
-export const BUILTIN_NODE_DESCRIPTORS = {
-    'file-watcher': FileWatcherDescriptor,
-    'manual-trigger': ManualTriggerDescriptor,
-    'if-else': IfElseDescriptor,
-    switch: SwitchDescriptor,
-    'file-manager': FileManagerDescriptor,
-    notification: NotificationDescriptor,
-    log: LogDescriptor,
-    delay: DelayDescriptor,
-    'state-get': StateGetDescriptor,
-    'state-set': StateSetDescriptor,
-} as const satisfies { readonly [K in NodeType]: { readonly type: K } };
+type BuiltinNodeDefinitionUnion = (typeof BUILTIN_NODE_DEFINITIONS)[number];
 
-export const BUILTIN_NODE_CONTRACT_REGISTRATIONS: readonly NodeContractRegistration[] = [
-    FileWatcherContractRegistration,
-    ManualTriggerContractRegistration,
-    IfElseContractRegistration,
-    SwitchContractRegistration,
-    FileManagerContractRegistration,
-    NotificationContractRegistration,
-    LogContractRegistration,
-    DelayContractRegistration,
-    StateGetContractRegistration,
-    StateSetContractRegistration,
-];
+export type NodeType = BuiltinNodeDefinitionUnion['descriptor']['type'];
+
+export type BuiltinNodeConfig<K extends NodeType> = z.output<
+    Extract<
+        BuiltinNodeDefinitionUnion,
+        { readonly descriptor: { readonly type: K } }
+    >['descriptor']['configSchema']
+>;
+
+export const BUILTIN_NODE_TYPE_VALUES = Object.freeze(
+    BUILTIN_NODE_DEFINITIONS.map(({ descriptor }) => descriptor.type),
+) as unknown as readonly [NodeType, ...NodeType[]];
+
+/** Compatibility lookup derived from BUILTIN_NODE_DEFINITIONS. */
+export const BUILTIN_NODE_DESCRIPTORS = Object.freeze(
+    Object.fromEntries(
+        BUILTIN_NODE_DEFINITIONS.map(({ descriptor }) => [descriptor.type, descriptor]),
+    ),
+) as {
+    readonly [K in NodeType]: Extract<
+        BuiltinNodeDefinitionUnion,
+        { readonly descriptor: { readonly type: K } }
+    >['descriptor'];
+};
+
+/** Runtime registrations derived from the same definitions as the descriptor lookup. */
+export const BUILTIN_NODE_CONTRACT_REGISTRATIONS: readonly NodeContractRegistration[] =
+    Object.freeze(BUILTIN_NODE_DEFINITIONS.map(({ registration }) => registration));
+
+export function createBuiltinNodeContractRegistry(): NodeContractRegistry {
+    return createNodeContractRegistry(BUILTIN_NODE_CONTRACT_REGISTRATIONS, {
+        outputPortStrategies: {
+            'switch-cases': switchOutputPortStrategy,
+        },
+    });
+}
+
+const builtinContractLookup = createBuiltinNodeContractRegistry();
+
+export function getNodeDescriptor<K extends NodeType>(
+    type: K,
+): (typeof BUILTIN_NODE_DESCRIPTORS)[K] {
+    return BUILTIN_NODE_DESCRIPTORS[type];
+}
+
+export function getBuiltinNodeContract(type: NodeType): NodeContract {
+    const contract = builtinContractLookup.get({
+        namespace: 'builtin',
+        type,
+    });
+    if (!contract) throw new Error(`Missing built-in Node Contract for "${type}".`);
+    return contract;
+}
