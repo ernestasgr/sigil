@@ -75,7 +75,7 @@ When a new architectural invariant is introduced:
    of the change.
 4. Run `pnpm structure:test`, `pnpm structure:check`, and
    `pnpm structure:check:json`.
-5. If a mechanical migration is safe, use a separate `codemod-*` rule with a
+5. If a mechanical rewrite is safe, use a separate `codemod-*` rule with a
    `fix`. Preview it first, apply it only with the explicit write command, and
    review the resulting diff and typecheck.
 

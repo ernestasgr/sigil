@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { defaultNodeSpec } from './node-registry.js';
+import { defaultNodeSpec } from './node-catalog.js';
 import {
     applyWorkflowDraftCommand,
     beginWorkflowDraftSave,

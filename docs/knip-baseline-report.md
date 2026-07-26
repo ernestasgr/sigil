@@ -65,7 +65,6 @@
 | resolveElectronLaunchLayout             | apps/desktop/tests/e2e/electron-harness.ts:26:17                           | warn     |
 | EngineGetWorkflowResultNotFoundSchema   | apps/desktop/src/shared/ipc-channels.ts:382:14                             | warn     |
 | EngineGetWorkflowResultFoundSchema      | apps/desktop/src/shared/ipc-channels.ts:372:14                             | warn     |
-| EngineMessageSchema                     | apps/desktop/src/shared/ipc-channels.ts:622:14                             | warn     |
 | workflowStateTable                      | apps/desktop/src/engine/workflow-state.ts:9:14                             | warn     |
 | EngineLogSchema                         | apps/desktop/src/shared/ipc-channels.ts:195:14                             | warn     |
 | PersistenceDiagnosticSchema             | apps/desktop/src/shared/ipc-channels.ts:10:10                              | warn     |
@@ -189,7 +188,6 @@
 | MainToEngineMessage                | apps/desktop/src/shared/ipc-channels.ts:592:13                             | warn     |
 | EngineShutdown                     | apps/desktop/src/shared/ipc-channels.ts:560:13                             | warn     |
 | WorkerInbound                      | apps/desktop/src/shared/ipc-channels.ts:595:13                             | warn     |
-| EngineMessage                      | apps/desktop/src/shared/ipc-channels.ts:624:13                             | warn     |
 | WorkflowActionOutcome              | apps/desktop/src/shared/ipc-channels.ts:53:13                              | warn     |
 | WorkflowDeleteOutcome              | apps/desktop/src/shared/ipc-channels.ts:73:13                              | warn     |
 | WorkflowWriteOutcome               | apps/desktop/src/shared/ipc-channels.ts:34:13                              | warn     |
@@ -214,11 +212,10 @@
 | PluginEmission                     | apps/desktop/src/engine/bridge.ts:20:13                                    | warn     |
 | EmissionError                      | apps/desktop/src/engine/bridge.ts:6:13                                     | warn     |
 
-## Duplicate exports (4)
+## Duplicate exports (3)
 
 | Name                                           | Location                                                   | Severity |
 | :--------------------------------------------- | :--------------------------------------------------------- | :------- |
 | BUILTIN_NODE_CATALOG|NODE_TYPES                | apps/desktop/src/renderer/workflow-builder/node-catalog.ts | warn     |
 | CorrelationIdSchema|CommandCorrelationIdSchema | apps/desktop/src/shared/ipc-channels.ts                    | warn     |
 | MainToEngineMessageSchema|WorkerInboundSchema  | apps/desktop/src/shared/ipc-channels.ts                    | warn     |
-| EngineToMainMessageSchema|EngineMessageSchema  | apps/desktop/src/shared/ipc-channels.ts                    | warn     |

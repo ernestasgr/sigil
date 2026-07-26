@@ -12,7 +12,7 @@ import {
 } from '@sigil/schema/properties-file';
 import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
 import { testNodeId } from '../../test-support/pipeline-fixtures.js';
@@ -27,13 +27,7 @@ import { createPermissionOverrideStore } from '../persistence/permission-overrid
 import { createInMemoryWorkflowStateStore } from '../workflow/workflow-state.js';
 import type { FileEventCallback, SubscriberRegistration } from './file-watcher-manager.js';
 import { createManifestRegistry } from './manifest-registry.js';
-import {
-    createNodePluginLoader,
-    loadNodePlugin,
-    loadNodePlugins,
-    type NodePluginLoader,
-    updatePluginPermissions,
-} from './node-plugin-loader.js';
+import { createNodePluginLoader, type NodePluginLoader } from './node-plugin-loader.js';
 import { NodePluginWorkerKind } from './plugin-node-rpc.js';
 
 const TYPED_PLUGIN_WORKFLOW_ID = WorkflowIdSchema.parse('wf-typed-plugin');
@@ -52,6 +46,30 @@ function writePlugin(dir: string, manifest: Record<string, unknown>, handlerCode
     writeFileSync(join(dir, 'plugin.manifest.json'), JSON.stringify(manifest));
     writeFileSync(join(dir, 'handler.ts'), handlerCode);
 }
+
+const testLoaders = new Set<NodePluginLoader>();
+
+async function loadNodePlugin(
+    pluginDir: string,
+    deps: Parameters<NodePluginLoader['loadNodePlugin']>[1],
+): Promise<Awaited<ReturnType<NodePluginLoader['loadNodePlugin']>>> {
+    const loader = createNodePluginLoader();
+    testLoaders.add(loader);
+    return loader.loadNodePlugin(pluginDir, deps);
+}
+
+async function loadNodePlugins(
+    pluginsDir: string,
+    deps: Parameters<NodePluginLoader['loadNodePlugins']>[1],
+): Promise<Awaited<ReturnType<NodePluginLoader['loadNodePlugins']>>> {
+    const loader = createNodePluginLoader();
+    testLoaders.add(loader);
+    return loader.loadNodePlugins(pluginsDir, deps);
+}
+
+afterAll(async () => {
+    await Promise.all([...testLoaders].map((loader) => loader.shutdown()));
+});
 
 const GREET_PLUGIN_HANDLER = `
 import { z } from 'zod';
@@ -3433,45 +3451,6 @@ describe('updatePluginPermissions', () => {
         // Real fs throws ENOENT, not permission stub
         expect((err2 as Error).message).not.toContain('Permission denied');
         expect((err2 as Error).message).toContain('ENOENT');
-    });
-
-    it('keeps the legacy module-level permission update facade connected to loaded workers', async () => {
-        const pluginDir = join(tempDir, 'legacy-perm-propagation');
-        const pluginId = pid('com.sigil.legacy-perm-checker');
-        writePlugin(
-            pluginDir,
-            {
-                id: pluginId,
-                version: '0.0.1',
-                permissions: ['filesystem.read'],
-                emits: ['x'],
-                nodeType: 'perm-checker',
-            },
-            PERM_CHECK_HANDLER,
-        );
-
-        const { manifestRegistry, handlerRegistry } = createRegistries();
-        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
-
-        expect(result.ok).toBe(true);
-        if (!result.ok) return;
-
-        updatePluginPermissions(pluginId, []);
-
-        await expect(
-            result.handler.execute(
-                {
-                    node: {
-                        id: testNodeId('n1'),
-                        type: 'perm-checker',
-                        pluginId,
-                        config: { check: 'filesystem.read' },
-                    },
-                    ctx: { event: '', payload: {}, vars: {} },
-                },
-                {} as never,
-            ),
-        ).rejects.toThrow('Permission denied: filesystem.read');
     });
 });
 

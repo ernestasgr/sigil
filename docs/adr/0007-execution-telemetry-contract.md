@@ -39,8 +39,8 @@ unscoped Engine and Plugin Worker diagnostics. When the cap is reached, the
 oldest entry is evicted before the newest entry is appended. Workflow, run,
 failure, and diagnostic views all derive from that same bounded buffer, so an
 evicted Event cannot remain in a secondary index. The index uses the Engine
-timestamp when indexing entries; renderer receipt time is only a fallback for
-legacy Events without an Engine timestamp.
+timestamp when indexing entries; if an Engine timestamp is absent, the
+renderer receipt time is used.
 
 ### Permission-transition Events
 

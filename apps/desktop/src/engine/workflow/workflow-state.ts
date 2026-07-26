@@ -49,11 +49,7 @@ export interface CreateWorkflowStateStoreOptions {
     readonly flushIntervalMs?: number;
 }
 
-/**
- * New values are stored in the existing TEXT column as a marked, versioned
- * JSON envelope. The prefix keeps the envelope distinguishable from a
- * legacy string whose contents happen to be valid envelope JSON.
- */
+/** Values are stored in the TEXT column as a marked, versioned JSON envelope. */
 export const WORKFLOW_STATE_VALUE_FORMAT = 'sigil.workflow-state';
 export const WORKFLOW_STATE_VALUE_VERSION = 1 as const;
 export const WORKFLOW_STATE_VALUE_PREFIX = `${WORKFLOW_STATE_VALUE_FORMAT}:v${WORKFLOW_STATE_VALUE_VERSION}:`;
@@ -97,22 +93,6 @@ CREATE TABLE IF NOT EXISTS workflow_state (
     PRIMARY KEY (workflow_id, key)
 );
 `;
-
-const CREATE_MIGRATION_TABLE_SQL = `
-CREATE TABLE IF NOT EXISTS workflow_state_metadata (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-`;
-
-const WORKFLOW_STATE_MIGRATION_KEY = 'typed-value-envelope-v1';
-const WORKFLOW_STATE_MIGRATION_COMPLETE = 'complete';
-
-const WorkflowStateRowSchema = z.object({
-    workflow_id: z.string(),
-    key: z.string(),
-    value: z.string(),
-});
 
 function assertNever(value: never): never {
     throw new Error(`Unhandled Workflow State value: ${JSON.stringify(value)}`);
@@ -169,55 +149,11 @@ function parseEncodedWorkflowStateValue(raw: string): EncodedWorkflowStateValue 
 }
 
 function decodeWorkflowStateValue(raw: string): WorkflowStatePrimitive {
-    return parseEncodedWorkflowStateValue(raw)?.value ?? raw;
-}
-
-function runSqliteTransaction(database: DatabaseSync, operation: () => void): void {
-    database.exec('BEGIN');
-    try {
-        operation();
-        database.exec('COMMIT');
-    } catch (error: unknown) {
-        try {
-            database.exec('ROLLBACK');
-        } catch {
-            // Preserve the original operation error if rollback also fails.
-        }
-        throw error;
+    const parsed = parseEncodedWorkflowStateValue(raw);
+    if (parsed === undefined) {
+        throw new Error('Workflow State row contains an invalid encoded value.');
     }
-}
-
-function migrateLegacyWorkflowState(database: DatabaseSync): void {
-    database.exec(CREATE_MIGRATION_TABLE_SQL);
-
-    const marker = z
-        .object({ value: z.string() })
-        .safeParse(
-            database
-                .prepare('SELECT value FROM workflow_state_metadata WHERE key = ?')
-                .get(WORKFLOW_STATE_MIGRATION_KEY),
-        );
-    if (marker.success && marker.data.value === WORKFLOW_STATE_MIGRATION_COMPLETE) return;
-
-    runSqliteTransaction(database, () => {
-        const rows = database.prepare('SELECT workflow_id, key, value FROM workflow_state').all();
-        const update = database.prepare(
-            'UPDATE workflow_state SET value = ? WHERE workflow_id = ? AND key = ?',
-        );
-
-        for (const rawRow of rows) {
-            const row = WorkflowStateRowSchema.parse(rawRow);
-            if (parseEncodedWorkflowStateValue(row.value)) continue;
-            update.run(encodeWorkflowStateValue(row.value), row.workflow_id, row.key);
-        }
-
-        database
-            .prepare(
-                `INSERT INTO workflow_state_metadata (key, value) VALUES (?, ?)
-                 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-            )
-            .run(WORKFLOW_STATE_MIGRATION_KEY, WORKFLOW_STATE_MIGRATION_COMPLETE);
-    });
+    return parsed.value;
 }
 
 function workflowStateEntry(key: string, value: WorkflowStatePrimitive): WorkflowStateEntry {
@@ -238,7 +174,6 @@ export function createWorkflowStateStore(
     options?: CreateWorkflowStateStoreOptions,
 ): WorkflowStateStore {
     database.exec(CREATE_TABLE_SQL);
-    migrateLegacyWorkflowState(database);
     const db = drizzle({ client: database });
     const buffer = new Map<WorkflowId, Map<string, WorkflowStatePrimitive>>();
     const flushIntervalMs = options?.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;

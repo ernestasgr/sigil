@@ -239,8 +239,6 @@ describe('useBuilderStore', () => {
             description: 'Starts a Workflow on a timer.',
             defaultConfig: {},
             configSchema: z.object({}),
-            isTrigger: true,
-            outputPorts: () => ['out'],
             Form: () => null,
         });
         const catalog = createNodeCatalogFromManifests(

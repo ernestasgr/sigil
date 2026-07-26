@@ -359,8 +359,6 @@ describe('compileGraph', () => {
             category: 'trigger',
             description: 'Starts a Workflow on a tick.',
             defaultConfig: {},
-            isTrigger: true,
-            outputPorts: () => ['out'],
         });
         const result = compileGraph(
             nodes,

@@ -110,7 +110,7 @@ for (const result of pluginResults) {
             ),
             Match.when({ kind: 'contract_mismatch' }, (e) =>
                 log(
-                    `Plugin load failed (${e.dir}): incompatible Node Contract for "${e.pluginId}" (${e.nodeType}) — ${e.error}`,
+                    `Plugin load failed (${e.dir}): invalid Node Contract for "${e.pluginId}" (${e.nodeType}) — ${e.error}`,
                 ),
             ),
             Match.when({ kind: 'duplicate_contract' }, (e) =>

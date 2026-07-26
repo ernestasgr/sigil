@@ -6,7 +6,6 @@ import {
     formatNodeIdentity,
     type NodeContractRegistry,
     resolveNodeContract,
-    resolveOutputPortId,
 } from '@sigil/schema/node-contract';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type { CollisionSuffixStyle, ConflictPolicy } from '@sigil/schema/properties-file';
@@ -318,20 +317,18 @@ export async function executeValidatedWorkflow(
                     { node, ctx },
                     { ...commonDeps, bus: nodeTelemetry.bus },
                 );
-                let normalizedResult = result;
                 if (contract.outputPorts !== 'dynamic') {
-                    const port = resolveOutputPortId(contract.outputPorts, result.activePort);
-                    if (!port.ok) {
+                    const port = contract.outputPorts.find(
+                        (candidate) => candidate.id === result.activePort,
+                    );
+                    if (!port) {
                         throw new Error(
                             `Node ${formatNodeIdentity(contract.identity)} returned undeclared activePort "${result.activePort}". Allowed ports: ${contract.outputPorts.map((candidate) => candidate.id).join(', ')}.`,
                         );
                     }
-                    if (port.matchedBy === 'alias') {
-                        normalizedResult = { ...result, activePort: port.portId };
-                    }
                 }
                 span.finish('succeeded');
-                return normalizedResult;
+                return result;
             } catch (err) {
                 span.finish(
                     executionOptions.signal?.aborted ? 'cancelled' : 'failed',
