@@ -9,7 +9,6 @@ import type { PluginId } from '@sigil/schema/ids';
 import { PipelineNodeIdSchema, PluginIdSchema } from '@sigil/schema/ids';
 import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
 import {
-    NodeContractSnapshotSchema,
     resolveDeclarativeOutputPorts,
     type SerializableNodeContract,
     validatePluginNodeContract,
@@ -75,7 +74,9 @@ const port = parentPort;
 const WorkerDataSchema = z.object({
     pluginId: PluginIdSchema,
     manifestNodeType: z.string().min(1),
-    nodeContract: NodeContractSnapshotSchema.optional(),
+    // Keep this field opaque until main() can turn complexity violations into
+    // a typed load message instead of letting WorkerDataSchema.parse throw.
+    nodeContract: z.unknown().optional(),
     handlerPath: z.string().min(1),
     manifestPermissions: z.array(CapabilitySchema).default([]),
     permissions: z.array(CapabilitySchema).default([]),
@@ -994,7 +995,7 @@ type RuntimeContractValidation =
     | { readonly ok: false; readonly error: string };
 
 function validateRuntimeContract(
-    contract: SerializableNodeContract,
+    contract: unknown,
     pluginId: PluginId,
     nodeType: string,
     descriptor: RawPluginDescriptor,

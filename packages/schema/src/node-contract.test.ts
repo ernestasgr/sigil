@@ -3,18 +3,54 @@ import { describe, expect, it } from 'vitest';
 
 import { PluginIdSchema } from './ids.js';
 import {
+    checkSerializableJsonComplexity,
     createNodeContractRegistry,
     fixedOutputPortSpec,
     type NodeContractInput,
     pluginNodeIdentity,
     registerSerializableNodeContract,
     resolveNodeContract,
+    SERIALIZABLE_NODE_CONTRACT_COMPLEXITY_LIMITS,
     validatePluginNodeContract,
 } from './node-contract.js';
 import { createBuiltinNodeContractRegistry } from './nodes/catalog.js';
 import { switchOutputPortSpec, switchOutputPortStrategy } from './nodes/switch.js';
 
 const pid = (id: string) => PluginIdSchema.parse(id);
+
+function serializablePluginContract(defaultConfig: unknown = {}) {
+    return {
+        identity: pluginNodeIdentity(pid('com.example.contract'), 'contract-node'),
+        version: 1,
+        role: 'action',
+        defaultConfig,
+        outputPorts: fixedOutputPortSpec(['out']),
+        display: {
+            label: 'Contract Node',
+            description: 'A contract used by complexity-boundary tests.',
+            category: 'utility',
+        },
+    } as const;
+}
+
+function nestedObject(depth: number): unknown {
+    let value: unknown = 'leaf';
+    for (let index = 0; index < depth; index += 1) {
+        value = { child: value };
+    }
+    return value;
+}
+
+function valueCountTree(valueCount: number, collectionLimit: number): unknown[] {
+    const children: unknown[] = [];
+    let remaining = valueCount - 1;
+    while (remaining > 0) {
+        const leafCount = Math.min(collectionLimit, Math.max(0, remaining - 1));
+        children.push(Array.from({ length: leafCount }, () => null));
+        remaining -= leafCount + 1;
+    }
+    return children;
+}
 
 const switchNode = (config: unknown): NodeContractInput => ({
     type: 'switch',
@@ -220,6 +256,95 @@ describe('Node Contract Registry', () => {
             status: 'available',
             outputPorts: [{ id: 'out', label: 'Output' }],
         });
+    });
+
+    it('returns a typed failure for an over-depth serializable Plugin contract', () => {
+        expect(() =>
+            validatePluginNodeContract(
+                serializablePluginContract(nestedObject(64)),
+                pid('com.example.contract'),
+                'contract-node',
+            ),
+        ).not.toThrow();
+
+        expect(
+            validatePluginNodeContract(
+                serializablePluginContract(nestedObject(64)),
+                pid('com.example.contract'),
+                'contract-node',
+            ),
+        ).toMatchObject({
+            ok: false,
+            error: expect.stringContaining('maximum depth'),
+        });
+    });
+
+    it('returns a typed failure for a cyclic serializable Plugin contract', () => {
+        const cyclicConfig: Record<string, unknown> = {};
+        cyclicConfig.self = cyclicConfig;
+
+        expect(() =>
+            validatePluginNodeContract(
+                serializablePluginContract(cyclicConfig),
+                pid('com.example.contract'),
+                'contract-node',
+            ),
+        ).not.toThrow();
+
+        expect(
+            validatePluginNodeContract(
+                serializablePluginContract(cyclicConfig),
+                pid('com.example.contract'),
+                'contract-node',
+            ),
+        ).toMatchObject({
+            ok: false,
+            error: expect.stringContaining('cyclic'),
+        });
+    });
+
+    it('admits values exactly at each documented complexity limit and rejects the next value', () => {
+        const limits = SERIALIZABLE_NODE_CONTRACT_COMPLEXITY_LIMITS;
+
+        expect(checkSerializableJsonComplexity(nestedObject(limits.maxDepth), limits)).toEqual({
+            ok: true,
+        });
+        expect(
+            checkSerializableJsonComplexity(nestedObject(limits.maxDepth + 1), limits),
+        ).toMatchObject({ ok: false, failure: { kind: 'max-depth' } });
+
+        expect(
+            checkSerializableJsonComplexity(
+                valueCountTree(limits.maxValueCount, limits.maxCollectionLength),
+                limits,
+            ),
+        ).toEqual({ ok: true });
+        expect(
+            checkSerializableJsonComplexity(
+                valueCountTree(limits.maxValueCount + 1, limits.maxCollectionLength),
+                limits,
+            ),
+        ).toMatchObject({ ok: false, failure: { kind: 'max-value-count' } });
+
+        expect(
+            checkSerializableJsonComplexity(
+                Array.from({ length: limits.maxCollectionLength }, () => null),
+                limits,
+            ),
+        ).toEqual({ ok: true });
+        expect(
+            checkSerializableJsonComplexity(
+                Array.from({ length: limits.maxCollectionLength + 1 }, () => null),
+                limits,
+            ),
+        ).toMatchObject({ ok: false, failure: { kind: 'max-collection-length' } });
+
+        expect(checkSerializableJsonComplexity('x'.repeat(limits.maxStringLength), limits)).toEqual(
+            { ok: true },
+        );
+        expect(
+            checkSerializableJsonComplexity('x'.repeat(limits.maxStringLength + 1), limits),
+        ).toMatchObject({ ok: false, failure: { kind: 'max-string-length' } });
     });
 
     it('resolves and validates a Plugin config-derived contract through the Switch strategy', () => {

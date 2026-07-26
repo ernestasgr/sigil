@@ -47,6 +47,14 @@ function writePlugin(dir: string, manifest: Record<string, unknown>, handlerCode
     writeFileSync(join(dir, 'handler.ts'), handlerCode);
 }
 
+function nestedObject(depth: number): unknown {
+    let value: unknown = 'leaf';
+    for (let index = 0; index < depth; index += 1) {
+        value = { child: value };
+    }
+    return value;
+}
+
 const testLoaders = new Set<NodePluginLoader>();
 
 async function loadNodePlugin(
@@ -392,6 +400,165 @@ describe('loadNodePlugin', () => {
             status: 'available',
             outputPorts: [{ id: 'out', label: 'Output' }],
         });
+    });
+
+    it('returns an Engine-safe load failure for an over-depth contract at the worker seam', async () => {
+        const pluginDir = join(tempDir, 'over-depth-worker-contract');
+        mkdirSync(pluginDir, { recursive: true });
+        writeFileSync(join(pluginDir, 'handler.ts'), GREET_PLUGIN_HANDLER);
+
+        const worker = new Worker(join(__dirname, 'plugin-node-worker-bootstrap.mjs'), {
+            workerData: {
+                pluginId: 'com.sigil.over-depth-worker-contract',
+                manifestNodeType: 'greet',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: 'com.sigil.over-depth-worker-contract',
+                        type: 'greet',
+                    },
+                    version: 1,
+                    role: 'action',
+                    defaultConfig: nestedObject(64),
+                    outputPorts: {
+                        kind: 'fixed',
+                        ports: [{ id: 'out', label: 'Output' }],
+                    },
+                    display: {
+                        label: 'Over Depth',
+                        description: 'Contract used by the worker-boundary test.',
+                        category: 'utility',
+                    },
+                },
+                handlerPath: join(pluginDir, 'handler.ts'),
+                manifestPermissions: [],
+                permissions: [],
+            },
+        });
+
+        try {
+            const message = await new Promise<unknown>((resolveMessage, reject) => {
+                worker.once('message', resolveMessage);
+                worker.once('error', reject);
+                worker.once('exit', (code) => {
+                    if (code !== 0) {
+                        reject(new Error(`Plugin worker exited with code ${code}`));
+                    }
+                });
+            });
+
+            expect(message).toMatchObject({
+                kind: NodePluginWorkerKind.LoadError,
+                contractError: expect.stringContaining('maximum depth'),
+            });
+            expect(JSON.stringify(message)).not.toContain('leaf');
+        } finally {
+            await worker.terminate();
+        }
+    });
+
+    it('returns an Engine-safe load failure for a cyclic contract at the worker seam', async () => {
+        const pluginDir = join(tempDir, 'cyclic-worker-contract');
+        mkdirSync(pluginDir, { recursive: true });
+        writeFileSync(join(pluginDir, 'handler.ts'), GREET_PLUGIN_HANDLER);
+        const cyclicConfig: Record<string, unknown> = {};
+        cyclicConfig.self = cyclicConfig;
+        cyclicConfig.secret = 'secret-value';
+
+        const worker = new Worker(join(__dirname, 'plugin-node-worker-bootstrap.mjs'), {
+            workerData: {
+                pluginId: 'com.sigil.cyclic-worker-contract',
+                manifestNodeType: 'greet',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: 'com.sigil.cyclic-worker-contract',
+                        type: 'greet',
+                    },
+                    version: 1,
+                    role: 'action',
+                    defaultConfig: cyclicConfig,
+                    outputPorts: {
+                        kind: 'fixed',
+                        ports: [{ id: 'out', label: 'Output' }],
+                    },
+                    display: {
+                        label: 'Cyclic Contract',
+                        description: 'Contract used by the worker-boundary test.',
+                        category: 'utility',
+                    },
+                },
+                handlerPath: join(pluginDir, 'handler.ts'),
+                manifestPermissions: [],
+                permissions: [],
+            },
+        });
+
+        try {
+            const message = await new Promise<unknown>((resolveMessage, reject) => {
+                worker.once('message', resolveMessage);
+                worker.once('error', reject);
+                worker.once('exit', (code) => {
+                    if (code !== 0) {
+                        reject(new Error(`Plugin worker exited with code ${code}`));
+                    }
+                });
+            });
+
+            expect(message).toMatchObject({
+                kind: NodePluginWorkerKind.LoadError,
+                contractError: expect.stringContaining('cyclic'),
+            });
+            expect(JSON.stringify(message)).not.toContain('secret-value');
+        } finally {
+            await worker.terminate();
+        }
+    });
+
+    it('surfaces an over-budget manifest as a typed Plugin load failure', async () => {
+        const pluginDir = join(tempDir, 'over-budget-manifest-contract');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.over-budget-manifest',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['contract.output'],
+                nodeType: 'greet',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: 'com.sigil.over-budget-manifest',
+                        type: 'greet',
+                    },
+                    version: 1,
+                    role: 'action',
+                    defaultConfig: nestedObject(64),
+                    outputPorts: {
+                        kind: 'fixed',
+                        ports: [{ id: 'out', label: 'Output' }],
+                    },
+                    display: {
+                        label: 'Over Budget',
+                        description: 'Contract used by the loader-boundary test.',
+                        category: 'utility',
+                    },
+                },
+            },
+            GREET_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: {
+                kind: 'invalid_manifest',
+                error: expect.stringContaining('maximum depth'),
+            },
+        });
+        expect(JSON.stringify(result)).not.toContain('leaf');
     });
 
     it('resolves a config-derived Plugin contract through the worker and shared registry', async () => {

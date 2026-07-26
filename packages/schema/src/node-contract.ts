@@ -25,15 +25,270 @@ export type SerializableJsonValue =
     | SerializableJsonValue[]
     | { readonly [key: string]: SerializableJsonValue };
 
-export const SerializableJsonValueSchema: z.ZodType<SerializableJsonValue> = z.lazy(() =>
+/**
+ * Complexity limits for serializable Plugin Node Contract data.
+ *
+ * Depth starts at zero for the contract root. Value count includes the root
+ * and every array element or object property value, but not object keys.
+ * Collection length is the number of array elements or enumerable object
+ * properties. String length is measured in UTF-16 code units, matching
+ * JavaScript's `string.length`.
+ */
+export interface SerializableNodeContractComplexityLimits {
+    readonly maxDepth: number;
+    readonly maxValueCount: number;
+    readonly maxCollectionLength: number;
+    readonly maxStringLength: number;
+}
+
+export const SERIALIZABLE_NODE_CONTRACT_COMPLEXITY_LIMITS = Object.freeze({
+    maxDepth: 16,
+    maxValueCount: 512,
+    maxCollectionLength: 128,
+    maxStringLength: 4096,
+} as const) satisfies SerializableNodeContractComplexityLimits;
+
+export type SerializableJsonPath = readonly (string | number)[];
+
+export type SerializableJsonComplexityFailure =
+    | { readonly kind: 'cycle' | 'unreadable'; readonly path: SerializableJsonPath }
+    | {
+          readonly kind:
+              | 'max-depth'
+              | 'max-value-count'
+              | 'max-collection-length'
+              | 'max-string-length';
+          readonly path: SerializableJsonPath;
+          readonly limit: number;
+      };
+
+export type SerializableJsonComplexityResult =
+    | { readonly ok: true }
+    | { readonly ok: false; readonly failure: SerializableJsonComplexityFailure };
+
+type SerializableJsonBudgetFailureKind =
+    | 'max-depth'
+    | 'max-value-count'
+    | 'max-collection-length'
+    | 'max-string-length';
+
+interface SerializableJsonEnterFrame {
+    readonly kind: 'enter';
+    readonly value: unknown;
+    readonly depth: number;
+    readonly path: SerializableJsonPath;
+}
+
+interface SerializableJsonExitFrame {
+    readonly kind: 'exit';
+    readonly value: object;
+}
+
+type SerializableJsonFrame = SerializableJsonEnterFrame | SerializableJsonExitFrame;
+
+function isObjectValue(value: unknown): value is object {
+    return typeof value === 'object' && value !== null;
+}
+
+function isRecordObject(value: object): value is Record<string, unknown> {
+    try {
+        return !Array.isArray(value);
+    } catch {
+        return false;
+    }
+}
+
+function complexityFailure(
+    kind: 'cycle' | 'unreadable',
+    path: SerializableJsonPath,
+): SerializableJsonComplexityResult;
+function complexityFailure(
+    kind: SerializableJsonBudgetFailureKind,
+    path: SerializableJsonPath,
+    limit: number,
+): SerializableJsonComplexityResult;
+function complexityFailure(
+    kind: SerializableJsonComplexityFailure['kind'],
+    path: SerializableJsonPath,
+    limit?: number,
+): SerializableJsonComplexityResult {
+    if (kind === 'cycle' || kind === 'unreadable') {
+        return { ok: false, failure: { kind, path } };
+    }
+    return { ok: false, failure: { kind, path, limit: limit ?? 0 } };
+}
+
+/**
+ * Iteratively inspects a value before any recursive Zod traversal. The
+ * active-path set rejects cycles while still allowing the same plain value to
+ * appear in separate branches of an otherwise acyclic input.
+ */
+export function checkSerializableJsonComplexity(
+    value: unknown,
+    limits: SerializableNodeContractComplexityLimits = SERIALIZABLE_NODE_CONTRACT_COMPLEXITY_LIMITS,
+): SerializableJsonComplexityResult {
+    const frames: SerializableJsonFrame[] = [{ kind: 'enter', value, depth: 0, path: [] }];
+    const activeValues = new WeakSet<object>();
+    let valueCount = 0;
+
+    while (frames.length > 0) {
+        const frame = frames.pop();
+        if (frame === undefined) break;
+
+        if (frame.kind === 'exit') {
+            activeValues.delete(frame.value);
+            continue;
+        }
+
+        if (frame.depth > limits.maxDepth) {
+            return complexityFailure('max-depth', frame.path, limits.maxDepth);
+        }
+
+        valueCount += 1;
+        if (valueCount > limits.maxValueCount) {
+            return complexityFailure('max-value-count', frame.path, limits.maxValueCount);
+        }
+
+        if (typeof frame.value === 'string') {
+            if (frame.value.length > limits.maxStringLength) {
+                return complexityFailure('max-string-length', frame.path, limits.maxStringLength);
+            }
+            continue;
+        }
+
+        if (!isObjectValue(frame.value)) continue;
+
+        let arrayValue: readonly unknown[] | undefined;
+        try {
+            arrayValue = Array.isArray(frame.value) ? frame.value : undefined;
+        } catch {
+            return complexityFailure('unreadable', frame.path);
+        }
+
+        if (activeValues.has(frame.value)) {
+            return complexityFailure('cycle', frame.path);
+        }
+        activeValues.add(frame.value);
+        frames.push({ kind: 'exit', value: frame.value });
+
+        if (arrayValue !== undefined) {
+            let length: number;
+            try {
+                length = arrayValue.length;
+            } catch {
+                return complexityFailure('unreadable', frame.path);
+            }
+            if (length > limits.maxCollectionLength) {
+                return complexityFailure(
+                    'max-collection-length',
+                    frame.path,
+                    limits.maxCollectionLength,
+                );
+            }
+            for (let index = length - 1; index >= 0; index -= 1) {
+                try {
+                    frames.push({
+                        kind: 'enter',
+                        value: arrayValue[index],
+                        depth: frame.depth + 1,
+                        path: [...frame.path, index],
+                    });
+                } catch {
+                    return complexityFailure('unreadable', [...frame.path, index]);
+                }
+            }
+            continue;
+        }
+
+        if (!isRecordObject(frame.value)) continue;
+        const recordValue = frame.value;
+        let keys: readonly string[];
+        try {
+            keys = Object.keys(recordValue);
+        } catch {
+            return complexityFailure('unreadable', frame.path);
+        }
+        if (keys.length > limits.maxCollectionLength) {
+            return complexityFailure(
+                'max-collection-length',
+                frame.path,
+                limits.maxCollectionLength,
+            );
+        }
+
+        for (let index = keys.length - 1; index >= 0; index -= 1) {
+            const key = keys[index];
+            const childPath = [...frame.path, key];
+            if (key.length > limits.maxStringLength) {
+                return complexityFailure('max-string-length', childPath, limits.maxStringLength);
+            }
+            try {
+                const descriptor = Object.getOwnPropertyDescriptor(recordValue, key);
+                if (descriptor !== undefined && !('value' in descriptor)) {
+                    return complexityFailure('unreadable', childPath);
+                }
+                frames.push({
+                    kind: 'enter',
+                    value: recordValue[key],
+                    depth: frame.depth + 1,
+                    path: childPath,
+                });
+            } catch {
+                return complexityFailure('unreadable', childPath);
+            }
+        }
+    }
+
+    return { ok: true };
+}
+
+function complexityFailureMessage(
+    failure: SerializableJsonComplexityFailure,
+    subject: string,
+): string {
+    switch (failure.kind) {
+        case 'cycle':
+            return `${subject} contains a cyclic value.`;
+        case 'unreadable':
+            return `${subject} could not be traversed safely.`;
+        case 'max-depth':
+            return `${subject} exceeds the maximum depth of ${failure.limit}.`;
+        case 'max-value-count':
+            return `${subject} exceeds the aggregate value-count limit of ${failure.limit}.`;
+        case 'max-collection-length':
+            return `${subject} exceeds the collection-length limit of ${failure.limit}.`;
+        case 'max-string-length':
+            return `${subject} exceeds the string-length limit of ${failure.limit}.`;
+        default:
+            return assertNever(failure);
+    }
+}
+
+const SerializableJsonValueSchemaImplementation: z.ZodType<SerializableJsonValue> = z.lazy(() =>
     z.union([
         z.string(),
         z.number(),
         z.boolean(),
         z.null(),
-        z.array(SerializableJsonValueSchema),
-        z.record(z.string(), SerializableJsonValueSchema),
+        z.array(SerializableJsonValueSchemaImplementation),
+        z.record(z.string(), SerializableJsonValueSchemaImplementation),
     ]),
+);
+
+export const SerializableJsonValueSchema: z.ZodType<SerializableJsonValue> = z.preprocess(
+    (value, ctx) => {
+        const complexity = checkSerializableJsonComplexity(value);
+        if (!complexity.ok) {
+            ctx.addIssue({
+                code: 'custom',
+                path: [...complexity.failure.path],
+                message: complexityFailureMessage(complexity.failure, 'Serializable JSON value'),
+            });
+            return undefined;
+        }
+        return value;
+    },
+    SerializableJsonValueSchemaImplementation,
 );
 
 const BuiltinNodeIdentitySchema = z
@@ -158,18 +413,45 @@ export type NodeContract = ParsedNodeContract;
  * Runtime config schemas and UI components are intentionally not part of this
  * value.
  */
-export const SerializableNodeContractSchema = NodeContractSchema.superRefine((contract, ctx) => {
-    const parsedDefault = SerializableJsonValueSchema.safeParse(contract.defaultConfig);
-    if (!parsedDefault.success) {
-        ctx.addIssue({
-            code: 'custom',
-            path: ['defaultConfig'],
-            message: 'Node Contract defaultConfig must contain JSON-serializable data only.',
-        });
-    }
-});
-export type SerializableNodeContractInput = z.input<typeof SerializableNodeContractSchema>;
-export type SerializableNodeContract = z.output<typeof SerializableNodeContractSchema>;
+const SerializableNodeContractSchemaImplementation = NodeContractSchema.superRefine(
+    (contract, ctx) => {
+        const parsedDefault = SerializableJsonValueSchema.safeParse(contract.defaultConfig);
+        if (!parsedDefault.success) {
+            const firstIssue = parsedDefault.error.issues[0];
+            ctx.addIssue({
+                code: 'custom',
+                path: ['defaultConfig', ...(firstIssue?.path ?? [])],
+                message:
+                    firstIssue?.message ??
+                    'Node Contract defaultConfig must contain JSON-serializable data only.',
+            });
+        }
+    },
+);
+
+export type SerializableNodeContractInput = z.input<
+    typeof SerializableNodeContractSchemaImplementation
+>;
+export type SerializableNodeContract = z.output<
+    typeof SerializableNodeContractSchemaImplementation
+>;
+
+export const SerializableNodeContractSchema: z.ZodType<SerializableNodeContract, unknown> =
+    z.preprocess((value, ctx) => {
+        const complexity = checkSerializableJsonComplexity(value);
+        if (!complexity.ok) {
+            ctx.addIssue({
+                code: 'custom',
+                path: [...complexity.failure.path],
+                message: complexityFailureMessage(
+                    complexity.failure,
+                    'Serializable Plugin Node Contract',
+                ),
+            });
+            return undefined;
+        }
+        return value;
+    }, SerializableNodeContractSchemaImplementation);
 export const NodeContractSnapshotSchema = SerializableNodeContractSchema;
 export type NodeContractSnapshot = SerializableNodeContract;
 export const NodeContractSnapshotListSchema = z.array(NodeContractSnapshotSchema).readonly();
@@ -183,7 +465,15 @@ export function validatePluginNodeContract(
     pluginId: PluginId,
     nodeType: string,
 ): PluginNodeContractValidation {
-    const parsed = SerializableNodeContractSchema.safeParse(unknown);
+    let parsed: ReturnType<typeof SerializableNodeContractSchema.safeParse>;
+    try {
+        parsed = SerializableNodeContractSchema.safeParse(unknown);
+    } catch {
+        return {
+            ok: false,
+            error: 'Serializable Plugin Node Contract could not be validated safely.',
+        };
+    }
     if (!parsed.success) {
         return {
             ok: false,

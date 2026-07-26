@@ -71,7 +71,12 @@ export type ManifestParseOk = { readonly ok: true; readonly value: Manifest };
 export type ManifestParseResult = ManifestParseOk | ManifestParseError;
 
 export function parseManifest(unknown: unknown): ManifestParseResult {
-    const result = ManifestSchema.safeParse(unknown);
+    let result: ReturnType<typeof ManifestSchema.safeParse>;
+    try {
+        result = ManifestSchema.safeParse(unknown);
+    } catch {
+        return { ok: false, error: 'Manifest could not be validated safely.' };
+    }
     if (result.success) {
         return { ok: true, value: result.data };
     }

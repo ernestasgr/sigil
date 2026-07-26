@@ -2,6 +2,35 @@ import { describe, expect, it } from 'vitest';
 
 import { CapabilitySchema, ManifestSchema, parseManifest } from './manifest.js';
 
+function cyclicPluginManifest(defaultConfig: unknown): Record<string, unknown> {
+    return {
+        id: 'com.sigil.cyclic-contract',
+        version: '0.0.1',
+        permissions: [],
+        emits: ['contract.output'],
+        nodeType: 'cyclic-node',
+        nodeContract: {
+            identity: {
+                namespace: 'plugin',
+                pluginId: 'com.sigil.cyclic-contract',
+                type: 'cyclic-node',
+            },
+            version: 1,
+            role: 'action',
+            defaultConfig,
+            outputPorts: {
+                kind: 'fixed',
+                ports: [{ id: 'out', label: 'Output' }],
+            },
+            display: {
+                label: 'Cyclic Node',
+                description: 'Rejects cyclic contract data.',
+                category: 'utility',
+            },
+        },
+    };
+}
+
 describe('CapabilitySchema', () => {
     it('accepts a known capability', () => {
         const result = CapabilitySchema.safeParse('filesystem.read');
@@ -192,5 +221,18 @@ describe('parseManifest', () => {
     it('returns an error for an inconsistent manifest', () => {
         const result = parseManifest({ id: 'x' });
         expect(result.ok).toBe(false);
+    });
+
+    it('returns a structured error for a cyclic Plugin contract', () => {
+        const cyclicConfig: Record<string, unknown> = {};
+        cyclicConfig.loop = cyclicConfig;
+        const manifest = cyclicPluginManifest(cyclicConfig);
+
+        expect(() => parseManifest(manifest)).not.toThrow();
+
+        expect(parseManifest(manifest)).toMatchObject({
+            ok: false,
+            error: expect.stringContaining('cyclic'),
+        });
     });
 });
