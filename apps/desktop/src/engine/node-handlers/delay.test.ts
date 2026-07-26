@@ -1,4 +1,4 @@
-import type { PipelineNode } from '@sigil/schema/nodes';
+import { MAX_DELAY_MS, type PipelineNode } from '@sigil/schema/nodes';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { describe, expect, it, vi } from 'vitest';
 import { testNode } from '../../test-support/pipeline-fixtures.js';
@@ -17,11 +17,12 @@ const ctx: WorkflowContext = {
     vars: {},
 };
 
-const delayNode: PipelineNode = testNode({
-    id: 'wait',
-    type: 'delay',
-    config: { ms: 50 },
-});
+const delayNode = (ms: number): PipelineNode =>
+    testNode({
+        id: 'wait',
+        type: 'delay',
+        config: { ms },
+    });
 
 function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
     return {
@@ -37,15 +38,18 @@ function buildDeps(overrides?: Partial<NodeHandlerDeps>): NodeHandlerDeps {
 }
 
 describe('delay handler', () => {
-    it('calls sleep with the configured ms and passes the context through', async () => {
-        const sleep = vi.fn().mockResolvedValue(undefined as never);
-        const deps = { ...buildDeps(), sleep };
+    it.each([0, 1, 1_000, MAX_DELAY_MS])(
+        'calls sleep with the admitted ms value %d and passes the context through',
+        async (ms) => {
+            const sleep = vi.fn().mockResolvedValue(undefined as never);
+            const deps = { ...buildDeps(), sleep };
 
-        const { delayHandler } = await import('./delay.js');
-        const result = await delayHandler.execute({ node: delayNode, ctx }, deps);
+            const { delayHandler } = await import('./delay.js');
+            const result = await delayHandler.execute({ node: delayNode(ms), ctx }, deps);
 
-        expect(result.activePort).toBe('out');
-        expect(result.outputCtx).toBe(ctx);
-        expect(sleep).toHaveBeenCalledWith(50, undefined);
-    });
+            expect(result.activePort).toBe('out');
+            expect(result.outputCtx).toBe(ctx);
+            expect(sleep).toHaveBeenCalledWith(ms, undefined);
+        },
+    );
 });

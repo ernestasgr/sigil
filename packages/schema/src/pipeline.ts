@@ -28,29 +28,38 @@ export type PipelineDocument = z.infer<typeof PipelineDocumentSchema>;
 export const CompiledPipelineSchema = PipelineDocumentSchema;
 export type CompiledPipeline = PipelineDocument;
 
-function formatPipelineIssue(
+export interface PipelineParseIssue {
+    readonly path: readonly PropertyKey[];
+    readonly message: string;
+}
+
+function flattenPipelineIssue(
     issue: z.core.$ZodIssue,
     parentPath: readonly PropertyKey[] = [],
-): readonly string[] {
+): readonly PipelineParseIssue[] {
     const path = [...parentPath, ...issue.path];
     if (issue.code === 'invalid_union' && issue.errors.length > 0) {
         return issue.errors.flatMap((branch) =>
-            branch.flatMap((nestedIssue) => formatPipelineIssue(nestedIssue, path)),
+            branch.flatMap((nestedIssue) => flattenPipelineIssue(nestedIssue, path)),
         );
     }
-    return [`${path.join('.')}: ${issue.message}`];
+    return [{ path, message: issue.message }];
 }
 
 export function parsePipelineDocument(
     unknown: unknown,
-): { ok: true; value: PipelineDocument } | { ok: false; error: string } {
+):
+    | { ok: true; value: PipelineDocument }
+    | { ok: false; error: string; issues: readonly PipelineParseIssue[] } {
     const result = PipelineDocumentSchema.safeParse(unknown);
     if (result.success) {
         return { ok: true, value: result.data };
     }
+    const issues = result.error.issues.flatMap((issue) => flattenPipelineIssue(issue));
     return {
         ok: false,
-        error: result.error.issues.flatMap((issue) => formatPipelineIssue(issue)).join('\n'),
+        error: issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('\n'),
+        issues,
     };
 }
 

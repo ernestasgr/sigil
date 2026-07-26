@@ -18,6 +18,7 @@ export type { NodeOutputPortId, PipelineEdgeId, PipelineNodeId, PluginId } from 
 export { NodeOutputPortIdSchema, PipelineNodeIdSchema, PluginIdSchema } from '../ids.js';
 export type { BuiltinNodeConfig, NodeType } from './catalog.js';
 export type { DelayConfig } from './delay.js';
+export { MAX_DELAY_MS } from './delay.js';
 export type { FileManagerConfig } from './file-manager.js';
 export type { FileWatcherConfig } from './file-watcher.js';
 export type { IfElseConfig } from './if-else.js';
