@@ -89,6 +89,43 @@ const nonTrivialDagPipelineArbitrary = fc
         return pipeline(nodes, edges);
     });
 
+const cycleWithTailPipelineArbitrary = fc
+    .record({
+        cycleLength: fc.integer({ min: 2, max: 6 }),
+        tailLength: fc.integer({ min: 1, max: 5 }),
+    })
+    .map(({ cycleLength, tailLength }) => {
+        const cycleNodes = Array.from({ length: cycleLength }, (_, index) => `cycle-${index}`);
+        const tailNodes = Array.from({ length: tailLength }, (_, index) => `tail-${index}`);
+        const nodes: PipelineNode[] = [
+            trigger('trigger'),
+            ...cycleNodes.map((nodeId) => log(nodeId)),
+            ...tailNodes.map((nodeId) => log(nodeId)),
+        ];
+        const edges: PipelineEdge[] = [edge('trigger-cycle', 'trigger', cycleNodes[0] ?? '')];
+
+        cycleNodes.forEach((nodeId, index) => {
+            edges.push(
+                edge(
+                    `cycle-${index}`,
+                    nodeId,
+                    cycleNodes[(index + 1) % cycleNodes.length] ?? nodeId,
+                ),
+            );
+        });
+
+        edges.push(edge('cycle-tail', cycleNodes[cycleNodes.length - 1] ?? '', tailNodes[0] ?? ''));
+        tailNodes.forEach((nodeId, index) => {
+            const nextNodeId = tailNodes[index + 1];
+            if (nextNodeId) edges.push(edge(`tail-${index}`, nodeId, nextNodeId));
+        });
+
+        return {
+            pipeline: pipeline(nodes, edges),
+            cycleEdgeIds: cycleNodes.map((_, index) => `cycle-${index}`),
+        };
+    });
+
 function diagnosticCodes(result: ReturnType<typeof validateWorkflowTopology>): readonly string[] {
     return result.ok ? [] : result.diagnostics.map((diagnostic) => diagnostic.code);
 }
@@ -165,6 +202,34 @@ describe('generated Workflow topology properties', () => {
                     );
                 }
             }),
+            PROPERTY_OPTIONS,
+        );
+    });
+
+    it('reports only strongly connected component Edges when a cycle has a downstream tail', () => {
+        fc.assert(
+            fc.property(
+                cycleWithTailPipelineArbitrary,
+                ({ pipeline: generatedPipeline, cycleEdgeIds }) => {
+                    const first = validateWorkflowTopology(generatedPipeline);
+                    const second = validateWorkflowTopology(generatedPipeline);
+
+                    expect(first.ok).toBe(false);
+                    expect(second).toEqual(first);
+                    if (!first.ok) {
+                        expect(
+                            first.diagnostics
+                                .filter((diagnostic) => diagnostic.code === 'cycle')
+                                .map((diagnostic) => diagnostic.edgeId),
+                        ).toEqual(cycleEdgeIds);
+                        expect(first.diagnostics).not.toEqual(
+                            expect.arrayContaining([
+                                expect.objectContaining({ code: 'cycle', edgeId: 'cycle-tail' }),
+                            ]),
+                        );
+                    }
+                },
+            ),
             PROPERTY_OPTIONS,
         );
     });

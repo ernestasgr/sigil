@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { PipelineEdge } from './edges.js';
 import {
     type NodeOutputPortId,
     type PipelineEdgeId,
@@ -213,6 +214,109 @@ function stableExecutionOrder(
     }
 
     return order;
+}
+
+interface StronglyConnectedComponents {
+    readonly componentByNode: ReadonlyMap<PipelineNodeId, number>;
+    readonly componentSizes: readonly number[];
+}
+
+interface DepthFirstSearchFrame {
+    readonly nodeId: PipelineNodeId;
+    nextNeighborIndex: number;
+}
+
+function stronglyConnectedComponents(
+    nodes: readonly PipelineNode[],
+    outgoing: ReadonlyMap<PipelineNodeId, readonly PipelineNodeId[]>,
+): StronglyConnectedComponents {
+    const nodeIds = nodes.map((node) => node.id);
+    const reverse = new Map<PipelineNodeId, PipelineNodeId[]>(
+        nodeIds.map((nodeId) => [nodeId, []]),
+    );
+
+    for (const sourceId of nodeIds) {
+        for (const targetId of outgoing.get(sourceId) ?? []) {
+            reverse.get(targetId)?.push(sourceId);
+        }
+    }
+
+    const visited = new Set<PipelineNodeId>();
+    const finishOrder: PipelineNodeId[] = [];
+    for (const startId of nodeIds) {
+        if (visited.has(startId)) continue;
+
+        visited.add(startId);
+        const stack: DepthFirstSearchFrame[] = [{ nodeId: startId, nextNeighborIndex: 0 }];
+        while (stack.length > 0) {
+            const frame = stack[stack.length - 1];
+            if (frame === undefined) break;
+
+            const neighborId = (outgoing.get(frame.nodeId) ?? [])[frame.nextNeighborIndex];
+            if (neighborId === undefined) {
+                finishOrder.push(frame.nodeId);
+                stack.pop();
+                continue;
+            }
+
+            frame.nextNeighborIndex += 1;
+            if (visited.has(neighborId)) continue;
+
+            visited.add(neighborId);
+            stack.push({ nodeId: neighborId, nextNeighborIndex: 0 });
+        }
+    }
+
+    const componentByNode = new Map<PipelineNodeId, number>();
+    const componentSizes: number[] = [];
+    for (let index = finishOrder.length - 1; index >= 0; index -= 1) {
+        const startId = finishOrder[index];
+        if (startId === undefined || componentByNode.has(startId)) continue;
+
+        const componentId = componentSizes.length;
+        componentByNode.set(startId, componentId);
+        const stack: PipelineNodeId[] = [startId];
+        let componentSize = 0;
+
+        while (stack.length > 0) {
+            const nodeId = stack.pop();
+            if (nodeId === undefined) continue;
+            componentSize += 1;
+
+            for (const sourceId of reverse.get(nodeId) ?? []) {
+                if (componentByNode.has(sourceId)) continue;
+                componentByNode.set(sourceId, componentId);
+                stack.push(sourceId);
+            }
+        }
+
+        componentSizes.push(componentSize);
+    }
+
+    return { componentByNode, componentSizes };
+}
+
+function cyclicEdges(
+    edges: readonly PipelineEdge[],
+    nodes: readonly PipelineNode[],
+    outgoing: ReadonlyMap<PipelineNodeId, readonly PipelineNodeId[]>,
+): readonly PipelineEdge[] {
+    const { componentByNode, componentSizes } = stronglyConnectedComponents(nodes, outgoing);
+
+    return edges.filter((edge) => {
+        if (!componentByNode.has(edge.source) || !componentByNode.has(edge.target)) {
+            return false;
+        }
+        if (edge.source === edge.target) return true;
+
+        const sourceComponent = componentByNode.get(edge.source);
+        const targetComponent = componentByNode.get(edge.target);
+        return (
+            sourceComponent !== undefined &&
+            sourceComponent === targetComponent &&
+            (componentSizes[sourceComponent] ?? 0) > 1
+        );
+    });
 }
 
 function reachableFrom(
@@ -437,14 +541,7 @@ export function validateWorkflowTopology(
 
     const executionOrder = stableExecutionOrder(nodes, incoming, outgoing);
     if (executionOrder.length !== nodes.length) {
-        const ordered = new Set(executionOrder);
-        const cycleEdges = pipeline.edges.filter(
-            (edge) =>
-                nodeById.has(edge.source) &&
-                nodeById.has(edge.target) &&
-                !ordered.has(edge.source) &&
-                !ordered.has(edge.target),
-        );
+        const cycleEdges = cyclicEdges(pipeline.edges, nodes, outgoing);
 
         if (cycleEdges.length === 0) {
             appendUnique(
