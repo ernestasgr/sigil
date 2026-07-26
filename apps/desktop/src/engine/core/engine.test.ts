@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type CompiledPipeline, parsePipeline } from '@sigil/schema';
-import { WorkflowIdSchema } from '@sigil/schema/ids';
+import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
 import type { FileWatcherConfig } from '@sigil/schema/nodes/file-watcher';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
@@ -100,7 +100,7 @@ describe('createEngine', () => {
     it('publishes one permission transition Event after the Engine-owned lifecycle settles', async () => {
         const tempDir = mkdtempSync(join(tmpdir(), 'sigil-permission-telemetry-'));
         const plugin: Manifest = {
-            id: 'com.sigil.permission-telemetry',
+            id: PluginIdSchema.parse('com.sigil.permission-telemetry'),
             version: '1.0.0',
             permissions: ['filesystem.read', 'state.write'],
             emits: ['stub.event'],

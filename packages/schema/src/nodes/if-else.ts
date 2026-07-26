@@ -1,36 +1,40 @@
 import { z } from 'zod';
 
 import { PipelineConditionSchema } from '../conditions.js';
-import { defineNode, defineNodeRegistration } from './types.js';
+import { defineBuiltinNode } from './types.js';
 
-export const IfElseConfigSchema = z.object({
-    condition: PipelineConditionSchema,
-});
+export const IfElseConfigSchema = z
+    .object({
+        condition: PipelineConditionSchema,
+    })
+    .strict();
 
 export type IfElseConfig = z.infer<typeof IfElseConfigSchema>;
 
-export const IfElseDescriptor = defineNode({
+export const IfElseNode = defineBuiltinNode({
     type: 'if-else',
     configSchema: IfElseConfigSchema,
     defaultConfig: {
         condition: { target: 'event', operator: 'equals', value: 'file.created' },
     },
+    contract: {
+        identity: { namespace: 'builtin', type: 'if-else' },
+        version: 1,
+        role: 'action',
+        outputPorts: {
+            kind: 'fixed',
+            ports: [
+                { id: 'true', label: 'true' },
+                { id: 'false', label: 'false' },
+            ],
+        },
+        display: {
+            label: 'If / Else',
+            description: 'Branches the flow down a true or false path based on a condition.',
+            category: 'logic',
+        },
+    },
 });
 
-export const IfElseContractRegistration = defineNodeRegistration(IfElseDescriptor, {
-    identity: { namespace: 'builtin', type: 'if-else' },
-    version: 1,
-    role: 'action',
-    outputPorts: {
-        kind: 'fixed',
-        ports: [
-            { id: 'true', label: 'true' },
-            { id: 'false', label: 'false' },
-        ],
-    },
-    display: {
-        label: 'If / Else',
-        description: 'Branches the flow down a true or false path based on a condition.',
-        category: 'logic',
-    },
-});
+export const IfElseDescriptor = IfElseNode.descriptor;
+export const IfElseContractRegistration = IfElseNode.registration;

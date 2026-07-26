@@ -1,3 +1,4 @@
+import { PluginIdSchema } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import { Either, Option } from 'effect';
 import { describe, expect, it } from 'vitest';
@@ -5,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { createManifestRegistry } from './manifest-registry.js';
 
 const stubManifest: Manifest = {
-    id: 'com.sigil.stub-ping',
+    id: PluginIdSchema.parse('com.sigil.stub-ping'),
     version: '0.0.1',
     permissions: ['filesystem.read'],
     emits: ['stub.ping'],

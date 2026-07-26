@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { outputPortDescriptorsForNode } from '../node-contract.js';
+import { createBuiltinNodeContractRegistry } from './catalog.js';
 import { SwitchConfigSchema, validateSwitchConfig } from './switch.js';
 
 describe('Switch descriptor', () => {
@@ -13,7 +14,12 @@ describe('Switch descriptor', () => {
 
         expect(parsed.success).toBe(true);
         if (parsed.success) {
-            expect(outputPortDescriptorsForNode({ type: 'switch', config: parsed.data })).toEqual([
+            expect(
+                outputPortDescriptorsForNode(
+                    { type: 'switch', config: parsed.data },
+                    createBuiltinNodeContractRegistry(),
+                ),
+            ).toEqual([
                 { id: 'default', label: 'default' },
                 { id: 'case-pdf', label: 'pdf' },
             ]);

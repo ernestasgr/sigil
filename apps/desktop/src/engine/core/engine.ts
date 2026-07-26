@@ -3,10 +3,8 @@ import { dirname, resolve as resolvePath } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import type { Capability } from '@sigil/schema/manifest';
-import {
-    createBuiltinNodeContractRegistry,
-    type NodeContractRegistry,
-} from '@sigil/schema/node-contract';
+import type { NodeContractRegistry } from '@sigil/schema/node-contract';
+import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
 import {
     createPropertyRegistry,
     loadPropertiesFile,

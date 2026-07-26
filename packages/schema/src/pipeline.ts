@@ -1,77 +1,32 @@
 import { z } from 'zod';
+
 import { PipelineEdgeSchema } from './edges.js';
 import { WorkflowIdSchema } from './ids.js';
-import { outputPortIdsForNode } from './node-contract.js';
-import { isPluginNode, PipelineNodeSchema } from './nodes/index.js';
+import { PipelineNodeSchema } from './nodes/index.js';
 
 export const PipelineSchemaVersionSchema = z.literal(1);
 export type PipelineSchemaVersion = z.infer<typeof PipelineSchemaVersionSchema>;
 
-const PipelineSchema = z.object({
-    id: z.string().min(1),
-    workflowId: WorkflowIdSchema,
-    schemaVersion: PipelineSchemaVersionSchema,
-    nodes: z.array(PipelineNodeSchema),
-    edges: z.array(PipelineEdgeSchema),
-});
+/**
+ * The persisted graph shape. Referential integrity, contract admission, and
+ * DAG rules belong to topology validation so editors can represent drafts.
+ */
+export const PipelineDocumentSchema = z
+    .object({
+        id: z.string().min(1),
+        workflowId: WorkflowIdSchema,
+        schemaVersion: PipelineSchemaVersionSchema,
+        nodes: z.array(PipelineNodeSchema).readonly(),
+        edges: z.array(PipelineEdgeSchema).readonly(),
+    })
+    .strict()
+    .readonly();
 
-/** The executable schema keeps the current contract checks before topology validation. */
-export const CompiledPipelineSchema = PipelineSchema.superRefine((pipeline, ctx) => {
-    const nodeById = new Map<string, string>();
-    for (const node of pipeline.nodes) {
-        if (nodeById.has(node.id)) {
-            ctx.addIssue({
-                code: 'custom',
-                message: `Duplicate node id: "${node.id}"`,
-                path: ['nodes'],
-            });
-        }
-        nodeById.set(node.id, node.id);
-    }
+export type PipelineDocument = z.infer<typeof PipelineDocumentSchema>;
 
-    const edgeIds = new Set<string>();
-    for (const edge of pipeline.edges) {
-        if (edgeIds.has(edge.id)) {
-            ctx.addIssue({
-                code: 'custom',
-                message: `Duplicate edge id: "${edge.id}"`,
-                path: ['edges'],
-            });
-        }
-        edgeIds.add(edge.id);
-
-        const sourceNode = pipeline.nodes.find((n) => n.id === edge.source);
-        if (!sourceNode) {
-            ctx.addIssue({
-                code: 'custom',
-                message: `Edge "${edge.id}" references unknown source node: "${edge.source}"`,
-                path: ['edges'],
-            });
-            continue;
-        }
-
-        if (!pipeline.nodes.some((n) => n.id === edge.target)) {
-            ctx.addIssue({
-                code: 'custom',
-                message: `Edge "${edge.id}" references unknown target node: "${edge.target}"`,
-                path: ['edges'],
-            });
-        }
-
-        if (!isPluginNode(sourceNode)) {
-            const allowedPorts = outputPortIdsForNode(sourceNode);
-            if (allowedPorts !== 'dynamic' && !allowedPorts.includes(edge.sourcePort)) {
-                ctx.addIssue({
-                    code: 'custom',
-                    message: `Edge "${edge.id}" has invalid sourcePort "${edge.sourcePort}" for node "${sourceNode.id}" (${sourceNode.type}). Allowed ports: ${allowedPorts.join(', ')}`,
-                    path: ['edges'],
-                });
-            }
-        }
-    }
-});
-
-export type CompiledPipeline = z.infer<typeof CompiledPipelineSchema>;
+/** Public execution name retained as an alias for the structural document. */
+export const CompiledPipelineSchema = PipelineDocumentSchema;
+export type CompiledPipeline = PipelineDocument;
 
 function formatPipelineIssue(
     issue: z.core.$ZodIssue,
@@ -86,10 +41,10 @@ function formatPipelineIssue(
     return [`${path.join('.')}: ${issue.message}`];
 }
 
-export function parsePipeline(
+export function parsePipelineDocument(
     unknown: unknown,
-): { ok: true; value: CompiledPipeline } | { ok: false; error: string } {
-    const result = CompiledPipelineSchema.safeParse(unknown);
+): { ok: true; value: PipelineDocument } | { ok: false; error: string } {
+    const result = PipelineDocumentSchema.safeParse(unknown);
     if (result.success) {
         return { ok: true, value: result.data };
     }
@@ -98,6 +53,9 @@ export function parsePipeline(
         error: result.error.issues.flatMap((issue) => formatPipelineIssue(issue)).join('\n'),
     };
 }
+
+/** Compatibility alias for callers that use the parser as the schema seam. */
+export const parsePipeline = parsePipelineDocument;
 
 export type { NodeOutputPortId, PipelineEdgeId, PipelineNodeId } from './ids.js';
 export { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';

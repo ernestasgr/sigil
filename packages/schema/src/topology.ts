@@ -7,19 +7,13 @@ import {
     PipelineNodeIdSchema,
 } from './ids.js';
 import {
-    BUILTIN_NODE_CONTRACT_REGISTRY,
     formatNodeIdentity,
     type NodeContractRegistry,
     type NodeContractResolution,
     resolveNodeContract,
 } from './node-contract.js';
-import {
-    isPluginNode,
-    type PipelineNode,
-    SWITCH_DIAGNOSTIC_CODES,
-    validateSwitchConfig,
-} from './nodes/index.js';
-import { SwitchConfigSchema } from './nodes/switch.js';
+import { createBuiltinNodeContractRegistry } from './nodes/catalog.js';
+import { type PipelineNode, SWITCH_DIAGNOSTIC_CODES } from './nodes/index.js';
 import type { CompiledPipeline } from './pipeline.js';
 
 const TOPOLOGY_DIAGNOSTIC_CODES = [
@@ -52,9 +46,9 @@ export const TopologyDiagnosticCodeSchema = z.enum(TOPOLOGY_DIAGNOSTIC_CODES);
 export type TopologyDiagnosticCode = z.infer<typeof TopologyDiagnosticCodeSchema>;
 
 const TopologyDiagnosticTargetSchema = z.discriminatedUnion('kind', [
-    z.object({ kind: z.literal('pipeline') }),
-    z.object({ kind: z.literal('node'), nodeId: PipelineNodeIdSchema }),
-    z.object({ kind: z.literal('edge'), edgeId: PipelineEdgeIdSchema }),
+    z.object({ kind: z.literal('pipeline') }).strict(),
+    z.object({ kind: z.literal('node'), nodeId: PipelineNodeIdSchema }).strict(),
+    z.object({ kind: z.literal('edge'), edgeId: PipelineEdgeIdSchema }).strict(),
 ]);
 
 export const TopologyDiagnosticSchema = z
@@ -69,6 +63,7 @@ export const TopologyDiagnosticSchema = z
         message: z.string().min(1),
         repairHint: z.string().min(1).optional(),
     })
+    .strict()
     .readonly();
 
 export type TopologyDiagnostic = z.infer<typeof TopologyDiagnosticSchema>;
@@ -161,15 +156,21 @@ function appendInvalidContractDiagnostics(
     resolution: Extract<NodeContractResolution, { readonly status: 'invalid' }>,
 ): void {
     for (const issue of resolution.issues) {
+        const mappedCode = issue.diagnosticCode
+            ? TopologyDiagnosticCodeSchema.safeParse(issue.diagnosticCode)
+            : undefined;
         appendUnique(diagnostics, {
             severity: 'error',
-            code: 'invalid_node_contract',
+            code: mappedCode?.success ? mappedCode.data : 'invalid_node_contract',
             target: { kind: 'node', nodeId: node.id },
             nodeId: node.id,
+            ...(issue.caseId === undefined ? {} : { caseId: issue.caseId }),
             fieldPath: contractIssueFieldPath(issue.path),
             message:
-                `Node "${node.id}" (${formatNodeIdentity(resolution.identity)}) has invalid ` +
-                `configuration for its output-port contract: ${issue.message}`,
+                issue.diagnosticCode === undefined
+                    ? `Node "${node.id}" (${formatNodeIdentity(resolution.identity)}) has invalid ` +
+                      `configuration for its output-port contract: ${issue.message}`
+                    : issue.message,
             ...(issue.repairHint === undefined ? {} : { repairHint: issue.repairHint }),
         });
     }
@@ -265,7 +266,7 @@ export function validateWorkflowTopology(
     }
 
     const nodes = [...nodeById.values()];
-    const contractRegistry = options.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
+    const contractRegistry = options.contractRegistry ?? createBuiltinNodeContractRegistry();
     const contractResolutions = new Map(
         nodes.map((node) => [node.id, resolveNodeContract(node, contractRegistry)] as const),
     );
@@ -285,35 +286,6 @@ export function validateWorkflowTopology(
                     'Load the Plugin contract or remove the unavailable Plugin Node from the Workflow.',
             });
         }
-        if (!isPluginNode(node) && node.type === 'switch') {
-            const parsedConfig = SwitchConfigSchema.safeParse(node.config);
-            if (!parsedConfig.success) {
-                if (resolution.status === 'invalid') {
-                    appendInvalidContractDiagnostics(diagnostics, node, resolution);
-                }
-                continue;
-            }
-
-            for (const diagnostic of validateSwitchConfig(parsedConfig.data)) {
-                const fieldPath =
-                    diagnostic.code === 'duplicate_case_id' ||
-                    diagnostic.code === 'reserved_case_id'
-                        ? `config.cases[${diagnostic.caseIndex}].id`
-                        : `config.cases[${diagnostic.caseIndex}].value`;
-                appendUnique(diagnostics, {
-                    severity: 'error',
-                    code: diagnostic.code,
-                    target: { kind: 'node', nodeId: node.id },
-                    nodeId: node.id,
-                    caseId: diagnostic.caseId,
-                    fieldPath,
-                    message: diagnostic.message,
-                    repairHint: diagnostic.repairHint,
-                });
-            }
-            continue;
-        }
-
         if (resolution.status === 'invalid') {
             appendInvalidContractDiagnostics(diagnostics, node, resolution);
         }

@@ -1,27 +1,31 @@
 import { z } from 'zod';
 
-import { defineNode, defineNodeRegistration } from './types.js';
+import { defineBuiltinNode } from './types.js';
 
-export const LogConfigSchema = z.object({
-    message: z.string().min(1),
-});
+export const LogConfigSchema = z
+    .object({
+        message: z.string().min(1),
+    })
+    .strict();
 
 export type LogConfig = z.infer<typeof LogConfigSchema>;
 
-export const LogDescriptor = defineNode({
+export const LogNode = defineBuiltinNode({
     type: 'log',
     configSchema: LogConfigSchema,
     defaultConfig: { message: 'Log message' },
-});
-
-export const LogContractRegistration = defineNodeRegistration(LogDescriptor, {
-    identity: { namespace: 'builtin', type: 'log' },
-    version: 1,
-    role: 'action',
-    outputPorts: { kind: 'fixed', ports: [{ id: 'out', label: 'Output' }] },
-    display: {
-        label: 'Log',
-        description: 'Emits a log line with a templated message.',
-        category: 'utility',
+    contract: {
+        identity: { namespace: 'builtin', type: 'log' },
+        version: 1,
+        role: 'action',
+        outputPorts: { kind: 'fixed', ports: [{ id: 'out', label: 'Output' }] },
+        display: {
+            label: 'Log',
+            description: 'Emits a log line with a templated message.',
+            category: 'utility',
+        },
     },
 });
+
+export const LogDescriptor = LogNode.descriptor;
+export const LogContractRegistration = LogNode.registration;
