@@ -6,7 +6,7 @@ import { DatabaseSync as Database } from 'node:sqlite';
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineEdge } from '@sigil/schema/edges';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
-import { PluginIdSchema } from '@sigil/schema/ids';
+import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import {
     createBuiltinNodeContractRegistry,
     pluginNodeIdentity,
@@ -14,7 +14,6 @@ import {
 } from '@sigil/schema/node-contract';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { testEdge, testNode } from '../../test-support/pipeline-fixtures.js';

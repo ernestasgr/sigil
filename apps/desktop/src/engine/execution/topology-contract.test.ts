@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
+import { WorkflowIdSchema } from '@sigil/schema/ids';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 

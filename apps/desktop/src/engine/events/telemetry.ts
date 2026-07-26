@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import type { WorkflowId } from '@sigil/schema/ids';
 import type { PipelineNode } from '@sigil/schema/nodes';
-import type { WorkflowId } from '@sigil/schema/workflow-id';
 import type {
     EventTelemetry,
     TelemetryKind,

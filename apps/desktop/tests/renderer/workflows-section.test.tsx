@@ -1,5 +1,5 @@
 import type { CompiledPipeline } from '@sigil/schema';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
+import { WorkflowIdSchema } from '@sigil/schema/ids';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

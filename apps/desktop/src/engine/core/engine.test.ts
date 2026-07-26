@@ -2,11 +2,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type CompiledPipeline, parsePipeline } from '@sigil/schema';
+import { WorkflowIdSchema } from '@sigil/schema/ids';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
 import type { FileWatcherConfig } from '@sigil/schema/nodes/file-watcher';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileGraph } from '../../renderer/workflow-builder/compile.js';

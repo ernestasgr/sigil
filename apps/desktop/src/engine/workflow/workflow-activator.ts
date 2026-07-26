@@ -1,7 +1,7 @@
+import type { WorkflowId } from '@sigil/schema/ids';
 import { isPluginNode } from '@sigil/schema/nodes';
 import type { ExecutableWorkflow } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import type { WorkflowId } from '@sigil/schema/workflow-id';
 import { Option } from 'effect';
 
 import type { WorkflowActivationState } from '../../shared/workflow.js';

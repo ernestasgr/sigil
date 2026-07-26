@@ -1,6 +1,6 @@
 import { type FileEventPayload, FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
+import { WorkflowIdSchema } from '@sigil/schema/ids';
 import { CapabilitySchema } from '@sigil/schema/manifest';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either } from 'effect';
 import { z } from 'zod';
 

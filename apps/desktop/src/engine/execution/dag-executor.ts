@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineEdge } from '@sigil/schema/edges';
+import type { WorkflowId } from '@sigil/schema/ids';
 import {
     BUILTIN_NODE_CONTRACT_REGISTRY,
     formatNodeIdentity,
@@ -11,7 +12,6 @@ import type { PipelineNode } from '@sigil/schema/nodes';
 import type { CollisionSuffixStyle, ConflictPolicy } from '@sigil/schema/properties-file';
 import type { ExecutableWorkflow } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import type { WorkflowId } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import type { EventBus, WorkflowRunPayload } from '../events/event-bus.js';
 import {

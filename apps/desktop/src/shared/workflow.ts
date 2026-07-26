@@ -1,7 +1,7 @@
 import { TopologyDiagnosticSchema } from '@sigil/schema/topology';
 import { z } from 'zod';
 
-export { WorkflowIdSchema } from '@sigil/schema/workflow-id';
+export { WorkflowIdSchema } from '@sigil/schema/ids';
 
 export const WorkflowActivationStateSchema = z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('disabled') }).readonly(),

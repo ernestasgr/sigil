@@ -1,4 +1,4 @@
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
+import { WorkflowIdSchema } from '@sigil/schema/ids';
 
 import { EngineChannel, type EngineLog } from '../../shared/ipc-channels.js';
 import type { WorkflowSummary } from '../../shared/workflow.js';

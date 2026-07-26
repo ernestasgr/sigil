@@ -132,11 +132,6 @@
             "import": "./dist/properties-file.js",
             "default": "./dist/properties-file.js"
         },
-        "./workflow-id": {
-            "types": "./dist/workflow-id.d.ts",
-            "import": "./dist/workflow-id.js",
-            "default": "./dist/workflow-id.js"
-        },
         "./ids": {
             "types": "./dist/ids.d.ts",
             "import": "./dist/ids.js",

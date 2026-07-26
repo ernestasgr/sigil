@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
 import { parsePipeline } from '@sigil/schema';
-import { PluginIdSchema } from '@sigil/schema/ids';
+import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import {
     createNodeContractRegistry,
     fixedOutputPortSpec,
@@ -11,7 +11,6 @@ import {
     registerSerializableNodeContract,
 } from '@sigil/schema/node-contract';
 import { isPluginNode, SwitchCaseIdSchema } from '@sigil/schema/nodes';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { testEdge, testNode, testPipeline } from '../../test-support/pipeline-fixtures.js';

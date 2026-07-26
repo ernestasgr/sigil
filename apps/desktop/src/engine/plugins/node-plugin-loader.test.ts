@@ -3,14 +3,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { PluginIdSchema } from '@sigil/schema/ids';
+import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import { createNodeContractRegistry, resolveNodeContract } from '@sigil/schema/node-contract';
 import {
     createPropertyRegistry,
     definePropertyDescriptor,
     type PropertyRegistry,
 } from '@sigil/schema/properties-file';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';

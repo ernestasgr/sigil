@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync as Database } from 'node:sqlite';
 import type { CompiledPipeline } from '@sigil/schema';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
+import { WorkflowIdSchema } from '@sigil/schema/ids';
 import { Effect, Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { testPipeline } from '../../test-support/pipeline-fixtures.js';

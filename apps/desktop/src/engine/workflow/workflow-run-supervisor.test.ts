@@ -1,5 +1,5 @@
+import { WorkflowIdSchema } from '@sigil/schema/ids';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { describe, expect, it, vi } from 'vitest';
 
 import {

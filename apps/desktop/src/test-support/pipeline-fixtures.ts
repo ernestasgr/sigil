@@ -4,9 +4,9 @@ import {
     NodeOutputPortIdSchema,
     PipelineEdgeIdSchema,
     PipelineNodeIdSchema,
+    WorkflowIdSchema,
 } from '@sigil/schema/ids';
 import { type PipelineNode, PipelineNodeSchema } from '@sigil/schema/nodes';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 
 export const testNodeId = (value: string) => PipelineNodeIdSchema.parse(value);
 export const testEdgeId = (value: string) => PipelineEdgeIdSchema.parse(value);

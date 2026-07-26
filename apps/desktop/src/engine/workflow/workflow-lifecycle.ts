@@ -1,4 +1,4 @@
-import type { WorkflowId } from '@sigil/schema/workflow-id';
+import type { WorkflowId } from '@sigil/schema/ids';
 import { Option } from 'effect';
 
 import type { WorkflowSummary } from '../../shared/workflow.js';

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync as Database } from 'node:sqlite';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
+import { WorkflowIdSchema } from '@sigil/schema/ids';
 
 import { Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';

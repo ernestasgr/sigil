@@ -18,6 +18,7 @@ import {
     parsePipeline,
 } from '@sigil/schema';
 import { PipelineEdgeSchema } from '@sigil/schema/edges';
+import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/ids';
 import { PipelineNodeSchema } from '@sigil/schema/nodes';
 import {
     type ExecutableWorkflow,
@@ -26,7 +27,6 @@ import {
     validateWorkflowTopology,
     type WorkflowTopologyOptions,
 } from '@sigil/schema/topology';
-import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
 

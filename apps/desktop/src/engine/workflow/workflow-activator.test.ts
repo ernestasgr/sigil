@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
-import { PluginIdSchema } from '@sigil/schema/ids';
+import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import {
     fixedOutputPortSpec,
@@ -11,7 +11,6 @@ import {
     type SerializableNodeContractInput,
 } from '@sigil/schema/node-contract';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either, Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import { testPipeline } from '../../test-support/pipeline-fixtures.js';

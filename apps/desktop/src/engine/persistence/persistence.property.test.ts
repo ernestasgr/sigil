@@ -1,5 +1,5 @@
 import { DatabaseSync as Database } from 'node:sqlite';
-import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/workflow-id';
+import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/ids';
 import { Option } from 'effect';
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';

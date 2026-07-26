@@ -2,13 +2,12 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
-import { PluginIdSchema } from '@sigil/schema/ids';
+import { PluginIdSchema, type WorkflowId, WorkflowIdSchema } from '@sigil/schema/ids';
 import {
     type NodeContractRegistry,
     pluginNodeIdentity,
     registerSerializableNodeContract,
 } from '@sigil/schema/node-contract';
-import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { testNode } from '../../test-support/pipeline-fixtures.js';

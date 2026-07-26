@@ -1,5 +1,5 @@
+import { WorkflowIdSchema } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { createManifestRegistry } from '../plugins/manifest-registry.js';

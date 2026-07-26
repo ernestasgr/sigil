@@ -1,4 +1,4 @@
-import { WorkflowIdSchema } from '@sigil/schema/workflow-id';
+import { WorkflowIdSchema } from '@sigil/schema/ids';
 import { describe, expect, it } from 'vitest';
 
 import { type BusEvent, createEventBus } from './event-bus.js';
