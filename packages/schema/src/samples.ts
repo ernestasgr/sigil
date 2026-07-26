@@ -1,6 +1,10 @@
-import { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';
+import {
+    NodeOutputPortIdSchema,
+    PipelineEdgeIdSchema,
+    PipelineNodeIdSchema,
+    WorkflowIdSchema,
+} from './ids.js';
 import type { CompiledPipeline } from './pipeline.js';
-import { WorkflowIdSchema } from './workflow-id.js';
 
 export const sampleManualTriggerToLog: CompiledPipeline = {
     id: 'sample-manual-trigger-to-log',

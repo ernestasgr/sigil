@@ -2,11 +2,15 @@ import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import type { PipelineEdge } from './edges.js';
-import { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';
+import {
+    NodeOutputPortIdSchema,
+    PipelineEdgeIdSchema,
+    PipelineNodeIdSchema,
+    WorkflowIdSchema,
+} from './ids.js';
 import type { PipelineNode } from './nodes/index.js';
 import { type CompiledPipeline, parsePipeline } from './pipeline.js';
 import { validateWorkflowTopology } from './topology.js';
-import { WorkflowIdSchema } from './workflow-id.js';
 
 const PROPERTY_OPTIONS = {
     numRuns: 100,

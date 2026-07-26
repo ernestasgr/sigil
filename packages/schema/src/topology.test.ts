@@ -6,6 +6,7 @@ import {
     PipelineEdgeIdSchema,
     PipelineNodeIdSchema,
     PluginIdSchema,
+    WorkflowIdSchema,
 } from './ids.js';
 import {
     createBuiltinNodeContractRegistry,
@@ -21,7 +22,6 @@ import {
     TopologyDiagnosticSchema,
     validateWorkflowTopology,
 } from './topology.js';
-import { WorkflowIdSchema } from './workflow-id.js';
 
 const pid = (id: string) => PluginIdSchema.parse(id);
 

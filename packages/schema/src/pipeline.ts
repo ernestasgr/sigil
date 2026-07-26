@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { PipelineEdgeSchema } from './edges.js';
+import { WorkflowIdSchema } from './ids.js';
 import { outputPortIdsForNode } from './node-contract.js';
 import { isPluginNode, PipelineNodeSchema } from './nodes/index.js';
-import { WorkflowIdSchema } from './workflow-id.js';
 
 export const PipelineSchemaVersionSchema = z.literal(1);
 export type PipelineSchemaVersion = z.infer<typeof PipelineSchemaVersionSchema>;
@@ -110,5 +110,3 @@ export type {
     WorkflowTopologyResult,
 } from './topology.js';
 export { formatTopologyDiagnostics, validateWorkflowTopology } from './topology.js';
-export type { WorkflowId } from './workflow-id.js';
-export { WorkflowIdSchema } from './workflow-id.js';
