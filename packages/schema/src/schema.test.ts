@@ -262,6 +262,7 @@ describe('CompiledPipelineSchema', () => {
                     config: {
                         target: 'payload',
                         field: 'ext',
+                        comparison: 'string',
                         cases: [
                             { id: 'pdf', value: 'pdf' },
                             { id: 'png', value: 'png' },
@@ -350,6 +351,7 @@ describe('CompiledPipelineSchema', () => {
                     config: {
                         target: 'payload',
                         field: 'ext',
+                        comparison: 'string',
                         cases: [
                             { id: 'case-pdf-1', value: 'pdf' },
                             { id: 'case-pdf-2', value: 'pdf' },

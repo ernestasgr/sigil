@@ -29,6 +29,7 @@ describe('Node Contract Registry', () => {
             switchNode({
                 target: 'payload',
                 field: 'ext',
+                comparison: 'string',
                 cases: [
                     { id: 'pdf', value: 'pdf' },
                     { id: 'image', value: 'image' },
@@ -97,6 +98,7 @@ describe('Node Contract Registry', () => {
             switchNode({
                 target: 'payload',
                 field: 'ext',
+                comparison: 'string',
                 cases: [{ id: 'default', value: 'pdf' }],
             }),
             registry,
@@ -111,6 +113,39 @@ describe('Node Contract Registry', () => {
                     path: 'cases[0].id',
                 }),
             ],
+        });
+    });
+
+    it('rejects invalid numeric Switch cases before output-port admission', () => {
+        const registry = createBuiltinNodeContractRegistry();
+
+        const result = resolveNodeContract(
+            switchNode({
+                target: 'payload',
+                field: 'size',
+                comparison: 'number',
+                cases: [
+                    { id: 'first', value: '1' },
+                    { id: 'equivalent', value: '01.0' },
+                    { id: 'invalid', value: 'large' },
+                ],
+            }),
+            registry,
+        );
+
+        expect(result).toMatchObject({
+            status: 'invalid',
+            identity: { namespace: 'builtin', type: 'switch' },
+            issues: expect.arrayContaining([
+                expect.objectContaining({
+                    diagnosticCode: 'duplicate_match_value',
+                    path: 'cases[0].value',
+                }),
+                expect.objectContaining({
+                    diagnosticCode: 'invalid_numeric_match_value',
+                    path: 'cases[2].value',
+                }),
+            ]),
         });
     });
 

@@ -1,6 +1,6 @@
 # 2. Event-Shape-Agnostic Engine
 
-The engine evaluates conditions, matches switch cases, and interpolates templates against an opaque `Record<string, unknown>` payload. It has zero per-event-type knowledge — no field-name enums, no hardcoded `field === 'size'` branches, no per-type narrowing. Per-event-type knowledge (field names, field types, validation) lives in Zod schemas at the boundary where events enter the system (manual trigger config, plugin emission). The `WorkflowContext` carries three flat fields: `event` (the event name as a string), `payload` (the validated event payload as an opaque record), and `vars` (transient working data from state-get). Numeric context in Switch is detected via `typeof raw === 'number'` at runtime, unified across both `payload` and `vars` targets.
+The engine evaluates conditions, matches switch cases, and interpolates templates against an opaque `Record<string, unknown>` payload. It has zero per-event-type knowledge — no field-name enums, no hardcoded `field === 'size'` branches, no per-type narrowing. Per-event-type knowledge (field names, field types, validation) lives in Zod schemas at the boundary where events enter the system (manual trigger config, plugin emission). The `WorkflowContext` carries three flat fields: `event` (the event name as a string), `payload` (the validated event payload as an opaque record), and `vars` (transient working data from state-get). Field-based Switches declare their comparison kind explicitly; the schema package owns the canonicalization used by both validation and execution.
 
 ## Status
 
@@ -23,12 +23,12 @@ WorkflowContext = { event: string, payload: Record<string, unknown>, vars: Recor
 ### Condition and Switch targets
 
 - `target: 'event'` — compare or switch on the event name (string). No field. Uses string operators/comparison.
-- `target: 'payload'` — compare or switch on a payload field. Has field. Conditions dispatch on `typeof condition.value` (operator-value tying). Switch uses `typeof` on the resolved value (numeric if number, else string).
-- `target: 'vars'` — compare or switch on a vars field. Has field. Same coercion as `payload`.
+- `target: 'payload'` — compare or switch on a payload field. Has field. Conditions dispatch on `typeof condition.value` (operator-value tying). A Switch also declares `comparison: 'string' | 'number'`.
+- `target: 'vars'` — compare or switch on a vars field. Has field and the same explicit Switch comparison kind as `payload`.
 
-### Coercion change
+### Switch canonicalization
 
-The PRD previously specified "Switch comparisons targeting `vars` are always executed as string comparisons." This is changed to: Switch on `vars` uses `typeof` (numeric if the resolved value is a number, else string), unified with `payload`. Rationale: with an opaque payload, the "statically declared numeric field" rule can't be enforced by the engine — it's enforced at the boundary schema. Using `typeof` at runtime is the consistent reading for both `payload` and `vars`.
+Event-name Switches use canonical string comparison. Field Switches use the declared comparison kind: string values are case-insensitive and ignore surrounding whitespace; numeric values accept finite numbers and trimmed numeric strings, so equivalent spellings such as `1`, `01`, and `1.0` identify the same case. The shared canonicalization rejects empty and invalid numeric case values during Node Contract validation, while execution treats an invalid runtime value or case as unmatched.
 
 ## Considered Options
 
@@ -40,4 +40,4 @@ The PRD previously specified "Switch comparisons targeting `vars` are always exe
 
 - **EventPayloadSchemaRegistry now** — a map from event name to Zod payload schema, introduced in this slice with one member (`file.*` → `FileEventPayloadSchema`). Rejected as an Engine dependency because the Engine doesn't need schema introspection. The Workflow Builder is now a real consumer, so the schema package exposes a separate authoring Event catalog with built-in field metadata and opaque Plugin/unknown fallbacks. The generic evaluator does not import or consult that catalog.
 
-- **valueType hint on SwitchConfig** — `SwitchConfig` gains `valueType?: 'string' | 'number'`. Rejected because it pushes the "which fields are numeric" knowledge to the workflow author rather than the event type. With `typeof` at runtime, the value's type IS the declaration — the boundary schema ensured `size` is a number, and the engine sees it at runtime. No hint needed.
+- **Runtime type inference on SwitchConfig** — rejected because the same persisted Workflow would route differently when a payload or variable changes representation. The field comparison kind is explicit and required, while event-name matching retains canonical string semantics.

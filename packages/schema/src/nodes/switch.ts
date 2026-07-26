@@ -31,6 +31,45 @@ export type SwitchCase = z.infer<typeof SwitchCaseSchema>;
 
 const SwitchCasesSchema = z.array(SwitchCaseSchema).readonly();
 
+export const SwitchComparisonSchema = z.enum(['string', 'number']);
+export type SwitchComparison = z.infer<typeof SwitchComparisonSchema>;
+
+export type SwitchCanonicalization =
+    | { readonly ok: true; readonly value: string }
+    | {
+          readonly ok: false;
+          readonly reason: 'empty' | 'invalid_number' | 'missing';
+      };
+
+/**
+ * Canonicalize both authored case values and runtime values before matching.
+ * String comparison is case-insensitive and ignores surrounding whitespace;
+ * numeric comparison accepts finite numbers and their trimmed string forms.
+ */
+export function canonicalizeSwitchValue(
+    raw: unknown,
+    comparison: SwitchComparison,
+): SwitchCanonicalization {
+    if (raw === undefined || raw === null) return { ok: false, reason: 'missing' };
+
+    if (comparison === 'string') {
+        const value = String(raw).trim().toLowerCase();
+        return value.length > 0 ? { ok: true, value } : { ok: false, reason: 'empty' };
+    }
+
+    if (typeof raw !== 'string' && typeof raw !== 'number') {
+        return { ok: false, reason: 'invalid_number' };
+    }
+
+    const text = typeof raw === 'string' ? raw.trim() : String(raw);
+    if (text.length === 0) return { ok: false, reason: 'empty' };
+
+    const value = Number(text);
+    return Number.isFinite(value)
+        ? { ok: true, value: String(value) }
+        : { ok: false, reason: 'invalid_number' };
+}
+
 const EventNameSwitchSchema = z
     .object({
         target: z.literal('event'),
@@ -43,6 +82,7 @@ const FieldSwitchSchema = z
     .object({
         target: z.enum(['payload', 'vars']),
         field: z.string().min(1),
+        comparison: SwitchComparisonSchema,
         cases: SwitchCasesSchema,
     })
     .strict()
@@ -64,6 +104,7 @@ export const SWITCH_DIAGNOSTIC_CODES = [
     'empty_match_value',
     'reserved_match_value',
     'invalid_match_value',
+    'invalid_numeric_match_value',
     'duplicate_case_id',
     'reserved_case_id',
 ] as const;
@@ -108,12 +149,14 @@ export function validateSwitchConfig(config: SwitchConfig): readonly SwitchDiagn
     const diagnostics: SwitchDiagnostic[] = [];
     const ids = new Map<string, number[]>();
     const values = new Map<string, number[]>();
+    const comparison: SwitchComparison = config.target === 'event' ? 'string' : config.comparison;
 
     config.cases.forEach((switchCase, caseIndex) => {
         const idIndexes = ids.get(switchCase.id) ?? [];
         ids.set(switchCase.id, [...idIndexes, caseIndex]);
 
         const trimmedValue = switchCase.value.trim();
+        const canonicalValue = canonicalizeSwitchValue(switchCase.value, comparison);
         if (switchCase.id === SWITCH_DEFAULT_PORT) {
             diagnostics.push(
                 diagnostic(
@@ -136,7 +179,7 @@ export function validateSwitchConfig(config: SwitchConfig): readonly SwitchDiagn
                     'Enter a non-empty match value or remove this case.',
                 ),
             );
-        } else if (trimmedValue.toLowerCase() === SWITCH_DEFAULT_PORT) {
+        } else if (canonicalValue.ok && canonicalValue.value === SWITCH_DEFAULT_PORT) {
             diagnostics.push(
                 diagnostic(
                     'reserved_match_value',
@@ -161,12 +204,30 @@ export function validateSwitchConfig(config: SwitchConfig): readonly SwitchDiagn
         }
 
         if (
+            comparison === 'number' &&
             trimmedValue.length > 0 &&
-            trimmedValue.toLowerCase() !== SWITCH_DEFAULT_PORT &&
+            !containsControlCharacter(switchCase.value) &&
+            !canonicalValue.ok
+        ) {
+            diagnostics.push(
+                diagnostic(
+                    'invalid_numeric_match_value',
+                    switchCase,
+                    caseIndex,
+                    `Switch case ${switchCase.id} has a non-numeric match value "${switchCase.value}".`,
+                    'Use a finite numeric value, such as 0, 42, or 3.14.',
+                ),
+            );
+        }
+
+        if (
+            trimmedValue.length > 0 &&
+            canonicalValue.ok &&
+            canonicalValue.value !== SWITCH_DEFAULT_PORT &&
             !containsControlCharacter(switchCase.value)
         ) {
-            const valueIndexes = values.get(switchCase.value.toLowerCase()) ?? [];
-            values.set(switchCase.value.toLowerCase(), [...valueIndexes, caseIndex]);
+            const valueIndexes = values.get(canonicalValue.value) ?? [];
+            values.set(canonicalValue.value, [...valueIndexes, caseIndex]);
         }
     });
 

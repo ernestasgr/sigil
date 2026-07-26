@@ -242,6 +242,7 @@ describe('validateWorkflowTopology', () => {
                         config: {
                             target: 'payload',
                             field: 'ext',
+                            comparison: 'string',
                             cases: [
                                 { id: SwitchCaseIdSchema.parse('pdf'), value: 'pdf' },
                                 { id: SwitchCaseIdSchema.parse('duplicate'), value: 'PDF' },

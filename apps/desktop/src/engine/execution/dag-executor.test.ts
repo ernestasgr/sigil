@@ -278,6 +278,7 @@ describe('dag-executor', () => {
                         config: {
                             target: 'payload',
                             field: 'ext',
+                            comparison: 'string',
                             cases: cases.map((value, index) => ({
                                 id: `case-${index + 1}`,
                                 value,
@@ -668,6 +669,7 @@ describe('dag-executor', () => {
                                 config: {
                                     target: 'vars',
                                     field: 'remembered',
+                                    comparison: valueType === 'number' ? 'number' : 'string',
                                     cases: [{ id: 'typed-match', value: matchValue }],
                                 },
                             },
