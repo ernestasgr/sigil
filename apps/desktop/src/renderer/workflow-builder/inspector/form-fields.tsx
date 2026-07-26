@@ -100,10 +100,18 @@ interface NumberInputProps {
     readonly value: number;
     readonly onChange: (value: number) => void;
     readonly min?: number;
+    readonly max?: number;
     readonly id?: string;
 }
 
-export function NumberInput({ label, value, onChange, min, id }: NumberInputProps): ReactElement {
+export function NumberInput({
+    label,
+    value,
+    onChange,
+    min,
+    max,
+    id,
+}: NumberInputProps): ReactElement {
     const generatedId = useId();
     const inputId = getNumberInputId(id, generatedId);
     const [draftValue, setDraftValue] = useState(() => String(value));
@@ -123,6 +131,7 @@ export function NumberInput({ label, value, onChange, min, id }: NumberInputProp
                 className={INPUT_CLASS}
                 value={draftValue}
                 min={min}
+                max={max}
                 aria-invalid={validation.invalid || undefined}
                 aria-describedby={validation.describedBy}
                 onFocus={() => setIsFocused(true)}

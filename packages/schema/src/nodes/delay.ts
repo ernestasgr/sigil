@@ -2,9 +2,12 @@ import { z } from 'zod';
 
 import { defineBuiltinNode } from './types.js';
 
+/** The largest delay Node's setTimeout scheduler can represent without clamping. */
+export const MAX_DELAY_MS = 2_147_483_647 as const;
+
 export const DelayConfigSchema = z
     .object({
-        ms: z.number().nonnegative(),
+        ms: z.number().finite().int().min(0).max(MAX_DELAY_MS),
     })
     .strict();
 

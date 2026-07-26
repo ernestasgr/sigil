@@ -1,3 +1,4 @@
+import { MAX_DELAY_MS } from '@sigil/schema/nodes';
 import type { FileManagerConfig } from '@sigil/schema/nodes/file-manager';
 import type { StateSetConfig } from '@sigil/schema/nodes/state-set';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -255,6 +256,19 @@ describe('Workflow Builder renderer behavior', () => {
 
         await user.tab();
         expect(millisecondsInput).toHaveValue(1000);
+    });
+
+    it('shows the schema-derived Delay diagnostic and disables saving above the timer maximum', async () => {
+        const user = userEvent.setup();
+        renderBuilder();
+        await addPaletteNode(user, 'Delay');
+
+        const millisecondsInput = screen.getByRole('spinbutton', { name: 'Milliseconds' });
+        await user.clear(millisecondsInput);
+        await user.type(millisecondsInput, String(MAX_DELAY_MS + 1));
+
+        expect(screen.getByText(/has invalid configuration at config\.ms/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
     });
 
     it('renders pending and success states around an asynchronous save', async () => {

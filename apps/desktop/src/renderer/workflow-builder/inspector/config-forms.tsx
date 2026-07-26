@@ -1,16 +1,17 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
-import type {
-    DelayConfig,
-    FileManagerConfig,
-    FileWatcherConfig,
-    IfElseConfig,
-    LogConfig,
-    ManualTriggerConfig,
-    NotificationConfig,
-    StateGetConfig,
-    StateSetConfig,
-    SwitchConfig,
+import {
+    type DelayConfig,
+    type FileManagerConfig,
+    type FileWatcherConfig,
+    type IfElseConfig,
+    type LogConfig,
+    MAX_DELAY_MS,
+    type ManualTriggerConfig,
+    type NotificationConfig,
+    type StateGetConfig,
+    type StateSetConfig,
+    type SwitchConfig,
 } from '@sigil/schema/nodes';
 import type { SwitchComparison } from '@sigil/schema/nodes/switch';
 import {
@@ -519,6 +520,7 @@ export function DelayConfigForm({ config, onChange }: ConfigFormProps<DelayConfi
             label="Milliseconds"
             value={config.ms}
             min={0}
+            max={MAX_DELAY_MS}
             onChange={(ms) => onChange({ ...config, ms })}
         />
     );

@@ -1,5 +1,5 @@
+import { MAX_DELAY_MS } from '@sigil/schema/nodes';
 import { describe, expect, it } from 'vitest';
-
 import { compileGraph } from './compile.js';
 import {
     createNodeCatalog,
@@ -162,6 +162,91 @@ describe('compileGraph', () => {
             expect(result.error).toMatch(/message/);
         }
     });
+
+    it.each([-1, 0.5, MAX_DELAY_MS + 1, Number.NaN, Number.POSITIVE_INFINITY])(
+        'targets invalid Delay value %s during Builder compilation',
+        (ms) => {
+            const result = compileGraph(
+                [
+                    {
+                        id: 'trigger',
+                        data: {
+                            type: 'manual-trigger',
+                            config: {
+                                eventName: 'file.created',
+                                payload: {
+                                    path: '/tmp/a.txt',
+                                    name: 'a.txt',
+                                    ext: 'txt',
+                                    size: 1,
+                                    dir: '/tmp',
+                                },
+                            },
+                        },
+                    },
+                    {
+                        id: 'delay',
+                        data: { type: 'delay', config: { ms } },
+                    },
+                ],
+                [{ id: 'trigger-delay', source: 'trigger', target: 'delay', sourceHandle: 'out' }],
+                { id: 'p', workflowId: 'w' },
+            );
+
+            expect(result.ok).toBe(false);
+            if (!result.ok) {
+                expect(result.diagnostics).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({
+                            code: 'invalid_pipeline',
+                            target: { kind: 'node', nodeId: 'delay' },
+                            nodeId: 'delay',
+                            fieldPath: 'config.ms',
+                        }),
+                    ]),
+                );
+                expect(result.error).toMatch(/config\.ms/);
+            }
+        },
+    );
+
+    it.each([0, 1, 1_000, MAX_DELAY_MS])(
+        'retains admitted Delay value %d during Builder compilation',
+        (ms) => {
+            const result = compileGraph(
+                [
+                    {
+                        id: 'trigger',
+                        data: {
+                            type: 'manual-trigger',
+                            config: {
+                                eventName: 'file.created',
+                                payload: {
+                                    path: '/tmp/a.txt',
+                                    name: 'a.txt',
+                                    ext: 'txt',
+                                    size: 1,
+                                    dir: '/tmp',
+                                },
+                            },
+                        },
+                    },
+                    { id: 'delay', data: { type: 'delay', config: { ms } } },
+                ],
+                [{ id: 'trigger-delay', source: 'trigger', target: 'delay', sourceHandle: 'out' }],
+                { id: 'p', workflowId: 'w' },
+            );
+
+            expect(result.ok).toBe(true);
+            if (result.ok) {
+                expect(result.value.nodes.find((node) => node.id === 'delay')).toEqual({
+                    id: 'delay',
+                    type: 'delay',
+                    config: { ms },
+                });
+            }
+        },
+    );
 
     it('returns a clear error when an edge uses an invalid source port', () => {
         const nodes = [

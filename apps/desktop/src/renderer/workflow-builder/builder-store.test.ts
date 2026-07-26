@@ -1,5 +1,5 @@
 import type { CompiledPipeline } from '@sigil/schema';
-import { SwitchCaseIdSchema } from '@sigil/schema/nodes';
+import { MAX_DELAY_MS, SwitchCaseIdSchema } from '@sigil/schema/nodes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { testNodeId, testPipeline } from '../../test-support/pipeline-fixtures.js';
@@ -227,6 +227,38 @@ describe('useBuilderStore', () => {
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.error).toMatch(/message/);
+        }
+    });
+
+    it('prevents saving an invalid Delay configuration with a field diagnostic', async () => {
+        const trigger = useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
+        const delay = useBuilderStore.getState().addNode('delay', { x: 240, y: 0 });
+        useBuilderStore.getState().updateSpec(delay, {
+            type: 'delay',
+            config: { ms: MAX_DELAY_MS + 1 },
+        });
+        useBuilderStore.getState().connect({
+            source: trigger,
+            target: delay,
+            sourceHandle: 'out',
+            targetHandle: null,
+        });
+
+        const command = vi.fn<WorkflowDraftSaveCommand>();
+        const result = await useBuilderStore.getState().save('Invalid Delay', command);
+
+        expect(result.ok).toBe(false);
+        expect(command).not.toHaveBeenCalled();
+        if (!result.ok) {
+            expect(result.diagnostics).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        target: { kind: 'node', nodeId: delay },
+                        nodeId: delay,
+                        fieldPath: 'config.ms',
+                    }),
+                ]),
+            );
         }
     });
 
