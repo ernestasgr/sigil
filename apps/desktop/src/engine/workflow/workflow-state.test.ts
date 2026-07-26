@@ -118,6 +118,30 @@ describe('createWorkflowStateStore — get/set', () => {
         database.close();
     });
 
+    it.each([
+        ['malformed', `${WORKFLOW_STATE_VALUE_PREFIX}{`],
+        [
+            'invalid envelope',
+            `${WORKFLOW_STATE_VALUE_PREFIX}${JSON.stringify({
+                format: WORKFLOW_STATE_VALUE_FORMAT,
+                version: WORKFLOW_STATE_VALUE_VERSION,
+                type: 'number',
+                value: 'not-a-number',
+            })}`,
+        ],
+    ] as const)('rejects %s encoded database rows', (kind, value) => {
+        const database = new Database(':memory:');
+        const store = createStore(database);
+        database
+            .prepare('INSERT INTO workflow_state (workflow_id, key, value) VALUES (?, ?, ?)')
+            .run('wf-a', kind, value);
+
+        expect(() => store.forWorkflow(WF_A).get(kind)).toThrow('invalid encoded value');
+
+        store.dispose();
+        database.close();
+    });
+
     it('preserves typed values across SQLite close and reopen', () => {
         const storageDir = mkdtempSync(join(tmpdir(), 'sigil-workflow-state-'));
         const databasePath = join(storageDir, 'state.db');
