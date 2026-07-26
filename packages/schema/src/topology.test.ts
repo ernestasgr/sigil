@@ -60,6 +60,71 @@ function diagnosticCodes(result: ReturnType<typeof validateWorkflowTopology>): r
     return result.ok ? [] : result.diagnostics.map((diagnostic) => diagnostic.code);
 }
 
+function cycleDiagnosticEdgeIds(
+    result: ReturnType<typeof validateWorkflowTopology>,
+): readonly string[] {
+    if (result.ok) return [];
+    return result.diagnostics.flatMap((diagnostic) =>
+        diagnostic.code === 'cycle' && diagnostic.edgeId !== undefined ? [diagnostic.edgeId] : [],
+    );
+}
+
+const cycleDiagnosticCases = [
+    {
+        name: 'a multi-Node cycle with a downstream tail',
+        createGraph: (): CompiledPipeline =>
+            pipeline(
+                [trigger('trigger'), log('a'), log('b'), log('tail')],
+                [
+                    edge('trigger-a', 'trigger', 'a'),
+                    edge('a-b', 'a', 'b'),
+                    edge('b-a', 'b', 'a'),
+                    edge('b-tail', 'b', 'tail'),
+                ],
+            ),
+        cycleEdgeIds: ['a-b', 'b-a'],
+    },
+    {
+        name: 'a self-loop with a downstream tail',
+        createGraph: (): CompiledPipeline =>
+            pipeline(
+                [trigger('trigger'), log('loop'), log('tail')],
+                [
+                    edge('trigger-loop', 'trigger', 'loop'),
+                    edge('loop-self', 'loop', 'loop'),
+                    edge('loop-tail', 'loop', 'tail'),
+                ],
+            ),
+        cycleEdgeIds: ['loop-self'],
+    },
+    {
+        name: 'multiple independent cycles with downstream tails',
+        createGraph: (): CompiledPipeline =>
+            pipeline(
+                [
+                    trigger('trigger'),
+                    log('left-a'),
+                    log('left-b'),
+                    log('left-tail'),
+                    log('right-a'),
+                    log('right-b'),
+                    log('right-tail'),
+                ],
+                [
+                    edge('trigger-left', 'trigger', 'left-a'),
+                    edge('left-a-b', 'left-a', 'left-b'),
+                    edge('left-b-a', 'left-b', 'left-a'),
+                    edge('left-b-tail', 'left-b', 'left-tail'),
+                    edge('trigger-right', 'trigger', 'right-a'),
+                    edge('right-a-b', 'right-a', 'right-b'),
+                    edge('right-b-a', 'right-b', 'right-a'),
+                    edge('right-b-tail', 'right-b', 'right-tail'),
+                ],
+            ),
+        cycleEdgeIds: ['left-a-b', 'left-b-a', 'right-a-b', 'right-b-a'],
+    },
+] as const;
+
 describe('validateWorkflowTopology', () => {
     it('accepts warning diagnostics as a first-class severity', () => {
         const result = TopologyDiagnosticSchema.safeParse({
@@ -167,6 +232,28 @@ describe('validateWorkflowTopology', () => {
                 ]),
             );
         }
+    });
+
+    it.each(cycleDiagnosticCases)('targets only $name', ({ createGraph, cycleEdgeIds }) => {
+        const graph = createGraph();
+        const first = validateWorkflowTopology(graph);
+
+        expect(first.ok).toBe(false);
+        expect(cycleDiagnosticEdgeIds(first)).toEqual(cycleEdgeIds);
+
+        if (!first.ok) {
+            expect(first.diagnostics.filter((diagnostic) => diagnostic.code === 'cycle')).toEqual(
+                cycleEdgeIds.map((edgeId) =>
+                    expect.objectContaining({
+                        code: 'cycle',
+                        edgeId,
+                        target: { kind: 'edge', edgeId },
+                    }),
+                ),
+            );
+        }
+
+        expect(validateWorkflowTopology(graph)).toEqual(first);
     });
 
     it('rejects a disconnected Node', () => {

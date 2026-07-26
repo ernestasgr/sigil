@@ -24,6 +24,53 @@ describe('compileGraph', () => {
         }
     });
 
+    it('forwards only cyclic-component Edge diagnostics to the Workflow Builder', () => {
+        const nodes = [
+            {
+                id: 'trigger',
+                data: {
+                    type: 'manual-trigger',
+                    config: {
+                        eventName: 'file.created',
+                        payload: {
+                            path: '/dl/a.txt',
+                            name: 'a.txt',
+                            ext: 'txt',
+                            size: 1,
+                            dir: '/dl',
+                        },
+                    },
+                },
+            },
+            { id: 'a', data: { type: 'log', config: { message: 'a' } } },
+            { id: 'b', data: { type: 'log', config: { message: 'b' } } },
+            { id: 'tail', data: { type: 'log', config: { message: 'tail' } } },
+        ];
+        const edges = [
+            { id: 'trigger-a', source: 'trigger', target: 'a', sourceHandle: 'out' },
+            { id: 'a-b', source: 'a', target: 'b', sourceHandle: 'out' },
+            { id: 'b-a', source: 'b', target: 'a', sourceHandle: 'out' },
+            { id: 'b-tail', source: 'b', target: 'tail', sourceHandle: 'out' },
+        ];
+
+        const result = compileGraph(nodes, edges, { id: 'p', workflowId: 'w' });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(
+                result.diagnostics
+                    .filter((diagnostic) => diagnostic.code === 'cycle')
+                    .map((diagnostic) => diagnostic.edgeId),
+            ).toEqual(['a-b', 'b-a']);
+            expect(result.diagnostics).not.toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ code: 'cycle', edgeId: 'b-tail' }),
+                ]),
+            );
+            expect(result.error).not.toContain('b-tail');
+        }
+    });
+
     it('compiles a manual-trigger -> log graph with an out port edge', () => {
         const nodes = [
             {
