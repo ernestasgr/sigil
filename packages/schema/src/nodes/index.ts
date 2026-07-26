@@ -28,17 +28,21 @@ export type { StateGetConfig } from './state-get.js';
 export type { StateSetConfig, StateSetValueType } from './state-set.js';
 export { STATE_SET_VALUE_TYPES, StateSetValueTypeSchema } from './state-set.js';
 export type {
+    SwitchCanonicalization,
     SwitchCase,
     SwitchCaseId,
+    SwitchComparison,
     SwitchConfig,
     SwitchDiagnostic,
     SwitchDiagnosticCode,
 } from './switch.js';
 export {
+    canonicalizeSwitchValue,
     SWITCH_DEFAULT_PORT,
     SWITCH_DIAGNOSTIC_CODES,
     SwitchCaseIdSchema,
     SwitchCaseSchema,
+    SwitchComparisonSchema,
     validateSwitchConfig,
 } from './switch.js';
 export type { NodeDescriptor, UnknownNodeDescriptor } from './types.js';

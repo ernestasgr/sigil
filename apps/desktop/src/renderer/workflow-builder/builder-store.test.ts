@@ -312,6 +312,41 @@ describe('useBuilderStore', () => {
         }
     });
 
+    it('rejects invalid numeric Switch cases during Builder compilation', () => {
+        const trigger = useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
+        const sw = useBuilderStore.getState().addNode('switch', { x: 240, y: 0 });
+        useBuilderStore.getState().updateSpec(sw, {
+            type: 'switch',
+            config: {
+                target: 'payload',
+                field: 'size',
+                comparison: 'number',
+                cases: [{ id: SwitchCaseIdSchema.parse('case-invalid'), value: 'large' }],
+            },
+        });
+        useBuilderStore.getState().connect({
+            source: trigger,
+            target: sw,
+            sourceHandle: 'out',
+            targetHandle: null,
+        });
+
+        const result = useBuilderStore.getState().compile();
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.diagnostics).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        code: 'invalid_numeric_match_value',
+                        nodeId: sw,
+                        fieldPath: 'config.cases[0].value',
+                    }),
+                ]),
+            );
+        }
+    });
+
     it('onNodesChange with a remove change drops the node, its edges, and clears selection', () => {
         const a = useBuilderStore.getState().addNode('manual-trigger', { x: 0, y: 0 });
         const b = useBuilderStore.getState().addNode('log', { x: 100, y: 0 });

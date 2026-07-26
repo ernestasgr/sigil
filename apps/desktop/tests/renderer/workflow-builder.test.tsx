@@ -197,6 +197,36 @@ describe('Workflow Builder renderer behavior', () => {
         );
     });
 
+    it('creates and persists explicit comparison semantics for a field Switch', async () => {
+        const user = userEvent.setup();
+        const { switchId } = connectSwitchBranches();
+        renderBuilder();
+
+        await user.selectOptions(screen.getByRole('combobox', { name: 'Target' }), 'payload');
+        expect(screen.getByRole('combobox', { name: 'Comparison' })).toHaveValue('string');
+
+        const fieldInput = screen.getByLabelText('Field');
+        await user.type(fieldInput, 'size');
+        await user.selectOptions(screen.getByRole('combobox', { name: 'Comparison' }), 'number');
+
+        const caseInput = screen.getByLabelText('Cases entry 1');
+        await user.clear(caseInput);
+        await user.type(caseInput, '2048576');
+
+        const result = useBuilderStore.getState().compile();
+        expect(result.ok).toBe(true);
+        if (!result.ok) throw new Error(result.error);
+
+        expect(result.value.nodes).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: switchId,
+                    config: expect.objectContaining({ comparison: 'number' }),
+                }),
+            ]),
+        );
+    });
+
     it('shows validation diagnostics and disables saving for an invalid Switch case', async () => {
         const user = userEvent.setup();
         connectSwitchBranches();

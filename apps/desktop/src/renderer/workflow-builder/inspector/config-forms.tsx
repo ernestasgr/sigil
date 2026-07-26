@@ -12,6 +12,7 @@ import type {
     StateSetConfig,
     SwitchConfig,
 } from '@sigil/schema/nodes';
+import type { SwitchComparison } from '@sigil/schema/nodes/switch';
 import {
     type BooleanOperator,
     BooleanOperatorSchema,
@@ -53,6 +54,14 @@ const VALUE_KIND_OPTIONS: { readonly value: FieldValueKind; readonly label: stri
     { value: 'string', label: 'Text' },
     { value: 'number', label: 'Number' },
     { value: 'boolean', label: 'Boolean' },
+];
+
+const SWITCH_COMPARISON_OPTIONS: readonly {
+    readonly value: SwitchComparison;
+    readonly label: string;
+}[] = [
+    { value: 'string', label: 'Text' },
+    { value: 'number', label: 'Number' },
 ];
 
 const STRING_OP_OPTIONS = StringOperatorSchema.options.map((value) => ({
@@ -387,22 +396,33 @@ export function SwitchConfigForm({
                     } else {
                         onChange({
                             target,
-                            field: 'field' in config ? config.field : '',
+                            field: 'field' in config ? config.field : 'ext',
+                            comparison: 'comparison' in config ? config.comparison : 'string',
                             cases: config.cases,
                         });
                     }
                 }}
             />
             {config.target !== 'event' ? (
-                <TextInput
-                    label="Field"
-                    value={config.field}
-                    placeholder="ext"
-                    suggestions={
-                        config.target === 'payload' ? payloadFieldSuggestionsForCatalog : undefined
-                    }
-                    onChange={(field) => onChange({ ...config, field })}
-                />
+                <>
+                    <TextInput
+                        label="Field"
+                        value={config.field}
+                        placeholder="ext"
+                        suggestions={
+                            config.target === 'payload'
+                                ? payloadFieldSuggestionsForCatalog
+                                : undefined
+                        }
+                        onChange={(field) => onChange({ ...config, field })}
+                    />
+                    <SelectInput
+                        label="Comparison"
+                        value={config.comparison}
+                        options={SWITCH_COMPARISON_OPTIONS}
+                        onChange={(comparison) => onChange({ ...config, comparison })}
+                    />
+                </>
             ) : null}
             <SwitchCaseList
                 label="Cases"

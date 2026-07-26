@@ -323,6 +323,7 @@ describe('WorkflowStore', () => {
                     config: {
                         target: 'payload',
                         field: 'ext',
+                        comparison: 'string',
                         cases: [{ id: 'case-pdf', value: 'pdf' }],
                     },
                 },

@@ -1,5 +1,10 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
-import type { SwitchCase, SwitchConfig } from '@sigil/schema/nodes/switch';
+import {
+    canonicalizeSwitchValue,
+    type SwitchCase,
+    type SwitchComparison,
+    type SwitchConfig,
+} from '@sigil/schema/nodes/switch';
 import type { BooleanOperator, NumberOperator, StringOperator } from '@sigil/schema/operators';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Either, Match } from 'effect';
@@ -148,32 +153,29 @@ export function evaluateCondition(condition: PipelineCondition, ctx: WorkflowCon
     );
 }
 
-function matchStringCase(cases: readonly SwitchCase[], raw: unknown): string {
-    if (raw === undefined || raw === null) return 'default';
-    const fieldStr = String(raw).toLowerCase();
-    return cases.find((switchCase) => switchCase.value.toLowerCase() === fieldStr)?.id ?? 'default';
-}
+function matchCase(
+    cases: readonly SwitchCase[],
+    raw: unknown,
+    comparison: SwitchComparison,
+): string {
+    const canonicalRaw = canonicalizeSwitchValue(raw, comparison);
+    if (!canonicalRaw.ok) return 'default';
 
-function matchNumberCase(cases: readonly SwitchCase[], raw: number): string {
     return (
         cases.find((switchCase) => {
-            if (switchCase.value.trim() === '') return false;
-            const caseNum = Number(switchCase.value);
-            return !Number.isNaN(caseNum) && caseNum === raw;
+            const canonicalCase = canonicalizeSwitchValue(switchCase.value, comparison);
+            return canonicalCase.ok && canonicalCase.value === canonicalRaw.value;
         })?.id ?? 'default'
     );
 }
 
-function matchFieldCase(cases: readonly SwitchCase[], raw: unknown): string {
-    if (typeof raw === 'number') return matchNumberCase(cases, raw);
-    return matchStringCase(cases, raw);
-}
-
 export function matchSwitchCase(config: SwitchConfig, ctx: WorkflowContext): string {
     return Match.value(config).pipe(
-        Match.when({ target: 'event' }, (c) => matchStringCase(c.cases, ctx.event)),
-        Match.when({ target: 'payload' }, (c) => matchFieldCase(c.cases, ctx.payload[c.field])),
-        Match.when({ target: 'vars' }, (c) => matchFieldCase(c.cases, ctx.vars[c.field])),
+        Match.when({ target: 'event' }, (c) => matchCase(c.cases, ctx.event, 'string')),
+        Match.when({ target: 'payload' }, (c) =>
+            matchCase(c.cases, ctx.payload[c.field], c.comparison),
+        ),
+        Match.when({ target: 'vars' }, (c) => matchCase(c.cases, ctx.vars[c.field], c.comparison)),
         Match.exhaustive,
     );
 }

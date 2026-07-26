@@ -273,6 +273,7 @@ describe('matchSwitchCase', () => {
         const config: SwitchConfig = {
             target: 'payload',
             field: 'ext',
+            comparison: 'string',
             cases: switchCases('pdf', 'png'),
         };
         expect(matchSwitchCase(config, ctx)).toBe('case-1');
@@ -282,6 +283,7 @@ describe('matchSwitchCase', () => {
         const config: SwitchConfig = {
             target: 'payload',
             field: 'ext',
+            comparison: 'string',
             cases: switchCases('jpg', 'png'),
         };
         expect(matchSwitchCase(config, ctx)).toBe('default');
@@ -291,13 +293,19 @@ describe('matchSwitchCase', () => {
         const config: SwitchConfig = {
             target: 'payload',
             field: 'ext',
+            comparison: 'string',
             cases: switchCases('pdf'),
         };
         expect(matchSwitchCase(config, ctx)).toBe('case-1');
     });
 
     it('routes to default on an unknown payload field', () => {
-        const config: SwitchConfig = { target: 'payload', field: 'bogus', cases: switchCases('x') };
+        const config: SwitchConfig = {
+            target: 'payload',
+            field: 'bogus',
+            comparison: 'string',
+            cases: switchCases('x'),
+        };
         expect(matchSwitchCase(config, ctx)).toBe('default');
     });
 
@@ -305,6 +313,7 @@ describe('matchSwitchCase', () => {
         const config: SwitchConfig = {
             target: 'payload',
             field: 'size',
+            comparison: 'number',
             cases: switchCases('1024', '2048576'),
         };
         expect(matchSwitchCase(config, ctx)).toBe('case-2');
@@ -318,6 +327,7 @@ describe('matchSwitchCase', () => {
         const config: SwitchConfig = {
             target: 'payload',
             field: 'size',
+            comparison: 'number',
             cases: switchCases('', '  '),
         };
         expect(matchSwitchCase(config, withZero)).toBe('default');
@@ -327,6 +337,7 @@ describe('matchSwitchCase', () => {
         const config: SwitchConfig = {
             target: 'payload',
             field: 'size',
+            comparison: 'number',
             cases: switchCases('large'),
         };
         expect(matchSwitchCase(config, ctx)).toBe('default');
@@ -336,6 +347,7 @@ describe('matchSwitchCase', () => {
         const config: SwitchConfig = {
             target: 'vars',
             field: 'count',
+            comparison: 'number',
             cases: switchCases('5', '10'),
         };
         expect(matchSwitchCase(config, ctx)).toBe('case-1');
@@ -345,19 +357,30 @@ describe('matchSwitchCase', () => {
         const config: SwitchConfig = {
             target: 'vars',
             field: 'kind',
+            comparison: 'string',
             cases: switchCases('Invoice'),
         };
         expect(matchSwitchCase(config, ctx)).toBe('case-1');
     });
 
     it('routes a missing vars field to default', () => {
-        const config: SwitchConfig = { target: 'vars', field: 'missing', cases: switchCases('x') };
+        const config: SwitchConfig = {
+            target: 'vars',
+            field: 'missing',
+            comparison: 'string',
+            cases: switchCases('x'),
+        };
         expect(matchSwitchCase(config, ctx)).toBe('default');
     });
 
     it('routes a null vars field to default', () => {
         const withNull: WorkflowContext = { ...ctx, vars: { ...ctx.vars, kind: null } };
-        const config: SwitchConfig = { target: 'vars', field: 'kind', cases: switchCases('null') };
+        const config: SwitchConfig = {
+            target: 'vars',
+            field: 'kind',
+            comparison: 'string',
+            cases: switchCases('null'),
+        };
         expect(matchSwitchCase(config, withNull)).toBe('default');
     });
 
@@ -372,5 +395,39 @@ describe('matchSwitchCase', () => {
     it('falls back to default when no event name case matches', () => {
         const config: SwitchConfig = { target: 'event', cases: switchCases('file.modified') };
         expect(matchSwitchCase(config, ctx)).toBe('default');
+    });
+
+    it('uses explicit string comparison instead of the runtime field type', () => {
+        const config: SwitchConfig = {
+            target: 'payload',
+            field: 'size',
+            comparison: 'string',
+            cases: switchCases('2048576'),
+        };
+        expect(matchSwitchCase(config, ctx)).toBe('case-1');
+    });
+
+    it('canonicalizes string whitespace and case before matching', () => {
+        const config: SwitchConfig = {
+            target: 'payload',
+            field: 'ext',
+            comparison: 'string',
+            cases: switchCases('  pdf '),
+        };
+        const withWhitespace: WorkflowContext = {
+            ...ctx,
+            payload: { ...ctx.payload, ext: ' PDF ' },
+        };
+        expect(matchSwitchCase(config, withWhitespace)).toBe('case-1');
+    });
+
+    it('canonicalizes numerically equivalent case spellings', () => {
+        const config: SwitchConfig = {
+            target: 'payload',
+            field: 'size',
+            comparison: 'number',
+            cases: switchCases('2048576.0'),
+        };
+        expect(matchSwitchCase(config, ctx)).toBe('case-1');
     });
 });
