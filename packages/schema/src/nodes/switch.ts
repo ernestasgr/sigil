@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { defineNode } from './types.js';
+import { defineNode, defineNodeRegistration } from './types.js';
 
 export const SWITCH_DEFAULT_PORT = 'default' as const;
 
@@ -199,4 +199,21 @@ export const SwitchDescriptor = defineNode({
         target: 'event',
         cases: [{ id: 'case-1', value: 'file.created' }],
     }),
+});
+
+export const SwitchContractRegistration = defineNodeRegistration(SwitchDescriptor, {
+    identity: { namespace: 'builtin', type: 'switch' },
+    version: 1,
+    role: 'action',
+    outputPorts: {
+        kind: 'config-derived',
+        strategy: 'switch-cases',
+        defaultPort: { id: SWITCH_DEFAULT_PORT, label: SWITCH_DEFAULT_PORT },
+    },
+    display: {
+        label: 'Switch',
+        description:
+            'Routes the flow to one of several cases (plus default) by event name or field value.',
+        category: 'logic',
+    },
 });

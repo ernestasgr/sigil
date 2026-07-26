@@ -6,23 +6,14 @@ import {
     type PluginId,
     PluginIdSchema,
 } from './ids.js';
-import { DelayDescriptor } from './nodes/delay.js';
-import { FileManagerDescriptor } from './nodes/file-manager.js';
-import { FileWatcherDescriptor } from './nodes/file-watcher.js';
-import { IfElseDescriptor } from './nodes/if-else.js';
-import { LogDescriptor } from './nodes/log.js';
-import { ManualTriggerDescriptor } from './nodes/manual-trigger.js';
-import { NotificationDescriptor } from './nodes/notification.js';
-import { StateGetDescriptor } from './nodes/state-get.js';
-import { StateSetDescriptor } from './nodes/state-set.js';
+import type { NodeType } from './nodes/catalog.js';
+import { BUILTIN_NODE_CONTRACT_REGISTRATIONS, BUILTIN_NODE_DESCRIPTORS } from './nodes/catalog.js';
 import {
     SWITCH_DEFAULT_PORT,
     type SwitchConfig,
     SwitchConfigSchema,
-    SwitchDescriptor,
     validateSwitchConfig,
 } from './nodes/switch.js';
-import type { NodeDescriptor } from './nodes/types.js';
 
 export const NodeNamespaceSchema = z.enum(['builtin', 'plugin']);
 export type NodeNamespace = z.infer<typeof NodeNamespaceSchema>;
@@ -601,158 +592,12 @@ export function outputPortLabelForNode(
     return ports.find((port) => port.id === portId)?.label ?? portId;
 }
 
-export const BUILTIN_NODE_TYPE_VALUES = [
-    'file-watcher',
-    'manual-trigger',
-    'if-else',
-    'switch',
-    'file-manager',
-    'notification',
-    'log',
-    'delay',
-    'state-get',
-    'state-set',
-] as const;
-
-export type NodeType = (typeof BUILTIN_NODE_TYPE_VALUES)[number];
-
-export const BUILTIN_NODE_DESCRIPTORS = {
-    'file-watcher': FileWatcherDescriptor,
-    'manual-trigger': ManualTriggerDescriptor,
-    'if-else': IfElseDescriptor,
-    switch: SwitchDescriptor,
-    'file-manager': FileManagerDescriptor,
-    notification: NotificationDescriptor,
-    log: LogDescriptor,
-    delay: DelayDescriptor,
-    'state-get': StateGetDescriptor,
-    'state-set': StateSetDescriptor,
-} as const satisfies { readonly [K in NodeType]: { readonly type: K } };
-
-type BuiltinRegistrationOptions = {
-    readonly role: NodeRole;
-    readonly outputPorts: NodeOutputPortSpec;
-    readonly display: NodeContractDisplay;
-    readonly validateConfig?: (config: never) => readonly NodeContractIssue[];
-};
-
-function builtinRegistration<TType extends NodeType, TSchema extends z.ZodType>(
-    descriptor: NodeDescriptor<TType, TSchema>,
-    options: Omit<BuiltinRegistrationOptions, 'validateConfig'> & {
-        readonly validateConfig?: (config: z.output<TSchema>) => readonly NodeContractIssue[];
-    },
-): NodeContractRegistration<TSchema> {
-    return {
-        contract: {
-            identity: builtinNodeIdentity(descriptor.type),
-            version: 1,
-            role: options.role,
-            defaultConfig: descriptor.defaultConfig,
-            outputPorts: options.outputPorts,
-            display: options.display,
-        },
-        configSchema: descriptor.configSchema,
-        ...(options.validateConfig ? { validateConfig: options.validateConfig } : {}),
-    };
-}
-
-const OUT_PORTS = fixedOutputPortSpec([fixedOutputPort('out', 'Output')]);
-
-export const BUILTIN_NODE_CONTRACT_REGISTRATIONS: readonly NodeContractRegistration[] = [
-    builtinRegistration(FileWatcherDescriptor, {
-        role: 'trigger',
-        outputPorts: OUT_PORTS,
-        display: {
-            label: 'File Watcher',
-            description:
-                'Emits an event when files are created, modified, or deleted in a watched path.',
-            category: 'trigger',
-        },
-    }),
-    builtinRegistration(ManualTriggerDescriptor, {
-        role: 'trigger',
-        outputPorts: OUT_PORTS,
-        display: {
-            label: 'Manual Trigger',
-            description:
-                'Fires a single event with a hand-crafted payload, for testing and manual runs.',
-            category: 'trigger',
-        },
-    }),
-    builtinRegistration(IfElseDescriptor, {
-        role: 'action',
-        outputPorts: fixedOutputPortSpec(['true', 'false']),
-        display: {
-            label: 'If / Else',
-            description: 'Branches the flow down a true or false path based on a condition.',
-            category: 'logic',
-        },
-    }),
-    builtinRegistration(SwitchDescriptor, {
-        role: 'action',
-        outputPorts: switchOutputPortSpec(),
-        display: {
-            label: 'Switch',
-            description:
-                'Routes the flow to one of several cases (plus default) by event name or field value.',
-            category: 'logic',
-        },
-    }),
-    builtinRegistration(FileManagerDescriptor, {
-        role: 'action',
-        outputPorts: OUT_PORTS,
-        display: {
-            label: 'File Manager',
-            description: 'Moves, renames, or copies the file carried by the incoming event.',
-            category: 'system',
-        },
-    }),
-    builtinRegistration(NotificationDescriptor, {
-        role: 'action',
-        outputPorts: OUT_PORTS,
-        display: {
-            label: 'Notification',
-            description: 'Shows an OS notification with a title and body.',
-            category: 'system',
-        },
-    }),
-    builtinRegistration(StateGetDescriptor, {
-        role: 'action',
-        outputPorts: OUT_PORTS,
-        display: {
-            label: 'State Get',
-            description: 'Loads a value from workflow state into the workflow variables.',
-            category: 'state',
-        },
-    }),
-    builtinRegistration(StateSetDescriptor, {
-        role: 'action',
-        outputPorts: OUT_PORTS,
-        display: {
-            label: 'State Set',
-            description: 'Writes a templated value into workflow state under a key.',
-            category: 'state',
-        },
-    }),
-    builtinRegistration(LogDescriptor, {
-        role: 'action',
-        outputPorts: OUT_PORTS,
-        display: {
-            label: 'Log',
-            description: 'Emits a log line with a templated message.',
-            category: 'utility',
-        },
-    }),
-    builtinRegistration(DelayDescriptor, {
-        role: 'action',
-        outputPorts: OUT_PORTS,
-        display: {
-            label: 'Delay',
-            description: 'Pauses the flow for a number of milliseconds.',
-            category: 'utility',
-        },
-    }),
-];
+export type { NodeType } from './nodes/catalog.js';
+export {
+    BUILTIN_NODE_CONTRACT_REGISTRATIONS,
+    BUILTIN_NODE_DESCRIPTORS,
+    BUILTIN_NODE_TYPE_VALUES,
+} from './nodes/catalog.js';
 
 export function createBuiltinNodeContractRegistry(): NodeContractRegistry {
     return createNodeContractRegistry(BUILTIN_NODE_CONTRACT_REGISTRATIONS);
