@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import { createNodeContractRegistry, resolveNodeContract } from '@sigil/schema/node-contract';
+import { switchOutputPortStrategy } from '@sigil/schema/nodes/switch';
 import {
     createPropertyRegistry,
     definePropertyDescriptor,
@@ -363,7 +364,9 @@ describe('loadNodePlugin', () => {
         );
 
         const { manifestRegistry, handlerRegistry } = createRegistries();
-        const contractRegistry = createNodeContractRegistry();
+        const contractRegistry = createNodeContractRegistry([], {
+            outputPortStrategies: { 'switch-cases': switchOutputPortStrategy },
+        });
         const result = await loadNodePlugin(pluginDir, {
             manifestRegistry,
             handlerRegistry,
@@ -429,7 +432,9 @@ describe('loadNodePlugin', () => {
         );
 
         const { manifestRegistry, handlerRegistry } = createRegistries();
-        const contractRegistry = createNodeContractRegistry();
+        const contractRegistry = createNodeContractRegistry([], {
+            outputPortStrategies: { 'switch-cases': switchOutputPortStrategy },
+        });
         const result = await loadNodePlugin(pluginDir, {
             manifestRegistry,
             handlerRegistry,
@@ -1422,7 +1427,7 @@ describe('loadNodePlugin', () => {
 
         const { manifestRegistry, handlerRegistry } = createRegistries();
         manifestRegistry.register({
-            id: 'com.sigil.greet',
+            id: PluginIdSchema.parse('com.sigil.greet'),
             version: '0.0.1',
             permissions: [],
             emits: ['greet.output'],

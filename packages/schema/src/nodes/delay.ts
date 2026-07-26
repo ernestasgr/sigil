@@ -1,27 +1,31 @@
 import { z } from 'zod';
 
-import { defineNode, defineNodeRegistration } from './types.js';
+import { defineBuiltinNode } from './types.js';
 
-export const DelayConfigSchema = z.object({
-    ms: z.number().nonnegative(),
-});
+export const DelayConfigSchema = z
+    .object({
+        ms: z.number().nonnegative(),
+    })
+    .strict();
 
 export type DelayConfig = z.infer<typeof DelayConfigSchema>;
 
-export const DelayDescriptor = defineNode({
+export const DelayNode = defineBuiltinNode({
     type: 'delay',
     configSchema: DelayConfigSchema,
     defaultConfig: { ms: 1000 },
-});
-
-export const DelayContractRegistration = defineNodeRegistration(DelayDescriptor, {
-    identity: { namespace: 'builtin', type: 'delay' },
-    version: 1,
-    role: 'action',
-    outputPorts: { kind: 'fixed', ports: [{ id: 'out', label: 'Output' }] },
-    display: {
-        label: 'Delay',
-        description: 'Pauses the flow for a number of milliseconds.',
-        category: 'utility',
+    contract: {
+        identity: { namespace: 'builtin', type: 'delay' },
+        version: 1,
+        role: 'action',
+        outputPorts: { kind: 'fixed', ports: [{ id: 'out', label: 'Output' }] },
+        display: {
+            label: 'Delay',
+            description: 'Pauses the flow for a number of milliseconds.',
+            category: 'utility',
+        },
     },
 });
+
+export const DelayDescriptor = DelayNode.descriptor;
+export const DelayContractRegistration = DelayNode.registration;

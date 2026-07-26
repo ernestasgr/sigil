@@ -1,3 +1,4 @@
+import { PluginIdSchema } from '@sigil/schema/ids';
 import { createPropertyRegistry, definePropertyDescriptor } from '@sigil/schema/properties-file';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -106,7 +107,7 @@ describe('Settings Properties File template', () => {
 describe('Settings Plugin Permissions', () => {
     const pluginInfo = {
         manifest: {
-            id: 'plugin-1',
+            id: PluginIdSchema.parse('plugin-1'),
             version: '1.0.0',
             permissions: ['filesystem.read'],
             emits: [],

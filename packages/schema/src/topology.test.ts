@@ -8,14 +8,10 @@ import {
     PluginIdSchema,
     WorkflowIdSchema,
 } from './ids.js';
-import {
-    createBuiltinNodeContractRegistry,
-    pluginNodeIdentity,
-    registerSerializableNodeContract,
-    switchOutputPortSpec,
-} from './node-contract.js';
+import { pluginNodeIdentity, registerSerializableNodeContract } from './node-contract.js';
+import { createBuiltinNodeContractRegistry } from './nodes/catalog.js';
 import type { PipelineNode } from './nodes/index.js';
-import { SwitchCaseIdSchema } from './nodes/switch.js';
+import { SwitchCaseIdSchema, switchOutputPortSpec } from './nodes/switch.js';
 import type { CompiledPipeline } from './pipeline.js';
 import {
     formatTopologyDiagnostics,
@@ -389,7 +385,7 @@ describe('validateWorkflowTopology', () => {
             ok: false,
             diagnostics: [
                 expect.objectContaining({
-                    code: 'invalid_node_contract',
+                    code: 'empty_match_value',
                     nodeId: 'router',
                     fieldPath: 'config.cases[0].value',
                 }),

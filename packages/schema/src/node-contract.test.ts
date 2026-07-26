@@ -3,16 +3,16 @@ import { describe, expect, it } from 'vitest';
 
 import { PluginIdSchema } from './ids.js';
 import {
-    createBuiltinNodeContractRegistry,
     createNodeContractRegistry,
     fixedOutputPortSpec,
     type NodeContractInput,
     pluginNodeIdentity,
     registerSerializableNodeContract,
     resolveNodeContract,
-    switchOutputPortSpec,
     validatePluginNodeContract,
 } from './node-contract.js';
+import { createBuiltinNodeContractRegistry } from './nodes/catalog.js';
+import { switchOutputPortSpec, switchOutputPortStrategy } from './nodes/switch.js';
 
 const pid = (id: string) => PluginIdSchema.parse(id);
 
@@ -171,7 +171,9 @@ describe('Node Contract Registry', () => {
         expect(validation).toMatchObject({ ok: true });
         if (!validation.ok) return;
 
-        const registry = createNodeContractRegistry();
+        const registry = createNodeContractRegistry([], {
+            outputPortStrategies: { 'switch-cases': switchOutputPortStrategy },
+        });
         registerSerializableNodeContract(registry, validation.contract);
 
         expect(
@@ -209,7 +211,9 @@ describe('Node Contract Registry', () => {
         expect(validation).toMatchObject({ ok: true });
         if (!validation.ok) return;
 
-        const registry = createNodeContractRegistry();
+        const registry = createNodeContractRegistry([], {
+            outputPortStrategies: { 'switch-cases': switchOutputPortStrategy },
+        });
         registerSerializableNodeContract(registry, validation.contract);
 
         expect(
@@ -260,7 +264,9 @@ describe('Node Contract Registry', () => {
     });
 
     it('keeps derived port identity and ordering deterministic across built-in and Plugin contracts', () => {
-        const pluginRegistry = createNodeContractRegistry();
+        const pluginRegistry = createNodeContractRegistry([], {
+            outputPortStrategies: { 'switch-cases': switchOutputPortStrategy },
+        });
         registerSerializableNodeContract(pluginRegistry, {
             identity: pluginNodeIdentity(pid('com.example.router'), 'router-node'),
             version: 1,
@@ -284,7 +290,10 @@ describe('Node Contract Registry', () => {
         fc.assert(
             fc.property(cases, (derivedCases) => {
                 const config = { target: 'event' as const, cases: derivedCases };
-                const builtin = resolveNodeContract({ type: 'switch', config });
+                const builtin = resolveNodeContract(
+                    { type: 'switch', config },
+                    createBuiltinNodeContractRegistry(),
+                );
                 const plugin = resolveNodeContract(
                     { type: 'router-node', pluginId: pid('com.example.router'), config },
                     pluginRegistry,
@@ -373,5 +382,41 @@ describe('Node Contract Registry', () => {
                 'file-node',
             ),
         ).toMatchObject({ ok: false });
+    });
+
+    it('requires config-derived strategies to be explicitly admitted by the registry', () => {
+        const contract = {
+            identity: pluginNodeIdentity(pid('com.example.custom'), 'custom-node'),
+            version: 1 as const,
+            role: 'action' as const,
+            defaultConfig: {},
+            outputPorts: {
+                kind: 'config-derived' as const,
+                strategy: 'custom-ports',
+                defaultPort: { id: 'out', label: 'Output' },
+            },
+            display: {
+                label: 'Custom Node',
+                description: 'Uses an injected output-port strategy.',
+                category: 'utility' as const,
+            },
+        };
+
+        expect(() =>
+            registerSerializableNodeContract(createNodeContractRegistry(), contract),
+        ).toThrow(/No output-port strategy is registered/);
+
+        const registry = createNodeContractRegistry([], {
+            outputPortStrategies: {
+                'custom-ports': () => ({ ok: true, value: 'dynamic' }),
+            },
+        });
+        expect(() => registerSerializableNodeContract(registry, contract)).not.toThrow();
+        expect(
+            resolveNodeContract(
+                { type: 'custom-node', pluginId: pid('com.example.custom'), config: {} },
+                registry,
+            ),
+        ).toMatchObject({ status: 'available', outputPorts: 'dynamic' });
     });
 });

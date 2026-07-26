@@ -107,7 +107,7 @@ describe('generated compileGraph properties', () => {
         );
     });
 
-    it('rejects generated malformed references and ports before execution', () => {
+    it('rejects generated malformed references and ports during topology admission', () => {
         fc.assert(
             fc.property(
                 nonTrivialVisualDagArbitrary,
@@ -132,13 +132,18 @@ describe('generated compileGraph properties', () => {
                     if (!result.ok) {
                         expect(result.diagnostics).toEqual(
                             expect.arrayContaining([
-                                expect.objectContaining({ code: 'invalid_pipeline' }),
+                                expect.objectContaining({
+                                    code:
+                                        malformedKind === 'invalid-port'
+                                            ? 'invalid_output_port'
+                                            : 'invalid_edge',
+                                }),
                             ]),
                         );
                         expect(result.error).toMatch(
                             malformedKind === 'invalid-port'
-                                ? /invalid sourcePort "missing-port"/
-                                : /unknown (source|target) node/,
+                                ? /uses output port "missing-port"/
+                                : /must reference existing source and target Nodes/,
                         );
                     }
                 },

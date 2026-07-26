@@ -1,10 +1,6 @@
 import { type PluginId, PluginIdSchema } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import {
-    BUILTIN_NODE_CONTRACT_REGISTRY,
-    createBuiltinNodeContractRegistry,
-    getBuiltinNodeContract,
-    getNodeDescriptor,
     type NodeContractRegistry,
     pluginNodeIdentity,
     registerSerializableNodeContract,
@@ -18,6 +14,11 @@ import {
     type NodeType,
     type PipelineNode,
 } from '@sigil/schema/nodes';
+import {
+    createBuiltinNodeContractRegistry,
+    getBuiltinNodeContract,
+    getNodeDescriptor,
+} from '@sigil/schema/nodes/catalog';
 import { type ComponentType, createElement, type ReactElement } from 'react';
 import type { z } from 'zod';
 
@@ -121,7 +122,9 @@ export interface PluginNodeCatalogAdapter<TConfig = unknown> {
     readonly Form?: ComponentType<ConfigFormProps<TConfig>>;
 }
 
-export type NodeCatalogManifest = Pick<Manifest, 'id' | 'nodeType'> & {
+export type NodeCatalogManifest = Omit<Pick<Manifest, 'id' | 'nodeType'>, 'id'> & {
+    /** UI callers may supply discovered manifest data before schema parsing. */
+    readonly id: string;
     readonly nodeContract?: SerializableNodeContractInput;
 };
 
@@ -143,7 +146,7 @@ function validateConfig<TSchema extends z.ZodType>(
 function builtinOutputPorts(
     type: NodeType,
     config: unknown,
-    registry: NodeContractRegistry = BUILTIN_NODE_CONTRACT_REGISTRY,
+    registry: NodeContractRegistry = createBuiltinNodeContractRegistry(),
 ): readonly string[] | 'dynamic' {
     const resolved = resolveNodeContract({ type, config }, registry);
     if (resolved.status !== 'available') return 'dynamic';
@@ -156,7 +159,7 @@ function builtinOutputPortLabel(
     type: NodeType,
     config: unknown,
     port: string,
-    registry: NodeContractRegistry = BUILTIN_NODE_CONTRACT_REGISTRY,
+    registry: NodeContractRegistry = createBuiltinNodeContractRegistry(),
 ): string {
     const resolved = resolveNodeContract({ type, config }, registry);
     if (resolved.status !== 'available' || resolved.outputPorts === 'dynamic') return port;
@@ -344,7 +347,7 @@ export function createNodeCatalog(
     additionalEntries: readonly PluginNodeCatalogEntry[] = [],
     options: NodeCatalogOptions = {},
 ): NodeCatalog {
-    const contractRegistry = options.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
+    const contractRegistry = options.contractRegistry ?? createBuiltinNodeContractRegistry();
     const builtinEntries = new Map<NodeType, BuiltinNodeCatalogEntry>();
     for (const entry of BUILTIN_NODE_CATALOG) builtinEntries.set(entry.type, entry);
 

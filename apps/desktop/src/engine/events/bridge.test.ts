@@ -1,4 +1,4 @@
-import { WorkflowIdSchema } from '@sigil/schema/ids';
+import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
@@ -11,7 +11,7 @@ import { createRunTelemetry } from './telemetry.js';
 const WORKFLOW_ID = WorkflowIdSchema.parse('workflow-1');
 
 const stubPingManifest: Manifest = {
-    id: 'com.sigil.stub-ping',
+    id: PluginIdSchema.parse('com.sigil.stub-ping'),
     version: '0.0.1',
     permissions: [],
     emits: ['stub.ping'],
@@ -187,7 +187,7 @@ describe('createBridge', () => {
         const bus = createEventBus();
         const registry = createManifestRegistry();
         const multiManifest: Manifest = {
-            id: 'com.sigil.multi',
+            id: PluginIdSchema.parse('com.sigil.multi'),
             version: '0.0.1',
             permissions: [],
             emits: ['a.first', 'a.second'],

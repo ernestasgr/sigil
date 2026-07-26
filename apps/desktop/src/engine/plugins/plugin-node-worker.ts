@@ -15,6 +15,7 @@ import {
     validatePluginNodeContract,
 } from '@sigil/schema/node-contract';
 import type { PluginPipelineNode } from '@sigil/schema/nodes';
+import { switchOutputPortStrategy } from '@sigil/schema/nodes/switch';
 import {
     type AnyPropertyDescriptor,
     PropertyApplyModeSchema,
@@ -1035,6 +1036,7 @@ function validateRuntimeContract(
     const resolvedDefaultPorts = resolveDeclarativeOutputPorts(
         identity.contract.outputPorts,
         parsedDefault.data,
+        { 'switch-cases': switchOutputPortStrategy },
     );
     if (!resolvedDefaultPorts.ok) {
         return {

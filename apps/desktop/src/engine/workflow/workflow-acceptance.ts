@@ -1,9 +1,7 @@
 import type { CompiledPipeline } from '@sigil/schema';
-import {
-    BUILTIN_NODE_CONTRACT_REGISTRY,
-    type NodeContractRegistry,
-} from '@sigil/schema/node-contract';
+import type { NodeContractRegistry } from '@sigil/schema/node-contract';
 import type { PipelineNode } from '@sigil/schema/nodes';
+import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
 import {
     type ExecutableWorkflow,
     validateWorkflowTopology,
@@ -20,7 +18,7 @@ export function isExecutableWorkflow(input: WorkflowInput): input is ExecutableW
 
 export function workflowTopologyOptions(
     handlerRegistry: NodeHandlerRegistry,
-    contractRegistry: NodeContractRegistry = BUILTIN_NODE_CONTRACT_REGISTRY,
+    contractRegistry: NodeContractRegistry = createBuiltinNodeContractRegistry(),
 ): WorkflowTopologyOptions {
     return {
         contractRegistry,
@@ -31,7 +29,7 @@ export function workflowTopologyOptions(
 export function acceptWorkflow(
     input: WorkflowInput,
     handlerRegistry: NodeHandlerRegistry,
-    contractRegistry: NodeContractRegistry = BUILTIN_NODE_CONTRACT_REGISTRY,
+    contractRegistry: NodeContractRegistry = createBuiltinNodeContractRegistry(),
 ): WorkflowTopologyResult {
     const pipeline = isExecutableWorkflow(input) ? input.pipeline : input;
     return validateWorkflowTopology(pipeline, {

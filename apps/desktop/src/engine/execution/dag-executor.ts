@@ -3,12 +3,12 @@ import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineEdge } from '@sigil/schema/edges';
 import type { WorkflowId } from '@sigil/schema/ids';
 import {
-    BUILTIN_NODE_CONTRACT_REGISTRY,
     formatNodeIdentity,
     type NodeContractRegistry,
     resolveNodeContract,
 } from '@sigil/schema/node-contract';
 import type { PipelineNode } from '@sigil/schema/nodes';
+import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
 import type { CollisionSuffixStyle, ConflictPolicy } from '@sigil/schema/properties-file';
 import type { ExecutableWorkflow } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
@@ -237,7 +237,8 @@ export async function executeValidatedWorkflow(
         workflowId,
         runId,
     };
-    const contractRegistry = executionOptions.contractRegistry ?? BUILTIN_NODE_CONTRACT_REGISTRY;
+    const contractRegistry =
+        executionOptions.contractRegistry ?? createBuiltinNodeContractRegistry();
     const telemetry = createRunTelemetry(bus, {
         workflowId,
         pipelineId: pipeline.id,

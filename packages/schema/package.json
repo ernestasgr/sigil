@@ -42,6 +42,11 @@
             "import": "./dist/nodes/index.js",
             "default": "./dist/nodes/index.js"
         },
+        "./nodes/catalog": {
+            "types": "./dist/nodes/catalog.d.ts",
+            "import": "./dist/nodes/catalog.js",
+            "default": "./dist/nodes/catalog.js"
+        },
         "./nodes/log": {
             "types": "./dist/nodes/log.d.ts",
             "import": "./dist/nodes/log.js",
@@ -91,11 +96,6 @@
             "types": "./dist/nodes/state-set.d.ts",
             "import": "./dist/nodes/state-set.js",
             "default": "./dist/nodes/state-set.js"
-        },
-        "./nodes/common": {
-            "types": "./dist/nodes/common.d.ts",
-            "import": "./dist/nodes/common.js",
-            "default": "./dist/nodes/common.js"
         },
         "./nodes/types": {
             "types": "./dist/nodes/types.d.ts",
