@@ -1,4 +1,5 @@
 import type { CompiledPipeline } from '@sigil/schema';
+import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/schema/ids';
 import { MAX_DELAY_MS, SwitchCaseIdSchema } from '@sigil/schema/nodes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -276,8 +277,8 @@ describe('useBuilderStore', () => {
         const catalog = createNodeCatalogFromManifests(
             [
                 {
-                    id: 'com.example.timer',
-                    nodeType: 'timer-trigger',
+                    id: PluginIdSchema.parse('com.example.timer'),
+                    nodeType: NodeTypeNameSchema.parse('timer-trigger'),
                     nodeContract: {
                         identity: {
                             namespace: 'plugin',
@@ -677,8 +678,8 @@ describe('useBuilderStore', () => {
         useBuilderStore.getState().setNodeCatalog(
             createNodeCatalogFromManifests([
                 {
-                    id: 'com.sigil.file-watcher',
-                    nodeType: 'file-watcher',
+                    id: PluginIdSchema.parse('com.sigil.file-watcher'),
+                    nodeType: NodeTypeNameSchema.parse('file-watcher'),
                     nodeContract: {
                         identity: {
                             namespace: 'plugin',

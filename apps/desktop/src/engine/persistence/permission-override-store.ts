@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { type PluginId, PluginIdSchema } from '@sigil/schema/ids';
 import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
@@ -15,9 +16,9 @@ import {
 } from './atomic-file.js';
 
 export interface PermissionOverrideStore {
-    readonly get: (pluginId: string) => readonly Capability[];
-    readonly has: (pluginId: string) => boolean;
-    readonly set: (pluginId: string, overrides: readonly Capability[]) => AtomicWriteResult;
+    readonly get: (pluginId: PluginId) => readonly Capability[];
+    readonly has: (pluginId: PluginId) => boolean;
+    readonly set: (pluginId: PluginId, overrides: readonly Capability[]) => AtomicWriteResult;
     readonly all: () => Readonly<Record<string, readonly Capability[]>>;
     readonly diagnostics: () => readonly PersistenceDiagnostic[];
 }
@@ -42,8 +43,8 @@ function diagnostic(
 function loadOverrides(
     path: Option.Option<string>,
     diagnostics: PersistenceDiagnostic[],
-): Map<string, readonly Capability[]> {
-    const map = new Map<string, readonly Capability[]>();
+): Map<PluginId, readonly Capability[]> {
+    const map = new Map<PluginId, readonly Capability[]>();
     if (Option.isNone(path) || !existsSync(path.value)) return map;
 
     let content: string;
@@ -79,9 +80,21 @@ function loadOverrides(
     }
 
     for (const [id, caps] of Object.entries(raw)) {
+        const parsedId = PluginIdSchema.safeParse(id);
+        if (!parsedId.success) {
+            diagnostics.push(
+                diagnostic(
+                    path.value,
+                    'parse',
+                    `Permission overrides for plugin "${id}" are malformed: ${parsedId.error.issues[0]?.message ?? 'expected a canonical Plugin ID.'}`,
+                ),
+            );
+            continue;
+        }
+
         const parsed = z.array(CapabilitySchema).safeParse(caps);
         if (parsed.success) {
-            map.set(id, parsed.data);
+            map.set(parsedId.data, parsed.data);
         } else {
             diagnostics.push(
                 diagnostic(
@@ -98,7 +111,7 @@ function loadOverrides(
 
 function saveOverrides(
     path: Option.Option<string>,
-    overrides: ReadonlyMap<string, readonly Capability[]>,
+    overrides: ReadonlyMap<PluginId, readonly Capability[]>,
     writer: AtomicFileWriter,
 ): AtomicWriteResult {
     if (Option.isNone(path)) return Either.right(undefined);

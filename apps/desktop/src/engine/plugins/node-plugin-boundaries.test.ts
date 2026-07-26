@@ -357,7 +357,7 @@ describe('typed Plugin RPC authorization router', () => {
         const unregisterSubscriber = vi.fn();
         const trackFileWatcherSubscription = vi.fn();
         const untrackFileWatcherSubscription = vi.fn();
-        const pluginId = 'com.sigil.owner';
+        const pluginId = pid('com.sigil.owner');
         const subscriber = {
             id: 'owned-subscription',
             path: '/owned',
@@ -490,7 +490,7 @@ describe('instance-owned Plugin loader supervision', () => {
             },
             ctx: { event: '', payload: {}, vars: {} },
         };
-        first.updatePluginPermissions('com.sigil.boundary', []);
+        first.updatePluginPermissions(pid('com.sigil.boundary'), []);
 
         await expect(firstResult.handler.execute(input, {} as never)).rejects.toThrow(
             'Permission denied: filesystem.read',

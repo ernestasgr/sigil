@@ -1,3 +1,4 @@
+import { PluginIdSchema } from '@sigil/schema/ids';
 import { CapabilitySchema } from '@sigil/schema/manifest';
 import { z } from 'zod';
 
@@ -53,7 +54,7 @@ export const PermissionOverrideDomainFailureFieldsSchema = z.object({
     ok: z.literal(false),
     kind: z.literal('domain'),
     code: z.literal('unknown_plugin'),
-    pluginId: z.string().min(1),
+    pluginId: PluginIdSchema,
     error: z.string().min(1),
 });
 

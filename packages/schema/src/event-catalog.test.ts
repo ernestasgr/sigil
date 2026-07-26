@@ -9,6 +9,7 @@ import {
     resolveEvent,
 } from './event-catalog.js';
 import { FileEventPayloadSchema } from './file-event-payload.js';
+import { EventNameSchema } from './ids.js';
 
 describe('Event catalog', () => {
     it('provides display suggestions from the shared catalog seam', () => {
@@ -28,7 +29,8 @@ describe('Event catalog', () => {
     it('exposes the built-in file Event fields through the catalog seam', () => {
         const catalog = createEventCatalog();
 
-        expect(findEvent(catalog, 'file.created')).toMatchObject({
+        const fileCreated = EventNameSchema.parse('file.created');
+        expect(findEvent(catalog, fileCreated)).toMatchObject({
             name: 'file.created',
             source: 'builtin',
             fields: expect.arrayContaining([
@@ -51,14 +53,15 @@ describe('Event catalog', () => {
     it('resolves an unknown Event to an opaque entry without inventing fields', () => {
         const catalog = createEventCatalog();
 
-        expect(findEvent(catalog, 'plugin.received')).toBeUndefined();
-        expect(resolveEvent(catalog, 'plugin.received')).toEqual({
-            name: 'plugin.received',
+        const pluginReceived = EventNameSchema.parse('plugin.received');
+        expect(findEvent(catalog, pluginReceived)).toBeUndefined();
+        expect(resolveEvent(catalog, pluginReceived)).toEqual({
+            name: pluginReceived,
             label: 'plugin.received',
             description: 'No payload field metadata is available for this Event.',
             source: 'opaque',
             fields: [],
         });
-        expect(getEventPayloadFields(catalog, 'plugin.received')).toEqual([]);
+        expect(getEventPayloadFields(catalog, pluginReceived)).toEqual([]);
     });
 });

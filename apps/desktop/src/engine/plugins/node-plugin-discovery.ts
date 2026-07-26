@@ -1,10 +1,11 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
+import type { NodeTypeName } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import { parseManifest } from '@sigil/schema/manifest';
 import { Option } from 'effect';
 
-export type DiscoveredPluginManifest = Manifest & { readonly nodeType: string };
+export type DiscoveredPluginManifest = Manifest & { readonly nodeType: NodeTypeName };
 
 export type NodePluginDiscoveryError =
     | { readonly kind: 'invalid_manifest'; readonly dir: string; readonly error: string }

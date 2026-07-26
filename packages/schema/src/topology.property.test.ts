@@ -2,6 +2,7 @@ import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import type { PipelineEdge } from './edges.js';
+import { FileEventNameSchema } from './event-catalog.js';
 import {
     NodeOutputPortIdSchema,
     PipelineEdgeIdSchema,
@@ -21,7 +22,7 @@ const trigger = (id: string): PipelineNode => ({
     id: PipelineNodeIdSchema.parse(id),
     type: 'manual-trigger',
     config: {
-        eventName: 'file.created',
+        eventName: FileEventNameSchema.parse('file.created'),
         payload: { path: '/tmp/file.txt', name: 'file.txt', ext: 'txt', size: 1, dir: '/tmp' },
     },
 });

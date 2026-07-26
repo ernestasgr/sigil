@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import { FileWatcherConfigSchema } from '@sigil/schema/nodes/file-watcher';
 import { PROPERTY_DESCRIPTORS } from '@sigil/schema/properties-file';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
@@ -10,7 +11,7 @@ import type {
     TriggerHandler,
 } from '../../engine/node-handlers/types.js';
 
-const FILE_WATCHER_PLUGIN_ID = 'com.sigil.file-watcher';
+const FILE_WATCHER_PLUGIN_ID = PluginIdSchema.parse('com.sigil.file-watcher');
 
 export const descriptor = {
     type: 'file-watcher' as const,

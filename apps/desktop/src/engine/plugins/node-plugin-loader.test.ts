@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
+import { EventNameSchema, PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import { createNodeContractRegistry, resolveNodeContract } from '@sigil/schema/node-contract';
 import { switchOutputPortStrategy } from '@sigil/schema/nodes/switch';
 import {
@@ -334,7 +334,7 @@ describe('loadNodePlugin', () => {
             expect(result.manifest.id).toBe('com.sigil.greet');
             expect(result.descriptor.type).toBe('greet');
             expect(handlerRegistry.has('greet')).toBe(true);
-            expect(manifestRegistry.has('com.sigil.greet')).toBe(true);
+            expect(manifestRegistry.has(pid('com.sigil.greet'))).toBe(true);
         }
     });
 
@@ -644,7 +644,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.property-plugin',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'property-node',
             },
             PROPERTY_PLUGIN_HANDLER,
@@ -673,7 +673,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.all-property-sources',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'all-property-sources-node',
             },
             ALL_PROPERTY_SOURCES_PLUGIN_HANDLER,
@@ -706,7 +706,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.property-without-registry',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'property-without-registry-node',
             },
             PROPERTY_PLUGIN_HANDLER.replaceAll('property-node', 'property-without-registry-node'),
@@ -722,7 +722,7 @@ describe('loadNodePlugin', () => {
                 error: 'Plugin properties require a Property registry during loading.',
             },
         });
-        expect(manifestRegistry.has('com.sigil.property-without-registry')).toBe(false);
+        expect(manifestRegistry.has(pid('com.sigil.property-without-registry'))).toBe(false);
     });
 
     it('reports duplicate declarations from one plugin before registration', async () => {
@@ -737,7 +737,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.duplicate-declared-property',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'property-node',
             },
             duplicateHandler,
@@ -768,7 +768,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.invalid-property-plugin',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'invalid-property-node',
             },
             PROPERTY_PLUGIN_HANDLER.replace(
@@ -797,7 +797,7 @@ describe('loadNodePlugin', () => {
             id: 'com.sigil.first-property-plugin',
             version: '0.0.1',
             permissions: [],
-            emits: ['x'],
+            emits: ['test.event'],
             nodeType: 'first-property-node',
         };
         const secondManifest = {
@@ -847,7 +847,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.registry-rejected-property',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'registry-rejected-property-node',
             },
             PROPERTY_PLUGIN_HANDLER.replaceAll('property-node', 'registry-rejected-property-node'),
@@ -891,7 +891,7 @@ describe('loadNodePlugin', () => {
                 id: manifestId,
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'manifest-race-property-node',
             },
             PROPERTY_PLUGIN_HANDLER.replaceAll(
@@ -940,7 +940,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.tick',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['tick'],
+                emits: ['test.tick'],
                 nodeType: 'tick-trigger',
             },
             TRIGGER_PLUGIN_HANDLER,
@@ -964,7 +964,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.crashing',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'crashing-node',
             },
             CRASHING_PLUGIN_HANDLER,
@@ -1012,7 +1012,7 @@ describe('loadNodePlugin', () => {
                     id: 'com.sigil.cooperative-timeout',
                     version: '0.0.1',
                     permissions: [],
-                    emits: ['x'],
+                    emits: ['test.event'],
                     nodeType: 'cooperative-timeout-node',
                 },
                 COOPERATIVE_TIMEOUT_PLUGIN_HANDLER,
@@ -1082,7 +1082,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.already-cancelled',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'greet',
             },
             GREET_PLUGIN_HANDLER,
@@ -1142,7 +1142,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.signal-cancellation',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'cooperative-timeout-node',
             },
             COOPERATIVE_TIMEOUT_PLUGIN_HANDLER,
@@ -1213,7 +1213,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.string-dependency-error',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'cooperative-timeout-node',
             },
             COOPERATIVE_TIMEOUT_PLUGIN_HANDLER,
@@ -1250,7 +1250,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.resolve-template',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'resolve-template-node',
             },
             RESOLVE_TEMPLATE_PLUGIN_HANDLER,
@@ -1290,7 +1290,7 @@ describe('loadNodePlugin', () => {
                     id: 'com.sigil.non-cooperative-timeout',
                     version: '0.0.1',
                     permissions: [],
-                    emits: ['x', 'late.output'],
+                    emits: ['test.event', 'late.output'],
                     nodeType: 'non-cooperative-timeout-node',
                 },
                 NON_COOPERATIVE_TIMEOUT_PLUGIN_HANDLER,
@@ -1518,7 +1518,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.no-node',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
             },
             GREET_PLUGIN_HANDLER,
         );
@@ -1541,7 +1541,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.no-handler',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'x',
             }),
         );
@@ -1563,7 +1563,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.mismatch',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'wrong-type',
             },
             GREET_PLUGIN_HANDLER,
@@ -1597,7 +1597,7 @@ describe('loadNodePlugin', () => {
             id: PluginIdSchema.parse('com.sigil.greet'),
             version: '0.0.1',
             permissions: [],
-            emits: ['greet.output'],
+            emits: [EventNameSchema.parse('greet.output')],
         });
 
         const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
@@ -1616,7 +1616,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.broken',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'broken',
             },
             'export const handler = {',
@@ -1639,7 +1639,7 @@ describe('loadNodePlugin', () => {
                 id: 'com.sigil.bad-module',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'bad-module',
             },
             'export const foo = 42;',
@@ -1713,7 +1713,7 @@ describe('loadNodePlugins', () => {
                 id: 'com.sigil.tick',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['tick'],
+                emits: ['test.tick'],
                 nodeType: 'tick-trigger',
             },
             TRIGGER_PLUGIN_HANDLER,
@@ -1972,7 +1972,7 @@ describe('capabilityBroker sandbox sync', () => {
                 id: 'com.sigil.perm-checker',
                 version: '0.0.1',
                 permissions: ['filesystem.read'],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'perm-checker',
             },
             PERM_CHECK_HANDLER,
@@ -2011,7 +2011,7 @@ describe('capabilityBroker sandbox sync', () => {
                 id: 'com.sigil.perm-checker',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'perm-checker',
             },
             PERM_CHECK_HANDLER,
@@ -2087,7 +2087,7 @@ describe('Workflow State authorization for Node Plugins', () => {
                 id: pluginId,
                 version: '0.0.1',
                 permissions: ['state.read'],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'state-access',
             },
             STATE_ACCESS_HANDLER,
@@ -2143,7 +2143,7 @@ describe('Workflow State authorization for Node Plugins', () => {
                 id: pluginId,
                 version: '0.0.1',
                 permissions: ['state.read'],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'state-access',
             },
             STATE_ACCESS_HANDLER,
@@ -2205,7 +2205,7 @@ describe('Workflow State authorization for Node Plugins', () => {
                 id: pluginId,
                 version: '0.0.1',
                 permissions: ['state.write'],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'state-access',
             },
             STATE_ACCESS_HANDLER,
@@ -2257,7 +2257,7 @@ describe('Workflow State authorization for Node Plugins', () => {
                 id: pluginId,
                 version: '0.0.1',
                 permissions: ['state.read', 'state.write'],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'typed-state-round-trip',
             },
             TYPED_STATE_ROUND_TRIP_HANDLER,
@@ -2316,7 +2316,7 @@ describe('Workflow State authorization for Node Plugins', () => {
                 id: pluginId,
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'state-access',
             },
             STATE_ACCESS_HANDLER,
@@ -2377,7 +2377,7 @@ describe('Workflow State authorization for Node Plugins', () => {
                 id: pluginId,
                 version: '0.0.1',
                 permissions: ['state.read'],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'state-access',
             },
             STATE_ACCESS_HANDLER,
@@ -2438,7 +2438,7 @@ describe('Workflow State authorization for Node Plugins', () => {
                 id: pluginId,
                 version: '0.0.1',
                 permissions: ['state.write'],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'state-access',
             },
             STATE_ACCESS_HANDLER,
@@ -2504,7 +2504,7 @@ describe('Workflow State authorization for Node Plugins', () => {
                 id: pluginId,
                 version: '0.0.1',
                 permissions: ['state.read'],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'state-access',
             },
             STATE_ACCESS_HANDLER,
@@ -2656,7 +2656,7 @@ describe('unbypassable enforcement', () => {
                 id: 'com.sigil.evil-exec',
                 version: '0.0.1',
                 permissions: ['state.write'], // filesystem.read NOT granted
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'evil-exec',
             },
             MALICIOUS_REGISTER_SUBSCRIBER_EXECUTE_HANDLER,
@@ -2698,7 +2698,7 @@ describe('unbypassable enforcement', () => {
                 id: 'com.sigil.evil-activate',
                 version: '0.0.1',
                 permissions: ['state.write'], // filesystem.read NOT granted
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'evil-watcher',
             },
             MALICIOUS_REGISTER_SUBSCRIBER_HANDLER,
@@ -2739,7 +2739,7 @@ describe('unbypassable enforcement', () => {
                 id: pluginId,
                 version: '0.0.1',
                 permissions: ['filesystem.read'],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'evil-kernel-adapter',
             },
             MALICIOUS_KERNEL_ADAPTER_HANDLER,
@@ -2824,7 +2824,7 @@ describe('unbypassable enforcement', () => {
                 id: pluginId,
                 version: '0.0.1',
                 permissions: ['filesystem.read'],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'evil-kernel-adapter',
             },
             MALICIOUS_KERNEL_ADAPTER_HANDLER,
@@ -3188,7 +3188,7 @@ describe('Plugin Sandbox Surface', () => {
                 id: 'com.sigil.sandbox-surface',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'sandbox-surface-plugin',
             },
             SANDBOX_SURFACE_HANDLER,
@@ -3230,7 +3230,7 @@ describe('Plugin Sandbox Surface', () => {
                 id: 'com.sigil.code-generation-string',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'code-generation-string-plugin',
             },
             CODE_GENERATION_STRING_HANDLER,
@@ -3256,7 +3256,7 @@ describe('Plugin Sandbox Surface', () => {
                 id: 'com.sigil.code-generation-wasm',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'code-generation-wasm-plugin',
             },
             CODE_GENERATION_WASM_HANDLER,
@@ -3292,7 +3292,7 @@ describe('Plugin Sandbox Surface', () => {
                 id: 'com.sigil.code-generation-contract',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'code-generation-contract-plugin',
             },
             CODE_GENERATION_CONTRACT_HANDLER,
@@ -3339,7 +3339,7 @@ describe('Plugin Sandbox Surface', () => {
                 id: 'com.sigil.sandbox-boundary',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'sandbox-boundary-plugin',
             },
             SANDBOX_BOUNDARY_HANDLER,
@@ -3436,7 +3436,7 @@ describe('updatePluginPermissions', () => {
                 id: 'com.sigil.perm-checker',
                 version: '0.0.1',
                 permissions: ['filesystem.read'],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'perm-checker',
             },
             PERM_CHECK_HANDLER,
@@ -3470,7 +3470,7 @@ describe('updatePluginPermissions', () => {
         expect(output.activePort).toBe('out');
 
         // Revoke permissions via runtime update
-        loader.updatePluginPermissions('com.sigil.perm-checker', []);
+        loader.updatePluginPermissions(pid('com.sigil.perm-checker'), []);
 
         // Second execution: should now be denied because the worker permissions set was updated.
         // The unbypassable handleExecute check fires before the handler is called.
@@ -3498,7 +3498,7 @@ describe('updatePluginPermissions', () => {
                 id: 'com.sigil.fs-plugin',
                 version: '0.0.1',
                 permissions: ['filesystem.read'],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'fs-plugin',
             },
             FS_ACCESS_HANDLER,
@@ -3534,7 +3534,7 @@ describe('updatePluginPermissions', () => {
         expect((err1 as Error).message).not.toContain('Permission denied');
 
         // Revoke filesystem.read
-        loader.updatePluginPermissions('com.sigil.fs-plugin', []);
+        loader.updatePluginPermissions(pid('com.sigil.fs-plugin'), []);
 
         // The unbypassable handleExecute check fires before the handler runs,
         // so the error is from the infrastructure check, not the sandbox module stub.
@@ -3565,7 +3565,7 @@ describe('updatePluginPermissions', () => {
                 id: 'com.sigil.fs-plugin',
                 version: '0.0.1',
                 permissions: [],
-                emits: ['x'],
+                emits: ['test.event'],
                 nodeType: 'fs-plugin',
             },
             FS_ACCESS_HANDLER,
@@ -3601,7 +3601,7 @@ describe('updatePluginPermissions', () => {
         expect((err1 as Error).message).toContain('fs.readFileSync');
 
         // Grant filesystem.read at runtime
-        loader.updatePluginPermissions('com.sigil.fs-plugin', ['filesystem.read']);
+        loader.updatePluginPermissions(pid('com.sigil.fs-plugin'), ['filesystem.read']);
 
         // Sandbox modules were rebuilt — readFileSync is now the real function
         const err2 = await Option.getOrThrow(handler)
@@ -3724,8 +3724,8 @@ describe('builtin plugins integration', () => {
 
         expect(handlerRegistry.has('file-manager')).toBe(true);
         expect(handlerRegistry.has('file-watcher')).toBe(true);
-        expect(manifestRegistry.has('com.sigil.file-manager')).toBe(true);
-        expect(manifestRegistry.has('com.sigil.file-watcher')).toBe(true);
+        expect(manifestRegistry.has(pid('com.sigil.file-manager'))).toBe(true);
+        expect(manifestRegistry.has(pid('com.sigil.file-watcher'))).toBe(true);
 
         const fileManagerHandler = handlerRegistry.get('file-manager');
         expect(typeof Option.getOrThrow(fileManagerHandler).execute).toBe('function');

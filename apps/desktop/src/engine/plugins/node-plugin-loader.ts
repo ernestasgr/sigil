@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
-import { PluginIdSchema } from '@sigil/schema/ids';
+import { type PluginId, PluginIdSchema } from '@sigil/schema/ids';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
 import {
     type NodeContractRegistry,
@@ -111,7 +111,7 @@ export interface NodePluginLoader {
         deps: NodePluginLoaderDeps,
     ) => Promise<readonly NodePluginLoadResult[]>;
     readonly updatePluginPermissions: (
-        pluginId: string,
+        pluginId: PluginId,
         permissions: readonly Capability[],
     ) => void;
     readonly shutdown: () => Promise<void>;

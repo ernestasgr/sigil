@@ -1,3 +1,4 @@
+import type { PluginId } from '@sigil/schema/ids';
 import type { Capability } from '@sigil/schema/manifest';
 import { Either, Option } from 'effect';
 
@@ -15,7 +16,7 @@ import type { PermissionOverrideStore } from '../persistence/permission-override
 import type { ManifestRegistry } from '../plugins/manifest-registry.js';
 
 export type PermissionTransitionRunReconciler = (
-    pluginId: string,
+    pluginId: PluginId,
     manifestPermissions: readonly Capability[],
     effectivePermissions: readonly Capability[],
 ) => Promise<readonly string[]>;
@@ -24,19 +25,19 @@ export interface PermissionOverrideTransitionDependencies {
     readonly registry: Pick<ManifestRegistry, 'get'>;
     readonly permissionOverrides: Pick<PermissionOverrideStore, 'get' | 'has' | 'set'>;
     readonly reconcileActiveWorkflowRuns?: PermissionTransitionRunReconciler;
-    readonly revokeFileWatcherSubscriptions: (pluginId: string) => void;
+    readonly revokeFileWatcherSubscriptions: (pluginId: PluginId) => void;
     readonly updatePluginPermissions: (
-        pluginId: string,
+        pluginId: PluginId,
         permissions: readonly Capability[],
     ) => void;
     readonly emitPermissionChanged?: (event: PluginPermissionChangedEvent) => void;
 }
 
-const latestPermissionTransitionVersions = new WeakMap<object, Map<string, number>>();
+const latestPermissionTransitionVersions = new WeakMap<object, Map<PluginId, number>>();
 
 function beginPermissionTransition(
     permissionOverrides: PermissionOverrideTransitionDependencies['permissionOverrides'],
-    pluginId: string,
+    pluginId: PluginId,
 ): number {
     let versions = latestPermissionTransitionVersions.get(permissionOverrides);
     if (!versions) {
@@ -51,7 +52,7 @@ function beginPermissionTransition(
 
 function isLatestPermissionTransition(
     permissionOverrides: PermissionOverrideTransitionDependencies['permissionOverrides'],
-    pluginId: string,
+    pluginId: PluginId,
     version: number,
 ): boolean {
     return latestPermissionTransitionVersions.get(permissionOverrides)?.get(pluginId) === version;
@@ -69,7 +70,7 @@ function capabilityViewsEqual(
 
 export async function applyPermissionOverride(
     dependencies: PermissionOverrideTransitionDependencies,
-    pluginId: string,
+    pluginId: PluginId,
     overrides: readonly Capability[],
     actor: PermissionTransitionActor = 'user',
 ): Promise<PermissionOverrideOutcome> {

@@ -1,3 +1,4 @@
+import { PluginIdSchema } from '@sigil/schema/ids';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -128,8 +129,8 @@ describe('EngineToMainMessageSchema', () => {
             ok: false,
             kind: 'domain',
             code: 'unknown_plugin',
-            pluginId: 'plugin-ghost',
-            error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
+            pluginId: PluginIdSchema.parse('com.example.plugin-ghost'),
+            error: 'Plugin "com.example.plugin-ghost" is not registered in the Manifest Registry.',
         });
 
         expect(result.success).toBe(true);
@@ -138,7 +139,7 @@ describe('EngineToMainMessageSchema', () => {
                 ok: false,
                 kind: 'domain',
                 code: 'unknown_plugin',
-                pluginId: 'plugin-ghost',
+                pluginId: PluginIdSchema.parse('com.example.plugin-ghost'),
             });
             expect('diagnostic' in result.data).toBe(false);
         }

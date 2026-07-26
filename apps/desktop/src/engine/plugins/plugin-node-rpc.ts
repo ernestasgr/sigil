@@ -1,4 +1,5 @@
 import { PipelineConditionSchema } from '@sigil/schema/conditions';
+import { EventNameSchema, NodeTypeNameSchema } from '@sigil/schema/ids';
 import { CapabilitySchema } from '@sigil/schema/manifest';
 import { NodeContractSnapshotSchema } from '@sigil/schema/node-contract';
 import { SwitchConfigSchema } from '@sigil/schema/nodes/switch';
@@ -37,7 +38,7 @@ export const NodePluginWorkerKind = {
 
 export const NodePluginWorkerLoadedSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.Loaded),
-    descriptorType: z.string(),
+    descriptorType: NodeTypeNameSchema,
     isTrigger: z.boolean(),
     contract: NodeContractSnapshotSchema.optional(),
     propertyDescriptors: z.array(SerializedPropertyDescriptorSchema).readonly().optional(),
@@ -103,7 +104,7 @@ export type NodePluginWorkerActivateError = z.infer<typeof NodePluginWorkerActiv
 export const NodePluginWorkerActivateEventSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.ActivateEvent),
     requestId: z.string(),
-    event: z.string(),
+    event: EventNameSchema,
     payload: z.unknown(),
     vars: z.record(z.string(), z.unknown()).optional(),
 });
@@ -126,7 +127,7 @@ const NodePluginDepsRpcEnvelopeSchema = z
 export const NodePluginDepsRpcSchema = z.discriminatedUnion('operation', [
     NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('event.emit'),
-        args: z.tuple([z.string().min(1), z.record(z.string(), z.unknown())]),
+        args: z.tuple([EventNameSchema, z.record(z.string(), z.unknown())]),
     }),
     NodePluginDepsRpcEnvelopeSchema.extend({
         operation: z.literal('sleep'),
@@ -256,7 +257,7 @@ export type NodePluginWorkerToMain = z.infer<typeof NodePluginWorkerToMainSchema
 export const NodePluginWorkerExecuteRequestSchema = z.object({
     kind: z.literal(NodePluginWorkerKind.ExecuteRequest),
     requestId: z.string(),
-    nodeType: z.string(),
+    nodeType: NodeTypeNameSchema,
     nodeConfig: z.unknown(),
     ctx: z.unknown(),
     deps: z

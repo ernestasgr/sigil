@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import type { Capability } from '@sigil/schema/manifest';
 import type { NodeContractRegistry } from '@sigil/schema/node-contract';
 import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
@@ -318,7 +319,7 @@ export function createEngine(options?: EngineOptions): Engine {
         pluginId: string,
         permissions: readonly Capability[],
     ): void => {
-        pluginLoader.updatePluginPermissions(pluginId, permissions);
+        pluginLoader.updatePluginPermissions(PluginIdSchema.parse(pluginId), permissions);
     };
 
     const registerPermissionTransitionReconciler = (
@@ -348,7 +349,7 @@ export function createEngine(options?: EngineOptions): Engine {
                 updatePluginPermissions,
                 emitPermissionChanged: (event) => bus.next({ ...event, timestamp: Date.now() }),
             },
-            pluginId,
+            PluginIdSchema.parse(pluginId),
             overrides,
             actor,
         );

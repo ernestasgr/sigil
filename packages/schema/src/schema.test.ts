@@ -41,6 +41,15 @@ describe('PipelineConditionSchema', () => {
         expect(result.success).toBe(true);
     });
 
+    it('rejects a noncanonical event name condition', () => {
+        const result = PipelineConditionSchema.safeParse({
+            target: 'event',
+            operator: 'equals',
+            value: 'File.Created',
+        });
+        expect(result.success).toBe(false);
+    });
+
     it('rejects an event name condition with a field', () => {
         const result = PipelineConditionSchema.safeParse({
             target: 'event',

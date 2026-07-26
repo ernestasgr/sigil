@@ -1,5 +1,5 @@
+import type { FileEventName } from '@sigil/schema/event-catalog';
 import {
-    BUILTIN_EVENT_CATALOG,
     createEventCatalog,
     createPluginEventCatalogEntries,
     DEFAULT_EVENT_CATALOG,
@@ -8,10 +8,10 @@ import {
     type EventFieldMetadata,
     eventCatalogSuggestions,
     eventPayloadFieldSuggestions,
-    type FileEventName,
+    FILE_EVENT_NAMES,
     findEventField,
 } from '@sigil/schema/event-catalog';
-import { type PluginId, PluginIdSchema } from '@sigil/schema/ids';
+import type { EventName, PluginId } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 
 export type {
@@ -26,25 +26,23 @@ export type {
 
 export const EVENT_CATALOG = DEFAULT_EVENT_CATALOG;
 
-export type EventCatalogManifest = Omit<Pick<Manifest, 'id' | 'emits'>, 'id'> & {
-    /** UI callers may supply discovered manifest data before schema parsing. */
-    readonly id: string;
-};
+export type EventCatalogManifest = Pick<Manifest, 'id' | 'emits'>;
 
 export type { EventCatalogSuggestion as CatalogSuggestion } from '@sigil/schema/event-catalog';
 
 type CatalogSuggestion = EventCatalogSuggestion;
+type EventNameSuggestion = EventCatalogSuggestion<EventName>;
 
 export const EVENT_NAME_OPTIONS: readonly {
     readonly value: FileEventName;
     readonly label: string;
-}[] = BUILTIN_EVENT_CATALOG.map((entry) => ({
-    value: entry.name,
-    label: entry.name,
+}[] = FILE_EVENT_NAMES.map((name) => ({
+    value: name,
+    label: name,
 }));
 
 export function createBuilderEventCatalog(
-    pluginEventNames: readonly string[] = [],
+    pluginEventNames: readonly EventName[] = [],
     pluginId?: PluginId,
 ): EventCatalog {
     return createEventCatalog(createPluginEventCatalogEntries(pluginEventNames, pluginId));
@@ -54,14 +52,14 @@ export function createBuilderEventCatalogFromManifests(
     manifests: readonly EventCatalogManifest[],
 ): EventCatalog {
     const entries = manifests.flatMap((manifest) =>
-        createPluginEventCatalogEntries(manifest.emits, PluginIdSchema.parse(manifest.id)),
+        createPluginEventCatalogEntries(manifest.emits, manifest.id),
     );
     return createEventCatalog(entries);
 }
 
 export function eventNameSuggestions(
     catalog: EventCatalog = EVENT_CATALOG,
-): readonly CatalogSuggestion[] {
+): readonly EventNameSuggestion[] {
     return eventCatalogSuggestions(catalog);
 }
 
@@ -74,7 +72,7 @@ export function payloadFieldSuggestions(
 export function payloadFieldMetadata(
     fieldPath: string,
     catalog: EventCatalog = EVENT_CATALOG,
-    eventName?: string,
+    eventName?: EventName,
 ): EventFieldMetadata | undefined {
     return findEventField(catalog, fieldPath, eventName);
 }

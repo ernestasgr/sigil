@@ -1,19 +1,22 @@
+import { type EventName, EventNameSchema, type PluginId } from '@sigil/schema/ids';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
 import type { ManifestRegistry } from '../plugins/manifest-registry.js';
 import type { BusEvent, EventBus, EventSink } from './event-bus.js';
 
+const LOG_OUTPUT_EVENT_NAME = EventNameSchema.parse('log.output');
+
 export type EmissionError =
     | { readonly kind: 'malformed'; readonly error: string; readonly eventName: string }
-    | { readonly kind: 'undeclared'; readonly eventName: string }
-    | { readonly kind: 'sink_failed'; readonly error: string; readonly eventName: string };
+    | { readonly kind: 'undeclared'; readonly eventName: EventName }
+    | { readonly kind: 'sink_failed'; readonly error: string; readonly eventName: EventName };
 export type EmissionResult = Either.Either<void, EmissionError>;
 
 export type BridgeEmissionResult = Promise<EmissionResult>;
 
 export const PluginEmissionSchema = z
     .object({
-        eventName: z.string().min(1),
+        eventName: EventNameSchema,
         payload: z.record(z.string(), z.unknown()),
     })
     .readonly();
@@ -21,11 +24,11 @@ export type PluginEmission = z.infer<typeof PluginEmissionSchema>;
 
 export interface Bridge {
     readonly emit: (
-        pluginId: string,
+        pluginId: PluginId,
         emission: PluginEmission,
         sink?: EventSink,
     ) => BridgeEmissionResult;
-    readonly log: (pluginId: string, message: string) => EmissionResult;
+    readonly log: (pluginId: PluginId, message: string) => EmissionResult;
 }
 
 export function createBridge(bus: EventBus, registry: ManifestRegistry): Bridge {
@@ -66,7 +69,7 @@ export function createBridge(bus: EventBus, registry: ManifestRegistry): Bridge 
         },
         log: (pluginId, message) => {
             if (!registry.has(pluginId)) {
-                return Either.left({ kind: 'undeclared', eventName: 'log.output' });
+                return Either.left({ kind: 'undeclared', eventName: LOG_OUTPUT_EVENT_NAME });
             }
             bus.next({ name: 'log.output', payload: { message } });
             return Either.right(undefined);

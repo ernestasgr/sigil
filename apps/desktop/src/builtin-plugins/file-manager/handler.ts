@@ -1,5 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import { basename, dirname, join, parse } from 'node:path';
+import { type PluginId, PluginIdSchema } from '@sigil/schema/ids';
 import { FileManagerConfigSchema } from '@sigil/schema/nodes/file-manager';
 import {
     type CollisionSuffixStyle,
@@ -12,7 +13,7 @@ import type { NodeHandler, NodeRunResult } from '../../engine/node-handlers/type
 import { narrowNode } from '../../engine/node-handlers/types.js';
 import type { CapabilityBroker } from '../../engine/persistence/capability-broker.js';
 
-const FILE_MANAGER_PLUGIN_ID = 'com.sigil.file-manager';
+const FILE_MANAGER_PLUGIN_ID = PluginIdSchema.parse('com.sigil.file-manager');
 
 type FileAction = 'move' | 'copy' | 'rename';
 
@@ -82,7 +83,7 @@ function findAvailablePath(originalPath: string, style: CollisionSuffixStyle): s
     return candidate;
 }
 
-function checkPermissions(broker: CapabilityBroker, pluginId: string): void {
+function checkPermissions(broker: CapabilityBroker, pluginId: PluginId): void {
     const readResult = broker.request({ pluginId, capability: 'filesystem.read' });
     if (Either.isLeft(readResult)) {
         throw new Error(`Permission denied: ${readResult.left.capability}`);

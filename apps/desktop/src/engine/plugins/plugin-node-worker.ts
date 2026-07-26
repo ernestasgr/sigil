@@ -5,8 +5,13 @@ import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import vm from 'node:vm';
 import { parentPort, workerData } from 'node:worker_threads';
-import type { PluginId } from '@sigil/schema/ids';
-import { PipelineNodeIdSchema, PluginIdSchema } from '@sigil/schema/ids';
+import type { EventName, NodeTypeName, PluginId } from '@sigil/schema/ids';
+import {
+    EventNameSchema,
+    NodeTypeNameSchema,
+    PipelineNodeIdSchema,
+    PluginIdSchema,
+} from '@sigil/schema/ids';
 import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
 import {
     resolveDeclarativeOutputPorts,
@@ -73,7 +78,7 @@ const port = parentPort;
 
 const WorkerDataSchema = z.object({
     pluginId: PluginIdSchema,
-    manifestNodeType: z.string().min(1),
+    manifestNodeType: NodeTypeNameSchema,
     // Keep this field opaque until main() can turn complexity violations into
     // a typed load message instead of letting WorkerDataSchema.parse throw.
     nodeContract: z.unknown().optional(),
@@ -460,7 +465,7 @@ function remoteCall<TOperation extends NodePluginDepsRpcOperation, TResult>(
 type PluginBusEvent = Parameters<NodeHandlerDeps['bus']['next']>[0];
 
 interface PluginEventEmission {
-    readonly eventName: string;
+    readonly eventName: EventName;
     readonly payload: Readonly<Record<string, unknown>>;
 }
 
@@ -470,8 +475,11 @@ function normalizePluginBusEvent(value: unknown): Either.Either<PluginEventEmiss
     }
 
     const eventName = value.name;
-    if (typeof eventName !== 'string' || eventName.length === 0) {
-        return Either.left('Invalid Plugin Event emission: event name must be a non-empty string');
+    const parsedEventName = EventNameSchema.safeParse(eventName);
+    if (!parsedEventName.success) {
+        return Either.left(
+            `Invalid Plugin Event emission: event name is not canonical: ${parsedEventName.error.message}`,
+        );
     }
 
     if (eventName === 'plugin.event') {
@@ -485,7 +493,7 @@ function normalizePluginBusEvent(value: unknown): Either.Either<PluginEventEmiss
         return Either.left('Invalid Plugin Event emission: payload must be an object');
     }
 
-    return Either.right({ eventName, payload });
+    return Either.right({ eventName: parsedEventName.data, payload });
 }
 
 type ActivationTeardown = () => void | Promise<void>;
@@ -706,7 +714,13 @@ function createProxiedDeps(
             // Send an intentionally invalid event.emit envelope so the main-side
             // receive site records the Plugin identity and rejects the request
             // before it can reach the Bridge or Event Bus.
-            void emit('', {}).catch(() => undefined);
+            void depRpcCall(
+                {
+                    operation: 'event.emit',
+                    args: ['', {}],
+                } as unknown as NodePluginDepsRpcRequest,
+                executeRequestId,
+            ).catch(() => undefined);
             throw new Error(
                 `[plugin:${data.pluginId}] denied operation "event.emit": ${emission.left}`,
             );
@@ -997,7 +1011,7 @@ type RuntimeContractValidation =
 function validateRuntimeContract(
     contract: unknown,
     pluginId: PluginId,
-    nodeType: string,
+    nodeType: NodeTypeName,
     descriptor: RawPluginDescriptor,
     isTrigger: boolean,
 ): RuntimeContractValidation {
@@ -1084,6 +1098,15 @@ async function main(): Promise<void> {
         return;
     }
 
+    const parsedDescriptorType = NodeTypeNameSchema.safeParse(descriptorType);
+    if (!parsedDescriptorType.success) {
+        send({
+            kind: NodePluginWorkerKind.LoadError,
+            error: `Descriptor type is not canonical: ${parsedDescriptorType.error.message}`,
+        });
+        return;
+    }
+
     if (!isNodeHandler(mod.handler) && typeof mod.handler !== 'function') {
         send({
             kind: NodePluginWorkerKind.LoadError,
@@ -1115,7 +1138,7 @@ async function main(): Promise<void> {
         const contractResult = validateRuntimeContract(
             data.nodeContract,
             data.pluginId,
-            descriptorType,
+            parsedDescriptorType.data,
             mod.descriptor,
             isTrigger,
         );
@@ -1132,7 +1155,7 @@ async function main(): Promise<void> {
 
     send({
         kind: NodePluginWorkerKind.Loaded,
-        descriptorType,
+        descriptorType: parsedDescriptorType.data,
         isTrigger,
         ...(validatedContract === undefined ? {} : { contract: validatedContract }),
         ...(serializedProperties.descriptors.length === 0
@@ -1387,7 +1410,7 @@ async function handleActivate(
             send({
                 kind: NodePluginWorkerKind.ActivateEvent,
                 requestId: msg.requestId,
-                event: eventCtx.event,
+                event: EventNameSchema.parse(eventCtx.event),
                 payload: eventCtx.payload,
                 vars: eventCtx.vars,
             });

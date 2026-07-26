@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PipelineEdge } from './edges.js';
+import { FileEventNameSchema } from './event-catalog.js';
 import {
     NodeOutputPortIdSchema,
+    NodeTypeNameSchema,
     PipelineEdgeIdSchema,
     PipelineNodeIdSchema,
     PluginIdSchema,
@@ -20,12 +22,13 @@ import {
 } from './topology.js';
 
 const pid = (id: string) => PluginIdSchema.parse(id);
+const nt = (type: string) => NodeTypeNameSchema.parse(type);
 
 const trigger = (id: string): PipelineNode => ({
     id: PipelineNodeIdSchema.parse(id),
     type: 'manual-trigger',
     config: {
-        eventName: 'file.created',
+        eventName: FileEventNameSchema.parse('file.created'),
         payload: { path: '/tmp/file.txt', name: 'file.txt', ext: 'txt', size: 1, dir: '/tmp' },
     },
 });
@@ -395,7 +398,7 @@ describe('validateWorkflowTopology', () => {
     it('allows a plugin Node to declare trigger and output-port capabilities', () => {
         const plugin: PipelineNode = {
             id: PipelineNodeIdSchema.parse('plugin-trigger'),
-            type: 'tick-trigger',
+            type: nt('tick-trigger'),
             pluginId: pid('com.example.tick'),
             config: {},
         };
@@ -449,7 +452,7 @@ describe('validateWorkflowTopology', () => {
                     trigger('trigger'),
                     {
                         id: PipelineNodeIdSchema.parse('router'),
-                        type: 'router-node',
+                        type: nt('router-node'),
                         pluginId: pid('com.example.router'),
                         config: {
                             target: 'event',
@@ -495,7 +498,7 @@ describe('validateWorkflowTopology', () => {
                     trigger('trigger'),
                     {
                         id: PipelineNodeIdSchema.parse('unknown'),
-                        type: 'unknown-node',
+                        type: nt('unknown-node'),
                         pluginId: pid('com.example.missing'),
                         config: {},
                     },
@@ -528,7 +531,7 @@ describe('validateWorkflowTopology', () => {
                     trigger('trigger'),
                     {
                         id: PipelineNodeIdSchema.parse('unknown'),
-                        type: 'unknown-node',
+                        type: nt('unknown-node'),
                         pluginId: pid('com.example.missing'),
                         config: {},
                     },
@@ -578,7 +581,7 @@ describe('validateWorkflowTopology', () => {
     it('reports an unsupported Node handler as a structured diagnostic', () => {
         const unsupported: PipelineNode = {
             id: PipelineNodeIdSchema.parse('missing'),
-            type: 'missing-node',
+            type: nt('missing-node'),
             pluginId: pid('com.example.missing'),
             config: {},
         };

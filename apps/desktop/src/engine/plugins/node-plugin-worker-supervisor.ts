@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
+import type { PluginId } from '@sigil/schema/ids';
 import type { SerializableNodeContract } from '@sigil/schema/node-contract';
 import { type WorkflowContext, WorkflowContextSchema } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
@@ -72,9 +73,9 @@ export interface NodePluginWorkerSupervisor {
         preparation: NodePluginPreparation,
         deps: NodePluginWorkerLoadDependencies,
     ) => Promise<NodePluginWorkerLoadResult>;
-    readonly disposePlugin: (pluginId: string) => Promise<void>;
+    readonly disposePlugin: (pluginId: PluginId) => Promise<void>;
     readonly updatePermissions: (
-        pluginId: string,
+        pluginId: PluginId,
         permissions: NodePluginPreparation['permissions'],
     ) => void;
     readonly shutdown: () => Promise<void>;
@@ -187,12 +188,12 @@ async function waitForWorkerLoad(
 export function createNodePluginWorkerSupervisor(
     options: NodePluginWorkerSupervisorOptions = {},
 ): NodePluginWorkerSupervisor {
-    const workers = new Map<string, ManagedWorker>();
-    const loadingPluginIds = new Set<string>();
+    const workers = new Map<PluginId, ManagedWorker>();
+    const loadingPluginIds = new Set<PluginId>();
     let isShuttingDown = false;
     let shutdownPromise: Promise<void> | undefined;
 
-    const forgetWorker = (pluginId: string, worker: Worker): void => {
+    const forgetWorker = (pluginId: PluginId, worker: Worker): void => {
         if (workers.get(pluginId)?.worker === worker) workers.delete(pluginId);
     };
 
@@ -316,7 +317,7 @@ export function createNodePluginWorkerSupervisor(
         }
     };
 
-    const disposePlugin = async (pluginId: string): Promise<void> => {
+    const disposePlugin = async (pluginId: PluginId): Promise<void> => {
         const managed = workers.get(pluginId);
         if (!managed) return;
         managed.fail(new Error(`Plugin worker "${pluginId}" was disposed.`));
@@ -325,7 +326,7 @@ export function createNodePluginWorkerSupervisor(
     };
 
     const updatePermissions = (
-        pluginId: string,
+        pluginId: PluginId,
         permissions: NodePluginPreparation['permissions'],
     ): void => {
         const managed = workers.get(pluginId);
@@ -364,7 +365,7 @@ interface WorkerNodeHandlerProxy {
 }
 
 function createWorkerNodeHandlerProxy(
-    pluginId: string,
+    pluginId: PluginId,
     worker: Worker,
     isTrigger: boolean,
     kernel: KernelDeps | undefined,

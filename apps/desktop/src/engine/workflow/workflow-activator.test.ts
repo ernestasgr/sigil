@@ -2,7 +2,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompiledPipeline } from '@sigil/schema';
-import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
+import {
+    EventNameSchema,
+    NodeTypeNameSchema,
+    PluginIdSchema,
+    WorkflowIdSchema,
+} from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import {
     fixedOutputPortSpec,
@@ -148,8 +153,8 @@ describe('WorkflowActivator lifecycle', () => {
                 id: pluginId,
                 version: '1.0.0',
                 permissions: ['filesystem.read'],
-                emits: ['plugin.event'],
-                nodeType: 'test-permission-action',
+                emits: [EventNameSchema.parse('plugin.event')],
+                nodeType: NodeTypeNameSchema.parse('test-permission-action'),
                 nodeContract,
             };
             expect(Either.isRight(engine.registry.register(manifest))).toBe(true);

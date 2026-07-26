@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+    NodeTypeNameSchema,
     type PipelineNodeId,
     PipelineNodeIdSchema,
     type PluginId,
@@ -14,8 +15,19 @@ import {
 } from './catalog.js';
 import type { NodeDescriptor } from './types.js';
 
-export type { NodeOutputPortId, PipelineEdgeId, PipelineNodeId, PluginId } from '../ids.js';
-export { NodeOutputPortIdSchema, PipelineNodeIdSchema, PluginIdSchema } from '../ids.js';
+export type {
+    NodeOutputPortId,
+    NodeTypeName,
+    PipelineEdgeId,
+    PipelineNodeId,
+    PluginId,
+} from '../ids.js';
+export {
+    NodeOutputPortIdSchema,
+    NodeTypeNameSchema,
+    PipelineNodeIdSchema,
+    PluginIdSchema,
+} from '../ids.js';
 export type { BuiltinNodeConfig, NodeType } from './catalog.js';
 export type { DelayConfig } from './delay.js';
 export { MAX_DELAY_MS } from './delay.js';
@@ -101,7 +113,7 @@ const BuiltinPipelineNodeSchema = z.discriminatedUnion(
 const PluginPipelineNodeSchema = z
     .object({
         id: PipelineNodeIdSchema,
-        type: z.string().min(1),
+        type: NodeTypeNameSchema,
         pluginId: PluginIdSchema,
         config: z.unknown(),
     })

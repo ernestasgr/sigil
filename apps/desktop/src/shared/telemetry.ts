@@ -1,3 +1,4 @@
+import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/schema/ids';
 import { z } from 'zod';
 
 export const TelemetryKindSchema = z.enum([
@@ -36,8 +37,8 @@ export const EventTelemetrySchema = z
         pipelineId: z.string().min(1).optional(),
         runId: z.string().min(1).optional(),
         nodeId: z.string().min(1).optional(),
-        nodeType: z.string().min(1).optional(),
-        pluginId: z.string().min(1).optional(),
+        nodeType: NodeTypeNameSchema.optional(),
+        pluginId: PluginIdSchema.optional(),
         outcome: TelemetryOutcomeSchema.optional(),
         durationMs: z.number().finite().nonnegative().optional(),
         summary: z.string().max(256),

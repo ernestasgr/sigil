@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { PluginIdSchema } from './ids.js';
+import { EventNameSchema, NodeTypeNameSchema, PluginIdSchema } from './ids.js';
 import { SerializableNodeContractSchema } from './node-contract.js';
 
 export const CapabilitySchema = z.enum([
@@ -22,13 +22,27 @@ export const ManifestSchema = z
         id: PluginIdSchema,
         version: z.string().min(1),
         permissions: z.array(CapabilitySchema),
-        emits: z.array(z.string().min(1)).min(1),
-        nodeType: z.string().min(1).optional(),
+        emits: z.array(EventNameSchema).min(1),
+        nodeType: NodeTypeNameSchema.optional(),
         /** Plain-data Node Contract; runtime functions remain inside the worker. */
         nodeContract: SerializableNodeContractSchema.optional(),
     })
     .strict()
     .superRefine((manifest, ctx) => {
+        const eventIndexes = new Map<string, number>();
+        for (const [index, eventName] of manifest.emits.entries()) {
+            const previousIndex = eventIndexes.get(eventName);
+            if (previousIndex !== undefined) {
+                ctx.addIssue({
+                    code: 'custom',
+                    path: ['emits', index],
+                    message: `Event name "${eventName}" is declared more than once (first declared at index ${previousIndex}).`,
+                });
+            } else {
+                eventIndexes.set(eventName, index);
+            }
+        }
+
         if (!manifest.nodeContract) return;
 
         if (manifest.nodeType === undefined) {
@@ -66,7 +80,16 @@ export const ManifestSchema = z
     });
 export type Manifest = z.infer<typeof ManifestSchema>;
 
-export type ManifestParseError = { readonly ok: false; readonly error: string };
+export interface ManifestParseIssue {
+    readonly path: readonly PropertyKey[];
+    readonly message: string;
+}
+
+export type ManifestParseError = {
+    readonly ok: false;
+    readonly error: string;
+    readonly issues: readonly ManifestParseIssue[];
+};
 export type ManifestParseOk = { readonly ok: true; readonly value: Manifest };
 export type ManifestParseResult = ManifestParseOk | ManifestParseError;
 
@@ -75,7 +98,11 @@ export function parseManifest(unknown: unknown): ManifestParseResult {
     try {
         result = ManifestSchema.safeParse(unknown);
     } catch {
-        return { ok: false, error: 'Manifest could not be validated safely.' };
+        return {
+            ok: false,
+            error: 'Manifest could not be validated safely.',
+            issues: [],
+        };
     }
     if (result.success) {
         return { ok: true, value: result.data };
@@ -83,5 +110,9 @@ export function parseManifest(unknown: unknown): ManifestParseResult {
     return {
         ok: false,
         error: result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('\n'),
+        issues: result.error.issues.map((issue) => ({
+            path: issue.path,
+            message: issue.message,
+        })),
     };
 }

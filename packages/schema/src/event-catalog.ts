@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { type PluginId, PluginIdSchema } from './ids.js';
+import { type EventName, EventNameSchema, type PluginId, PluginIdSchema } from './ids.js';
 
 export const FILE_EVENT_NAMES = ['file.created', 'file.modified', 'file.deleted'] as const;
 export const FileEventNameSchema = z.enum(FILE_EVENT_NAMES);
@@ -24,7 +24,7 @@ export type EventCatalogSource = z.infer<typeof EventCatalogSourceSchema>;
 
 export const EventCatalogEntrySchema = z
     .object({
-        name: z.string().min(1),
+        name: EventNameSchema,
         label: z.string().min(1),
         description: z.string().min(1),
         source: EventCatalogSourceSchema,
@@ -35,19 +35,19 @@ export const EventCatalogEntrySchema = z
     .readonly();
 export type EventCatalogEntry = z.infer<typeof EventCatalogEntrySchema>;
 
-export interface EventCatalogSuggestion {
-    readonly value: string;
+export interface EventCatalogSuggestion<TValue extends string = string> {
+    readonly value: TValue;
     readonly label: string;
     readonly description: string;
 }
 
 export type BuiltinEventCatalogEntry = Omit<EventCatalogEntry, 'name' | 'source'> & {
-    readonly name: FileEventName;
+    readonly name: EventName;
     readonly source: 'builtin';
 };
 
 export type EventCatalogEntryInput = {
-    readonly name: string;
+    readonly name: EventName;
     readonly label?: string;
     readonly description?: string;
     readonly source?: Exclude<EventCatalogSource, 'opaque'>;
@@ -91,7 +91,10 @@ export const FILE_EVENT_FIELDS: readonly EventFieldMetadata[] = [
 ];
 
 const FILE_EVENT_DETAILS: Readonly<
-    Record<FileEventName, { readonly label: string; readonly description: string }>
+    Record<
+        (typeof FILE_EVENT_NAMES)[number],
+        { readonly label: string; readonly description: string }
+    >
 > = {
     'file.created': {
         label: 'File created',
@@ -107,37 +110,37 @@ const FILE_EVENT_DETAILS: Readonly<
     },
 };
 
-export const BUILTIN_EVENT_CATALOG: readonly BuiltinEventCatalogEntry[] =
-    FileEventNameSchema.options.map(
-        (name): BuiltinEventCatalogEntry => ({
+export const BUILTIN_EVENT_CATALOG: readonly BuiltinEventCatalogEntry[] = FILE_EVENT_NAMES.map(
+    (rawName): BuiltinEventCatalogEntry => {
+        const name = EventNameSchema.parse(FileEventNameSchema.parse(rawName));
+        return {
             name,
-            ...FILE_EVENT_DETAILS[name],
+            ...FILE_EVENT_DETAILS[rawName],
             source: 'builtin',
             fields: FILE_EVENT_FIELDS,
-        }),
-    );
+        };
+    },
+);
 
 export interface EventCatalog {
     readonly entries: readonly EventCatalogEntry[];
 }
 
-function normalizeEntry(input: EventCatalogEntryInput): EventCatalogEntry | null {
-    const name = input.name.trim();
-    if (name.length === 0) return null;
-
+function normalizeEntry(input: EventCatalogEntryInput): EventCatalogEntry {
     const parsed = EventCatalogEntrySchema.safeParse({
-        name,
-        label: input.label?.trim() || name,
-        description: input.description?.trim() || 'Payload fields are opaque for this Event.',
+        name: input.name,
+        label: input.label || input.name,
+        description: input.description || 'Payload fields are opaque for this Event.',
         source: input.source ?? 'plugin',
         ...(input.pluginId === undefined ? {} : { pluginId: input.pluginId }),
         fields: input.fields ?? [],
     });
-    return parsed.success ? parsed.data : null;
+    if (parsed.success) return parsed.data;
+    throw new Error(`Invalid Event catalog entry: ${parsed.error.message}`);
 }
 
 export function createPluginEventCatalogEntries(
-    eventNames: readonly string[],
+    eventNames: readonly EventName[],
     pluginId?: PluginId,
 ): readonly EventCatalogEntryInput[] {
     return eventNames.map((name) => ({
@@ -156,33 +159,35 @@ export function createEventCatalog(
     }
     for (const input of additionalEntries) {
         const entry = normalizeEntry(input);
-        if (entry && !entries.has(entry.name)) entries.set(entry.name, entry);
+        if (!entries.has(entry.name)) entries.set(entry.name, entry);
     }
     return { entries: Object.freeze([...entries.values()]) };
 }
 
-export function findEvent(catalog: EventCatalog, eventName: string): EventCatalogEntry | undefined {
+export function findEvent(
+    catalog: EventCatalog,
+    eventName: EventName,
+): EventCatalogEntry | undefined {
     return catalog.entries.find((entry) => entry.name === eventName);
 }
 
-export function opaqueEventCatalogEntry(eventName: string): EventCatalogEntry {
-    const name = eventName.trim();
+export function opaqueEventCatalogEntry(eventName: EventName): EventCatalogEntry {
     return {
-        name,
-        label: name || 'Opaque Event',
+        name: eventName,
+        label: eventName,
         description: 'No payload field metadata is available for this Event.',
         source: 'opaque',
         fields: [],
     };
 }
 
-export function resolveEvent(catalog: EventCatalog, eventName: string): EventCatalogEntry {
+export function resolveEvent(catalog: EventCatalog, eventName: EventName): EventCatalogEntry {
     return findEvent(catalog, eventName) ?? opaqueEventCatalogEntry(eventName);
 }
 
 export function getEventPayloadFields(
     catalog: EventCatalog,
-    eventName?: string,
+    eventName?: EventName,
 ): readonly EventFieldMetadata[] {
     if (eventName !== undefined) return resolveEvent(catalog, eventName).fields;
 
@@ -198,14 +203,14 @@ export function getEventPayloadFields(
 export function findEventField(
     catalog: EventCatalog,
     fieldPath: string,
-    eventName?: string,
+    eventName?: EventName,
 ): EventFieldMetadata | undefined {
     return getEventPayloadFields(catalog, eventName).find((field) => field.path === fieldPath);
 }
 
 export function eventCatalogSuggestions(
     catalog: EventCatalog = DEFAULT_EVENT_CATALOG,
-): readonly EventCatalogSuggestion[] {
+): readonly EventCatalogSuggestion<EventName>[] {
     return catalog.entries.map((entry) => ({
         value: entry.name,
         label: entry.label,

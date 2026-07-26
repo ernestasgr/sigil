@@ -1,5 +1,6 @@
 import { CompiledPipelineSchema } from '@sigil/schema';
 import { FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import { CapabilitySchema } from '@sigil/schema/manifest';
 import { z } from 'zod';
 
@@ -66,7 +67,7 @@ export type WorkflowIdInput = z.input<typeof WorkflowIdInputSchema>;
 
 export const PermissionOverrideInputSchema = z
     .object({
-        pluginId: z.string(),
+        pluginId: PluginIdSchema,
         overrides: z.array(CapabilitySchema).readonly(),
     })
     .readonly();

@@ -16,7 +16,11 @@ export type FileWatcherConfig = z.infer<typeof FileWatcherConfigSchema>;
 export const FileWatcherNode = defineBuiltinNode({
     type: 'file-watcher',
     configSchema: FileWatcherConfigSchema,
-    defaultConfig: { path: '/', recursive: true, events: ['file.created'] },
+    defaultConfig: {
+        path: '/',
+        recursive: true,
+        events: [FileEventNameSchema.parse('file.created')],
+    },
     contract: {
         identity: { namespace: 'builtin', type: 'file-watcher' },
         version: 1,

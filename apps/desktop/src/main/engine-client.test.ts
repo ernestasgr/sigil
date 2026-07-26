@@ -1,3 +1,4 @@
+import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/schema/ids';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     createEngineDiagnostic,
@@ -22,6 +23,8 @@ import {
 } from './engine-client.js';
 
 const WORKFLOW_ID = WorkflowIdSchema.parse('wf-1');
+const PLUGIN_GHOST_ID = PluginIdSchema.parse('com.example.plugin-ghost');
+const LOG_NODE_TYPE = NodeTypeNameSchema.parse('log');
 
 function buildProps(): { props: RpcClientProps; sent: unknown[] } {
     const sent: unknown[] = [];
@@ -235,15 +238,15 @@ describe('permission override outcome mapping', () => {
                 ok: false,
                 kind: 'domain',
                 code: 'unknown_plugin',
-                pluginId: 'plugin-ghost',
-                error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
+                pluginId: PLUGIN_GHOST_ID,
+                error: `Plugin "${PLUGIN_GHOST_ID}" is not registered in the Manifest Registry.`,
             }),
         ).toEqual({
             ok: false,
             kind: 'domain',
             code: 'unknown_plugin',
-            pluginId: 'plugin-ghost',
-            error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
+            pluginId: PLUGIN_GHOST_ID,
+            error: `Plugin "${PLUGIN_GHOST_ID}" is not registered in the Manifest Registry.`,
         });
     });
 
@@ -423,7 +426,7 @@ describe('dispatch', () => {
                     pipelineId: 'pipeline-1',
                     runId: 'run-1',
                     nodeId: 'log-node',
-                    nodeType: 'log',
+                    nodeType: LOG_NODE_TYPE,
                     summary: '{"message":"hello"}',
                 },
             },

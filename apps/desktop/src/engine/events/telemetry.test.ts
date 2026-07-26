@@ -1,10 +1,18 @@
-import { WorkflowIdSchema } from '@sigil/schema/ids';
+import {
+    EventNameSchema,
+    NodeTypeNameSchema,
+    PluginIdSchema,
+    WorkflowIdSchema,
+} from '@sigil/schema/ids';
 import { describe, expect, it } from 'vitest';
 
 import { type BusEvent, createEventBus } from './event-bus.js';
 import { createRunTelemetry } from './telemetry.js';
 
 const WORKFLOW_ID = WorkflowIdSchema.parse('workflow-1');
+const PLUGIN_ID = PluginIdSchema.parse('com.example.plugin');
+const NODE_TYPE = NodeTypeNameSchema.parse('plugin-node');
+const DELAY_NODE_TYPE = NodeTypeNameSchema.parse('delay');
 
 describe('run telemetry', () => {
     it('correlates events with engine time and a bounded redacted summary', () => {
@@ -25,15 +33,15 @@ describe('run telemetry', () => {
             {
                 name: 'plugin.event',
                 payload: {
-                    pluginId: 'com.example.plugin',
-                    eventName: 'plugin.output',
+                    pluginId: PLUGIN_ID,
+                    eventName: EventNameSchema.parse('plugin.output'),
                     data: {
                         message: 'authorization: Bearer also-do-not-leak',
                         token: 'do-not-leak',
                     },
                 },
             },
-            { kind: 'plugin', nodeId: 'node-1', nodeType: 'plugin-node' },
+            { kind: 'plugin', nodeId: 'node-1', nodeType: NODE_TYPE },
         );
 
         expect(events).toHaveLength(1);
@@ -95,7 +103,7 @@ describe('run telemetry', () => {
             },
         );
 
-        const node = telemetry.forNode({ nodeId: 'node-1', nodeType: 'delay' });
+        const node = telemetry.forNode({ nodeId: 'node-1', nodeType: DELAY_NODE_TYPE });
         const span = node.start();
         span.finish('succeeded');
         span.finish('failed', 'ignored duplicate finish');
@@ -125,31 +133,27 @@ describe('run telemetry', () => {
             { now: () => 1234, createEventId: () => 'diagnostic-1' },
         );
 
-        telemetry
-            .forNode({ nodeId: 'node-1', nodeType: 'plugin-node', pluginId: 'plugin-1' })
-            .bus.next({
-                name: 'engine.diagnostic',
-                payload: {
-                    message: 'Permission denied: filesystem.read',
-                    kind: 'authorization',
-                    source: 'plugin',
-                    pluginId: 'plugin-1',
-                    outcome: 'failed',
-                },
-            });
+        telemetry.forNode({ nodeId: 'node-1', nodeType: NODE_TYPE, pluginId: PLUGIN_ID }).bus.next({
+            name: 'engine.diagnostic',
+            payload: {
+                message: 'Permission denied: filesystem.read',
+                kind: 'authorization',
+                source: 'plugin',
+                pluginId: PLUGIN_ID,
+                outcome: 'failed',
+            },
+        });
 
-        telemetry
-            .forNode({ nodeId: 'node-1', nodeType: 'plugin-node', pluginId: 'plugin-1' })
-            .bus.next({
-                name: 'engine.diagnostic',
-                payload: {
-                    message: 'Worker dropped diagnostic after shutdown',
-                    kind: 'worker',
-                    source: 'worker',
-                    pluginId: 'plugin-1',
-                    outcome: 'dropped',
-                },
-            });
+        telemetry.forNode({ nodeId: 'node-1', nodeType: NODE_TYPE, pluginId: PLUGIN_ID }).bus.next({
+            name: 'engine.diagnostic',
+            payload: {
+                message: 'Worker dropped diagnostic after shutdown',
+                kind: 'worker',
+                source: 'worker',
+                pluginId: PLUGIN_ID,
+                outcome: 'dropped',
+            },
+        });
 
         expect(events[0]?.telemetry).toMatchObject({
             kind: 'diagnostic',
@@ -157,7 +161,7 @@ describe('run telemetry', () => {
             workflowId: WORKFLOW_ID,
             runId: 'run-1',
             nodeId: 'node-1',
-            pluginId: 'plugin-1',
+            pluginId: PLUGIN_ID,
             outcome: 'failed',
         });
         expect(events[1]?.telemetry).toMatchObject({
@@ -166,7 +170,7 @@ describe('run telemetry', () => {
             workflowId: WORKFLOW_ID,
             runId: 'run-1',
             nodeId: 'node-1',
-            pluginId: 'plugin-1',
+            pluginId: PLUGIN_ID,
             outcome: 'dropped',
         });
     });

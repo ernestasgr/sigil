@@ -1,5 +1,10 @@
 import { type FileEventPayload, FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
-import { WorkflowIdSchema } from '@sigil/schema/ids';
+import {
+    EventNameSchema,
+    NodeTypeNameSchema,
+    PluginIdSchema,
+    WorkflowIdSchema,
+} from '@sigil/schema/ids';
 import { CapabilitySchema } from '@sigil/schema/manifest';
 import { Either } from 'effect';
 import { z } from 'zod';
@@ -29,8 +34,8 @@ export const WorkflowErrorPayloadSchema = z
         workflowId: WorkflowIdSchema.optional(),
         runId: z.string().optional(),
         nodeId: z.string(),
-        nodeType: z.string().optional(),
-        pluginId: z.string().optional(),
+        nodeType: NodeTypeNameSchema.optional(),
+        pluginId: PluginIdSchema.optional(),
         message: z.string(),
         outcome: z.literal('failed').optional(),
     })
@@ -88,7 +93,7 @@ const NodeRunPayloadFields = {
     workflowId: WorkflowIdSchema.optional(),
     runId: z.string().optional(),
     nodeId: z.string(),
-    nodeType: z.string(),
+    nodeType: NodeTypeNameSchema,
 } as const;
 
 export const NodeStartedPayloadSchema = z
@@ -127,8 +132,8 @@ export type NotificationShowPayload = z.infer<typeof NotificationShowPayloadSche
 
 export const PluginBusEventPayloadSchema = z
     .object({
-        pluginId: z.string(),
-        eventName: z.string(),
+        pluginId: PluginIdSchema,
+        eventName: EventNameSchema,
         data: z.record(z.string(), z.unknown()),
     })
     .readonly();
@@ -154,7 +159,7 @@ const EffectiveCapabilityViewSchema = z
 
 export const PluginPermissionChangedPayloadSchema = z
     .object({
-        pluginId: z.string().min(1),
+        pluginId: PluginIdSchema,
         previous: EffectiveCapabilityViewSchema,
         next: EffectiveCapabilityViewSchema,
         actor: PermissionTransitionActorSchema,
@@ -186,12 +191,12 @@ export const EngineDiagnosticPayloadSchema = z
         message: z.string(),
         kind: z.string().optional(),
         source: TelemetryDiagnosticSourceSchema.optional(),
-        pluginId: z.string().min(1).optional(),
+        pluginId: PluginIdSchema.optional(),
         workflowId: z.string().min(1).optional(),
         pipelineId: z.string().min(1).optional(),
         runId: z.string().min(1).optional(),
         nodeId: z.string().min(1).optional(),
-        nodeType: z.string().min(1).optional(),
+        nodeType: NodeTypeNameSchema.optional(),
         outcome: TelemetryOutcomeSchema.optional(),
     })
     .readonly();

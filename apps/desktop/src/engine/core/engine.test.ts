@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type CompiledPipeline, parsePipeline } from '@sigil/schema';
-import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
+import { EventNameSchema, PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
 import type { FileWatcherConfig } from '@sigil/schema/nodes/file-watcher';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
@@ -103,7 +103,7 @@ describe('createEngine', () => {
             id: PluginIdSchema.parse('com.sigil.permission-telemetry'),
             version: '1.0.0',
             permissions: ['filesystem.read', 'state.write'],
-            emits: ['stub.event'],
+            emits: [EventNameSchema.parse('stub.event')],
         };
         const engine = createEngine({
             defaultDatabasePath: join(tempDir, 'engine.db'),
@@ -150,7 +150,7 @@ describe('createEngine', () => {
     it('applies repeated Engine-owned permission transitions to persistence, the Broker, and a loaded worker', async () => {
         const tempDir = mkdtempSync(join(tmpdir(), 'sigil-permission-engine-'));
         const overridesPath = join(tempDir, 'permission-overrides.json');
-        const pluginId = 'com.sigil.file-manager';
+        const pluginId = PluginIdSchema.parse('com.sigil.file-manager');
         const engine = createEngine({
             defaultDatabasePath: join(tempDir, 'engine.db'),
             permissionOverridesPath: overridesPath,
@@ -721,8 +721,8 @@ describe('createEngine', () => {
 
         expect(engine.handlerRegistry.has('file-watcher')).toBe(true);
         expect(engine.handlerRegistry.has('file-manager')).toBe(true);
-        expect(engine.registry.has('com.sigil.file-watcher')).toBe(true);
-        expect(engine.registry.has('com.sigil.file-manager')).toBe(true);
+        expect(engine.registry.has(PluginIdSchema.parse('com.sigil.file-watcher'))).toBe(true);
+        expect(engine.registry.has(PluginIdSchema.parse('com.sigil.file-manager'))).toBe(true);
         engine.dispose();
     });
 
@@ -840,8 +840,8 @@ describe('createEngine — databasePath from properties', () => {
 
         expect(engine.handlerRegistry.has('file-manager')).toBe(true);
         expect(engine.handlerRegistry.has('file-watcher')).toBe(true);
-        expect(engine.registry.has('com.sigil.file-manager')).toBe(true);
-        expect(engine.registry.has('com.sigil.file-watcher')).toBe(true);
+        expect(engine.registry.has(PluginIdSchema.parse('com.sigil.file-manager'))).toBe(true);
+        expect(engine.registry.has(PluginIdSchema.parse('com.sigil.file-watcher'))).toBe(true);
 
         const manifests = engine.registry.all();
         const ids = manifests.map((m) => m.id);

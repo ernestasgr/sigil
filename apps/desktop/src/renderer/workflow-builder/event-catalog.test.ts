@@ -1,4 +1,4 @@
-import { PluginIdSchema } from '@sigil/schema/ids';
+import { EventNameSchema, PluginIdSchema } from '@sigil/schema/ids';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -11,7 +11,7 @@ import {
 describe('Workflow Builder Event catalog adapter', () => {
     it('keeps Plugin and unknown Events opaque while exposing built-in suggestions', () => {
         const catalog = createBuilderEventCatalog(
-            ['plugin.received'],
+            [EventNameSchema.parse('plugin.received')],
             PluginIdSchema.parse('com.example.plugin'),
         );
 
@@ -29,7 +29,10 @@ describe('Workflow Builder Event catalog adapter', () => {
 
     it('adds Events declared by loaded Plugin manifests to the Builder catalog', () => {
         const catalog = createBuilderEventCatalogFromManifests([
-            { id: 'com.example.events', emits: ['plugin.received'] },
+            {
+                id: PluginIdSchema.parse('com.example.events'),
+                emits: [EventNameSchema.parse('plugin.received')],
+            },
         ]);
 
         expect(catalog.entries).toContainEqual(

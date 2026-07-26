@@ -1,23 +1,36 @@
-import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
+import {
+    EventNameSchema,
+    NodeTypeNameSchema,
+    PluginIdSchema,
+    WorkflowIdSchema,
+} from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { createManifestRegistry } from '../plugins/manifest-registry.js';
-import { createBridge } from './bridge.js';
+import { createBridge, PluginEmissionSchema } from './bridge.js';
 import type { BusEvent } from './event-bus.js';
 import { createEventBus } from './event-bus.js';
 import { createRunTelemetry } from './telemetry.js';
 
 const WORKFLOW_ID = WorkflowIdSchema.parse('workflow-1');
+const STUB_PING_EVENT_NAME = EventNameSchema.parse('stub.ping');
+const STUB_PING_PLUGIN_ID = PluginIdSchema.parse('com.sigil.stub-ping');
 
 const stubPingManifest: Manifest = {
-    id: PluginIdSchema.parse('com.sigil.stub-ping'),
+    id: STUB_PING_PLUGIN_ID,
     version: '0.0.1',
     permissions: [],
-    emits: ['stub.ping'],
+    emits: [STUB_PING_EVENT_NAME],
 };
 
 describe('createBridge', () => {
+    it('rejects noncanonical Plugin Event names at the Bridge seam', () => {
+        expect(
+            PluginEmissionSchema.safeParse({ eventName: 'Stub.Ping', payload: {} }).success,
+        ).toBe(false);
+    });
+
     it('forwards a declared emission onto the bus as a plugin.event', async () => {
         const bus = createEventBus();
         const registry = createManifestRegistry();
@@ -28,8 +41,8 @@ describe('createBridge', () => {
             received.push(event);
         });
 
-        const result = await bridge.emit('com.sigil.stub-ping', {
-            eventName: 'stub.ping',
+        const result = await bridge.emit(STUB_PING_PLUGIN_ID, {
+            eventName: STUB_PING_EVENT_NAME,
             payload: { message: 'hello' },
         });
 
@@ -53,8 +66,8 @@ describe('createBridge', () => {
             received.push(event);
         });
 
-        const result = await bridge.emit('com.sigil.stub-ping', {
-            eventName: 'evil.exfil',
+        const result = await bridge.emit(STUB_PING_PLUGIN_ID, {
+            eventName: EventNameSchema.parse('evil.exfil'),
             payload: { secret: 'data' },
         });
 
@@ -78,7 +91,7 @@ describe('createBridge', () => {
         );
         const node = telemetry.forNode({
             nodeId: 'plugin-node',
-            nodeType: 'plugin-node',
+            nodeType: NodeTypeNameSchema.parse('plugin-node'),
             pluginId: stubPingManifest.id,
         });
         const received: BusEvent[] = [];
@@ -86,7 +99,7 @@ describe('createBridge', () => {
 
         const result = await bridge.emit(
             stubPingManifest.id,
-            { eventName: 'stub.ping', payload: { token: 'secret' } },
+            { eventName: STUB_PING_EVENT_NAME, payload: { token: 'secret' } },
             node.bus,
         );
 
@@ -108,7 +121,7 @@ describe('createBridge', () => {
 
         const result = await bridge.emit(
             stubPingManifest.id,
-            { eventName: 'stub.ping', payload: {} },
+            { eventName: STUB_PING_EVENT_NAME, payload: {} },
             {
                 next: async () => {
                     throw new Error('sink failed');
@@ -135,8 +148,8 @@ describe('createBridge', () => {
             received.push(event);
         });
 
-        const result = await bridge.emit('com.sigil.ghost', {
-            eventName: 'stub.ping',
+        const result = await bridge.emit(PluginIdSchema.parse('com.sigil.ghost'), {
+            eventName: STUB_PING_EVENT_NAME,
             payload: {},
         });
 
@@ -154,8 +167,8 @@ describe('createBridge', () => {
             received.push(event);
         });
 
-        await bridge.emit('com.sigil.stub-ping', {
-            eventName: 'stub.ping',
+        await bridge.emit(STUB_PING_PLUGIN_ID, {
+            eventName: STUB_PING_EVENT_NAME,
             payload: { message: 'hello sigil' },
         });
 
@@ -176,7 +189,7 @@ describe('createBridge', () => {
             received.push(event);
         });
 
-        const result = bridge.log('com.sigil.stub-ping', 'plugin says hi');
+        const result = bridge.log(STUB_PING_PLUGIN_ID, 'plugin says hi');
 
         expect(Either.isRight(result)).toBe(true);
         const logEvent = received.find((e) => e.name === 'log.output');
@@ -190,7 +203,7 @@ describe('createBridge', () => {
             id: PluginIdSchema.parse('com.sigil.multi'),
             version: '0.0.1',
             permissions: [],
-            emits: ['a.first', 'a.second'],
+            emits: [EventNameSchema.parse('a.first'), EventNameSchema.parse('a.second')],
         };
         registry.register(multiManifest);
         const bridge = createBridge(bus, registry);
@@ -201,8 +214,15 @@ describe('createBridge', () => {
             }
         });
 
-        await bridge.emit('com.sigil.multi', { eventName: 'a.first', payload: {} });
-        await bridge.emit('com.sigil.multi', { eventName: 'a.second', payload: {} });
+        const multiPluginId = multiManifest.id;
+        await bridge.emit(multiPluginId, {
+            eventName: EventNameSchema.parse('a.first'),
+            payload: {},
+        });
+        await bridge.emit(multiPluginId, {
+            eventName: EventNameSchema.parse('a.second'),
+            payload: {},
+        });
 
         expect(names).toEqual(['a.first', 'a.second']);
     });

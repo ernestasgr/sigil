@@ -1,4 +1,5 @@
 import { CompiledPipelineSchema } from '@sigil/schema';
+import { PluginIdSchema } from '@sigil/schema/ids';
 import { CapabilitySchema, ManifestSchema } from '@sigil/schema/manifest';
 import { TopologyDiagnosticSchema } from '@sigil/schema/topology';
 import { z } from 'zod';
@@ -477,7 +478,7 @@ export type EngineListPluginsResult = z.infer<typeof EngineListPluginsResultSche
 export const EngineSetPermissionOverrideSchema = z.object({
     type: z.literal(EngineChannel.SetPermissionOverride),
     correlationId: CorrelationIdSchema,
-    pluginId: z.string(),
+    pluginId: PluginIdSchema,
     overrides: z.array(CapabilitySchema).readonly(),
 });
 export type EngineSetPermissionOverride = z.infer<typeof EngineSetPermissionOverrideSchema>;

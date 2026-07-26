@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync as Database } from 'node:sqlite';
 import type { CompiledPipeline } from '@sigil/schema';
-import { WorkflowIdSchema } from '@sigil/schema/ids';
+import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import { Effect, Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { testPipeline } from '../../test-support/pipeline-fixtures.js';
@@ -143,12 +143,18 @@ describe('Persistence restart contract', () => {
 
         expect(Either.isRight(writePropertiesFile(propertiesPath, properties))).toBe(true);
         const firstOverrides = createPermissionOverrideStore(overridesPath);
-        expect(Either.isRight(firstOverrides.set('com.sigil.contract', ['network']))).toBe(true);
+        expect(
+            Either.isRight(
+                firstOverrides.set(PluginIdSchema.parse('com.sigil.contract'), ['network']),
+            ),
+        ).toBe(true);
 
         const restartedOverrides = createPermissionOverrideStore(overridesPath);
 
         expect(Effect.runSync(readPropertiesFile(propertiesPath))).toEqual(properties);
-        expect(restartedOverrides.get('com.sigil.contract')).toEqual(['network']);
+        expect(restartedOverrides.get(PluginIdSchema.parse('com.sigil.contract'))).toEqual([
+            'network',
+        ]);
         expect(restartedOverrides.all()).toEqual({ 'com.sigil.contract': ['network'] });
     });
 
@@ -158,7 +164,11 @@ describe('Persistence restart contract', () => {
         const initialProperties = { notifyOnWorkflowError: false };
         expect(Either.isRight(writePropertiesFile(propertiesPath, initialProperties))).toBe(true);
         const initialOverrides = createPermissionOverrideStore(overridesPath);
-        expect(Either.isRight(initialOverrides.set('com.sigil.contract', ['network']))).toBe(true);
+        expect(
+            Either.isRight(
+                initialOverrides.set(PluginIdSchema.parse('com.sigil.contract'), ['network']),
+            ),
+        ).toBe(true);
 
         const interruptedWriter: AtomicFileWriter = {
             write: (targetPath) =>
@@ -177,14 +187,18 @@ describe('Persistence restart contract', () => {
             interruptedWriter,
         );
         const failingOverrides = createPermissionOverrideStore(overridesPath, interruptedWriter);
-        const overridesResult = failingOverrides.set('com.sigil.contract', ['filesystem.read']);
+        const overridesResult = failingOverrides.set(PluginIdSchema.parse('com.sigil.contract'), [
+            'filesystem.read',
+        ]);
 
         expect(Either.isLeft(propertiesResult)).toBe(true);
         expect(Either.isLeft(overridesResult)).toBe(true);
         expect(Effect.runSync(readPropertiesFile(propertiesPath))).toEqual(initialProperties);
-        expect(createPermissionOverrideStore(overridesPath).get('com.sigil.contract')).toEqual([
-            'network',
-        ]);
+        expect(
+            createPermissionOverrideStore(overridesPath).get(
+                PluginIdSchema.parse('com.sigil.contract'),
+            ),
+        ).toEqual(['network']);
     });
 
     it('applies the same Workflow State contract to the in-memory adapter', () => {
