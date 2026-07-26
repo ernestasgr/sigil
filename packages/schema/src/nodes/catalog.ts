@@ -45,8 +45,8 @@ export const BUILTIN_NODE_CONTRACT_REGISTRATIONS: readonly NodeContractRegistrat
     SwitchContractRegistration,
     FileManagerContractRegistration,
     NotificationContractRegistration,
-    StateGetContractRegistration,
-    StateSetContractRegistration,
     LogContractRegistration,
     DelayContractRegistration,
+    StateGetContractRegistration,
+    StateSetContractRegistration,
 ];

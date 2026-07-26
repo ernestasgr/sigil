@@ -30,7 +30,7 @@ export function defineNode<TType extends string, TSchema extends z.ZodType>(
 
 export function defineNodeRegistration<TType extends string, TSchema extends z.ZodType>(
     descriptor: NodeDescriptor<TType, TSchema>,
-    contract: BuiltinNodeContractDefinition<TType>,
+    contract: BuiltinNodeContractDefinition<NoInfer<TType>>,
     options: {
         readonly validateConfig?: (config: z.output<TSchema>) => readonly NodeContractIssue[];
     } = {},

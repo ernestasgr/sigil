@@ -83,10 +83,10 @@ describe('Node Contract Registry', () => {
             { namespace: 'builtin', type: 'switch' },
             { namespace: 'builtin', type: 'file-manager' },
             { namespace: 'builtin', type: 'notification' },
-            { namespace: 'builtin', type: 'state-get' },
-            { namespace: 'builtin', type: 'state-set' },
             { namespace: 'builtin', type: 'log' },
             { namespace: 'builtin', type: 'delay' },
+            { namespace: 'builtin', type: 'state-get' },
+            { namespace: 'builtin', type: 'state-set' },
         ]);
     });
 
