@@ -39,13 +39,13 @@ export type SigilAdapter = {
     ) => Promise<z.infer<typeof WorkflowActionOutcomeSchema>>;
     readonly createWorkflow: (
         name: WorkflowWriteInput['name'],
-        pipeline: WorkflowWriteInput['pipeline'],
+        document: WorkflowWriteInput['document'],
         positions: WorkflowWriteInput['positions'],
     ) => Promise<z.infer<typeof WorkflowWriteOutcomeSchema>>;
     readonly updateWorkflow: (
         id: WorkflowUpdateInput['id'],
         name: WorkflowUpdateInput['name'],
-        pipeline: WorkflowUpdateInput['pipeline'],
+        document: WorkflowUpdateInput['document'],
         positions: WorkflowUpdateInput['positions'],
     ) => Promise<z.infer<typeof WorkflowWriteOutcomeSchema>>;
     readonly deleteWorkflow: (
@@ -65,7 +65,7 @@ export type SigilAdapter = {
     ) => Promise<z.infer<typeof PropertiesSaveOutcomeSchema>>;
     readonly openFileDialog: () => Promise<z.infer<typeof OpenFileDialogOutputSchema>>;
     readonly fireManualTrigger: (
-        pipeline: WorkflowWriteInput['pipeline'],
+        document: WorkflowWriteInput['document'],
     ) => Promise<z.infer<typeof CommandExecutionOutcomeSchema>>;
     readonly readWorkflowState: (
         id: WorkflowIdInput['id'],
@@ -115,20 +115,20 @@ const adapter = {
             .then((result) => parseResult(WorkflowActionOutcomeSchema, result)),
     createWorkflow: (
         name: WorkflowWriteInput['name'],
-        pipeline: WorkflowWriteInput['pipeline'],
+        document: WorkflowWriteInput['document'],
         positions: WorkflowWriteInput['positions'],
     ) =>
         client.createWorkflow
-            .mutate({ name, pipeline, positions })
+            .mutate({ name, document, positions })
             .then((result) => parseResult(WorkflowWriteOutcomeSchema, result)),
     updateWorkflow: (
         id: WorkflowUpdateInput['id'],
         name: WorkflowUpdateInput['name'],
-        pipeline: WorkflowUpdateInput['pipeline'],
+        document: WorkflowUpdateInput['document'],
         positions: WorkflowUpdateInput['positions'],
     ) =>
         client.updateWorkflow
-            .mutate({ id, name, pipeline, positions })
+            .mutate({ id, name, document, positions })
             .then((result) => parseResult(WorkflowWriteOutcomeSchema, result)),
     deleteWorkflow: (id: WorkflowIdInput['id']) =>
         client.deleteWorkflow
@@ -159,9 +159,9 @@ const adapter = {
         client.openFileDialog
             .mutate()
             .then((result) => parseResult(OpenFileDialogOutputSchema, result)),
-    fireManualTrigger: (pipeline: WorkflowWriteInput['pipeline']) =>
+    fireManualTrigger: (document: WorkflowWriteInput['document']) =>
         client.fireManualTrigger
-            .mutate(pipeline)
+            .mutate(document)
             .then((result) => parseResult(CommandExecutionOutcomeSchema, result)),
     readWorkflowState: (id: WorkflowIdInput['id']) =>
         client.readWorkflowState

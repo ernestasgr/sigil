@@ -10,7 +10,7 @@ import {
     WorkflowIdSchema,
 } from './ids.js';
 import type { PipelineNode } from './nodes/index.js';
-import { type CompiledPipeline, parsePipeline } from './pipeline.js';
+import { parseWorkflowDocument, type WorkflowDocument } from './pipeline.js';
 import { validateWorkflowTopology } from './topology.js';
 
 const PROPERTY_OPTIONS = {
@@ -43,7 +43,7 @@ const edge = (id: string, source: string, target: string, sourcePort = 'out'): P
 function pipeline(
     nodes: readonly PipelineNode[],
     edges: readonly PipelineEdge[],
-): CompiledPipeline {
+): WorkflowDocument {
     return {
         id: 'pipeline-property',
         workflowId: WorkflowIdSchema.parse('workflow-property'),
@@ -258,7 +258,7 @@ describe('generated Workflow topology properties', () => {
                                           : currentEdge,
                                   ),
                               };
-                    const result = parsePipeline(malformedPipeline);
+                    const result = parseWorkflowDocument(malformedPipeline);
 
                     expect(result.ok).toBe(true);
                     if (result.ok) {
@@ -287,7 +287,7 @@ describe('generated Workflow topology properties', () => {
         fc.assert(
             fc.property(dagPipelineArbitrary, (generatedPipeline) => {
                 const encoded: unknown = JSON.parse(JSON.stringify(generatedPipeline));
-                const result = parsePipeline(encoded);
+                const result = parseWorkflowDocument(encoded);
 
                 expect(result.ok).toBe(true);
                 if (!result.ok) return;

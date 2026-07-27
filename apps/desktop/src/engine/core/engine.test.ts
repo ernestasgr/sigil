@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type CompiledPipeline, parsePipeline } from '@sigil/schema';
+import { compileWorkflow, type WorkflowDocument } from '@sigil/schema';
 import { EventNameSchema, PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
 import type { FileWatcherConfig } from '@sigil/schema/nodes/file-watcher';
@@ -11,7 +11,7 @@ import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileGraph } from '../../renderer/workflow-builder/compile.js';
 import { createNodeCatalogFromManifests } from '../../renderer/workflow-builder/node-catalog.js';
-import { testEdge, testNode, testPipeline } from '../../test-support/pipeline-fixtures.js';
+import { testDocument, testEdge, testNode } from '../../test-support/pipeline-fixtures.js';
 import type { BusEvent } from '../events/event-bus.js';
 import { isTriggerHandler } from '../node-handlers/types.js';
 import type { FileEvent } from '../plugins/file-watcher-manager.js';
@@ -426,7 +426,7 @@ describe('createEngine', () => {
 
         try {
             await engine.loadBuiltinPlugins();
-            const pipeline: CompiledPipeline = testPipeline({
+            const document: WorkflowDocument = testDocument({
                 id: 'bundled-action',
                 workflowId: 'bundled-action',
                 nodes: [
@@ -465,7 +465,7 @@ describe('createEngine', () => {
                 ],
             });
 
-            const result = await engine.execute(pipeline);
+            const result = await engine.executeDocument(document);
 
             expect(result.outcome).toBe('succeeded');
             expect(existsSync(sourcePath)).toBe(false);
@@ -482,13 +482,13 @@ describe('createEngine', () => {
         engine.bus.subscribe((event) => {
             events.push(event);
         });
-        const invalidPipeline: CompiledPipeline = {
-            ...sampleManualTriggerToLog,
+        const invalidDocument: WorkflowDocument = {
+            ...sampleManualTriggerToLog.source,
             nodes: [],
             edges: [],
         };
 
-        await expect(engine.execute(invalidPipeline)).rejects.toMatchObject({
+        await expect(engine.executeDocument(invalidDocument)).rejects.toMatchObject({
             kind: 'workflow_topology',
             diagnostics: expect.arrayContaining([
                 expect.objectContaining({ code: 'empty_pipeline' }),
@@ -504,8 +504,8 @@ describe('createEngine', () => {
         engine.bus.subscribe((event) => {
             events.push(event);
         });
-        const unsupportedPipeline: CompiledPipeline = {
-            ...sampleManualTriggerToLog,
+        const unsupportedDocument: WorkflowDocument = {
+            ...sampleManualTriggerToLog.source,
             nodes: [
                 ...sampleManualTriggerToLog.nodes,
                 testNode({
@@ -526,7 +526,7 @@ describe('createEngine', () => {
             ],
         };
 
-        await expect(engine.execute(unsupportedPipeline)).rejects.toMatchObject({
+        await expect(engine.executeDocument(unsupportedDocument)).rejects.toMatchObject({
             kind: 'workflow_topology',
             diagnostics: expect.arrayContaining([
                 expect.objectContaining({
@@ -549,8 +549,8 @@ describe('createEngine', () => {
         engine.handlerRegistry.register('contractless-node', {
             execute: async ({ ctx }) => ({ outputCtx: ctx, activePort: 'out' }),
         });
-        const contractlessPipeline: CompiledPipeline = {
-            ...sampleManualTriggerToLog,
+        const contractlessDocument: WorkflowDocument = {
+            ...sampleManualTriggerToLog.source,
             nodes: [
                 ...sampleManualTriggerToLog.nodes,
                 testNode({
@@ -571,7 +571,7 @@ describe('createEngine', () => {
             ],
         };
 
-        await expect(engine.execute(contractlessPipeline)).rejects.toMatchObject({
+        await expect(engine.executeDocument(contractlessDocument)).rejects.toMatchObject({
             kind: 'workflow_topology',
             diagnostics: expect.arrayContaining([
                 expect.objectContaining({
@@ -592,8 +592,8 @@ describe('createEngine', () => {
         });
         const trigger = sampleManualTriggerToLog.nodes[0];
         if (!trigger) throw new Error('sample trigger missing');
-        const fanOut: CompiledPipeline = {
-            ...sampleManualTriggerToLog,
+        const fanOutDocument: WorkflowDocument = {
+            ...sampleManualTriggerToLog.source,
             nodes: [
                 trigger,
                 testNode({ id: 'log-a', type: 'log', config: { message: 'a' } }),
@@ -615,7 +615,10 @@ describe('createEngine', () => {
             ],
         };
 
-        await engine.execute(fanOut);
+        const fanOut = compileWorkflow(fanOutDocument);
+        expect(fanOut.ok).toBe(true);
+        if (!fanOut.ok) return;
+        await engine.execute(fanOut.value);
 
         expect(
             events
@@ -1019,7 +1022,7 @@ describe('createEngine — file-manager Properties File defaults', () => {
         try {
             await engine.loadBuiltinPlugins();
 
-            const parsed = parsePipeline(
+            const parsed = compileWorkflow(
                 fileManagerWorkflow(sourcePath, 'report.txt', sourceDir, {
                     action: 'move',
                     destination: destinationDir,
@@ -1055,7 +1058,7 @@ describe('createEngine — file-manager Properties File defaults', () => {
 
         try {
             await engine.loadBuiltinPlugins();
-            const parsed = parsePipeline(
+            const parsed = compileWorkflow(
                 fileManagerWorkflow(sourcePath, 'report.txt', sourceDir, {
                     action: 'move',
                     destination: destinationDir,
@@ -1090,7 +1093,7 @@ describe('createEngine — file-manager Properties File defaults', () => {
 
         try {
             await engine.loadBuiltinPlugins();
-            const parsed = parsePipeline(
+            const parsed = compileWorkflow(
                 fileManagerWorkflow(sourcePath, 'report.txt', sourceDir, {
                     action: 'move',
                     destination: destinationDir,
@@ -1128,7 +1131,7 @@ describe('createEngine — file-manager Properties File defaults', () => {
 
         try {
             await engine.loadBuiltinPlugins();
-            const parsed = parsePipeline(
+            const parsed = compileWorkflow(
                 fileManagerWorkflow(sourcePath, 'source.txt', sourceDir, {
                     action: 'rename',
                     destination: 'target.txt',
@@ -1165,7 +1168,7 @@ describe('createEngine — file-manager Properties File defaults', () => {
 
         try {
             await engine.loadBuiltinPlugins();
-            const parsed = parsePipeline(
+            const parsed = compileWorkflow(
                 fileManagerWorkflow(sourcePath, 'source.txt', sourceDir, {
                     action: 'rename',
                     destination: 'target.txt',

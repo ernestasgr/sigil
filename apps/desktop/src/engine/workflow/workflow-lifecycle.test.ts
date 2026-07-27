@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CompiledPipeline } from '@sigil/schema';
+import type { WorkflowDocument } from '@sigil/schema';
 import { PluginIdSchema, type WorkflowId, WorkflowIdSchema } from '@sigil/schema/ids';
 import {
     type NodeContractRegistry,
@@ -14,15 +14,15 @@ import { testNode } from '../../test-support/pipeline-fixtures.js';
 import { createEngine } from '../core/engine.js';
 import type { NodeRunResult, TriggerHandler } from '../node-handlers/types.js';
 import type { AtomicWriteFailure } from '../persistence/atomic-file.js';
-import { workflowTopologyOptions } from './workflow-acceptance.js';
 import { createWorkflowActivator, getDeactivationHook } from './workflow-activator.js';
+import { workflowCompilationOptions } from './workflow-compilation.js';
 import { createWorkflowLifecycle } from './workflow-lifecycle.js';
 import { createWorkflowStore } from './workflow-store.js';
 
 const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
 const pid = (id: string) => PluginIdSchema.parse(id);
 
-function testPipeline(pipelineId: string, workflowId: string): CompiledPipeline {
+function testPipeline(pipelineId: string, workflowId: string): WorkflowDocument {
     return {
         id: pipelineId,
         workflowId: testWorkflowId(workflowId),
@@ -79,7 +79,7 @@ function createFixture(activate: TriggerHandler['activate']): {
     registerTestTriggerContract(engine.contractRegistry);
     const store = createWorkflowStore(
         storageDir,
-        workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
+        workflowCompilationOptions(engine.handlerRegistry, engine.contractRegistry),
     );
     const activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
     const lifecycle = createWorkflowLifecycle(store, activator);
@@ -369,7 +369,7 @@ describe('WorkflowLifecycle transitions', () => {
 
         const reloadedStore = createWorkflowStore(
             fixture.storageDir,
-            workflowTopologyOptions(
+            workflowCompilationOptions(
                 fixture.engine.handlerRegistry,
                 fixture.engine.contractRegistry,
             ),

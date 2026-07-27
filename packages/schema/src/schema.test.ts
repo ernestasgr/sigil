@@ -3,7 +3,7 @@ import { PipelineConditionSchema } from './conditions.js';
 import { FileEventPayloadSchema } from './file-event-payload.js';
 import { MAX_MATCH_PATTERN_LENGTH } from './match-pattern.js';
 import { PipelineNodeSchema } from './nodes/index.js';
-import { CompiledPipelineSchema, PipelineDocumentSchema, parsePipeline } from './pipeline.js';
+import { parseWorkflowDocument, WorkflowDocumentSchema } from './pipeline.js';
 import { sampleManualTriggerToLog } from './samples.js';
 import { validateWorkflowTopology } from './topology.js';
 import { WorkflowContextSchema } from './workflow-context.js';
@@ -176,14 +176,14 @@ describe('WorkflowContextSchema', () => {
     });
 });
 
-describe('CompiledPipelineSchema', () => {
+describe('WorkflowDocumentSchema', () => {
     it('validates the manual-trigger -> log sample', () => {
-        const result = CompiledPipelineSchema.safeParse(sampleManualTriggerToLog);
+        const result = WorkflowDocumentSchema.safeParse(sampleManualTriggerToLog.source);
         expect(result.success).toBe(true);
     });
 
-    it('parsePipeline returns ok for the sample', () => {
-        const result = parsePipeline(sampleManualTriggerToLog);
+    it('parseWorkflowDocument returns ok for the sample document', () => {
+        const result = parseWorkflowDocument(sampleManualTriggerToLog.source);
         expect(result.ok).toBe(true);
     });
 
@@ -195,7 +195,7 @@ describe('CompiledPipelineSchema', () => {
             nodes: [{ id: 'n', type: 'does-not-exist', config: {} }],
             edges: [],
         };
-        const result = parsePipeline(invalid);
+        const result = parseWorkflowDocument(invalid);
         expect(result.ok === false && result.error.length).toBeGreaterThan(0);
     });
 
@@ -214,18 +214,18 @@ describe('CompiledPipelineSchema', () => {
             ],
             edges: [],
         };
-        const result = parsePipeline(valid);
+        const result = parseWorkflowDocument(valid);
         expect(result.ok).toBe(true);
     });
 
     it('rejects unknown persisted fields at the structural boundary', () => {
-        const result = PipelineDocumentSchema.safeParse({
-            ...sampleManualTriggerToLog,
+        const result = WorkflowDocumentSchema.safeParse({
+            ...sampleManualTriggerToLog.source,
             unexpected: true,
         });
         expect(result.success).toBe(false);
 
-        const invalidNodeConfig = parsePipeline({
+        const invalidNodeConfig = parseWorkflowDocument({
             id: 'p',
             workflowId: 'w',
             schemaVersion: 1,
@@ -257,7 +257,7 @@ describe('CompiledPipelineSchema', () => {
             nodes: [{ id: 'n', type: 'my-plugin-node', config: {} }],
             edges: [],
         };
-        const result = parsePipeline(invalid);
+        const result = parseWorkflowDocument(invalid);
         expect(result.ok).toBe(false);
     });
 
@@ -269,7 +269,7 @@ describe('CompiledPipelineSchema', () => {
             nodes: [{ id: 'n', type: 'delay', config: {} }],
             edges: [],
         };
-        const result = parsePipeline(invalid);
+        const result = parseWorkflowDocument(invalid);
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.error).toMatch(/ms/);
@@ -298,7 +298,7 @@ describe('CompiledPipelineSchema', () => {
             ],
             edges: [{ id: 'e', source: 'branch', target: 'log', sourcePort: 'maybe' }],
         };
-        const result = parsePipeline(invalid);
+        const result = parseWorkflowDocument(invalid);
         expect(result.ok).toBe(true);
         if (result.ok) {
             const topology = validateWorkflowTopology(result.value);
@@ -339,7 +339,7 @@ describe('CompiledPipelineSchema', () => {
                 { id: 'e2', source: 'sw', target: 'log', sourcePort: 'default' },
             ],
         };
-        const result = CompiledPipelineSchema.safeParse(valid);
+        const result = WorkflowDocumentSchema.safeParse(valid);
         expect(result.success).toBe(true);
     });
 
@@ -351,7 +351,7 @@ describe('CompiledPipelineSchema', () => {
             nodes: [{ id: 'log', type: 'log', config: { message: 'x' } }],
             edges: [{ id: 'e', source: 'ghost', target: 'log', sourcePort: 'out' }],
         };
-        const result = parsePipeline(invalid);
+        const result = parseWorkflowDocument(invalid);
         expect(result.ok).toBe(true);
         if (result.ok) {
             const topology = validateWorkflowTopology(result.value);
@@ -375,7 +375,7 @@ describe('CompiledPipelineSchema', () => {
             ],
             edges: [],
         };
-        const result = parsePipeline(invalid);
+        const result = parseWorkflowDocument(invalid);
         expect(result.ok).toBe(true);
         if (result.ok) {
             const topology = validateWorkflowTopology(result.value);
@@ -398,7 +398,7 @@ describe('CompiledPipelineSchema', () => {
             nodes: [],
             edges: [],
         };
-        const result = parsePipeline(invalid);
+        const result = parseWorkflowDocument(invalid);
         expect(result.ok).toBe(false);
     });
 
@@ -424,7 +424,7 @@ describe('CompiledPipelineSchema', () => {
             ],
             edges: [],
         };
-        const result = parsePipeline(invalid);
+        const result = parseWorkflowDocument(invalid);
         expect(result.ok).toBe(true);
         if (result.ok) {
             const topology = validateWorkflowTopology(result.value);

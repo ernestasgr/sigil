@@ -30,7 +30,7 @@ const expectedEngineCommandNames = [
     'shutdown',
 ] as const satisfies readonly EngineCommandName[];
 
-const pipeline = {
+const document = {
     id: 'pipeline-1',
     workflowId: 'wf-1',
     schemaVersion: 1,
@@ -53,11 +53,11 @@ const engineFixtures = {
     toggleWorkflow: { request: { id: 'wf-1' }, response: { summary } },
     retryWorkflow: { request: { id: 'wf-1' }, response: { summary } },
     createWorkflow: {
-        request: { name: 'Workflow', pipeline, positions: {} },
+        request: { name: 'Workflow', document, positions: {} },
         response: { summary },
     },
     updateWorkflow: {
-        request: { id: 'wf-1', name: 'Workflow', pipeline, positions: {} },
+        request: { id: 'wf-1', name: 'Workflow', document, positions: {} },
         response: { summary },
     },
     deleteWorkflow: { request: { id: 'wf-1' }, response: { success: true } },
@@ -107,7 +107,7 @@ const engineFixtures = {
         request: { properties: {} },
         response: { ok: true, applied: {}, restartRequired: [] },
     },
-    fireManualTrigger: { request: { pipeline }, response: { ok: true } },
+    fireManualTrigger: { request: { document }, response: { ok: true } },
     readWorkflowState: { request: { workflowId: 'wf-1' }, response: { entries: [] } },
     setWorkflowStateKey: {
         request: { workflowId: 'wf-1', key: 'key', value: 'value' },

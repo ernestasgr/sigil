@@ -1,4 +1,4 @@
-import type { CompiledPipeline } from '@sigil/schema';
+import type { WorkflowDocument } from '@sigil/schema';
 import { WorkflowIdSchema } from '@sigil/schema/ids';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -32,7 +32,7 @@ function createDeferred<TValue>(): Deferred<TValue> {
     };
 }
 
-function createPipeline(): CompiledPipeline {
+function createPipeline(): WorkflowDocument {
     return {
         id: 'pipeline-fixture',
         workflowId: WORKFLOW_ID,
@@ -93,7 +93,7 @@ describe('Workflows section renderer behavior', () => {
 
         pending.resolve({
             name: 'Loaded Workflow',
-            pipeline: createPipeline(),
+            document: createPipeline(),
             positions: { trigger: { x: 40, y: 40 } },
         });
 

@@ -13,20 +13,15 @@ import {
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
 import {
     type CompiledPipeline,
-    type PipelineSchemaVersion,
-    PipelineSchemaVersionSchema,
-    parsePipeline,
+    compileWorkflow,
+    type WorkflowCompilationOptions,
+    type WorkflowDocument,
+    type WorkflowDocumentSchemaVersion,
 } from '@sigil/schema';
 import { PipelineEdgeSchema } from '@sigil/schema/edges';
 import { type WorkflowId, WorkflowIdSchema } from '@sigil/schema/ids';
 import { PipelineNodeSchema } from '@sigil/schema/nodes';
-import {
-    type ExecutableWorkflow,
-    type TopologyDiagnostic,
-    type TopologyDiagnosticCode,
-    validateWorkflowTopology,
-    type WorkflowTopologyOptions,
-} from '@sigil/schema/topology';
+import type { TopologyDiagnostic, TopologyDiagnosticCode } from '@sigil/schema/topology';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
 
@@ -53,10 +48,9 @@ export interface StoredWorkflow {
     readonly positions: Readonly<Record<string, NodePosition>>;
     readonly pipelineId: string;
     readonly workflowId: WorkflowId;
-    readonly schemaVersion: PipelineSchemaVersion;
-    readonly nodes: CompiledPipeline['nodes'];
-    readonly edges: CompiledPipeline['edges'];
-    readonly executable: ExecutableWorkflow;
+    readonly schemaVersion: WorkflowDocumentSchemaVersion;
+    readonly document: WorkflowDocument;
+    readonly compiled: CompiledPipeline;
     readonly diagnostics: readonly TopologyDiagnostic[];
 }
 
@@ -103,8 +97,8 @@ export interface WorkflowPersistenceError extends Error {
 export interface WorkflowStore {
     readonly list: () => readonly WorkflowSummary[];
     readonly get: (id: string) => Option.Option<{
-        readonly pipeline: CompiledPipeline;
-        readonly executable: ExecutableWorkflow;
+        readonly document: WorkflowDocument;
+        readonly compiled: CompiledPipeline;
         readonly name: string;
         readonly positions: Readonly<Record<string, NodePosition>>;
     }>;
@@ -112,12 +106,12 @@ export interface WorkflowStore {
     readonly save: (
         id: string,
         name: string,
-        pipeline: CompiledPipeline,
+        document: WorkflowDocument,
         positions: Readonly<Record<string, NodePosition>>,
     ) => WorkflowSummary;
     readonly create: (
         name: string,
-        pipeline: CompiledPipeline,
+        document: WorkflowDocument,
         positions: Readonly<Record<string, NodePosition>>,
     ) => WorkflowSummary;
     readonly remove: (id: string) => boolean;
@@ -243,7 +237,7 @@ const StoredWorkflowFileSchema = z
         id: WorkflowIdSchema,
         name: z.string(),
         enabled: z.boolean(),
-        schemaVersion: PipelineSchemaVersionSchema,
+        schemaVersion: z.number().int().positive(),
         positions: z.record(z.string(), NodePositionSchema),
         pipelineId: z.string().min(1),
         workflowId: WorkflowIdSchema,
@@ -321,7 +315,7 @@ function initialActivationState(
 function readWorkflowFile(
     storagePath: string,
     workflowId: string,
-    topologyOptions: WorkflowTopologyOptions,
+    compilationOptions: WorkflowCompilationOptions,
 ): WorkflowRecord {
     const fileName = basename(storagePath);
     let raw: unknown;
@@ -391,38 +385,42 @@ function readWorkflowFile(
         ]);
     }
 
-    const parsedPipeline = {
+    const rawDocument = {
         id: parsedFile.data.pipelineId,
         workflowId: persistedWorkflowId,
         schemaVersion: parsedFile.data.schemaVersion,
         nodes: parsedFile.data.nodes,
         edges: parsedFile.data.edges,
     };
-    const parseResult = parsePipeline(parsedPipeline);
-    if (!parseResult.ok) {
+    const compiled = compileWorkflow(rawDocument, compilationOptions);
+    if (!compiled.ok) {
+        if (compiled.phase === 'admission') {
+            return invalidWorkflowRecord(storagePath, workflowId, raw, compiled.diagnostics);
+        }
         return invalidWorkflowRecord(storagePath, workflowId, raw, [
-            storedWorkflowDiagnostic(fileName, parseResult.error),
+            storedWorkflowDiagnostic(
+                fileName,
+                compiled.parseFailure.error,
+                compiled.parseFailure.reason === 'unsupported_version'
+                    ? 'unsupported_document_version'
+                    : 'invalid_pipeline',
+            ),
         ]);
     }
 
-    const pipeline = parseResult.value;
-    const topology = validateWorkflowTopology(pipeline, topologyOptions);
-    if (!topology.ok) {
-        return invalidWorkflowRecord(storagePath, workflowId, raw, topology.diagnostics);
-    }
+    const document = compiled.value.source;
 
     return {
         id: filenameId.data,
         name: parsedFile.data.name,
         enabled: parsedFile.data.enabled,
         positions: parsedFile.data.positions,
-        pipelineId: pipeline.id,
-        workflowId: pipeline.workflowId,
-        schemaVersion: pipeline.schemaVersion,
-        nodes: pipeline.nodes,
-        edges: pipeline.edges,
+        pipelineId: document.id,
+        workflowId: document.workflowId,
+        schemaVersion: document.schemaVersion,
+        document,
+        compiled: compiled.value,
         activation: initialActivationState(parsedFile.data.enabled, parsedFile.data.activation),
-        executable: topology.value,
         diagnostics: [],
         storagePath,
     };
@@ -441,8 +439,8 @@ function writeWorkflowFile(
         pipelineId: stored.pipelineId,
         workflowId: stored.workflowId,
         schemaVersion: stored.schemaVersion,
-        nodes: stored.nodes,
-        edges: stored.edges,
+        nodes: stored.document.nodes,
+        edges: stored.document.edges,
         activation: stored.activation,
     };
     const storagePath = filePath(dir, stored.id);
@@ -468,7 +466,7 @@ function writeWorkflowOrThrow(
 }
 
 function isValidWorkflowRecord(record: WorkflowRecord): record is ValidWorkflowRecord {
-    return 'executable' in record;
+    return 'compiled' in record;
 }
 
 function toSummary(stored: WorkflowRecord): WorkflowSummary {
@@ -485,7 +483,7 @@ function toSummary(stored: WorkflowRecord): WorkflowSummary {
 
 function loadAll(
     dir: string,
-    topologyOptions: WorkflowTopologyOptions,
+    compilationOptions: WorkflowCompilationOptions,
 ): Map<string, WorkflowRecord> {
     const workflows = new Map<string, WorkflowRecord>();
     if (!existsSync(dir)) return workflows;
@@ -496,7 +494,7 @@ function loadAll(
         const storagePath = WorkflowIdSchema.safeParse(workflowId).success
             ? filePath(dir, workflowId)
             : resolve(dir, entry.name);
-        const stored = readWorkflowFile(storagePath, workflowId, topologyOptions);
+        const stored = readWorkflowFile(storagePath, workflowId, compilationOptions);
         workflows.set(stored.id, stored);
     }
     return workflows;
@@ -504,10 +502,10 @@ function loadAll(
 
 export function createWorkflowStore(
     storageDir: string,
-    topologyOptions: WorkflowTopologyOptions = {},
+    compilationOptions: WorkflowCompilationOptions = {},
     options: WorkflowStoreOptions = {},
 ): WorkflowStore {
-    const workflows = loadAll(storageDir, topologyOptions);
+    const workflows = loadAll(storageDir, compilationOptions);
     const writer = options.fileWriter ?? atomicFileWriter;
 
     return {
@@ -524,15 +522,15 @@ export function createWorkflowStore(
             const stored = workflows.get(workflowId);
             if (!stored || !isValidWorkflowRecord(stored)) return Option.none();
             return Option.some({
-                pipeline: stored.executable.pipeline,
-                executable: stored.executable,
+                document: stored.document,
+                compiled: stored.compiled,
                 name: stored.name,
                 positions: stored.positions,
             });
         },
 
-        create: (name, pipeline, positions) => {
-            const workflowId = requireWorkflowId(pipeline.workflowId);
+        create: (name, document, positions) => {
+            const workflowId = requireWorkflowId(document.workflowId);
             const storagePath = filePath(storageDir, workflowId);
             if (workflows.has(workflowId) || existsSync(storagePath)) {
                 throw createWorkflowIdentityError(
@@ -541,22 +539,21 @@ export function createWorkflowStore(
                     workflowId,
                 );
             }
-            const topology = validateWorkflowTopology(pipeline, topologyOptions);
-            if (!topology.ok) {
-                throw createWorkflowTopologyError(topology.diagnostics);
+            const compiled = compileWorkflow(document, compilationOptions);
+            if (!compiled.ok) {
+                throw createWorkflowTopologyError(compiled.diagnostics);
             }
             const stored: ValidWorkflowRecord = {
                 id: workflowId,
                 name,
                 enabled: false,
                 positions,
-                pipelineId: pipeline.id,
-                workflowId: pipeline.workflowId,
-                schemaVersion: pipeline.schemaVersion,
-                nodes: pipeline.nodes,
-                edges: pipeline.edges,
+                pipelineId: document.id,
+                workflowId: document.workflowId,
+                schemaVersion: document.schemaVersion,
+                document,
+                compiled: compiled.value,
                 activation: { kind: 'disabled' },
-                executable: topology.value,
                 diagnostics: [],
                 storagePath,
             };
@@ -565,19 +562,19 @@ export function createWorkflowStore(
             return toSummary(stored);
         },
 
-        save: (id, name, pipeline, positions) => {
+        save: (id, name, document, positions) => {
             const workflowId = requireWorkflowId(id);
             const storagePath = filePath(storageDir, workflowId);
-            if (pipeline.workflowId !== workflowId) {
+            if (document.workflowId !== workflowId) {
                 throw createWorkflowIdentityError(
                     'workflow_identity_mismatch',
-                    `Pipeline workflowId "${pipeline.workflowId}" does not match Workflow id "${workflowId}".`,
+                    `Workflow document workflowId "${document.workflowId}" does not match Workflow id "${workflowId}".`,
                     workflowId,
                 );
             }
-            const topology = validateWorkflowTopology(pipeline, topologyOptions);
-            if (!topology.ok) {
-                throw createWorkflowTopologyError(topology.diagnostics);
+            const compiled = compileWorkflow(document, compilationOptions);
+            if (!compiled.ok) {
+                throw createWorkflowTopologyError(compiled.diagnostics);
             }
             const existing = workflows.get(workflowId);
             const existingValid =
@@ -588,13 +585,12 @@ export function createWorkflowStore(
                       id: workflowId,
                       name,
                       positions,
-                      pipelineId: pipeline.id,
-                      workflowId: pipeline.workflowId,
-                      schemaVersion: pipeline.schemaVersion,
-                      nodes: pipeline.nodes,
-                      edges: pipeline.edges,
+                      pipelineId: document.id,
+                      workflowId: document.workflowId,
+                      schemaVersion: document.schemaVersion,
+                      document,
+                      compiled: compiled.value,
                       activation: existingValid.activation,
-                      executable: topology.value,
                       diagnostics: [],
                       storagePath,
                   }
@@ -603,13 +599,12 @@ export function createWorkflowStore(
                       name,
                       enabled: false,
                       positions,
-                      pipelineId: pipeline.id,
-                      workflowId: pipeline.workflowId,
-                      schemaVersion: pipeline.schemaVersion,
-                      nodes: pipeline.nodes,
-                      edges: pipeline.edges,
+                      pipelineId: document.id,
+                      workflowId: document.workflowId,
+                      schemaVersion: document.schemaVersion,
+                      document,
+                      compiled: compiled.value,
                       activation: { kind: 'disabled' },
-                      executable: topology.value,
                       diagnostics: [],
                       storagePath,
                   };

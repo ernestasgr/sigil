@@ -1,19 +1,18 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import type { CompiledPipeline } from '@sigil/schema';
-import { parsePipeline } from '@sigil/schema';
+import { type WorkflowDocument, WorkflowDocumentSchema } from '@sigil/schema';
 import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import {
-    createNodeContractRegistry,
     fixedOutputPortSpec,
     pluginNodeIdentity,
     registerSerializableNodeContract,
 } from '@sigil/schema/node-contract';
 import { isPluginNode, SwitchCaseIdSchema } from '@sigil/schema/nodes';
+import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { testEdge, testNode, testPipeline } from '../../test-support/pipeline-fixtures.js';
+import { testDocument, testEdge, testNode } from '../../test-support/pipeline-fixtures.js';
 import type { AtomicFileWriter, AtomicWriteFailure } from '../persistence/atomic-file.js';
 import {
     createWorkflowStore,
@@ -30,7 +29,7 @@ function randomDir(): string {
     return join(tmpdir(), `sigil-test-workflow-store-${crypto.randomUUID()}`);
 }
 
-const samplePipeline: CompiledPipeline = testPipeline({
+const samplePipeline: WorkflowDocument = testDocument({
     id: 'pipeline-1',
     workflowId: 'wf-1',
     nodes: [
@@ -56,7 +55,7 @@ const samplePositions: Record<string, { x: number; y: number }> = {
     'node-2': { x: 400, y: 200 },
 };
 
-const samplePipeline2: CompiledPipeline = testPipeline({
+const samplePipeline2: WorkflowDocument = testDocument({
     id: 'pipeline-2',
     workflowId: 'wf-2',
     nodes: [
@@ -100,7 +99,7 @@ describe('WorkflowStore', () => {
     });
 
     it('rejects an invalid topology before saving it', () => {
-        const invalidPipeline: CompiledPipeline = {
+        const invalidPipeline: WorkflowDocument = {
             ...samplePipeline,
             nodes: [],
             edges: [],
@@ -123,7 +122,7 @@ describe('WorkflowStore', () => {
     });
 
     it('rejects a stored Pipeline whose Node handler is unavailable', () => {
-        const unsupportedPipeline: CompiledPipeline = {
+        const unsupportedPipeline: WorkflowDocument = {
             ...samplePipeline,
             nodes: [
                 ...samplePipeline.nodes,
@@ -300,12 +299,12 @@ describe('WorkflowStore', () => {
         const result = store.get(summary.id);
         expect(Option.isSome(result)).toBe(true);
         expect(Option.getOrThrow(result).name).toBe('My Workflow');
-        expect(Option.getOrThrow(result).pipeline).toEqual(samplePipeline);
+        expect(Option.getOrThrow(result).document).toEqual(samplePipeline);
         expect(Option.getOrThrow(result).positions).toEqual(samplePositions);
     });
 
     it('preserves Switch case identities when a persisted match value is edited and saved', () => {
-        const switchPipeline: CompiledPipeline = testPipeline({
+        const switchPipeline: WorkflowDocument = testDocument({
             id: 'pipeline-switch',
             workflowId: 'wf-switch',
             nodes: [
@@ -341,7 +340,7 @@ describe('WorkflowStore', () => {
         });
 
         store.create('Switch Workflow', switchPipeline, {});
-        const editedPipeline: CompiledPipeline = {
+        const editedPipeline: WorkflowDocument = {
             ...switchPipeline,
             nodes: switchPipeline.nodes.map((node) =>
                 !isPluginNode(node) && node.type === 'switch'
@@ -366,13 +365,13 @@ describe('WorkflowStore', () => {
         const loaded = store.get('wf-switch');
         expect(Option.isSome(loaded)).toBe(true);
         if (Option.isSome(loaded)) {
-            const switchNode = loaded.value.pipeline.nodes.find((node) => node.id === 'switch');
+            const switchNode = loaded.value.document.nodes.find((node) => node.id === 'switch');
             expect(switchNode).toMatchObject({
                 config: {
                     cases: [{ id: 'case-pdf', value: 'portable-document' }],
                 },
             });
-            expect(loaded.value.pipeline.edges[1]?.sourcePort).toBe('case-pdf');
+            expect(loaded.value.document.edges[1]?.sourcePort).toBe('case-pdf');
         }
 
         const persisted = JSON.parse(readFileSync(join(dir, 'wf-switch.json'), 'utf8'));
@@ -436,7 +435,7 @@ describe('WorkflowStore', () => {
         const unsafePipeline = {
             ...samplePipeline,
             workflowId: '../outside',
-        } as unknown as CompiledPipeline;
+        } as unknown as WorkflowDocument;
 
         expect(() => store.create('Unsafe Workflow', unsafePipeline, {})).toThrow();
         expect(store.list()).toEqual([]);
@@ -527,7 +526,7 @@ describe('WorkflowStore', () => {
     it('saves an updated pipeline via save()', () => {
         const summary = store.create('Original', samplePipeline, samplePositions);
 
-        const updatedPipeline: CompiledPipeline = testPipeline({
+        const updatedPipeline: WorkflowDocument = testDocument({
             id: samplePipeline.id,
             workflowId: 'wf-1',
             edges: samplePipeline.edges,
@@ -555,14 +554,14 @@ describe('WorkflowStore', () => {
 
         const loaded = store.get(summary.id);
         expect(Option.isSome(loaded)).toBe(true);
-        expect(Option.getOrThrow(loaded).pipeline.nodes).toHaveLength(2);
-        expect(Option.getOrThrow(loaded).pipeline.nodes[1].type).toBe('delay');
+        expect(Option.getOrThrow(loaded).document.nodes).toHaveLength(2);
+        expect(Option.getOrThrow(loaded).document.nodes[1].type).toBe('delay');
         expect(Option.getOrThrow(loaded).positions).toEqual(updatedPositions);
     });
 
     it('rejects an invalid topology when saving an existing Workflow', () => {
         const summary = store.create('Original', samplePipeline, samplePositions);
-        const invalidPipeline: CompiledPipeline = {
+        const invalidPipeline: WorkflowDocument = {
             ...samplePipeline,
             nodes: [],
             edges: [],
@@ -638,11 +637,13 @@ describe('WorkflowStore', () => {
         const loaded = store.get('wf-pre');
         expect(Option.isSome(loaded)).toBe(true);
         expect(Option.getOrThrow(loaded).positions).toEqual({ 'node-a': { x: 10, y: 20 } });
-        expect(parsePipeline(Option.getOrThrow(loaded).pipeline).ok).toBe(true);
+        expect(WorkflowDocumentSchema.safeParse(Option.getOrThrow(loaded).document).success).toBe(
+            true,
+        );
     });
 
     it('keeps a Workflow disabled with an explicit diagnostic when a persisted port was removed', () => {
-        const registry = createNodeContractRegistry();
+        const registry = createBuiltinNodeContractRegistry();
         registerSerializableNodeContract(registry, {
             identity: pluginNodeIdentity(pid('com.example.removed-port'), 'trigger'),
             version: 1,
@@ -746,7 +747,7 @@ describe('WorkflowStore', () => {
                 enabled: false,
                 diagnostics: [
                     expect.objectContaining({
-                        code: 'invalid_pipeline',
+                        code: 'unsupported_document_version',
                         target: { kind: 'pipeline' },
                     }),
                 ],
@@ -967,7 +968,7 @@ describe('WorkflowStore', () => {
 
         const loaded = store.get('new-id');
         expect(Option.isSome(loaded)).toBe(true);
-        expect(Option.getOrThrow(loaded).pipeline).toEqual(newPipeline);
+        expect(Option.getOrThrow(loaded).document).toEqual(newPipeline);
         expect(Option.getOrThrow(loaded).positions).toEqual(samplePositions);
 
         const filePath = join(dir, 'new-id.json');

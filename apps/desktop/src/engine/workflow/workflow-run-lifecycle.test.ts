@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CompiledPipeline } from '@sigil/schema';
+import type { WorkflowDocument } from '@sigil/schema';
 import { PluginIdSchema, type WorkflowId, WorkflowIdSchema } from '@sigil/schema/ids';
 import {
     type NodeContractRegistry,
@@ -16,8 +16,8 @@ import { testNode } from '../../test-support/pipeline-fixtures.js';
 import { type DispatchSubsystems, dispatch } from '../core/dispatch.js';
 import { createEngine } from '../core/engine.js';
 import type { NodeRunResult, TriggerHandler } from '../node-handlers/types.js';
-import { workflowTopologyOptions } from './workflow-acceptance.js';
 import { createWorkflowActivator } from './workflow-activator.js';
+import { workflowCompilationOptions } from './workflow-compilation.js';
 import { createWorkflowLifecycle } from './workflow-lifecycle.js';
 import { createWorkflowStore } from './workflow-store.js';
 
@@ -30,7 +30,7 @@ const context: WorkflowContext = {
     vars: {},
 };
 
-function testPipeline(): CompiledPipeline {
+function testPipeline(): WorkflowDocument {
     return {
         id: 'pipeline-run-lifecycle',
         workflowId: testWorkflowId('workflow-run-lifecycle'),
@@ -120,7 +120,7 @@ function createRunFixture(cancelOnAbort: boolean, queueLimit = 1): RunFixture {
 
     const store = createWorkflowStore(
         storageDir,
-        workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
+        workflowCompilationOptions(engine.handlerRegistry, engine.contractRegistry),
     );
     const workflowId = testWorkflowId(
         store.create('Run Lifecycle Workflow', testPipeline(), {}).id,

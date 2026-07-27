@@ -3,15 +3,8 @@ import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineEdge } from '@sigil/schema/edges';
 import type { WorkflowId } from '@sigil/schema/ids';
 import type { MatchPatternEngine } from '@sigil/schema/match-pattern';
-import {
-    formatNodeIdentity,
-    type NodeContractRegistry,
-    resolveNodeContract,
-} from '@sigil/schema/node-contract';
 import type { PipelineNode } from '@sigil/schema/nodes';
-import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
 import type { CollisionSuffixStyle, ConflictPolicy } from '@sigil/schema/properties-file';
-import type { ExecutableWorkflow } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Either, Option } from 'effect';
 import type { EventBus, WorkflowRunPayload } from '../events/event-bus.js';
@@ -24,13 +17,11 @@ import {
 } from '../events/telemetry.js';
 import type { NodeHandlerDeps, NodeRunResult, Sleep } from '../node-handlers/types.js';
 import type { CapabilityBroker } from '../persistence/capability-broker.js';
-import { acceptWorkflow } from '../workflow/workflow-acceptance.js';
 import type { WorkflowRunOutcome } from '../workflow/workflow-run-supervisor.js';
 import {
     createInMemoryWorkflowStateStore,
     type WorkflowStateStore,
 } from '../workflow/workflow-state.js';
-import { createWorkflowTopologyError } from '../workflow/workflow-topology-error.js';
 import { evaluateCondition, matchSwitchCase } from './condition-evaluator.js';
 import type { NodeHandlerRegistry } from './node-registry.js';
 import { resolveTemplate } from './template.js';
@@ -51,7 +42,6 @@ export interface ExecutionOptions {
     readonly runId?: string;
     readonly workflowId?: WorkflowId;
     readonly signal?: AbortSignal;
-    readonly contractRegistry?: NodeContractRegistry;
     readonly matchPatternEngine?: MatchPatternEngine;
 }
 
@@ -202,13 +192,8 @@ export async function executePipeline(
     seedContext?: WorkflowContext,
     executionOptions: ExecutionOptions = {},
 ): Promise<WorkflowExecutionResult> {
-    const topology = acceptWorkflow(pipeline, handlerRegistry, executionOptions.contractRegistry);
-    if (!topology.ok) {
-        throw createWorkflowTopologyError(topology.diagnostics);
-    }
-
-    return executeValidatedWorkflow(
-        topology.value,
+    return executeCompiledPipeline(
+        pipeline,
         bus,
         handlerRegistry,
         settings,
@@ -220,8 +205,8 @@ export async function executePipeline(
     );
 }
 
-export async function executeValidatedWorkflow(
-    workflow: ExecutableWorkflow,
+export async function executeCompiledPipeline(
+    pipeline: CompiledPipeline,
     bus: EventBus,
     handlerRegistry: NodeHandlerRegistry,
     settings: ExecutorSettings = DEFAULT_EXECUTOR_SETTINGS,
@@ -231,7 +216,6 @@ export async function executeValidatedWorkflow(
     seedContext?: WorkflowContext,
     executionOptions: ExecutionOptions = {},
 ): Promise<WorkflowExecutionResult> {
-    const pipeline = workflow.pipeline;
     const workflowId = executionOptions.workflowId ?? pipeline.workflowId;
     const runId = executionOptions.runId ?? randomUUID();
     const runPayload: CorrelatedWorkflowRunPayload = {
@@ -239,8 +223,6 @@ export async function executeValidatedWorkflow(
         workflowId,
         runId,
     };
-    const contractRegistry =
-        executionOptions.contractRegistry ?? createBuiltinNodeContractRegistry();
     const evaluateConditionWithOptions: NodeHandlerDeps['evaluateCondition'] = (condition, ctx) =>
         evaluateCondition(condition, ctx, executionOptions.matchPatternEngine);
     const telemetry = createRunTelemetry(bus, {
@@ -273,7 +255,7 @@ export async function executeValidatedWorkflow(
             }
         }
 
-        const triggerNode = nodeById.get(workflow.triggerId);
+        const triggerNode = nodeById.get(pipeline.triggerId);
         if (!triggerNode) {
             telemetry.emit({
                 name: 'workflow.completed',
@@ -303,15 +285,12 @@ export async function executeValidatedWorkflow(
             const nodeTelemetry = telemetry.forNode(nodeIdentity);
             const span = nodeTelemetry.start();
             try {
-                const contract = resolveNodeContract(node, contractRegistry);
-                if (contract.status === 'unavailable') {
+                const contract = pipeline.admittedNodeContracts.find(
+                    (candidate) => candidate.nodeId === node.id,
+                );
+                if (!contract) {
                     throw new Error(
-                        `Node Contract ${formatNodeIdentity(contract.identity)} is unavailable; load the Plugin that declares it before execution.`,
-                    );
-                }
-                if (contract.status === 'invalid') {
-                    throw new Error(
-                        `Node Contract ${formatNodeIdentity(contract.identity)} is invalid: ${contract.issues.map((issue) => issue.message).join('; ')}`,
+                        `Compiled Pipeline is missing the admitted Node Contract for "${node.id}".`,
                     );
                 }
                 const handler = handlerRegistry.get(node.type);
@@ -328,7 +307,7 @@ export async function executeValidatedWorkflow(
                     );
                     if (!port) {
                         throw new Error(
-                            `Node ${formatNodeIdentity(contract.identity)} returned undeclared activePort "${result.activePort}". Allowed ports: ${contract.outputPorts.map((candidate) => candidate.id).join(', ')}.`,
+                            `Node ${node.id} returned undeclared activePort "${result.activePort}". Allowed ports: ${contract.outputPorts.map((candidate) => candidate.id).join(', ')}.`,
                         );
                     }
                 }

@@ -3,12 +3,16 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync as Database } from 'node:sqlite';
-import type { CompiledPipeline } from '@sigil/schema';
+import { type CompiledPipeline, compileWorkflow } from '@sigil/schema';
 import type { PipelineEdge } from '@sigil/schema/edges';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import type { MatchPatternEngine } from '@sigil/schema/match-pattern';
-import { pluginNodeIdentity, registerSerializableNodeContract } from '@sigil/schema/node-contract';
+import {
+    type NodeContractRegistry,
+    pluginNodeIdentity,
+    registerSerializableNodeContract,
+} from '@sigil/schema/node-contract';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
@@ -58,13 +62,24 @@ const log = (id: string, message: string): PipelineNode =>
     });
 const edge = (id: string, source: string, target: string, sourcePort: string): PipelineEdge =>
     testEdge({ id, source, target, sourcePort });
-const pipeline = (nodes: readonly unknown[], edges: readonly unknown[]): CompiledPipeline => ({
-    id: 'test-pipeline',
-    workflowId: TEST_WORKFLOW_ID,
-    schemaVersion: 1,
-    nodes: nodes.map(testNode),
-    edges: edges.map(testEdge),
-});
+const pipeline = (
+    nodes: readonly unknown[],
+    edges: readonly unknown[],
+    contractRegistry?: NodeContractRegistry,
+): CompiledPipeline => {
+    const result = compileWorkflow(
+        {
+            id: 'test-pipeline',
+            workflowId: TEST_WORKFLOW_ID,
+            schemaVersion: 1,
+            nodes: nodes.map(testNode),
+            edges: edges.map(testEdge),
+        },
+        contractRegistry === undefined ? {} : { contractRegistry },
+    );
+    if (!result.ok) throw new Error(result.error);
+    return result.value;
+};
 
 describe('dag-executor', () => {
     let handlerRegistry: ReturnType<typeof createNodeHandlerRegistry>;
@@ -185,6 +200,7 @@ describe('dag-executor', () => {
                         edge('trigger-contracted', 'trigger', 'contracted', 'out'),
                         edge('contracted-downstream', 'contracted', 'downstream', 'declared'),
                     ],
+                    contractRegistry,
                 ),
                 bus,
                 handlerRegistry,
@@ -193,7 +209,6 @@ describe('dag-executor', () => {
                 undefined,
                 undefined,
                 undefined,
-                { contractRegistry },
             );
 
             expect(result.outcome).toBe('failed');

@@ -1,4 +1,4 @@
-import type { CompiledPipeline } from '@sigil/schema';
+import type { WorkflowDocument } from '@sigil/schema';
 import type { NodeType, PipelineNode } from '@sigil/schema/nodes';
 import type { Connection, Edge, EdgeChange, NodeChange, XYPosition } from '@xyflow/react';
 import { create } from 'zustand';
@@ -84,8 +84,8 @@ export interface BuilderState {
         Record<string, { readonly x: number; readonly y: number }>
     >;
     readonly clear: () => void;
-    readonly loadPipeline: (
-        pipeline: CompiledPipeline,
+    readonly loadDocument: (
+        document: WorkflowDocument,
         name: string,
         positions?: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
     ) => void;
@@ -181,12 +181,12 @@ function reconcileSelectedNode(
 }
 
 function pipelineSnapshot(
-    pipeline: CompiledPipeline,
+    document: WorkflowDocument,
     name: string,
     positions?: Readonly<Record<string, { readonly x: number; readonly y: number }>>,
 ): WorkflowDraftSnapshot {
-    const resolvedPositions = resolveWorkflowPositions(pipeline.nodes, pipeline.edges, positions);
-    const nodes: BuilderRFNode[] = pipeline.nodes.map(
+    const resolvedPositions = resolveWorkflowPositions(document.nodes, document.edges, positions);
+    const nodes: BuilderRFNode[] = document.nodes.map(
         (pipelineNode: PipelineNode): BuilderRFNode => ({
             id: pipelineNode.id,
             type: BUILDER_NODE_TYPE,
@@ -194,7 +194,7 @@ function pipelineSnapshot(
             data: nodeSpecData(pipelineNodeToSpec(pipelineNode)),
         }),
     );
-    const edges: Edge[] = pipeline.edges.map((pipelineEdge) => ({
+    const edges: Edge[] = document.edges.map((pipelineEdge) => ({
         id: pipelineEdge.id,
         source: pipelineEdge.source,
         target: pipelineEdge.target,
@@ -202,8 +202,8 @@ function pipelineSnapshot(
         targetHandle: undefined,
     }));
     const meta: PipelineMeta = {
-        id: pipeline.id,
-        workflowId: pipeline.workflowId,
+        id: document.id,
+        workflowId: document.workflowId,
         name,
     };
     return { nodes, edges, meta, pipelineName: name };
@@ -419,7 +419,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
 
             const request = {
                 name,
-                pipeline: result.value,
+                document: result.value.source,
                 positions: state.getPositions(),
                 revision: pending.revision,
             };
@@ -481,10 +481,10 @@ export const useBuilderStore = create<BuilderState>((set, get) => {
             }));
         },
 
-        loadPipeline: (pipeline, name, positions) => {
+        loadDocument: (document, name, positions) => {
             set((state) => ({
                 ...projectDraftWithCache(
-                    createWorkflowDraft(pipelineSnapshot(pipeline, name, positions)),
+                    createWorkflowDraft(pipelineSnapshot(document, name, positions)),
                     state.nodeCatalog,
                 ),
                 selectedNodeId: null,

@@ -1,4 +1,4 @@
-import { CompiledPipelineSchema } from '@sigil/schema';
+import { WorkflowDocumentSchema } from '@sigil/schema';
 import { NodeTypeSchema } from '@sigil/schema/nodes';
 import { describe, expect, it } from 'vitest';
 
@@ -20,7 +20,7 @@ describe('nodeTypeDef', () => {
     for (const type of ALL_TYPES) {
         it(`produces a schema-valid default config for "${type}"`, () => {
             const spec = { type, config: nodeTypeDef(type).defaultConfig } as NodeSpec;
-            const result = CompiledPipelineSchema.safeParse({
+            const result = WorkflowDocumentSchema.safeParse({
                 id: 'p',
                 workflowId: 'w',
                 schemaVersion: 1,

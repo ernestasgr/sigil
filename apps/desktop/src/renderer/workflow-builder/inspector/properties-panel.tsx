@@ -158,9 +158,11 @@ export function PropertiesPanel({
                         onClick={() => {
                             const result = useBuilderStore.getState().compile();
                             if (result.ok) {
-                                sigil.fireManualTrigger(result.value).catch((err: unknown) => {
-                                    console.error('Failed to fire manual trigger:', err);
-                                });
+                                sigil
+                                    .fireManualTrigger(result.value.source)
+                                    .catch((err: unknown) => {
+                                        console.error('Failed to fire manual trigger:', err);
+                                    });
                             }
                         }}
                     >

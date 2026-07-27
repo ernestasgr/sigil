@@ -1,4 +1,4 @@
-import { CompiledPipelineSchema } from '@sigil/schema';
+import { WorkflowDocumentSchema } from '@sigil/schema';
 import { FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
 import { PluginIdSchema } from '@sigil/schema/ids';
 import { CapabilitySchema } from '@sigil/schema/manifest';
@@ -37,7 +37,7 @@ export type CommandExecutionOutcome = z.infer<typeof CommandExecutionOutcomeSche
 export const WorkflowWriteInputSchema = z
     .object({
         name: z.string(),
-        pipeline: CompiledPipelineSchema,
+        document: WorkflowDocumentSchema,
         positions: NodePositionRecordSchema,
     })
     .readonly();
@@ -47,15 +47,15 @@ export const WorkflowUpdateInputSchema = z
     .object({
         id: WorkflowIdSchema,
         name: z.string(),
-        pipeline: CompiledPipelineSchema,
+        document: WorkflowDocumentSchema,
         positions: NodePositionRecordSchema,
     })
     .superRefine((input, ctx) => {
-        if (input.id !== input.pipeline.workflowId) {
+        if (input.id !== input.document.workflowId) {
             ctx.addIssue({
                 code: 'custom',
-                path: ['pipeline', 'workflowId'],
-                message: 'Pipeline workflowId must match the requested Workflow id.',
+                path: ['document', 'workflowId'],
+                message: 'Workflow document workflowId must match the requested Workflow id.',
             });
         }
     })
@@ -108,7 +108,7 @@ export const GetWorkflowOutputSchema = z.union([
     z
         .object({
             name: z.string(),
-            pipeline: CompiledPipelineSchema,
+            document: WorkflowDocumentSchema,
             positions: NodePositionRecordSchema,
         })
         .readonly(),

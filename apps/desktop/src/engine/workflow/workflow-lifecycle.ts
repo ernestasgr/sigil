@@ -202,7 +202,7 @@ export function createWorkflowLifecycle(
     function restoreUpdatedWorkflow(
         workflowId: WorkflowId,
         previous: Option.Option<{
-            readonly pipeline: Parameters<WorkflowStore['save']>[2];
+            readonly document: Parameters<WorkflowStore['save']>[2];
             readonly name: string;
             readonly positions: Parameters<WorkflowStore['save']>[3];
         }>,
@@ -224,7 +224,7 @@ export function createWorkflowLifecycle(
                 store.save(
                     workflowId,
                     previous.value.name,
-                    previous.value.pipeline,
+                    previous.value.document,
                     previous.value.positions,
                 );
             } catch (error) {

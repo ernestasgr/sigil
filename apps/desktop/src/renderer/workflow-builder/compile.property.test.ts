@@ -1,4 +1,4 @@
-import { parsePipeline } from '@sigil/schema';
+import { WorkflowDocumentSchema } from '@sigil/schema';
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
@@ -93,15 +93,17 @@ describe('generated compileGraph properties', () => {
                         sourcePort: currentEdge.sourceHandle,
                     })),
                 );
-                expect(result.executable.triggerId).toBe('node-0');
-                expect(result.executable.executionOrder).toHaveLength(graph.nodes.length);
-                expect(new Set(result.executable.executionOrder).size).toBe(graph.nodes.length);
+                expect(result.value.triggerId).toBe('node-0');
+                expect(result.value.executionOrder).toHaveLength(graph.nodes.length);
+                expect(new Set(result.value.executionOrder).size).toBe(graph.nodes.length);
 
                 const second = compileGraph(graph.nodes, graph.edges, meta);
                 expect(second).toEqual(result);
 
-                const roundTrip = parsePipeline(JSON.parse(JSON.stringify(result.value)));
-                expect(roundTrip).toEqual({ ok: true, value: result.value });
+                const roundTrip = WorkflowDocumentSchema.safeParse(
+                    JSON.parse(JSON.stringify(result.value.source)),
+                );
+                expect(roundTrip).toEqual({ success: true, data: result.value.source });
             }),
             PROPERTY_OPTIONS,
         );

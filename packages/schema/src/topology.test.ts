@@ -14,7 +14,7 @@ import { pluginNodeIdentity, registerSerializableNodeContract } from './node-con
 import { createBuiltinNodeContractRegistry } from './nodes/catalog.js';
 import type { PipelineNode } from './nodes/index.js';
 import { SwitchCaseIdSchema, switchOutputPortSpec } from './nodes/switch.js';
-import type { CompiledPipeline } from './pipeline.js';
+import type { WorkflowDocument } from './pipeline.js';
 import {
     formatTopologyDiagnostics,
     TopologyDiagnosticSchema,
@@ -49,7 +49,7 @@ const edge = (id: string, source: string, target: string, sourcePort = 'out'): P
 function pipeline(
     nodes: readonly PipelineNode[],
     edges: readonly PipelineEdge[],
-): CompiledPipeline {
+): WorkflowDocument {
     return {
         id: 'pipeline-1',
         workflowId: WorkflowIdSchema.parse('workflow-1'),
@@ -75,7 +75,7 @@ function cycleDiagnosticEdgeIds(
 const cycleDiagnosticCases = [
     {
         name: 'a multi-Node cycle with a downstream tail',
-        createGraph: (): CompiledPipeline =>
+        createGraph: (): WorkflowDocument =>
             pipeline(
                 [trigger('trigger'), log('a'), log('b'), log('tail')],
                 [
@@ -89,7 +89,7 @@ const cycleDiagnosticCases = [
     },
     {
         name: 'a self-loop with a downstream tail',
-        createGraph: (): CompiledPipeline =>
+        createGraph: (): WorkflowDocument =>
             pipeline(
                 [trigger('trigger'), log('loop'), log('tail')],
                 [
@@ -102,7 +102,7 @@ const cycleDiagnosticCases = [
     },
     {
         name: 'multiple independent cycles with downstream tails',
-        createGraph: (): CompiledPipeline =>
+        createGraph: (): WorkflowDocument =>
             pipeline(
                 [
                     trigger('trigger'),

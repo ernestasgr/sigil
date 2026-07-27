@@ -95,7 +95,7 @@ export function WorkflowsSection(): ReactElement {
                     useBuilderStore.getState().setNodeCatalog(nodeCatalog);
                     useBuilderStore
                         .getState()
-                        .loadPipeline(result.pipeline, result.name, result.positions);
+                        .loadDocument(result.document, result.name, result.positions);
                     setEditingWorkflowId(id);
                     setWorkflowView('builder');
                 }
@@ -116,17 +116,17 @@ export function WorkflowsSection(): ReactElement {
                     name,
                     async ({
                         name: saveName,
-                        pipeline,
+                        document,
                         positions,
                     }): Promise<WorkflowDraftSaveResult> => {
                         const writeOutcome = editingWorkflowId
                             ? await sigil.updateWorkflow(
                                   editingWorkflowId,
                                   saveName,
-                                  pipeline,
+                                  document,
                                   positions,
                               )
-                            : await sigil.createWorkflow(saveName, pipeline, positions);
+                            : await sigil.createWorkflow(saveName, document, positions);
                         if (writeOutcome.ok) return { ok: true };
                         return {
                             ok: false,

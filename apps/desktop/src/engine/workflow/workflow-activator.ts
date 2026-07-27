@@ -1,6 +1,6 @@
+import type { CompiledPipeline } from '@sigil/schema';
 import type { WorkflowId } from '@sigil/schema/ids';
 import { isPluginNode } from '@sigil/schema/nodes';
-import type { ExecutableWorkflow } from '@sigil/schema/topology';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Option } from 'effect';
 
@@ -10,7 +10,6 @@ import type { PermissionTransitionRunReconciler } from '../core/permission-trans
 import { createRunTelemetry } from '../events/telemetry.js';
 import type { NodeHandlerRegistry } from '../execution/node-registry.js';
 import { isTriggerHandler } from '../node-handlers/types.js';
-import { acceptWorkflow } from './workflow-acceptance.js';
 import {
     createWorkflowRunSupervisor,
     WORKFLOW_RUN_PERMISSION_REVOKED_REASON,
@@ -42,7 +41,7 @@ interface ActiveActivation {
     readonly onEvent: WorkflowEventCallback;
     readonly teardown: () => void;
     readonly supervisor: WorkflowRunSupervisor;
-    readonly executable: ExecutableWorkflow;
+    readonly compiled: CompiledPipeline;
 }
 
 const deactivationHooks = new WeakMap<WorkflowEventCallback, (reason?: string) => void>();
@@ -74,7 +73,7 @@ export function createWorkflowActivator(
         readonly {
             readonly supervisor: WorkflowRunSupervisor;
             readonly promise: Promise<void>;
-            readonly executable: ExecutableWorkflow;
+            readonly compiled: CompiledPipeline;
         }[]
     >();
     let nextToken = 0;
@@ -179,7 +178,7 @@ export function createWorkflowActivator(
     function rememberStoppedRuns(
         workflowId: WorkflowId,
         supervisor: WorkflowRunSupervisor,
-        executable: ExecutableWorkflow,
+        compiled: CompiledPipeline,
         pending: Promise<readonly string[]>,
     ): void {
         const guarded = pending
@@ -190,7 +189,7 @@ export function createWorkflowActivator(
                     'workflow_run',
                 );
             });
-        const entry = { supervisor, promise: guarded, executable };
+        const entry = { supervisor, promise: guarded, compiled };
         stoppedRuns.set(workflowId, [...(stoppedRuns.get(workflowId) ?? []), entry]);
         void guarded.then(() => {
             const current = stoppedRuns.get(workflowId);
@@ -207,11 +206,11 @@ export function createWorkflowActivator(
     function stopRuns(
         workflowId: WorkflowId,
         supervisor: WorkflowRunSupervisor,
-        executable: ExecutableWorkflow,
+        compiled: CompiledPipeline,
         reason: string,
     ): Promise<readonly string[]> {
         const pending = supervisor.cancel(reason);
-        rememberStoppedRuns(workflowId, supervisor, executable, pending);
+        rememberStoppedRuns(workflowId, supervisor, compiled, pending);
         return pending;
     }
 
@@ -226,36 +225,29 @@ export function createWorkflowActivator(
 
         const supervisors = new Map<
             WorkflowRunSupervisor,
-            { readonly workflowId: WorkflowId; readonly executable: ExecutableWorkflow }
+            { readonly workflowId: WorkflowId; readonly compiled: CompiledPipeline }
         >();
         for (const [workflowId, activation] of active) {
             supervisors.set(activation.supervisor, {
                 workflowId,
-                executable: activation.executable,
+                compiled: activation.compiled,
             });
         }
         for (const [workflowId, entries] of stoppedRuns) {
             for (const entry of entries) {
                 supervisors.set(entry.supervisor, {
                     workflowId,
-                    executable: entry.executable,
+                    compiled: entry.compiled,
                 });
             }
         }
 
-        const affected = [...supervisors.entries()].filter(([, { executable }]) =>
-            executable.pipeline.nodes.some(
-                (node) => isPluginNode(node) && node.pluginId === pluginId,
-            ),
+        const affected = [...supervisors.entries()].filter(([, { compiled }]) =>
+            compiled.nodes.some((node) => isPluginNode(node) && node.pluginId === pluginId),
         );
         const cancelled = await Promise.all(
-            affected.map(([supervisor, { workflowId, executable }]) =>
-                stopRuns(
-                    workflowId,
-                    supervisor,
-                    executable,
-                    WORKFLOW_RUN_PERMISSION_REVOKED_REASON,
-                ),
+            affected.map(([supervisor, { workflowId, compiled }]) =>
+                stopRuns(workflowId, supervisor, compiled, WORKFLOW_RUN_PERMISSION_REVOKED_REASON),
             ),
         );
         return [...new Set(cancelled.flat())];
@@ -277,39 +269,12 @@ export function createWorkflowActivator(
 
             setActivation(workflowId, { kind: 'activating' });
 
-            const accepted = acceptWorkflow(
-                data.value.executable,
-                handlerRegistry,
-                engine.contractRegistry,
-            );
-            if (!accepted.ok) {
-                for (const diagnostic of accepted.diagnostics) {
-                    engine.bus.next({
-                        name: 'engine.diagnostic',
-                        payload: {
-                            kind: 'workflow_topology',
-                            message: `[activator][topology:${diagnostic.code}] ${diagnostic.message}`,
-                        },
-                    });
-                }
-                const firstDiagnostic = accepted.diagnostics[0];
-                recordFailure(
-                    workflowId,
-                    firstDiagnostic?.message ?? 'Workflow topology validation failed.',
-                    `[activator] failed to activate workflow "${data.value.name}" (${workflowId}): workflow topology is invalid`,
-                    false,
-                );
-                return false;
-            }
-
-            const executable = accepted.value;
-            const trigger = executable.pipeline.nodes.find(
-                (node) => node.id === executable.triggerId,
-            );
+            const compiled = data.value.compiled;
+            const trigger = compiled.nodes.find((node) => node.id === compiled.triggerId);
             if (!trigger) {
                 recordFailure(
                     workflowId,
-                    'The executable Workflow has no Trigger node.',
+                    'The compiled Workflow has no Trigger node.',
                     `[activator] failed to activate workflow "${data.value.name}" (${workflowId}): trigger node is missing`,
                     false,
                 );
@@ -347,13 +312,13 @@ export function createWorkflowActivator(
 
             supervisor = createWorkflowRunSupervisor({
                 workflowId,
-                pipelineId: executable.pipeline.id,
+                pipelineId: compiled.id,
                 policy: options?.runPolicy,
                 onEvent: (event) => {
                     if (supervisor) publishRunLifecycleEvent(event, supervisor);
                 },
                 execute: (run) =>
-                    engine.execute(executable, run.context, {
+                    engine.execute(compiled, run.context, {
                         runId: run.runId,
                         workflowId,
                         signal: run.signal,
@@ -377,7 +342,7 @@ export function createWorkflowActivator(
                 stopRuns(
                     workflowId,
                     current.supervisor,
-                    current.executable,
+                    current.compiled,
                     reason ?? 'Trigger activation failed.',
                 );
                 teardownSafely(workflowId, data.value.name, current.teardown);
@@ -400,7 +365,7 @@ export function createWorkflowActivator(
             let teardown: (() => void) | undefined;
             try {
                 teardown = handler.value.activate(trigger.config, onEvent);
-                active.set(workflowId, { token, onEvent, teardown, supervisor, executable });
+                active.set(workflowId, { token, onEvent, teardown, supervisor, compiled });
                 setActivation(workflowId, { kind: 'active' });
                 emitDiagnostic(
                     `[activator] trigger "${trigger.type}" active for "${data.value.name}" (${workflowId})`,
@@ -411,7 +376,7 @@ export function createWorkflowActivator(
                 const current = active.get(workflowId);
                 active.delete(workflowId);
                 deactivationHooks.delete(onEvent);
-                stopRuns(workflowId, supervisor, executable, 'Trigger activation failed.');
+                stopRuns(workflowId, supervisor, compiled, 'Trigger activation failed.');
                 if (current) {
                     teardownSafely(workflowId, data.value.name, current.teardown);
                 } else if (teardown) {
@@ -442,7 +407,7 @@ export function createWorkflowActivator(
                 stopRuns(
                     workflowId,
                     activation.supervisor,
-                    activation.executable,
+                    activation.compiled,
                     'Workflow disabled.',
                 );
                 teardownSafely(workflowId, workflowId, activation.teardown);
@@ -505,7 +470,7 @@ export function createWorkflowActivator(
                     stopRuns(
                         workflowId,
                         activation.supervisor,
-                        activation.executable,
+                        activation.compiled,
                         'Engine shutting down.',
                     );
                     teardownSafely(workflowId, workflowId, activation.teardown);

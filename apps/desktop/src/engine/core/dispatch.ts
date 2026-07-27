@@ -101,7 +101,7 @@ async function handleFireManualTrigger(
     subsystems: DispatchSubsystems,
 ): Promise<void> {
     try {
-        await subsystems.engine.execute(message.pipeline);
+        await subsystems.engine.executeDocument(message.document);
         postCommandResponse(
             'fireManualTrigger',
             {
@@ -244,7 +244,7 @@ function handleCreateWorkflow(
 ): void {
     let summary: ReturnType<WorkflowStore['create']>;
     try {
-        summary = subsystems.store.create(message.name, message.pipeline, message.positions);
+        summary = subsystems.store.create(message.name, message.document, message.positions);
     } catch (error) {
         if (isWorkflowTopologyError(error)) {
             subsystems.log(`Could not create workflow "${message.name}": ${error.message}`);
@@ -301,11 +301,11 @@ async function handleUpdateWorkflow(
                   subsystems.store.save(
                       message.id,
                       message.name,
-                      message.pipeline,
+                      message.document,
                       message.positions,
                   ),
               )
-            : subsystems.store.save(message.id, message.name, message.pipeline, message.positions);
+            : subsystems.store.save(message.id, message.name, message.document, message.positions);
     } catch (error) {
         if (isWorkflowTopologyError(error)) {
             subsystems.log(`Could not update workflow "${message.name}": ${error.message}`);
@@ -454,7 +454,7 @@ function handleGetWorkflow(
                 correlationId: message.correlationId,
                 found: true,
                 name: data.value.name,
-                pipeline: data.value.pipeline,
+                document: data.value.document,
                 positions: data.value.positions,
             },
             subsystems,

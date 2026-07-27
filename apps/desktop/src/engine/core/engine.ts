@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
+import { type CompiledPipeline, compileWorkflow, type WorkflowDocument } from '@sigil/schema';
 import type { PluginId } from '@sigil/schema/ids';
 import type { Capability } from '@sigil/schema/manifest';
 import type { NodeContractRegistry } from '@sigil/schema/node-contract';
@@ -29,7 +30,7 @@ import { createEventBus } from '../events/event-bus.js';
 import {
     type ExecutionOptions,
     type ExecutorSettings,
-    executeValidatedWorkflow,
+    executeCompiledPipeline,
     type WorkflowExecutionResult,
 } from '../execution/dag-executor.js';
 import { createNodeHandlerRegistry, type NodeHandlerRegistry } from '../execution/node-registry.js';
@@ -48,7 +49,6 @@ import {
     createNodePluginLoader,
     type NodePluginLoadResult,
 } from '../plugins/node-plugin-loader.js';
-import { acceptWorkflow, type WorkflowInput } from '../workflow/workflow-acceptance.js';
 import { createWorkflowStateStore, type WorkflowStateStore } from '../workflow/workflow-state.js';
 import { createWorkflowTopologyError } from '../workflow/workflow-topology-error.js';
 import {
@@ -107,7 +107,12 @@ export interface Engine {
         permissions: readonly Capability[],
     ) => void;
     readonly execute: (
-        pipeline: WorkflowInput,
+        pipeline: CompiledPipeline,
+        seedContext?: WorkflowContext,
+        executionOptions?: ExecutionOptions,
+    ) => Promise<WorkflowExecutionResult>;
+    readonly executeDocument: (
+        document: WorkflowDocument,
         seedContext?: WorkflowContext,
         executionOptions?: ExecutionOptions,
     ) => Promise<WorkflowExecutionResult>;
@@ -221,6 +226,22 @@ export function createEngine(options?: EngineOptions): Engine {
 
     const handlerRegistry = createNodeHandlerRegistry(createBuiltinHandlers());
     const contractRegistry = createBuiltinNodeContractRegistry();
+    const executeCompiled = async (
+        pipeline: CompiledPipeline,
+        seedContext?: WorkflowContext,
+        executionOptions?: ExecutionOptions,
+    ): Promise<WorkflowExecutionResult> =>
+        executeCompiledPipeline(
+            pipeline,
+            bus,
+            handlerRegistry,
+            settings,
+            undefined,
+            workflowStateStore,
+            capabilityBroker,
+            seedContext,
+            executionOptions,
+        );
     const pluginLoader = createNodePluginLoader();
     let permissionTransitionReconciler: PermissionTransitionRunReconciler = async () => [];
     let resourcesDisposed = false;
@@ -394,28 +415,21 @@ export function createEngine(options?: EngineOptions): Engine {
         applyPermissionOverride,
         registerPermissionTransitionReconciler,
         updatePluginPermissions,
-        execute: async (
-            pipeline,
+        execute: executeCompiled,
+        executeDocument: async (
+            document,
             seedContext,
             executionOptions,
         ): Promise<WorkflowExecutionResult> => {
-            const topology = acceptWorkflow(pipeline, handlerRegistry, contractRegistry);
-            if (!topology.ok) {
-                emitTopologyDiagnostics(bus, topology.diagnostics);
-                throw createWorkflowTopologyError(topology.diagnostics);
+            const compiled = compileWorkflow(document, {
+                contractRegistry,
+                isNodeSupported: (node) => handlerRegistry.has(node.type),
+            });
+            if (!compiled.ok) {
+                emitTopologyDiagnostics(bus, compiled.diagnostics);
+                throw createWorkflowTopologyError(compiled.diagnostics);
             }
-
-            return executeValidatedWorkflow(
-                topology.value,
-                bus,
-                handlerRegistry,
-                settings,
-                undefined,
-                workflowStateStore,
-                capabilityBroker,
-                seedContext,
-                { ...executionOptions, contractRegistry },
-            );
+            return executeCompiled(compiled.value, seedContext, executionOptions);
         },
         shutdown,
         dispose: (): void => {

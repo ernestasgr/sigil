@@ -373,7 +373,7 @@ describe('Workflow State schemas', () => {
 });
 
 describe('EngineUpdateWorkflowSchema', () => {
-    const pipeline = {
+    const document = {
         id: 'pipeline-1',
         workflowId: 'wf-1',
         schemaVersion: 1 as const,
@@ -387,7 +387,7 @@ describe('EngineUpdateWorkflowSchema', () => {
             correlationId: 'corr-1',
             id: 'wf-2',
             name: 'Workflow',
-            pipeline,
+            document,
             positions: {},
         });
 
@@ -400,7 +400,7 @@ describe('EngineUpdateWorkflowSchema', () => {
             correlationId: 'corr-1',
             id: 'wf-1',
             name: 'Workflow',
-            pipeline,
+            document,
             positions: {},
         });
 
@@ -414,7 +414,7 @@ describe('Workflow command identity schemas', () => {
             type: EngineChannel.CreateWorkflow,
             correlationId: 'corr-1',
             name: 'Workflow',
-            pipeline: {
+            document: {
                 id: 'pipeline-1',
                 workflowId: '../outside',
                 schemaVersion: 1,
