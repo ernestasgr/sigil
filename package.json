@@ -17,7 +17,7 @@
         "build": "pnpm --filter @sigil/contracts build && pnpm --filter @sigil/workflow-domain build && pnpm --filter @sigil/desktop build",
         "preview": "pnpm --filter @sigil/desktop preview",
         "pretypecheck": "node scripts/check-node-version.mjs",
-        "typecheck": "pnpm -r typecheck",
+        "typecheck": "pnpm --filter @sigil/contracts build && pnpm --filter @sigil/workflow-domain build && pnpm -r typecheck",
         "lint": "biome check .",
         "lint:fix": "biome check --write .",
         "format": "biome format --write .",

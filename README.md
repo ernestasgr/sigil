@@ -261,7 +261,7 @@ process trees, including nested TypeScript and Electron processes on Windows.
 | `pnpm dev`          | Build and watch `@sigil/contracts`, `@sigil/workflow-domain`, and the desktop app with HMR. |
 | `pnpm build`        | Build contracts, Workflow domain, and the desktop app for production. |
 | `pnpm preview`      | Preview the built desktop app.                            |
-| `pnpm typecheck`    | Run `tsc --noEmit` across every workspace package.        |
+| `pnpm typecheck`    | Build the contracts and Workflow domain declarations, then run `tsc --noEmit` across every workspace package. |
 | `pnpm lint`         | Lint the whole repo with Biome.                           |
 | `pnpm lint:fix`     | Lint and auto-fix with Biome.                             |
 | `pnpm format`       | Format the repo with Biome.                               |

@@ -52,8 +52,8 @@ jobs:
             - name: Bootstrap - prepare ast-grep CLI
               run: pnpm rebuild @ast-grep/cli
 
-            - name: Bootstrap - build shared schema package
-              run: pnpm --filter @sigil/schema build
+            - name: Bootstrap - build shared contracts and Workflow domain packages
+              run: pnpm --filter @sigil/contracts build && pnpm --filter @sigil/workflow-domain build
 
             - name: Advisory gate - Knip machine-readable report
               shell: pwsh
@@ -89,7 +89,7 @@ jobs:
             - name: Fast gate - typecheck
               run: pnpm typecheck
 
-            - name: Fast gate - schema and renderer tests
+            - name: Fast gate - contracts and renderer tests
               run: pnpm test:fast
 
             - name: Native gate - all Vitest projects with coverage
@@ -98,7 +98,7 @@ jobs:
             - name: Native gate - enforce coverage baseline
               run: pnpm coverage:check
 
-            - name: Build gate - schema and Electron production build
+            - name: Build gate - contracts, Workflow domain, and Electron production build
               run: pnpm build
 
             - name: E2E gate - Electron Workflow lifecycle smoke test
@@ -145,8 +145,8 @@ jobs:
                       '',
                       "- **Status:** $env:JOB_STATUS",
                       "- **Runner:** $env:RUNNER_OS",
-                      '- **Commands:** `pnpm lint`, `pnpm format:check`, `pnpm architecture:check`, `pnpm structure:check`, `pnpm structure:test`, `pnpm structure:check:json`, `pnpm workflows:check`, `pnpm typecheck`, `pnpm test:fast` (including the composed renderer unit and DOM tests), `pnpm test:coverage` (schema, desktop, and renderer projects), `pnpm coverage:check`, `pnpm build`, `pnpm --filter @sigil/desktop test:e2e`, and `pnpm verify:production`',
-                      '- **Bootstrap ownership:** Node.js, pnpm, dependency installation, ast-grep CLI preparation, and schema build.',
+                      '- **Commands:** `pnpm lint`, `pnpm format:check`, `pnpm architecture:check`, `pnpm structure:check`, `pnpm structure:test`, `pnpm structure:check:json`, `pnpm workflows:check`, `pnpm typecheck`, `pnpm test:fast` (including the composed renderer unit and DOM tests), `pnpm test:coverage` (contracts, Workflow domain, desktop, and renderer projects), `pnpm coverage:check`, `pnpm build`, `pnpm --filter @sigil/desktop test:e2e`, and `pnpm verify:production`',
+                      '- **Bootstrap ownership:** Node.js, pnpm, dependency installation, ast-grep CLI preparation, and contracts/Workflow domain builds.',
                       '- **Product ownership:** static checks, pure tests, native tests, coverage baseline, production build, artifact completeness, and Electron startup.',
                       '- **Native isolation:** dependency lifecycle scripts are disabled during install; native tests run after the fast checks.'
                   ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
@@ -168,7 +168,8 @@ jobs:
               with:
                   name: sigil-coverage-${{ github.run_id }}
                   path: |
-                      packages/schema/coverage
+                      packages/contracts/coverage
+                      packages/workflow-domain/coverage
                       apps/desktop/coverage
                   if-no-files-found: warn
                   retention-days: 14
