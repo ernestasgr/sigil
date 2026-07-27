@@ -1,4 +1,4 @@
-import type { TopologyDiagnostic } from '@sigil/schema/topology';
+import type { TopologyDiagnostic } from '@sigil/workflow-domain/topology';
 import { ReactFlowProvider } from '@xyflow/react';
 import { type ReactElement, useEffect, useState } from 'react';
 

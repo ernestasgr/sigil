@@ -1,4 +1,8 @@
 {
     "files": [],
-    "references": [{ "path": "packages/schema" }, { "path": "apps/desktop" }]
+    "references": [
+        { "path": "packages/contracts" },
+        { "path": "packages/workflow-domain" },
+        { "path": "apps/desktop" }
+    ]
 }

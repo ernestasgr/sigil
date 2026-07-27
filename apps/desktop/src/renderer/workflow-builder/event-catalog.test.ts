@@ -1,4 +1,4 @@
-import { EventNameSchema, PluginIdSchema } from '@sigil/schema/ids';
+import { EventNameSchema, PluginIdSchema } from '@sigil/contracts/ids';
 import { describe, expect, it } from 'vitest';
 
 import {

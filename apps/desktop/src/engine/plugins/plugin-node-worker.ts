@@ -5,27 +5,27 @@ import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import vm from 'node:vm';
 import { parentPort, workerData } from 'node:worker_threads';
-import type { EventName, NodeTypeName, PluginId } from '@sigil/schema/ids';
+import type { EventName, NodeTypeName, PluginId } from '@sigil/contracts/ids';
 import {
     EventNameSchema,
     NodeTypeNameSchema,
     PipelineNodeIdSchema,
     PluginIdSchema,
-} from '@sigil/schema/ids';
-import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
+} from '@sigil/contracts/ids';
+import { type Capability, CapabilitySchema } from '@sigil/contracts/manifest';
 import {
-    resolveDeclarativeOutputPorts,
     type SerializableNodeContract,
     validatePluginNodeContract,
-} from '@sigil/schema/node-contract';
-import type { PluginPipelineNode } from '@sigil/schema/nodes';
-import { switchOutputPortStrategy } from '@sigil/schema/nodes/switch';
+} from '@sigil/contracts/node-contract';
+import type { PluginPipelineNode } from '@sigil/contracts/nodes';
 import {
     type AnyPropertyDescriptor,
     PropertyApplyModeSchema,
     serializePropertyDescriptor,
-} from '@sigil/schema/properties-file';
-import { type WorkflowContext, WorkflowContextSchema } from '@sigil/schema/workflow-context';
+} from '@sigil/contracts/properties-file';
+import { type WorkflowContext, WorkflowContextSchema } from '@sigil/contracts/workflow-context';
+import { resolveDeclarativeOutputPorts } from '@sigil/workflow-domain/node-contract';
+import { switchOutputPortStrategy } from '@sigil/workflow-domain/nodes/switch';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
 import type {

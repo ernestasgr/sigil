@@ -238,24 +238,52 @@ export async function runDevelopment(options = {}) {
     try {
         removeSignalHandlers = registerSignalHandlers(signalSource, onSignal);
 
-        const schemaBuild = startProcess('schema-build', ['--filter', '@sigil/schema', 'build']);
-        const buildEvent = await Promise.race([
-            processEvent(schemaBuild),
+        const contractsBuild = startProcess('contracts-build', [
+            '--filter',
+            '@sigil/contracts',
+            'build',
+        ]);
+        const contractsBuildEvent = await Promise.race([
+            processEvent(contractsBuild),
             signalEvent(signalPromise),
         ]);
 
-        if (buildEvent.type === 'signal') {
-            return signalExitCode(buildEvent.signal);
+        if (contractsBuildEvent.type === 'signal') {
+            return signalExitCode(contractsBuildEvent.signal);
         }
 
-        if (!isSuccessfulBuild(buildEvent.outcome)) {
-            return outcomeExitCode(buildEvent.outcome);
+        if (!isSuccessfulBuild(contractsBuildEvent.outcome)) {
+            return outcomeExitCode(contractsBuildEvent.outcome);
         }
 
-        const schemaWatcher = startProcess('schema', ['--filter', '@sigil/schema', 'dev']);
+        const domainBuild = startProcess('workflow-domain-build', [
+            '--filter',
+            '@sigil/workflow-domain',
+            'build',
+        ]);
+        const domainBuildEvent = await Promise.race([
+            processEvent(domainBuild),
+            signalEvent(signalPromise),
+        ]);
+
+        if (domainBuildEvent.type === 'signal') {
+            return signalExitCode(domainBuildEvent.signal);
+        }
+
+        if (!isSuccessfulBuild(domainBuildEvent.outcome)) {
+            return outcomeExitCode(domainBuildEvent.outcome);
+        }
+
+        const contractsWatcher = startProcess('contracts', ['--filter', '@sigil/contracts', 'dev']);
+        const domainWatcher = startProcess('workflow-domain', [
+            '--filter',
+            '@sigil/workflow-domain',
+            'dev',
+        ]);
         const desktopWatcher = startProcess('desktop', ['--filter', '@sigil/desktop', 'dev']);
         const watcherEvent = await Promise.race([
-            processEvent(schemaWatcher),
+            processEvent(contractsWatcher),
+            processEvent(domainWatcher),
             processEvent(desktopWatcher),
             signalEvent(signalPromise),
         ]);

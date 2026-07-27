@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
-import type { PluginId } from '@sigil/schema/ids';
-import type { SerializableNodeContract } from '@sigil/schema/node-contract';
-import { type WorkflowContext, WorkflowContextSchema } from '@sigil/schema/workflow-context';
+import type { PluginId } from '@sigil/contracts/ids';
+import type { SerializableNodeContract } from '@sigil/contracts/node-contract';
+import { type WorkflowContext, WorkflowContextSchema } from '@sigil/contracts/workflow-context';
 import { Option } from 'effect';
 import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
 import type { Bridge } from '../events/bridge.js';

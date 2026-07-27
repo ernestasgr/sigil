@@ -1,15 +1,15 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { type WorkflowDocument, WorkflowDocumentSchema } from '@sigil/schema';
-import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
+import { type WorkflowDocument, WorkflowDocumentSchema } from '@sigil/contracts';
+import { PluginIdSchema, WorkflowIdSchema } from '@sigil/contracts/ids';
+import { isPluginNode, SwitchCaseIdSchema } from '@sigil/contracts/nodes';
 import {
     fixedOutputPortSpec,
     pluginNodeIdentity,
     registerSerializableNodeContract,
-} from '@sigil/schema/node-contract';
-import { isPluginNode, SwitchCaseIdSchema } from '@sigil/schema/nodes';
-import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
+} from '@sigil/workflow-domain/node-contract';
+import { createBuiltinNodeContractRegistry } from '@sigil/workflow-domain/nodes/catalog';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { testDocument, testEdge, testNode } from '../../test-support/pipeline-fixtures.js';

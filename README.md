@@ -221,13 +221,14 @@ sigil/
 │           ├── shared/     # Cross-process types and IPC channels (Zod-validated)
 │           └── builtin-plugins/  # File Watcher and File Manager plugins
 ├── packages/
-│   └── schema/             # @sigil/schema — Zod schemas for the Pipeline JSON type system
+│   ├── contracts/          # @sigil/contracts — versioned persisted and wire contracts
+│   └── workflow-domain/    # @sigil/workflow-domain — pure Workflow admission and behavior
 └── docs/
     ├── adr/                # Architecture Decision Records
     └── agents/             # Agent-specific documentation
 ```
 
-The shared contract: `@sigil/schema` defines `CompiledPipeline`, `PipelineNode` (discriminated union of 10 builtin types, plus `PluginPipelineNode`), `WorkflowContext`, `PipelineCondition`, `Manifest`, and operator schemas — all validated with Zod at every boundary.
+`@sigil/contracts` owns versioned persisted and wire shapes such as `WorkflowDocument`, `PipelineNode`, `PipelineEdge`, `WorkflowContext`, `Manifest`, Node Contract snapshots, and serialized property descriptors. `@sigil/workflow-domain` owns pure Workflow behavior: `compileWorkflow`, topology admission, Node Contract resolution, and the built-in domain catalog. The Engine composes mutable runtime registries and handlers around those two packages.
 
 ## Prerequisites
 
@@ -242,23 +243,23 @@ The repository follows Electron 42.4.1's embedded Node 24 runtime. Run `pnpm che
 ```bash
 pnpm check:node
 pnpm install
-pnpm dev          # builds the schema, then watches it alongside Electron with HMR
+pnpm dev          # builds contracts and Workflow domain, then watches both alongside Electron with HMR
 ```
 
-`pnpm dev` completes the initial schema build before starting the schema
-TypeScript watcher and the Electron development server together. Changes in
-`packages/schema` rebuild its `dist` output and reach the desktop app without
-restarting the command. If either long-running process exits unexpectedly, the
-other is stopped and `pnpm dev` returns a non-zero status. Pressing Ctrl+C
-stops both process trees, including nested TypeScript and Electron processes on
-Windows.
+`pnpm dev` completes the initial contracts and Workflow domain builds before
+starting both TypeScript watchers and the Electron development server. Changes
+in `packages/contracts` or `packages/workflow-domain` rebuild their `dist`
+outputs and reach the desktop app without restarting the command. If a
+long-running process exits unexpectedly, the other process trees are stopped
+and `pnpm dev` returns a non-zero status. Pressing Ctrl+C stops all three
+process trees, including nested TypeScript and Electron processes on Windows.
 
 ### Scripts (root)
 
 | Script              | What it does                                              |
 | ------------------- | --------------------------------------------------------- |
-| `pnpm dev`          | Build `@sigil/schema` once, then watch it alongside the desktop app with HMR. |
-| `pnpm build`        | Build `@sigil/schema` and the desktop app for production. |
+| `pnpm dev`          | Build and watch `@sigil/contracts`, `@sigil/workflow-domain`, and the desktop app with HMR. |
+| `pnpm build`        | Build contracts, Workflow domain, and the desktop app for production. |
 | `pnpm preview`      | Preview the built desktop app.                            |
 | `pnpm typecheck`    | Run `tsc --noEmit` across every workspace package.        |
 | `pnpm lint`         | Lint the whole repo with Biome.                           |
@@ -272,15 +273,15 @@ Windows.
 | `pnpm structure:codemod` | Preview the checked-in codemod recipes.                 |
 | `pnpm structure:codemod:write` | Apply codemods only with an explicit write command.       |
 | `pnpm check:fast`   | Run lint, format, architecture, structural checks, workflow validation, typecheck, and fast tests. |
-| `pnpm test:fast`    | Run schema and renderer tests.                         |
-| `pnpm coverage`     | Run schema, desktop, and renderer Vitest coverage.        |
+| `pnpm test:fast`    | Run contracts, Workflow domain, and renderer tests.    |
+| `pnpm coverage`     | Run contracts, Workflow domain, desktop, and renderer Vitest coverage. |
 | `pnpm coverage:check` | Enforce the committed aggregate coverage baselines.       |
 | `pnpm test:e2e`     | Build the app and run the Windows Electron Workflow smoke test. |
 | `pnpm check:coverage` | Run all tests with coverage and enforce the measured baseline. |
 | `pnpm verify:production` | Check production files and launch the built Electron app briefly. |
 | `pnpm test`         | Run tests across every workspace package (Vitest).        |
 | `pnpm test:ui`      | Open the interactive Vitest UI for all test projects.     |
-| `pnpm test:watch`   | Watch tests for `@sigil/schema`.                          |
+| `pnpm test:watch`   | Watch tests for `@sigil/contracts`.                     |
 | `pnpm clean`        | Remove `dist`/`out`/`.turbo`/cache from every package.    |
 | `pnpm check:node`   | Verify the current Node.js version before working in the repo. |
 
@@ -292,9 +293,9 @@ Tests target architectural seams — feeding input into one side of a boundary a
 - **DAG Executor** — feed a compiled Pipeline + trigger payload, assert node sequence, branching, outputs, error handling, and State mutations.
 - **Event Bus + Bridge** — Events arrive with correct payloads, undeclared emissions are blocked, subscribers receive matching Events.
 
-Use `pnpm check:fast` for the quick feedback loop. It runs lint, formatting, architecture, structural checks and fixtures, workflow validation, typechecking, and then `pnpm test:fast`. Run `pnpm --filter @sigil/desktop test:renderer:dom` for the isolated jsdom project; it uses DOM Testing Library without loading Electron or `node:sqlite`. `pnpm --filter @sigil/desktop test:renderer` runs the existing renderer unit tests plus that DOM project. Use `pnpm coverage` for text, JSON-summary, and LCOV reports across the schema, desktop, and renderer projects, then `pnpm coverage:check` to enforce [`docs/coverage-baseline.json`](docs/coverage-baseline.json). The critical seam floors are centralized in [`vitest.coverage.ts`](vitest.coverage.ts). Use `pnpm check:coverage` when a change needs the full native suite and coverage trend check; it writes package coverage reports and enforces the baseline. The exact formatting, dependency-analysis, structural-check, coverage, and production verification scope is documented in [`docs/quality-gates.md`](docs/quality-gates.md). `pnpm test` remains the complete workspace suite: the desktop package runs its Node-oriented suite and then the dedicated renderer project.
+Use `pnpm check:fast` for the quick feedback loop. It runs lint, formatting, architecture, structural checks and fixtures, workflow validation, typechecking, and then `pnpm test:fast`. Run `pnpm --filter @sigil/desktop test:renderer:dom` for the isolated jsdom project; it uses DOM Testing Library without loading Electron or `node:sqlite`. `pnpm --filter @sigil/desktop test:renderer` runs the existing renderer unit tests plus that DOM project. Use `pnpm coverage` for text, JSON-summary, and LCOV reports across the contracts, Workflow domain, desktop, and renderer projects, then `pnpm coverage:check` to enforce [`docs/coverage-baseline.json`](docs/coverage-baseline.json). The critical seam floors are centralized in [`vitest.coverage.ts`](vitest.coverage.ts). Use `pnpm check:coverage` when a change needs the full native suite and coverage trend check; it writes package coverage reports and enforces the baseline. The exact formatting, dependency-analysis, structural-check, coverage, and production verification scope is documented in [`docs/quality-gates.md`](docs/quality-gates.md). `pnpm test` remains the complete workspace suite: the desktop package runs its Node-oriented suite and then the dedicated renderer project.
 
-For interactive test discovery and debugging, run `pnpm test:ui`. It opens the Vitest UI with the schema, desktop, and renderer projects, including filters for project, file, test name, and failures plus reruns that do not rebuild the production Electron bundle. Use the targeted CLI commands in [`docs/quality-gates.md`](docs/quality-gates.md) for deterministic checks, CI, and agent automation; the UI is a local development aid only.
+For interactive test discovery and debugging, run `pnpm test:ui`. It opens the Vitest UI with the contracts, Workflow domain, desktop, and renderer projects, including filters for project, file, test name, and failures plus reruns that do not rebuild the production Electron bundle. Use the targeted CLI commands in [`docs/quality-gates.md`](docs/quality-gates.md) for deterministic checks, CI, and agent automation; the UI is a local development aid only.
 
 After `pnpm build`, `pnpm verify:production` checks the expected `out/` files, renderer asset references, and built Electron startup. GitHub Actions runs the static checks, full native test suite with coverage, production build, and startup verification in one Windows quality-gates job; the coverage reports are preserved as an artifact.
 

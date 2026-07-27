@@ -1,5 +1,5 @@
-import { PluginIdSchema } from '@sigil/schema/ids';
-import { CapabilitySchema } from '@sigil/schema/manifest';
+import { PluginIdSchema } from '@sigil/contracts/ids';
+import { CapabilitySchema } from '@sigil/contracts/manifest';
 import { z } from 'zod';
 
 export const PersistenceOperationSchema = z.enum(['read', 'write']);

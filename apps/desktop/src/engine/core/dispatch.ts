@@ -1,4 +1,4 @@
-import { sampleManualTriggerToLog } from '@sigil/schema/samples';
+import { sampleManualTriggerToLog } from '@sigil/workflow-domain/samples';
 import { Effect, Either, Match, Option } from 'effect';
 import type {
     EngineCommandName,

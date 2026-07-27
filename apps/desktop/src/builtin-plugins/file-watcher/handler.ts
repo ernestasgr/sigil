@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { PluginIdSchema } from '@sigil/schema/ids';
-import { FileWatcherConfigSchema } from '@sigil/schema/nodes/file-watcher';
-import { PROPERTY_DESCRIPTORS } from '@sigil/schema/properties-file';
-import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import { PluginIdSchema } from '@sigil/contracts/ids';
+import { FileWatcherConfigSchema } from '@sigil/contracts/nodes/file-watcher';
+import { PROPERTY_DESCRIPTORS } from '@sigil/contracts/properties-file';
+import type { WorkflowContext } from '@sigil/contracts/workflow-context';
 import { Either } from 'effect';
 
 import type {

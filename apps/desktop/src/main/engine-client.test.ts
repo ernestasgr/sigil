@@ -1,4 +1,4 @@
-import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/schema/ids';
+import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/contracts/ids';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     createEngineDiagnostic,

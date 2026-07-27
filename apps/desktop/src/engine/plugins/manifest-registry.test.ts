@@ -1,5 +1,5 @@
-import { EventNameSchema, PluginIdSchema } from '@sigil/schema/ids';
-import type { Manifest } from '@sigil/schema/manifest';
+import { EventNameSchema, PluginIdSchema } from '@sigil/contracts/ids';
+import type { Manifest } from '@sigil/contracts/manifest';
 import { Either, Option } from 'effect';
 import { describe, expect, it } from 'vitest';
 

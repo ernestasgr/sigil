@@ -1,6 +1,6 @@
-import type { CompiledPipeline } from '@sigil/schema';
-import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
-import { sampleManualTriggerToLog } from '@sigil/schema/samples';
+import { PluginIdSchema, WorkflowIdSchema } from '@sigil/contracts/ids';
+import type { CompiledPipeline } from '@sigil/workflow-domain';
+import { sampleManualTriggerToLog } from '@sigil/workflow-domain/samples';
 import { Effect, Either, Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 

@@ -4,8 +4,8 @@ import {
     NodeTypeNameSchema,
     type PluginId,
     type WorkflowId,
-} from '@sigil/schema/ids';
-import type { PipelineNode } from '@sigil/schema/nodes';
+} from '@sigil/contracts/ids';
+import type { PipelineNode } from '@sigil/contracts/nodes';
 import type {
     EventTelemetry,
     TelemetryKind,

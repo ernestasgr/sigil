@@ -1,4 +1,4 @@
-import { type EventName, EventNameSchema, type PluginId } from '@sigil/schema/ids';
+import { type EventName, EventNameSchema, type PluginId } from '@sigil/contracts/ids';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
 import type { ManifestRegistry } from '../plugins/manifest-registry.js';

@@ -3,19 +3,19 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync as Database } from 'node:sqlite';
-import { type CompiledPipeline, compileWorkflow } from '@sigil/schema';
-import type { PipelineEdge } from '@sigil/schema/edges';
-import type { FileEventPayload } from '@sigil/schema/file-event-payload';
-import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
-import type { MatchPatternEngine } from '@sigil/schema/match-pattern';
+import type { PipelineEdge } from '@sigil/contracts/edges';
+import type { FileEventPayload } from '@sigil/contracts/file-event-payload';
+import { PluginIdSchema, WorkflowIdSchema } from '@sigil/contracts/ids';
+import type { MatchPatternEngine } from '@sigil/contracts/match-pattern';
+import type { PipelineNode } from '@sigil/contracts/nodes';
+import { type CompiledPipeline, compileWorkflow } from '@sigil/workflow-domain';
 import {
     type NodeContractRegistry,
     pluginNodeIdentity,
     registerSerializableNodeContract,
-} from '@sigil/schema/node-contract';
-import type { PipelineNode } from '@sigil/schema/nodes';
-import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
-import { sampleManualTriggerToLog } from '@sigil/schema/samples';
+} from '@sigil/workflow-domain/node-contract';
+import { createBuiltinNodeContractRegistry } from '@sigil/workflow-domain/nodes/catalog';
+import { sampleManualTriggerToLog } from '@sigil/workflow-domain/samples';
 import { Either, Option } from 'effect';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { testEdge, testNode } from '../../test-support/pipeline-fixtures.js';

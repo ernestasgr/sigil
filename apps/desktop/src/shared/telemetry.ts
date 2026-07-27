@@ -1,4 +1,4 @@
-import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/schema/ids';
+import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/contracts/ids';
 import { z } from 'zod';
 
 export const TelemetryKindSchema = z.enum([

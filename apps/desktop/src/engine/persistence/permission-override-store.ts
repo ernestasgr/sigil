@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { type PluginId, PluginIdSchema } from '@sigil/schema/ids';
-import { type Capability, CapabilitySchema } from '@sigil/schema/manifest';
+import { type PluginId, PluginIdSchema } from '@sigil/contracts/ids';
+import { type Capability, CapabilitySchema } from '@sigil/contracts/manifest';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
 import {

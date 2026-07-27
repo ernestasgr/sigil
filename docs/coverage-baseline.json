@@ -2,14 +2,20 @@
     "schemaVersion": 2,
     "policy": {
         "comparison": "no-lower-than-baseline",
-        "source": "Vitest 4.1.9 V8 coverage over production source on 2026-07-16"
+        "source": "Vitest 4.1.10 V8 coverage over production source on 2026-07-27 after the contracts/domain split"
     },
     "projects": {
-        "schema": {
-            "statements": 81.71,
-            "branches": 64.5,
-            "functions": 72.85,
-            "lines": 83.98
+        "contracts": {
+            "statements": 55.17,
+            "branches": 47.1,
+            "functions": 55,
+            "lines": 56.3
+        },
+        "workflowDomain": {
+            "statements": 87.82,
+            "branches": 80.75,
+            "functions": 84.78,
+            "lines": 90.69
         },
         "desktop": {
             "statements": 63.72,

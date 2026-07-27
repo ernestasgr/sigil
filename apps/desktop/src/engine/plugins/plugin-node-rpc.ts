@@ -1,14 +1,14 @@
-import { PipelineConditionSchema } from '@sigil/schema/conditions';
-import { EventNameSchema, NodeTypeNameSchema } from '@sigil/schema/ids';
-import { CapabilitySchema } from '@sigil/schema/manifest';
-import { NodeContractSnapshotSchema } from '@sigil/schema/node-contract';
-import { SwitchConfigSchema } from '@sigil/schema/nodes/switch';
+import { PipelineConditionSchema } from '@sigil/contracts/conditions';
+import { EventNameSchema, NodeTypeNameSchema } from '@sigil/contracts/ids';
+import { CapabilitySchema } from '@sigil/contracts/manifest';
+import { NodeContractSnapshotSchema } from '@sigil/contracts/node-contract';
 import {
     CollisionSuffixStyleSchema,
     ConflictPolicySchema,
     SerializedPropertyDescriptorSchema,
-} from '@sigil/schema/properties-file';
-import { WorkflowContextSchema } from '@sigil/schema/workflow-context';
+} from '@sigil/contracts/properties-file';
+import { WorkflowContextSchema } from '@sigil/contracts/workflow-context';
+import { SwitchConfigSchema } from '@sigil/workflow-domain/nodes/switch';
 import { z } from 'zod';
 import { WorkflowStatePrimitiveSchema } from '../../shared/ipc-channels.js';
 import { SubscriberRegistrationSchema } from './file-watcher-manager.js';

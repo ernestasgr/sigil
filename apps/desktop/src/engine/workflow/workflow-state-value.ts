@@ -1,4 +1,4 @@
-import type { StateSetValueType } from '@sigil/schema/nodes';
+import type { StateSetValueType } from '@sigil/contracts/nodes';
 import { Either } from 'effect';
 
 import type { WorkflowStatePrimitive } from '../../shared/ipc-channels.js';

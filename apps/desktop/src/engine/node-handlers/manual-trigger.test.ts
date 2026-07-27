@@ -1,6 +1,6 @@
-import type { FileEventPayload } from '@sigil/schema/file-event-payload';
+import type { FileEventPayload } from '@sigil/contracts/file-event-payload';
 
-import type { PipelineNode } from '@sigil/schema/nodes';
+import type { PipelineNode } from '@sigil/contracts/nodes';
 import { describe, expect, it, vi } from 'vitest';
 import { testNode } from '../../test-support/pipeline-fixtures.js';
 import type { BusEvent } from '../events/event-bus.js';

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { WorkflowId } from '@sigil/schema/ids';
+import type { WorkflowId } from '@sigil/contracts/ids';
 import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-sqlite';
 import { primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';

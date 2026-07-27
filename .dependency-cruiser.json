@@ -5,7 +5,7 @@
             "comment": "Runtime dependency cycles make process startup and module initialization order-dependent.",
             "severity": "error",
             "from": {
-                "path": "^(apps/desktop/src|packages/schema/src)/"
+                "path": "^(apps/desktop/src|packages/contracts/src|packages/workflow-domain/src)/"
             },
             "to": {
                 "circular": true,
@@ -89,11 +89,22 @@
             }
         },
         {
-            "name": "schema-does-not-import-desktop",
-            "comment": "The shared schema package is platform-agnostic and must not depend on the Electron desktop application.",
+            "name": "contracts-does-not-import-domain-or-desktop",
+            "comment": "Persisted and wire contracts are platform-agnostic and must not depend on Workflow behavior or the Electron desktop application.",
             "severity": "error",
             "from": {
-                "path": "^packages/schema/src/"
+                "path": "^packages/contracts/src/"
+            },
+            "to": {
+                "path": "^(packages/workflow-domain/src|apps/desktop/src)/"
+            }
+        },
+        {
+            "name": "workflow-domain-does-not-import-desktop",
+            "comment": "Workflow admission and Node Contract behavior are platform-agnostic and must not depend on Electron runtime modules.",
+            "severity": "error",
+            "from": {
+                "path": "^packages/workflow-domain/src/"
             },
             "to": {
                 "path": "^apps/desktop/src/"
@@ -102,7 +113,7 @@
     ],
     "options": {
         "includeOnly": {
-            "path": "^(apps/desktop/src|packages/schema/src)/"
+            "path": "^(apps/desktop/src|packages/contracts/src|packages/workflow-domain/src)/"
         },
         "exclude": {
             "path": "(^|/)(dist|out|release|coverage|\\.turbo|node_modules|\\.sandcastle)(/|$)|(^|/)src/.*\\.d\\.ts$|(^|/)src/.*\\.test\\.(ts|tsx)$"

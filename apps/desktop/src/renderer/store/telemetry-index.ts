@@ -1,4 +1,4 @@
-import type { Capability } from '@sigil/schema/manifest';
+import type { Capability } from '@sigil/contracts/manifest';
 import { Either } from 'effect';
 
 import {

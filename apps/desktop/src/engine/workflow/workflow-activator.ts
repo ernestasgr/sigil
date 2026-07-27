@@ -1,7 +1,7 @@
-import type { CompiledPipeline } from '@sigil/schema';
-import type { WorkflowId } from '@sigil/schema/ids';
-import { isPluginNode } from '@sigil/schema/nodes';
-import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import type { WorkflowId } from '@sigil/contracts/ids';
+import { isPluginNode } from '@sigil/contracts/nodes';
+import type { WorkflowContext } from '@sigil/contracts/workflow-context';
+import type { CompiledPipeline } from '@sigil/workflow-domain';
 import { Option } from 'effect';
 
 import type { WorkflowActivationState } from '../../shared/workflow.js';

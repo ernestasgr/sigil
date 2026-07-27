@@ -19,7 +19,7 @@ export default defineConfig({
                 formats: ['es'],
             },
             rollupOptions: {
-                external: ['node:sqlite', '@sigil/schema'],
+                external: ['node:sqlite', /^@sigil\/(contracts|workflow-domain)(\/|$)/],
             },
         },
         resolve: {

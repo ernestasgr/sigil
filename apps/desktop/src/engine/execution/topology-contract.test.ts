@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { WorkflowDocument } from '@sigil/schema';
-import { WorkflowIdSchema } from '@sigil/schema/ids';
+import type { WorkflowDocument } from '@sigil/contracts';
+import { WorkflowIdSchema } from '@sigil/contracts/ids';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 

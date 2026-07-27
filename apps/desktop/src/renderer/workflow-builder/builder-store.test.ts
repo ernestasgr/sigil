@@ -1,6 +1,6 @@
-import type { WorkflowDocument } from '@sigil/schema';
-import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/schema/ids';
-import { MAX_DELAY_MS, SwitchCaseIdSchema } from '@sigil/schema/nodes';
+import type { WorkflowDocument } from '@sigil/contracts';
+import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/contracts/ids';
+import { MAX_DELAY_MS, SwitchCaseIdSchema } from '@sigil/contracts/nodes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { testDocument, testNodeId } from '../../test-support/pipeline-fixtures.js';

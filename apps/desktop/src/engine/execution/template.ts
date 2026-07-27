@@ -1,4 +1,4 @@
-import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import type { WorkflowContext } from '@sigil/contracts/workflow-context';
 import { Option, pipe } from 'effect';
 
 const TEMPLATE_TOKEN = /\{\{\s*(event|payload|vars)(?:\.([A-Za-z_][A-Za-z0-9_]*))?\s*\}\}/g;

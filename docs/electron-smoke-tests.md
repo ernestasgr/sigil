@@ -17,7 +17,7 @@ From the repository root on Windows:
 pnpm test:e2e -- tests/e2e/workflow-lifecycle.spec.ts
 ```
 
-The root command builds `@sigil/schema` and the desktop package first. When the
+The root command builds `@sigil/contracts`, `@sigil/workflow-domain`, and the desktop package first. When the
 production build already exists, the shorter command can be used from the root:
 
 ```powershell
