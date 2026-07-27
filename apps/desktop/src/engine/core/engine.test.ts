@@ -262,9 +262,10 @@ describe('createEngine', () => {
                 engine.fileWatcherManager.getSubscriberIdsByOwner('com.sigil.file-watcher'),
             ).toHaveLength(1);
 
-            const result = await engine.applyPermissionOverride('com.sigil.file-watcher', [
-                'state.write',
-            ]);
+            const result = await engine.applyPermissionOverride(
+                PluginIdSchema.parse('com.sigil.file-watcher'),
+                ['state.write'],
+            );
 
             expect(result).toEqual({
                 ok: true,
@@ -291,9 +292,10 @@ describe('createEngine', () => {
                 'after-revocation.txt',
             );
 
-            const repeated = await engine.applyPermissionOverride('com.sigil.file-watcher', [
-                'state.write',
-            ]);
+            const repeated = await engine.applyPermissionOverride(
+                PluginIdSchema.parse('com.sigil.file-watcher'),
+                ['state.write'],
+            );
             expect(repeated).toEqual({
                 ok: true,
                 grantedPermissions: ['state.write'],

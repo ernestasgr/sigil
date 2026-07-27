@@ -5,7 +5,7 @@ import type { CompiledPipeline } from '@sigil/schema';
 import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import { Either, Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { testNodeId, testPipeline } from '../../test-support/pipeline-fixtures.js';
+import { testNode, testNodeId, testPipeline } from '../../test-support/pipeline-fixtures.js';
 import { createEngine } from '../core/engine.js';
 import { createNodeHandlerRegistry } from '../execution/node-registry.js';
 import { createBuiltinHandlers } from '../node-handlers/registry.js';
@@ -482,12 +482,12 @@ describe('instance-owned Plugin loader supervision', () => {
         if (!firstResult.ok || !secondResult.ok) return;
 
         const input = {
-            node: {
+            node: testNode({
                 id: testNodeId('node'),
                 type: 'isolated-boundary-node',
                 pluginId: pid('com.sigil.boundary'),
                 config: {},
-            },
+            }),
             ctx: { event: '', payload: {}, vars: {} },
         };
         first.updatePluginPermissions(pid('com.sigil.boundary'), []);
@@ -528,12 +528,12 @@ describe('instance-owned Plugin loader supervision', () => {
         await expect(
             successful[0].handler.execute(
                 {
-                    node: {
+                    node: testNode({
                         id: testNodeId('node'),
                         type: 'isolated-boundary-node',
                         pluginId: pid('com.sigil.boundary'),
                         config: {},
-                    },
+                    }),
                     ctx: { event: '', payload: {}, vars: {} },
                 },
                 {} as never,
@@ -559,12 +559,12 @@ describe('instance-owned Plugin loader supervision', () => {
         await expect(
             result.handler.execute(
                 {
-                    node: {
+                    node: testNode({
                         id: testNodeId('node'),
                         type: 'isolated-boundary-node',
                         pluginId: pid('com.sigil.boundary'),
                         config: {},
-                    },
+                    }),
                     ctx: { event: '', payload: {}, vars: {} },
                 },
                 {} as never,

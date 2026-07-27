@@ -1,4 +1,5 @@
 import type { CompiledPipeline } from '@sigil/schema';
+import { PipelineEdgeIdSchema } from '@sigil/schema/ids';
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import {
     addEdge,
@@ -274,7 +275,9 @@ function applyCommand(
             return {
                 ...snapshot,
                 edges: nextEdges.map((edge) =>
-                    edge === addedEdge ? { ...edge, id: crypto.randomUUID() } : edge,
+                    edge === addedEdge
+                        ? { ...edge, id: PipelineEdgeIdSchema.parse(crypto.randomUUID()) }
+                        : edge,
                 ),
             };
         }

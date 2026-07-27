@@ -58,23 +58,24 @@ describe('canonical identity schemas', () => {
             {
                 schema: PluginIdSchema,
                 valid: 'a.'.concat('a'.repeat(MAX_CANONICAL_ID_LENGTH - 2)),
-                invalid: 'com.sigil.plugin',
+                invalid: 'com',
             },
             {
                 schema: EventNameSchema,
                 valid: 'a.'.concat('a'.repeat(MAX_CANONICAL_ID_LENGTH - 2)),
-                invalid: 'custom.event',
+                invalid: 'custom_event',
             },
             {
                 schema: NodeTypeNameSchema,
                 valid: 'a'.repeat(MAX_CANONICAL_ID_LENGTH),
-                invalid: 'custom-node',
+                invalid: 'custom_node',
             },
         ] as const;
 
         for (const { schema, valid, invalid } of cases) {
             expect(schema.safeParse(valid).success).toBe(true);
             expect(schema.safeParse(`${valid}a`).success).toBe(false);
+            expect(schema.safeParse(invalid).success).toBe(false);
             expect(schema.safeParse(` ${invalid}`).success).toBe(false);
             expect(schema.safeParse(`${invalid} `).success).toBe(false);
             expect(schema.safeParse(invalid.toUpperCase()).success).toBe(false);

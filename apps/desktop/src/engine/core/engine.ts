@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
-import { PluginIdSchema } from '@sigil/schema/ids';
+import type { PluginId } from '@sigil/schema/ids';
 import type { Capability } from '@sigil/schema/manifest';
 import type { NodeContractRegistry } from '@sigil/schema/node-contract';
 import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
@@ -95,7 +95,7 @@ export interface Engine {
     readonly applyProperties: (properties: PropertiesFile) => PropertyApplyResult;
     readonly loadBuiltinPlugins: () => Promise<readonly NodePluginLoadResult[]>;
     readonly applyPermissionOverride: (
-        pluginId: string,
+        pluginId: PluginId,
         overrides: readonly Capability[],
         actor?: PermissionTransitionActor,
     ) => Promise<PermissionOverrideOutcome>;
@@ -103,7 +103,7 @@ export interface Engine {
         reconciler: PermissionTransitionRunReconciler,
     ) => () => void;
     readonly updatePluginPermissions: (
-        pluginId: string,
+        pluginId: PluginId,
         permissions: readonly Capability[],
     ) => void;
     readonly execute: (
@@ -316,10 +316,10 @@ export function createEngine(options?: EngineOptions): Engine {
     };
 
     const updatePluginPermissions = (
-        pluginId: string,
+        pluginId: PluginId,
         permissions: readonly Capability[],
     ): void => {
-        pluginLoader.updatePluginPermissions(PluginIdSchema.parse(pluginId), permissions);
+        pluginLoader.updatePluginPermissions(pluginId, permissions);
     };
 
     const registerPermissionTransitionReconciler = (
@@ -335,7 +335,7 @@ export function createEngine(options?: EngineOptions): Engine {
     };
 
     const applyPermissionOverride = async (
-        pluginId: string,
+        pluginId: PluginId,
         overrides: readonly Capability[],
         actor: PermissionTransitionActor = 'user',
     ): Promise<PermissionOverrideOutcome> =>
@@ -349,7 +349,7 @@ export function createEngine(options?: EngineOptions): Engine {
                 updatePluginPermissions,
                 emitPermissionChanged: (event) => bus.next({ ...event, timestamp: Date.now() }),
             },
-            PluginIdSchema.parse(pluginId),
+            pluginId,
             overrides,
             actor,
         );

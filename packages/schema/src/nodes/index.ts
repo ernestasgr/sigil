@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+    type NodeTypeName,
     NodeTypeNameSchema,
     type PipelineNodeId,
     PipelineNodeIdSchema,
@@ -74,7 +75,7 @@ export type BuiltinPipelineNode = {
 
 export interface PluginPipelineNode {
     readonly id: PipelineNodeId;
-    readonly type: string;
+    readonly type: NodeTypeName;
     readonly pluginId: PluginId;
     readonly config: unknown;
 }

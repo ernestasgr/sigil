@@ -2,6 +2,7 @@ import type { CompiledPipeline } from '@sigil/schema';
 import { type PipelineEdge, PipelineEdgeSchema } from '@sigil/schema/edges';
 import {
     NodeOutputPortIdSchema,
+    NodeTypeNameSchema,
     PipelineEdgeIdSchema,
     PipelineNodeIdSchema,
     WorkflowIdSchema,
@@ -9,6 +10,7 @@ import {
 import { type PipelineNode, PipelineNodeSchema } from '@sigil/schema/nodes';
 
 export const testNodeId = (value: string) => PipelineNodeIdSchema.parse(value);
+export const testNodeType = (value: string) => NodeTypeNameSchema.parse(value);
 export const testEdgeId = (value: string) => PipelineEdgeIdSchema.parse(value);
 export const testPortId = (value: string) => NodeOutputPortIdSchema.parse(value);
 

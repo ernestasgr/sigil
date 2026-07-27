@@ -1,3 +1,4 @@
+import { PipelineEdgeIdSchema } from '@sigil/schema/ids';
 import { describe, expect, it } from 'vitest';
 
 import { defaultNodeSpec } from './node-catalog.js';
@@ -259,6 +260,31 @@ describe('WorkflowDraft', () => {
         expect(draft.current.edges[0]?.selected).toBe(true);
         expect(draft.revision).toBe(0);
         expect(isWorkflowDraftDirty(draft)).toBe(false);
+    });
+
+    it('assigns a schema-valid ID to a newly connected edge', () => {
+        let draft = createWorkflowDraft({
+            ...emptySnapshot(),
+            nodes: [logNode('source'), logNode('target')],
+        });
+
+        draft = applyWorkflowDraftCommand(draft, {
+            kind: 'connect',
+            connection: {
+                source: 'source',
+                target: 'target',
+                sourceHandle: 'out',
+                targetHandle: null,
+            },
+        });
+
+        const edge = draft.current.edges[0];
+        expect(edge).toMatchObject({
+            source: 'source',
+            target: 'target',
+            sourceHandle: 'out',
+        });
+        expect(PipelineEdgeIdSchema.safeParse(edge?.id).success).toBe(true);
     });
 
     it('guards async saves, preserves failures for retry, and resets the baseline on success', () => {
