@@ -1,5 +1,5 @@
-import type { PipelineCondition } from '@sigil/schema/conditions';
-import type { FileEventPayload } from '@sigil/schema/file-event-payload';
+import type { PipelineCondition } from '@sigil/contracts/conditions';
+import type { FileEventPayload } from '@sigil/contracts/file-event-payload';
 import {
     type DelayConfig,
     type FileManagerConfig,
@@ -12,8 +12,7 @@ import {
     type StateGetConfig,
     type StateSetConfig,
     type SwitchConfig,
-} from '@sigil/schema/nodes';
-import type { SwitchComparison } from '@sigil/schema/nodes/switch';
+} from '@sigil/contracts/nodes';
 import {
     type BooleanOperator,
     BooleanOperatorSchema,
@@ -21,7 +20,8 @@ import {
     NumberOperatorSchema,
     type StringOperator,
     StringOperatorSchema,
-} from '@sigil/schema/operators';
+} from '@sigil/contracts/operators';
+import type { SwitchComparison } from '@sigil/workflow-domain/nodes/switch';
 import type { ReactElement } from 'react';
 
 import { Button } from '../../components/ui/button.js';

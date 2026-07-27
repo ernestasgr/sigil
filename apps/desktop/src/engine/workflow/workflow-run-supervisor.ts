@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { WorkflowId } from '@sigil/schema/ids';
-import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import type { WorkflowId } from '@sigil/contracts/ids';
+import type { WorkflowContext } from '@sigil/contracts/workflow-context';
 
 /**
  * The default admission policy is deliberately conservative: one run at a

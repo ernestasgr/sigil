@@ -1,5 +1,5 @@
-import type { WorkflowDocument } from '@sigil/schema';
-import type { NodeType, PipelineNode } from '@sigil/schema/nodes';
+import type { WorkflowDocument } from '@sigil/contracts';
+import type { NodeType, PipelineNode } from '@sigil/contracts/nodes';
 import type { Connection, Edge, EdgeChange, NodeChange, XYPosition } from '@xyflow/react';
 import { create } from 'zustand';
 

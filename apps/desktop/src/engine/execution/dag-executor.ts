@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import type { CompiledPipeline } from '@sigil/schema';
-import type { PipelineEdge } from '@sigil/schema/edges';
-import type { WorkflowId } from '@sigil/schema/ids';
-import type { MatchPatternEngine } from '@sigil/schema/match-pattern';
-import type { PipelineNode } from '@sigil/schema/nodes';
-import type { CollisionSuffixStyle, ConflictPolicy } from '@sigil/schema/properties-file';
-import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import type { PipelineEdge } from '@sigil/contracts/edges';
+import type { WorkflowId } from '@sigil/contracts/ids';
+import type { MatchPatternEngine } from '@sigil/contracts/match-pattern';
+import type { PipelineNode } from '@sigil/contracts/nodes';
+import type { CollisionSuffixStyle, ConflictPolicy } from '@sigil/contracts/properties-file';
+import type { WorkflowContext } from '@sigil/contracts/workflow-context';
+import type { CompiledPipeline } from '@sigil/workflow-domain';
 import { Either, Option } from 'effect';
 import type { EventBus, WorkflowRunPayload } from '../events/event-bus.js';
 import {

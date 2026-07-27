@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { WorkflowDocument } from '@sigil/schema';
-import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
+import type { WorkflowDocument } from '@sigil/contracts';
+import { PluginIdSchema, WorkflowIdSchema } from '@sigil/contracts/ids';
 import { Either, Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { testDocument, testNode, testNodeId } from '../../test-support/pipeline-fixtures.js';

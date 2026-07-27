@@ -2,22 +2,14 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
-import { type CompiledPipeline, compileWorkflow, type WorkflowDocument } from '@sigil/schema';
-import type { PluginId } from '@sigil/schema/ids';
-import type { Capability } from '@sigil/schema/manifest';
-import type { NodeContractRegistry } from '@sigil/schema/node-contract';
-import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
-import {
-    createPropertyRegistry,
-    loadPropertiesFile,
-    PROPERTY_REGISTRY,
-    type PropertiesFile,
-    type PropertyRegistry,
-    type RegisteredResolvedProperties,
-    type ResolvedProperties,
-} from '@sigil/schema/properties-file';
-import type { TopologyDiagnostic } from '@sigil/schema/topology';
-import type { WorkflowContext } from '@sigil/schema/workflow-context';
+import type { WorkflowDocument } from '@sigil/contracts';
+import type { PluginId } from '@sigil/contracts/ids';
+import type { Capability } from '@sigil/contracts/manifest';
+import type { WorkflowContext } from '@sigil/contracts/workflow-context';
+import { type CompiledPipeline, compileWorkflow } from '@sigil/workflow-domain';
+import type { NodeContractRegistry } from '@sigil/workflow-domain/node-contract';
+import { createBuiltinNodeContractRegistry } from '@sigil/workflow-domain/nodes/catalog';
+import type { TopologyDiagnostic } from '@sigil/workflow-domain/topology';
 import type {
     EngineDiagnosticPayload,
     PermissionTransitionActor,
@@ -55,6 +47,14 @@ import {
     applyPermissionOverride as applyPermissionOverrideTransition,
     type PermissionTransitionRunReconciler,
 } from './permission-transition.js';
+import {
+    createPropertyRegistry,
+    loadPropertiesFile,
+    type PropertiesFile,
+    type PropertyRegistry,
+    type RegisteredResolvedProperties,
+    type ResolvedProperties,
+} from './property-registry.js';
 
 export interface EngineOptions {
     readonly properties?: unknown;
@@ -124,7 +124,7 @@ export interface Engine {
 export function resolveSettings(
     resolvedProperties: ResolvedProperties,
     properties: PropertiesFile = {},
-    propertyRegistry: PropertyRegistry = PROPERTY_REGISTRY,
+    propertyRegistry: PropertyRegistry = createPropertyRegistry(),
 ): ExecutorSettings {
     return {
         notifyOnWorkflowError: resolvedProperties.notifyOnWorkflowError,

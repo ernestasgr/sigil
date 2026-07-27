@@ -1,6 +1,6 @@
-import { MAX_DELAY_MS } from '@sigil/schema/nodes';
-import type { FileManagerConfig } from '@sigil/schema/nodes/file-manager';
-import type { StateSetConfig } from '@sigil/schema/nodes/state-set';
+import { MAX_DELAY_MS } from '@sigil/contracts/nodes';
+import type { FileManagerConfig } from '@sigil/contracts/nodes/file-manager';
+import type { StateSetConfig } from '@sigil/contracts/nodes/state-set';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

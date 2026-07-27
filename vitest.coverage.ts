@@ -20,7 +20,9 @@ export const coverageExcludes = [
  * are rounded down from the current project reports, so changing a seam or
  * its tests requires an explicit review of the resulting coverage policy.
  */
-export const schemaCoverageThresholds = {
+export const contractsCoverageThresholds = {} as const;
+
+export const workflowDomainCoverageThresholds = {
     'src/topology.ts': {
         statements: 88,
         branches: 76,

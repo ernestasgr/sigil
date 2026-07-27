@@ -1,6 +1,6 @@
 import { stat } from 'node:fs/promises';
 import { basename, dirname, extname } from 'node:path';
-import { WorkflowDocumentSchema } from '@sigil/schema';
+import { WorkflowDocumentSchema } from '@sigil/contracts';
 import { initTRPC } from '@trpc/server';
 import { observable } from '@trpc/server/observable';
 import type { BrowserWindow } from 'electron';

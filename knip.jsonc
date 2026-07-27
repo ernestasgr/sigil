@@ -26,9 +26,15 @@
             "ignore": [".husky/pre-commit"],
             "ignoreDependencies": ["lint-staged"]
         },
-        "packages/schema": {
-            // Every non-test source module is listed in package.json#exports;
-            // these are intentional public module boundaries.
+        "packages/contracts": {
+            // Every non-test contract source module is listed in
+            // package.json#exports; these are intentional public boundaries.
+            "entry": ["src/**/*.ts", "!src/**/*.test.ts"],
+            "project": ["src/**/*.ts"]
+        },
+        "packages/workflow-domain": {
+            // Domain facades and admission modules are public package
+            // boundaries; runtime composition remains in the desktop app.
             "entry": ["src/**/*.ts", "!src/**/*.test.ts"],
             "project": ["src/**/*.ts"]
         },

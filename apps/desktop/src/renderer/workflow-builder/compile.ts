@@ -1,11 +1,14 @@
+import type { WorkflowDocumentParseIssue } from '@sigil/contracts';
+import { PipelineEdgeIdSchema, PipelineNodeIdSchema } from '@sigil/contracts/ids';
 import {
     type CompiledPipeline,
     compileWorkflow,
     type WorkflowCompilationOptions,
-    type WorkflowDocumentParseIssue,
-} from '@sigil/schema';
-import { PipelineEdgeIdSchema, PipelineNodeIdSchema } from '@sigil/schema/ids';
-import { formatTopologyDiagnostics, type TopologyDiagnostic } from '@sigil/schema/topology';
+} from '@sigil/workflow-domain';
+import {
+    formatTopologyDiagnostics,
+    type TopologyDiagnostic,
+} from '@sigil/workflow-domain/topology';
 
 import {
     createNodeCatalog,

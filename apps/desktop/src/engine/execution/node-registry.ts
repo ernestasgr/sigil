@@ -1,4 +1,4 @@
-import type { NodeType } from '@sigil/schema/nodes';
+import type { NodeType } from '@sigil/contracts/nodes';
 import { Option } from 'effect';
 
 import type { NodeHandler } from '../node-handlers/types.js';

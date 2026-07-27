@@ -1,4 +1,4 @@
-import type { TopologyDiagnostic } from '@sigil/schema/topology';
+import type { TopologyDiagnostic } from '@sigil/workflow-domain/topology';
 import { type ReactElement, useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { PluginInfo } from '../../shared/plugin-info.js';

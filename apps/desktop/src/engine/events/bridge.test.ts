@@ -3,8 +3,8 @@ import {
     NodeTypeNameSchema,
     PluginIdSchema,
     WorkflowIdSchema,
-} from '@sigil/schema/ids';
-import type { Manifest } from '@sigil/schema/manifest';
+} from '@sigil/contracts/ids';
+import type { Manifest } from '@sigil/contracts/manifest';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { createManifestRegistry } from '../plugins/manifest-registry.js';

@@ -1,6 +1,6 @@
-import type { Capability } from '@sigil/schema/manifest';
+import type { Capability } from '@sigil/contracts/manifest';
 
-import { DEFAULT_PROPERTIES as ENGINE_DEFAULTS } from '@sigil/schema/properties-file';
+import { DEFAULT_PROPERTIES as ENGINE_DEFAULTS } from '@sigil/contracts/properties-file';
 import type { ReactElement } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 

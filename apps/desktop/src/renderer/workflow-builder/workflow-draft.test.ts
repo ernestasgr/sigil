@@ -1,4 +1,4 @@
-import { PipelineEdgeIdSchema } from '@sigil/schema/ids';
+import { PipelineEdgeIdSchema } from '@sigil/contracts/ids';
 import { describe, expect, it } from 'vitest';
 
 import { defaultNodeSpec } from './node-catalog.js';

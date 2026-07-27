@@ -1,4 +1,4 @@
-import { WorkflowDocumentSchema } from '@sigil/schema';
+import { WorkflowDocumentSchema } from '@sigil/contracts';
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 

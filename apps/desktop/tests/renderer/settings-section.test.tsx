@@ -1,9 +1,10 @@
-import { PluginIdSchema } from '@sigil/schema/ids';
-import { createPropertyRegistry, definePropertyDescriptor } from '@sigil/schema/properties-file';
+import { PluginIdSchema } from '@sigil/contracts/ids';
+import { definePropertyDescriptor } from '@sigil/contracts/properties-file';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { createPropertyRegistry } from '../../src/engine/core/property-registry.js';
 import { propertiesTemplateFromDefaults } from '../../src/renderer/sections/properties-template.js';
 import { SettingsSection } from '../../src/renderer/sections/settings-section.js';
 import { useAppStore } from '../../src/renderer/store/app-store.js';

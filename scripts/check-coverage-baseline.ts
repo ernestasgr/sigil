@@ -29,7 +29,8 @@ const CoverageBaselineSchema = z.object({
         source: z.string().min(1),
     }),
     projects: z.object({
-        schema: BaselineMetricsSchema,
+        contracts: BaselineMetricsSchema,
+        workflowDomain: BaselineMetricsSchema,
         desktop: BaselineMetricsSchema,
         renderer: BaselineMetricsSchema,
     }),
@@ -44,9 +45,17 @@ const baselinePath = resolve(repositoryRoot, 'docs/coverage-baseline.json');
 
 const coverageTargets = [
     {
-        key: 'schema',
-        label: 'schema',
-        reportPath: resolve(repositoryRoot, 'packages/schema/coverage/coverage-summary.json'),
+        key: 'contracts',
+        label: 'contracts',
+        reportPath: resolve(repositoryRoot, 'packages/contracts/coverage/coverage-summary.json'),
+    },
+    {
+        key: 'workflowDomain',
+        label: 'workflow-domain',
+        reportPath: resolve(
+            repositoryRoot,
+            'packages/workflow-domain/coverage/coverage-summary.json',
+        ),
     },
     {
         key: 'desktop',

@@ -1,11 +1,11 @@
-import { type FileEventPayload, FileEventPayloadSchema } from '@sigil/schema/file-event-payload';
+import { type FileEventPayload, FileEventPayloadSchema } from '@sigil/contracts/file-event-payload';
 import {
     EventNameSchema,
     NodeTypeNameSchema,
     PluginIdSchema,
     WorkflowIdSchema,
-} from '@sigil/schema/ids';
-import { CapabilitySchema } from '@sigil/schema/manifest';
+} from '@sigil/contracts/ids';
+import { CapabilitySchema } from '@sigil/contracts/manifest';
 import { Either } from 'effect';
 import { z } from 'zod';
 

@@ -42,7 +42,7 @@ async function nextTurn() {
     await new Promise((resolve) => setImmediate(resolve));
 }
 
-test('builds the schema before starting both development processes', async () => {
+test('builds contracts and the workflow domain before starting all development processes', async () => {
     const harness = createHarness();
     const development = runDevelopment({
         platform: 'linux',
@@ -52,24 +52,30 @@ test('builds the schema before starting both development processes', async () =>
     });
 
     assert.equal(harness.children.length, 1);
-    assert.deepEqual(harness.children[0].args, ['--filter', '@sigil/schema', 'build']);
+    assert.deepEqual(harness.children[0].args, ['--filter', '@sigil/contracts', 'build']);
 
     harness.children[0].child.close(0, null);
+    await nextTurn();
+    assert.deepEqual(harness.children[1].args, ['--filter', '@sigil/workflow-domain', 'build']);
+
+    harness.children[1].child.close(0, null);
     await nextTurn();
 
     assert.deepEqual(
         harness.children.map(({ args }) => args),
         [
-            ['--filter', '@sigil/schema', 'build'],
-            ['--filter', '@sigil/schema', 'dev'],
+            ['--filter', '@sigil/contracts', 'build'],
+            ['--filter', '@sigil/workflow-domain', 'build'],
+            ['--filter', '@sigil/contracts', 'dev'],
+            ['--filter', '@sigil/workflow-domain', 'dev'],
             ['--filter', '@sigil/desktop', 'dev'],
         ],
     );
 
-    harness.children[1].child.close(1, null);
+    harness.children[2].child.close(1, null);
 
     assert.equal(await development, 1);
-    assert.deepEqual(harness.terminated, ['desktop']);
+    assert.deepEqual(harness.terminated, ['workflow-domain', 'desktop']);
 });
 
 test('returns the build failure without starting long-running processes', async () => {
@@ -99,10 +105,12 @@ test('terminates both development process trees on Ctrl+C', async () => {
 
     harness.children[0].child.close(0, null);
     await nextTurn();
+    harness.children[1].child.close(0, null);
+    await nextTurn();
     harness.signalSource.emit('SIGINT');
 
     assert.equal(await development, 130);
-    assert.deepEqual(harness.terminated, ['schema', 'desktop']);
+    assert.deepEqual(harness.terminated, ['contracts', 'workflow-domain', 'desktop']);
 });
 
 test('treats an unexpected clean watcher exit as a development failure', async () => {
@@ -117,9 +125,11 @@ test('treats an unexpected clean watcher exit as a development failure', async (
     harness.children[0].child.close(0, null);
     await nextTurn();
     harness.children[1].child.close(0, null);
+    await nextTurn();
+    harness.children[2].child.close(0, null);
 
     assert.equal(await development, 1);
-    assert.deepEqual(harness.terminated, ['desktop']);
+    assert.deepEqual(harness.terminated, ['workflow-domain', 'desktop']);
 });
 
 test('uses Windows process-tree termination for a failed watcher', async () => {
@@ -146,18 +156,25 @@ test('uses Windows process-tree termination for a failed watcher', async () => {
         '/c',
         'pnpm.cmd',
         '--filter',
-        '@sigil/schema',
+        '@sigil/contracts',
         'build',
     ]);
 
     harness.children[0].child.close(0, null);
     await nextTurn();
-    harness.children[1].child.close(3, null);
+    harness.children[1].child.close(0, null);
+    await nextTurn();
+    harness.children[2].child.close(3, null);
 
     assert.equal(await development, 3);
     assert.deepEqual(taskkillCalls, [
         {
-            args: ['/PID', '3', '/T', '/F'],
+            args: ['/PID', '4', '/T', '/F'],
+            command: 'taskkill',
+            options: { windowsHide: true },
+        },
+        {
+            args: ['/PID', '5', '/T', '/F'],
             command: 'taskkill',
             options: { windowsHide: true },
         },

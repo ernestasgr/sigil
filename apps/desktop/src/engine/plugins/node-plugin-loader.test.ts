@@ -3,19 +3,19 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { EventNameSchema, PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
-import { createNodeContractRegistry, resolveNodeContract } from '@sigil/schema/node-contract';
-import { switchOutputPortStrategy } from '@sigil/schema/nodes/switch';
+import { EventNameSchema, PluginIdSchema, WorkflowIdSchema } from '@sigil/contracts/ids';
+import { definePropertyDescriptor } from '@sigil/contracts/properties-file';
 import {
-    createPropertyRegistry,
-    definePropertyDescriptor,
-    type PropertyRegistry,
-} from '@sigil/schema/properties-file';
+    createNodeContractRegistry,
+    resolveNodeContract,
+} from '@sigil/workflow-domain/node-contract';
+import { switchOutputPortStrategy } from '@sigil/workflow-domain/nodes/switch';
 import { Either, Option } from 'effect';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
 import { testNodeId, testNodeType } from '../../test-support/pipeline-fixtures.js';
+import { createPropertyRegistry, type PropertyRegistry } from '../core/property-registry.js';
 import { createBridge } from '../events/bridge.js';
 import { type BusEvent, createEventBus } from '../events/event-bus.js';
 import { createNodeHandlerRegistry } from '../execution/node-registry.js';

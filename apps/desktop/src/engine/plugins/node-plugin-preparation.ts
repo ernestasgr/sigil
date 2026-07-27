@@ -1,6 +1,6 @@
-import type { NodeTypeName, PluginId } from '@sigil/schema/ids';
-import type { Capability } from '@sigil/schema/manifest';
-import type { SerializableNodeContract } from '@sigil/schema/node-contract';
+import type { NodeTypeName, PluginId } from '@sigil/contracts/ids';
+import type { Capability } from '@sigil/contracts/manifest';
+import type { SerializableNodeContract } from '@sigil/contracts/node-contract';
 
 import type { DiscoveredNodePlugin } from './node-plugin-discovery.js';
 

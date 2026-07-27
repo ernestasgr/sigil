@@ -1,6 +1,6 @@
-import { PluginIdSchema } from '@sigil/schema/ids';
-import type { Capability, Manifest } from '@sigil/schema/manifest';
-import { CapabilitySchema } from '@sigil/schema/manifest';
+import { PluginIdSchema } from '@sigil/contracts/ids';
+import type { Capability, Manifest } from '@sigil/contracts/manifest';
+import { CapabilitySchema } from '@sigil/contracts/manifest';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
 

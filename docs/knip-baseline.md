@@ -19,7 +19,7 @@ The complete file-and-symbol report is preserved in [knip-baseline-report.md](kn
 
 - `tailwindcss` and `tw-animate-css` are consumed by CSS `@import` statements in `apps/desktop/src/renderer/styles.css`, outside Knip’s TypeScript module graph.
 - `lint-staged` is invoked by `.husky/pre-commit` through `pnpm exec`; the shell boundary is documented as an explicit Knip exception.
-- `packages/schema/src/**/*.ts` is modeled as public entry modules because each non-test source module is exposed through `package.json#exports`.
+- `packages/contracts/src/**/*.ts` and the public `packages/workflow-domain/src/**/*.ts` modules are modeled as public entry modules because each non-test entry module is exposed through its package `package.json#exports`.
 - Electron main/preload/renderer/worker entrypoints, plugin handlers, and plugin manifests are runtime boundaries and are listed explicitly in `knip.jsonc`.
 
 ### Configuration gap / review backlog
@@ -34,5 +34,5 @@ The baseline is intentionally committed as evidence for the rollout. Future slic
 - Add every new Electron build entrypoint to the `apps/desktop` `entry` list.
 - Add a new Plugin handler and manifest under `src/builtin-plugins/**`; the existing filesystem-discovery globs keep both reachable. A different discovery mechanism needs its own explicit `entry` pattern.
 - Add repository or desktop TypeScript scripts to the matching `scripts/**/*.ts` entry list.
-- Add a new public schema module to `package.json#exports`; the schema workspace’s non-test source glob models those public module boundaries.
+- Add a new public contracts or Workflow domain module to the owning package’s `package.json#exports`; the package’s non-test source glob models those public module boundaries.
 - Add generated output, fixtures, or test-only helpers to the narrowest `ignoreFiles` pattern, with a comment explaining why the boundary is intentional.

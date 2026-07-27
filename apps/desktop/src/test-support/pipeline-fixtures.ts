@@ -1,13 +1,14 @@
-import { type CompiledPipeline, compileWorkflow, type WorkflowDocument } from '@sigil/schema';
-import { type PipelineEdge, PipelineEdgeSchema } from '@sigil/schema/edges';
+import type { WorkflowDocument } from '@sigil/contracts';
+import { type PipelineEdge, PipelineEdgeSchema } from '@sigil/contracts/edges';
 import {
     NodeOutputPortIdSchema,
     NodeTypeNameSchema,
     PipelineEdgeIdSchema,
     PipelineNodeIdSchema,
     WorkflowIdSchema,
-} from '@sigil/schema/ids';
-import { type PipelineNode, PipelineNodeSchema } from '@sigil/schema/nodes';
+} from '@sigil/contracts/ids';
+import { type PipelineNode, PipelineNodeSchema } from '@sigil/contracts/nodes';
+import { type CompiledPipeline, compileWorkflow } from '@sigil/workflow-domain';
 
 export const testNodeId = (value: string) => PipelineNodeIdSchema.parse(value);
 export const testNodeType = (value: string) => NodeTypeNameSchema.parse(value);

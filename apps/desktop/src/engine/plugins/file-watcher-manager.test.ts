@@ -1,9 +1,9 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EventNameSchema, PluginIdSchema } from '@sigil/schema/ids';
-import type { Manifest } from '@sigil/schema/manifest';
-import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
+import { EventNameSchema, PluginIdSchema } from '@sigil/contracts/ids';
+import type { Manifest } from '@sigil/contracts/manifest';
+import { DEFAULT_IGNORE_PATTERNS } from '@sigil/contracts/properties-file';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { createBridge } from '../events/bridge.js';

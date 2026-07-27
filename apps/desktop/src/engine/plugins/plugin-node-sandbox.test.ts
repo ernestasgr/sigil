@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { CapabilitySchema } from '@sigil/schema/manifest';
+import { CapabilitySchema } from '@sigil/contracts/manifest';
 import { describe, expect, it } from 'vitest';
 
 import {

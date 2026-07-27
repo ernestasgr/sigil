@@ -1,14 +1,14 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { WorkflowDocument } from '@sigil/schema';
-import { PluginIdSchema, type WorkflowId, WorkflowIdSchema } from '@sigil/schema/ids';
+import type { WorkflowDocument } from '@sigil/contracts';
+import { PluginIdSchema, type WorkflowId, WorkflowIdSchema } from '@sigil/contracts/ids';
+import type { WorkflowContext } from '@sigil/contracts/workflow-context';
 import {
     type NodeContractRegistry,
     pluginNodeIdentity,
     registerSerializableNodeContract,
-} from '@sigil/schema/node-contract';
-import type { WorkflowContext } from '@sigil/schema/workflow-context';
+} from '@sigil/workflow-domain/node-contract';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import { EngineChannel } from '../../shared/ipc-channels.js';

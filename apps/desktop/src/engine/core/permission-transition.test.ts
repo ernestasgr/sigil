@@ -1,8 +1,8 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EventNameSchema, PluginIdSchema } from '@sigil/schema/ids';
-import type { Capability, Manifest } from '@sigil/schema/manifest';
+import { EventNameSchema, PluginIdSchema } from '@sigil/contracts/ids';
+import type { Capability, Manifest } from '@sigil/contracts/manifest';
 import { Either } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 

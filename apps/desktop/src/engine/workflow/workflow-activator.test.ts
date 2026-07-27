@@ -1,21 +1,21 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { WorkflowDocument } from '@sigil/schema';
+import type { WorkflowDocument } from '@sigil/contracts';
 import {
     EventNameSchema,
     NodeTypeNameSchema,
     PluginIdSchema,
     WorkflowIdSchema,
-} from '@sigil/schema/ids';
-import type { Manifest } from '@sigil/schema/manifest';
+} from '@sigil/contracts/ids';
+import type { Manifest } from '@sigil/contracts/manifest';
+import type { SerializableNodeContractInput } from '@sigil/contracts/node-contract';
+import type { WorkflowContext } from '@sigil/contracts/workflow-context';
 import {
     fixedOutputPortSpec,
     pluginNodeIdentity,
     registerSerializableNodeContract,
-    type SerializableNodeContractInput,
-} from '@sigil/schema/node-contract';
-import type { WorkflowContext } from '@sigil/schema/workflow-context';
+} from '@sigil/workflow-domain/node-contract';
 import { Either, Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import { testDocument } from '../../test-support/pipeline-fixtures.js';

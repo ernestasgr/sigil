@@ -1,4 +1,7 @@
-import { formatTopologyDiagnostics, type TopologyDiagnostic } from '@sigil/schema/topology';
+import {
+    formatTopologyDiagnostics,
+    type TopologyDiagnostic,
+} from '@sigil/workflow-domain/topology';
 
 export type WorkflowTopologyError = Error & {
     readonly kind: 'workflow_topology';

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PluginIdSchema } from '@sigil/schema/ids';
+import { PluginIdSchema } from '@sigil/contracts/ids';
 import { Option } from 'effect';
 import { afterAll, describe, expect, it } from 'vitest';
 import { testNodeId, testNodeType } from '../../test-support/pipeline-fixtures.js';

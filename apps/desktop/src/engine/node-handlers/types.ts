@@ -1,13 +1,13 @@
-import type { PipelineCondition } from '@sigil/schema/conditions';
-import type { EventName } from '@sigil/schema/ids';
-import type { NodeType, PipelineNode, UnknownNodeDescriptor } from '@sigil/schema/nodes';
-import type { SwitchConfig } from '@sigil/schema/nodes/switch';
+import type { PipelineCondition } from '@sigil/contracts/conditions';
+import type { EventName } from '@sigil/contracts/ids';
+import type { NodeType, PipelineNode, UnknownNodeDescriptor } from '@sigil/contracts/nodes';
 import type {
     CollisionSuffixStyle,
     ConflictPolicy,
     PropertyDescriptor,
-} from '@sigil/schema/properties-file';
-import type { WorkflowContext } from '@sigil/schema/workflow-context';
+} from '@sigil/contracts/properties-file';
+import type { WorkflowContext } from '@sigil/contracts/workflow-context';
+import type { SwitchConfig } from '@sigil/workflow-domain/nodes/switch';
 import type { BusEvent } from '../events/event-bus.js';
 import type { CapabilityBroker } from '../persistence/capability-broker.js';
 import type { FileWatcherManager } from '../plugins/file-watcher-manager.js';

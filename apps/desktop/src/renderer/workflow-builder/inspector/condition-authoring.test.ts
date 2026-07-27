@@ -1,5 +1,5 @@
-import { createEventCatalog, DEFAULT_EVENT_CATALOG } from '@sigil/schema/event-catalog';
-import { EventNameSchema, PluginIdSchema } from '@sigil/schema/ids';
+import { createEventCatalog, DEFAULT_EVENT_CATALOG } from '@sigil/contracts/event-catalog';
+import { EventNameSchema, PluginIdSchema } from '@sigil/contracts/ids';
 import { describe, expect, it } from 'vitest';
 
 import { updateFieldCondition } from './condition-authoring.js';

@@ -2,17 +2,20 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
-import { type PluginId, PluginIdSchema } from '@sigil/schema/ids';
-import type { Capability, Manifest } from '@sigil/schema/manifest';
+import { type PluginId, PluginIdSchema } from '@sigil/contracts/ids';
+import type { Capability, Manifest } from '@sigil/contracts/manifest';
+import {
+    type SerializableNodeContract,
+    validatePluginNodeContract,
+} from '@sigil/contracts/node-contract';
+import type { SerializedPropertyDescriptor } from '@sigil/contracts/properties-file';
 import {
     type NodeContractRegistry,
     registerSerializableNodeContract,
-    type SerializableNodeContract,
-    validatePluginNodeContract,
-} from '@sigil/schema/node-contract';
-import type { PropertyRegistry, SerializedPropertyDescriptor } from '@sigil/schema/properties-file';
+} from '@sigil/workflow-domain/node-contract';
 import { Either } from 'effect';
 import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
+import type { PropertyRegistry } from '../core/property-registry.js';
 import type { Bridge } from '../events/bridge.js';
 import type { NodeHandlerRegistry } from '../execution/node-registry.js';
 import type { KernelDeps, NodeHandler } from '../node-handlers/types.js';

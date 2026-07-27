@@ -1,24 +1,24 @@
-import { type PluginId, PluginIdSchema } from '@sigil/schema/ids';
-import type { Manifest } from '@sigil/schema/manifest';
-import {
-    type NodeContractRegistry,
-    pluginNodeIdentity,
-    registerSerializableNodeContract,
-    resolveNodeContract,
-    type SerializableNodeContractInput,
-} from '@sigil/schema/node-contract';
+import { type PluginId, PluginIdSchema } from '@sigil/contracts/ids';
+import type { Manifest } from '@sigil/contracts/manifest';
+import type { SerializableNodeContractInput } from '@sigil/contracts/node-contract';
 import {
     type BuiltinPipelineNode,
     isPluginNode,
     type NodeDescriptor,
     type NodeType,
     type PipelineNode,
-} from '@sigil/schema/nodes';
+} from '@sigil/contracts/nodes';
+import {
+    type NodeContractRegistry,
+    pluginNodeIdentity,
+    registerSerializableNodeContract,
+    resolveNodeContract,
+} from '@sigil/workflow-domain/node-contract';
 import {
     createBuiltinNodeContractRegistry,
     getBuiltinNodeContract,
     getNodeDescriptor,
-} from '@sigil/schema/nodes/catalog';
+} from '@sigil/workflow-domain/nodes/catalog';
 import { type ComponentType, createElement, type ReactElement } from 'react';
 import type { z } from 'zod';
 
@@ -36,7 +36,7 @@ import {
     SwitchConfigForm,
 } from './inspector/config-forms.js';
 
-export type { NodeType } from '@sigil/schema/nodes';
+export type { NodeType } from '@sigil/contracts/nodes';
 
 export type NodeCategory = 'trigger' | 'logic' | 'system' | 'state' | 'utility';
 

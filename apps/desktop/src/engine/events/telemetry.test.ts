@@ -3,7 +3,7 @@ import {
     NodeTypeNameSchema,
     PluginIdSchema,
     WorkflowIdSchema,
-} from '@sigil/schema/ids';
+} from '@sigil/contracts/ids';
 import { describe, expect, it } from 'vitest';
 
 import { type BusEvent, createEventBus } from './event-bus.js';

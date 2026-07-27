@@ -1,4 +1,4 @@
-import type { Capability } from '@sigil/schema/manifest';
+import type { Capability } from '@sigil/contracts/manifest';
 
 export type SandboxModuleName = 'node:fs' | 'node:net' | 'node:child_process';
 export type UnconditionalSandboxModuleName = 'node:path' | 'node:url' | 'node:crypto';
