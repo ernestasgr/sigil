@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineEdge } from '@sigil/schema/edges';
 import type { WorkflowId } from '@sigil/schema/ids';
+import type { MatchPatternEngine } from '@sigil/schema/match-pattern';
 import {
     formatNodeIdentity,
     type NodeContractRegistry,
@@ -51,6 +52,7 @@ export interface ExecutionOptions {
     readonly workflowId?: WorkflowId;
     readonly signal?: AbortSignal;
     readonly contractRegistry?: NodeContractRegistry;
+    readonly matchPatternEngine?: MatchPatternEngine;
 }
 
 export interface WorkflowExecutionResult {
@@ -239,6 +241,8 @@ export async function executeValidatedWorkflow(
     };
     const contractRegistry =
         executionOptions.contractRegistry ?? createBuiltinNodeContractRegistry();
+    const evaluateConditionWithOptions: NodeHandlerDeps['evaluateCondition'] = (condition, ctx) =>
+        evaluateCondition(condition, ctx, executionOptions.matchPatternEngine);
     const telemetry = createRunTelemetry(bus, {
         workflowId,
         pipelineId: pipeline.id,
@@ -281,7 +285,7 @@ export async function executeValidatedWorkflow(
         const commonDeps: Omit<NodeHandlerDeps, 'bus'> = {
             sleep,
             resolveTemplate,
-            evaluateCondition,
+            evaluateCondition: evaluateConditionWithOptions,
             matchSwitchCase,
             state,
             capabilityBroker: capabilityBroker ?? createDenyAllCapabilityBroker(),

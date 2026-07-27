@@ -1,5 +1,10 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
 import {
+    compareMatchPattern,
+    DEFAULT_MATCH_PATTERN_ENGINE,
+    type MatchPatternEngine,
+} from '@sigil/schema/match-pattern';
+import {
     canonicalizeSwitchValue,
     type SwitchCase,
     type SwitchComparison,
@@ -50,15 +55,12 @@ export function coerceForComparison(
     );
 }
 
-function parseRegexLiteral(value: string): { readonly pattern: string; readonly flags: string } {
-    const match = /^\/(.+)\/([gimsuy]*)$/.exec(value);
-    if (match) {
-        return { pattern: match[1], flags: match[2] };
-    }
-    return { pattern: value, flags: '' };
-}
-
-function compareString(operator: StringOperator, left: string, right: string): boolean {
+function compareString(
+    operator: StringOperator,
+    left: string,
+    right: string,
+    matchPatternEngine: MatchPatternEngine,
+): boolean {
     return Match.value(operator).pipe(
         Match.when('equals', () => left.toLowerCase() === right.toLowerCase()),
         Match.when('not_equals', () => left.toLowerCase() !== right.toLowerCase()),
@@ -67,12 +69,8 @@ function compareString(operator: StringOperator, left: string, right: string): b
         Match.when('starts_with', () => left.toLowerCase().startsWith(right.toLowerCase())),
         Match.when('ends_with', () => left.toLowerCase().endsWith(right.toLowerCase())),
         Match.when('matches', () => {
-            const { pattern, flags } = parseRegexLiteral(right);
-            try {
-                return new RegExp(pattern, flags).test(left);
-            } catch {
-                return false;
-            }
+            const result = compareMatchPattern(right, left, matchPatternEngine);
+            return result.ok && result.matched;
         }),
         Match.exhaustive,
     );
@@ -102,14 +100,18 @@ type StringCondition = Extract<PipelineCondition, { value: string }>;
 type NumberCondition = Extract<PipelineCondition, { value: number }>;
 type BooleanCondition = Extract<PipelineCondition, { value: boolean }>;
 
-function compareStringCondition(raw: unknown, condition: StringCondition): boolean {
+function compareStringCondition(
+    raw: unknown,
+    condition: StringCondition,
+    matchPatternEngine: MatchPatternEngine,
+): boolean {
     const left = coerceForComparison(raw, 'string');
     if (Either.isLeft(left)) return false;
 
     const right = coerceForComparison(condition.value, 'string');
     if (Either.isLeft(right)) return false;
 
-    return compareString(condition.operator, left.right, right.right);
+    return compareString(condition.operator, left.right, right.right, matchPatternEngine);
 }
 
 function compareNumberCondition(raw: unknown, condition: NumberCondition): boolean {
@@ -132,11 +134,15 @@ function compareBooleanCondition(raw: unknown, condition: BooleanCondition): boo
     return compareBoolean(condition.operator, left.right, right.right);
 }
 
-function compareWithCondition(raw: unknown, condition: PipelineCondition): boolean {
+function compareWithCondition(
+    raw: unknown,
+    condition: PipelineCondition,
+    matchPatternEngine: MatchPatternEngine,
+): boolean {
     if (raw === undefined || raw === null) return false;
 
     if (typeof condition.value === 'string') {
-        return compareStringCondition(raw, condition);
+        return compareStringCondition(raw, condition, matchPatternEngine);
     }
     if (typeof condition.value === 'number') {
         return compareNumberCondition(raw, condition);
@@ -144,11 +150,21 @@ function compareWithCondition(raw: unknown, condition: PipelineCondition): boole
     return compareBooleanCondition(raw, condition);
 }
 
-export function evaluateCondition(condition: PipelineCondition, ctx: WorkflowContext): boolean {
+export function evaluateCondition(
+    condition: PipelineCondition,
+    ctx: WorkflowContext,
+    matchPatternEngine: MatchPatternEngine = DEFAULT_MATCH_PATTERN_ENGINE,
+): boolean {
     return Match.value(condition).pipe(
-        Match.when({ target: 'event' }, (c) => compareWithCondition(ctx.event, c)),
-        Match.when({ target: 'payload' }, (c) => compareWithCondition(ctx.payload[c.field], c)),
-        Match.when({ target: 'vars' }, (c) => compareWithCondition(ctx.vars[c.field], c)),
+        Match.when({ target: 'event' }, (c) =>
+            compareWithCondition(ctx.event, c, matchPatternEngine),
+        ),
+        Match.when({ target: 'payload' }, (c) =>
+            compareWithCondition(ctx.payload[c.field], c, matchPatternEngine),
+        ),
+        Match.when({ target: 'vars' }, (c) =>
+            compareWithCondition(ctx.vars[c.field], c, matchPatternEngine),
+        ),
         Match.exhaustive,
     );
 }

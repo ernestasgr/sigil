@@ -69,6 +69,27 @@ export const parsePipeline = parsePipelineDocument;
 export type { NodeOutputPortId, PipelineEdgeId, PipelineNodeId } from './ids.js';
 export { NodeOutputPortIdSchema, PipelineEdgeIdSchema, PipelineNodeIdSchema } from './ids.js';
 export type {
+    CompiledMatchPattern,
+    MatchPatternComparison,
+    MatchPatternCompilation,
+    MatchPatternEngine,
+    MatchPatternFlag,
+    MatchPatternIssue,
+    MatchPatternIssueCode,
+    MatchPatternValidation,
+    ParsedMatchPattern,
+} from './match-pattern.js';
+export {
+    compareMatchPattern,
+    createRe2MatchPatternEngine,
+    DEFAULT_MATCH_PATTERN_ENGINE,
+    MATCH_PATTERN_SUPPORTED_FLAGS,
+    MAX_MATCH_CANDIDATE_LENGTH,
+    MAX_MATCH_PATTERN_LENGTH,
+    parseMatchPattern,
+    validateMatchPattern,
+} from './match-pattern.js';
+export type {
     ExecutableWorkflow,
     TopologyDiagnostic,
     TopologyDiagnosticCode,
