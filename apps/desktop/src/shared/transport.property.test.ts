@@ -21,7 +21,7 @@ const PROPERTY_OPTIONS = {
 const correlationIdArbitrary = fc.string({ minLength: 1, maxLength: 16 });
 const workflowIdArbitrary = fc.constantFrom('wf-a', 'wf-b', 'wf-c');
 
-const pipeline = {
+const document = {
     id: 'pipeline-transport',
     workflowId: 'wf-a',
     schemaVersion: 1,
@@ -50,7 +50,7 @@ const requestArbitrary = fc.oneof(
         type: fc.constant(EngineChannel.CreateWorkflow),
         correlationId: correlationIdArbitrary,
         name: fc.constantFrom('', 'Generated Workflow'),
-        pipeline: fc.constant(pipeline),
+        document: fc.constant(document),
         positions: fc.constant({}),
     }),
     fc.record({
@@ -82,7 +82,7 @@ const responseArbitrary = fc.oneof(
         correlationId: correlationIdArbitrary,
         found: fc.constant(true),
         name: fc.constant('Generated Workflow'),
-        pipeline: fc.constant(pipeline),
+        document: fc.constant(document),
         positions: fc.constant({}),
     }),
     fc.record({

@@ -5,9 +5,9 @@ import {
     PipelineNodeIdSchema,
     WorkflowIdSchema,
 } from './ids.js';
-import type { CompiledPipeline } from './pipeline.js';
+import { compileWorkflow } from './pipeline.js';
 
-export const sampleManualTriggerToLog: CompiledPipeline = {
+const sampleDocument = {
     id: 'sample-manual-trigger-to-log',
     workflowId: WorkflowIdSchema.parse('workflow-download-sorter'),
     schemaVersion: 1,
@@ -42,4 +42,11 @@ export const sampleManualTriggerToLog: CompiledPipeline = {
             sourcePort: NodeOutputPortIdSchema.parse('out'),
         },
     ],
-};
+} as const;
+
+const compiledSample = compileWorkflow(sampleDocument);
+if (!compiledSample.ok) {
+    throw new Error(`Invalid sample Workflow document: ${compiledSample.error}`);
+}
+
+export const sampleManualTriggerToLog = compiledSample.value;

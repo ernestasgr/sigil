@@ -2,11 +2,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync as Database } from 'node:sqlite';
-import type { CompiledPipeline } from '@sigil/schema';
+import type { WorkflowDocument } from '@sigil/schema';
 import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import { Effect, Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { testPipeline } from '../../test-support/pipeline-fixtures.js';
+import { testDocument } from '../../test-support/pipeline-fixtures.js';
 import { readPropertiesFile, writePropertiesFile } from '../core/properties-loader.js';
 import {
     createInMemoryWorkflowStateStore,
@@ -21,7 +21,7 @@ const CONTRACT_WORKFLOW_ID = WorkflowIdSchema.parse('wf-contract');
 const CONTRACT_WORKFLOW_A_ID = WorkflowIdSchema.parse('wf-contract-a');
 const CONTRACT_WORKFLOW_B_ID = WorkflowIdSchema.parse('wf-contract-b');
 
-const contractPipeline: CompiledPipeline = testPipeline({
+const contractDocument: WorkflowDocument = testDocument({
     id: 'pipeline-contract',
     workflowId: 'wf-contract',
     nodes: [
@@ -77,7 +77,7 @@ describe('Persistence restart contract', () => {
     it('restores Workflow intent and content through a fresh filesystem-backed store', () => {
         const workflowDir = join(tempDir, 'workflows');
         const first = createWorkflowStore(workflowDir);
-        const created = first.create('Contract Workflow', contractPipeline, {
+        const created = first.create('Contract Workflow', contractDocument, {
             trigger: { x: 10, y: 20 },
         });
         first.toggle(created.id);
@@ -94,7 +94,7 @@ describe('Persistence restart contract', () => {
         );
         expect(restarted.get(created.id)).toMatchObject(
             Option.some({
-                pipeline: contractPipeline,
+                document: contractDocument,
                 positions: { trigger: { x: 10, y: 20 } },
             }),
         );
@@ -103,11 +103,11 @@ describe('Persistence restart contract', () => {
     it('keeps healthy Workflows visible beside corruption and ignores interrupted temp files', () => {
         const workflowDir = join(tempDir, 'workflows');
         const first = createWorkflowStore(workflowDir);
-        const created = first.create('Healthy Workflow', contractPipeline, {});
+        const created = first.create('Healthy Workflow', contractDocument, {});
         writeFileSync(join(workflowDir, 'wf-corrupt.json'), '{not-json');
         writeFileSync(
             join(workflowDir, `.${created.id}.json.interrupted.tmp`),
-            JSON.stringify({ ...contractPipeline, name: 'uncommitted replacement' }),
+            JSON.stringify({ ...contractDocument, name: 'uncommitted replacement' }),
         );
 
         const restarted = createWorkflowStore(workflowDir);

@@ -64,7 +64,7 @@ describe('AppRouter', () => {
         const caller = createRouter(engine).createCaller({});
         const input = {
             name: 'Fixture workflow',
-            pipeline: {
+            document: {
                 id: 'pipeline-1',
                 workflowId: 'workflow-1',
                 schemaVersion: 1 as const,

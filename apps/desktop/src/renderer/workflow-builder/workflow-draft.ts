@@ -1,4 +1,4 @@
-import type { CompiledPipeline } from '@sigil/schema';
+import type { WorkflowDocument } from '@sigil/schema';
 import { PipelineEdgeIdSchema } from '@sigil/schema/ids';
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import {
@@ -39,7 +39,7 @@ export interface WorkflowDraftNodeDrag {
 
 export interface WorkflowDraftSaveRequest {
     readonly name: string;
-    readonly pipeline: CompiledPipeline;
+    readonly document: WorkflowDocument;
     readonly positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>;
     readonly revision: number;
 }

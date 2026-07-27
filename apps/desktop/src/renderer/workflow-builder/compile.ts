@@ -1,13 +1,11 @@
-import { type CompiledPipeline, type PipelineParseIssue, parsePipeline } from '@sigil/schema';
-import { PipelineEdgeIdSchema, PipelineNodeIdSchema } from '@sigil/schema/ids';
-import { isPluginNode, type PipelineNode } from '@sigil/schema/nodes';
 import {
-    type ExecutableWorkflow,
-    formatTopologyDiagnostics,
-    type TopologyDiagnostic,
-    validateWorkflowTopology,
-    type WorkflowTopologyOptions,
-} from '@sigil/schema/topology';
+    type CompiledPipeline,
+    compileWorkflow,
+    type WorkflowCompilationOptions,
+    type WorkflowDocumentParseIssue,
+} from '@sigil/schema';
+import { PipelineEdgeIdSchema, PipelineNodeIdSchema } from '@sigil/schema/ids';
+import { formatTopologyDiagnostics, type TopologyDiagnostic } from '@sigil/schema/topology';
 
 import {
     createNodeCatalog,
@@ -42,7 +40,6 @@ export type CompileResult =
     | {
           readonly ok: true;
           readonly value: CompiledPipeline;
-          readonly executable: ExecutableWorkflow;
           readonly diagnostics: readonly TopologyDiagnostic[];
       }
     | {
@@ -51,7 +48,7 @@ export type CompileResult =
           readonly diagnostics: readonly TopologyDiagnostic[];
       };
 
-export type CompileOptions = WorkflowTopologyOptions & {
+export type CompileOptions = WorkflowCompilationOptions & {
     readonly nodeCatalog?: NodeCatalog;
 };
 
@@ -64,13 +61,13 @@ function structuralDiagnostic(error: string): TopologyDiagnostic {
     };
 }
 
-function parseIssueNodeIndex(issue: PipelineParseIssue): number | null {
+function parseIssueNodeIndex(issue: WorkflowDocumentParseIssue): number | null {
     if (issue.path[0] !== 'nodes') return null;
     const index = issue.path[1];
     return typeof index === 'number' ? index : null;
 }
 
-function parseIssueConfigPath(issue: PipelineParseIssue): string | null {
+function parseIssueConfigPath(issue: WorkflowDocumentParseIssue): string | null {
     if (issue.path[2] !== 'config') return null;
     const configPath = issue.path.slice(2).map(String);
     return configPath.join('.').replace(/\.(\d+)(?=\.|$)/g, '[$1]');
@@ -78,7 +75,7 @@ function parseIssueConfigPath(issue: PipelineParseIssue): string | null {
 
 function nodeConfigurationDiagnostic(
     node: VisualNode,
-    issue: PipelineParseIssue,
+    issue: WorkflowDocumentParseIssue,
 ): TopologyDiagnostic | null {
     const fieldPath = parseIssueConfigPath(issue);
     const nodeId = PipelineNodeIdSchema.safeParse(node.id);
@@ -98,7 +95,7 @@ function nodeConfigurationDiagnostic(
 
 function structuralDiagnostics(
     error: string,
-    issues: readonly PipelineParseIssue[],
+    issues: readonly WorkflowDocumentParseIssue[],
     nodes: readonly VisualNode[],
 ): readonly TopologyDiagnostic[] {
     const nodeDiagnostics = issues.flatMap((issue) => {
@@ -124,18 +121,18 @@ function droppedEdgeDiagnostic(edge: VisualEdge): TopologyDiagnostic {
     };
 }
 
-function pluginNodeSpec(node: PipelineNode): {
+function pluginNodeSpec(node: VisualNode): {
     readonly type: string;
     readonly pluginId: string;
     readonly config: unknown;
 } | null {
-    return isPluginNode(node)
-        ? { type: node.type, pluginId: node.pluginId, config: node.config }
-        : null;
+    return node.data.pluginId === undefined
+        ? null
+        : { type: node.data.type, pluginId: node.data.pluginId, config: node.data.config };
 }
 
 function pluginCatalogDiagnostics(
-    nodes: readonly PipelineNode[],
+    nodes: readonly VisualNode[],
     catalog: NodeCatalog,
 ): readonly TopologyDiagnostic[] {
     const diagnostics: TopologyDiagnostic[] = [];
@@ -143,16 +140,18 @@ function pluginCatalogDiagnostics(
     for (const node of nodes) {
         const spec = pluginNodeSpec(node);
         if (!spec) continue;
+        const nodeId = PipelineNodeIdSchema.safeParse(node.id);
+        if (!nodeId.success) continue;
 
         const entry = resolveNodeCatalogEntry(spec, catalog);
         if (entry.authoring === 'read-only') {
             diagnostics.push({
                 severity: 'warning',
                 code: 'unsupported_plugin_authoring',
-                target: { kind: 'node', nodeId: node.id },
-                nodeId: node.id,
+                target: { kind: 'node', nodeId: nodeId.data },
+                nodeId: nodeId.data,
                 message:
-                    `Plugin Node "${node.type}" from "${spec.pluginId}" has no Workflow Builder ` +
+                    `Plugin Node "${spec.type}" from "${spec.pluginId}" has no Workflow Builder ` +
                     'authoring adapter; it is read-only and will be preserved unchanged.',
                 repairHint:
                     'Install or register a Plugin Node authoring adapter before editing it.',
@@ -166,10 +165,9 @@ function pluginCatalogDiagnostics(
 function topologyOptionsWithCatalog(
     options: CompileOptions | undefined,
     catalog: NodeCatalog,
-): WorkflowTopologyOptions {
+): WorkflowCompilationOptions {
     return {
         ...(options?.isNodeSupported ? { isNodeSupported: options.isNodeSupported } : {}),
-        ...(options?.requireNodeContracts ? { requireNodeContracts: true } : {}),
         contractRegistry: options?.contractRegistry ?? catalog.contractRegistry,
     };
 }
@@ -204,31 +202,26 @@ export function compileGraph(
                 sourcePort: edge.sourceHandle,
             })),
     };
-    const parsed = parsePipeline(pipeline);
-    if (!parsed.ok) {
-        const diagnostics = [
-            ...structuralDiagnostics(parsed.error, parsed.issues, nodes),
-            ...droppedEdgeDiagnostics,
-        ];
-        return { ok: false, error: formatTopologyDiagnostics(diagnostics), diagnostics };
-    }
-
     const catalog =
         topologyOptions?.nodeCatalog ??
         (topologyOptions?.contractRegistry
             ? createNodeCatalog([], { contractRegistry: topologyOptions.contractRegistry })
             : DEFAULT_NODE_CATALOG);
-    const catalogDiagnostics = pluginCatalogDiagnostics(parsed.value.nodes, catalog);
-    const topology = validateWorkflowTopology(
-        parsed.value,
+    const catalogDiagnostics = pluginCatalogDiagnostics(nodes, catalog);
+    const compiled = compileWorkflow(
+        pipeline,
         topologyOptionsWithCatalog(topologyOptions, catalog),
     );
-    if (!topology.ok) {
-        const diagnostics = [
-            ...catalogDiagnostics,
-            ...topology.diagnostics,
-            ...droppedEdgeDiagnostics,
-        ];
+    if (!compiled.ok) {
+        const structural =
+            compiled.phase === 'parsing'
+                ? structuralDiagnostics(
+                      compiled.parseFailure.error,
+                      compiled.parseFailure.issues,
+                      nodes,
+                  )
+                : compiled.diagnostics;
+        const diagnostics = [...catalogDiagnostics, ...structural, ...droppedEdgeDiagnostics];
         return {
             ok: false,
             error: formatTopologyDiagnostics(diagnostics),
@@ -250,8 +243,7 @@ export function compileGraph(
 
     return {
         ok: true,
-        value: topology.value.pipeline,
-        executable: topology.value,
-        diagnostics: [...catalogDiagnostics, ...droppedEdgeDiagnostics],
+        value: compiled.value,
+        diagnostics: [...catalogDiagnostics, ...compiled.diagnostics, ...droppedEdgeDiagnostics],
     };
 }

@@ -1,4 +1,4 @@
-import type { CompiledPipeline } from '@sigil/schema';
+import { type CompiledPipeline, compileWorkflow, type WorkflowDocument } from '@sigil/schema';
 import { type PipelineEdge, PipelineEdgeSchema } from '@sigil/schema/edges';
 import {
     NodeOutputPortIdSchema,
@@ -22,12 +22,12 @@ export function testEdge(value: unknown): PipelineEdge {
     return PipelineEdgeSchema.parse(value);
 }
 
-export function testPipeline(value: {
+export function testDocument(value: {
     readonly id: string;
     readonly workflowId: string;
     readonly nodes: readonly unknown[];
     readonly edges: readonly unknown[];
-}): CompiledPipeline {
+}): WorkflowDocument {
     return {
         id: value.id,
         workflowId: WorkflowIdSchema.parse(value.workflowId),
@@ -35,4 +35,15 @@ export function testPipeline(value: {
         nodes: value.nodes.map(testNode),
         edges: value.edges.map(testEdge),
     };
+}
+
+export function testPipeline(value: {
+    readonly id: string;
+    readonly workflowId: string;
+    readonly nodes: readonly unknown[];
+    readonly edges: readonly unknown[];
+}): CompiledPipeline {
+    const result = compileWorkflow(testDocument(value));
+    if (!result.ok) throw new Error(result.error);
+    return result.value;
 }

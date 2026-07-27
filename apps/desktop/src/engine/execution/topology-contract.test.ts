@@ -1,16 +1,16 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CompiledPipeline } from '@sigil/schema';
+import type { WorkflowDocument } from '@sigil/schema';
 import { WorkflowIdSchema } from '@sigil/schema/ids';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 
 import { compileGraph } from '../../renderer/workflow-builder/compile.js';
-import { testPipeline } from '../../test-support/pipeline-fixtures.js';
+import { testDocument } from '../../test-support/pipeline-fixtures.js';
 import { createEngine } from '../core/engine.js';
-import { workflowTopologyOptions } from '../workflow/workflow-acceptance.js';
 import { createWorkflowActivator, type WorkflowActivator } from '../workflow/workflow-activator.js';
+import { workflowCompilationOptions } from '../workflow/workflow-compilation.js';
 import { createWorkflowStore } from '../workflow/workflow-store.js';
 
 const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
@@ -27,7 +27,7 @@ describe('Workflow topology contract', () => {
         }
 
         const engine = createEngine();
-        const emptyPipeline: CompiledPipeline = {
+        const emptyDocument: WorkflowDocument = {
             id: 'pipeline-1',
             workflowId: testWorkflowId('workflow-1'),
             schemaVersion: 1,
@@ -35,7 +35,7 @@ describe('Workflow topology contract', () => {
             edges: [],
         };
 
-        await expect(engine.execute(emptyPipeline)).rejects.toMatchObject({
+        await expect(engine.executeDocument(emptyDocument)).rejects.toMatchObject({
             kind: 'workflow_topology',
             diagnostics: expect.arrayContaining([
                 expect.objectContaining({ code: 'empty_pipeline' }),
@@ -75,27 +75,27 @@ describe('Workflow topology contract', () => {
 
             expect(compiled.ok).toBe(true);
             if (!compiled.ok) return;
-            expect(compiled.executable.triggerId).toBe('trigger');
+            expect(compiled.value.triggerId).toBe('trigger');
 
             const store = createWorkflowStore(storageDir);
-            const summary = store.create('Contract Workflow', compiled.value, {});
+            const summary = store.create('Contract Workflow', compiled.value.source, {});
             const loadedStore = createWorkflowStore(storageDir);
             const loaded = loadedStore.get(summary.id);
             expect(Option.isSome(loaded)).toBe(true);
             if (Option.isNone(loaded)) return;
-            expect(loaded.value.executable.triggerId).toBe('trigger');
+            expect(loaded.value.compiled.triggerId).toBe('trigger');
 
             const activator = createWorkflowActivator(engine, loadedStore, engine.handlerRegistry);
             const workflowId = testWorkflowId(summary.id);
             expect(activator.activate(workflowId)).toBe(true);
             expect(activator.activeWorkflowIds()).toEqual([workflowId]);
-            expect(loaded.value.executable.executionOrder).toEqual(['trigger', 'log']);
+            expect(loaded.value.compiled.executionOrder).toEqual(['trigger', 'log']);
 
             const messages: string[] = [];
             engine.bus.subscribe((event) => {
                 if (event.name === 'log.output') messages.push(event.payload.message);
             });
-            await engine.execute(loaded.value.executable);
+            await engine.execute(loaded.value.compiled);
 
             expect(messages).toEqual(['from contract']);
             expect(activator.deactivate(workflowId)).toBe(true);
@@ -115,13 +115,13 @@ describe('Workflow topology contract', () => {
 
             const store = createWorkflowStore(
                 storageDir,
-                workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
+                workflowCompilationOptions(engine.handlerRegistry, engine.contractRegistry),
             );
-            const createFileWatcherPipeline = (
+            const createFileWatcherDocument = (
                 pipelineId: string,
                 workflowId: string,
-            ): CompiledPipeline =>
-                testPipeline({
+            ): WorkflowDocument =>
+                testDocument({
                     id: pipelineId,
                     workflowId: workflowId,
                     nodes: [
@@ -141,12 +141,12 @@ describe('Workflow topology contract', () => {
 
             const first = store.create(
                 'First File Watcher Workflow',
-                createFileWatcherPipeline('pipeline-first', 'workflow-first'),
+                createFileWatcherDocument('pipeline-first', 'workflow-first'),
                 {},
             );
             const second = store.create(
                 'Second File Watcher Workflow',
-                createFileWatcherPipeline('pipeline-second', 'workflow-second'),
+                createFileWatcherDocument('pipeline-second', 'workflow-second'),
                 {},
             );
 

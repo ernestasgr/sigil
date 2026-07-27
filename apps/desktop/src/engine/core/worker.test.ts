@@ -48,6 +48,7 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
     broadcastWorkflowsList: ReturnType<typeof vi.fn>;
     engine: {
         execute: ReturnType<typeof vi.fn>;
+        executeDocument: ReturnType<typeof vi.fn>;
         validateProperties: ReturnType<typeof vi.fn>;
         applyProperties: ReturnType<typeof vi.fn>;
         applyPermissionOverride: ReturnType<typeof vi.fn>;
@@ -91,6 +92,7 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
     const log = vi.fn();
     const broadcastWorkflowsList = vi.fn();
     const execute = vi.fn().mockResolvedValue(undefined);
+    const executeDocument = vi.fn().mockResolvedValue(undefined);
     const registryAll = vi.fn().mockReturnValue([]);
     const registryGet = vi.fn().mockReturnValue(
         Option.some({
@@ -137,6 +139,7 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
             postMessage,
             engine: {
                 execute,
+                executeDocument,
                 validateProperties,
                 applyProperties,
                 applyPermissionOverride,
@@ -176,6 +179,7 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
         broadcastWorkflowsList,
         engine: {
             execute,
+            executeDocument,
             validateProperties,
             applyProperties,
             applyPermissionOverride,
@@ -240,12 +244,12 @@ describe('dispatch', () => {
         const message: EngineFireManualTrigger = {
             correlationId: 'corr-manual-trigger',
             type: EngineChannel.FireManualTrigger,
-            pipeline,
+            document: pipeline,
         };
         await dispatch(message, subsystems);
 
-        expect(engine.execute).toHaveBeenCalledTimes(1);
-        expect(engine.execute).toHaveBeenCalledWith(pipeline);
+        expect(engine.executeDocument).toHaveBeenCalledTimes(1);
+        expect(engine.executeDocument).toHaveBeenCalledWith(pipeline);
         expect(subsystems.postMessage).toHaveBeenCalledWith({
             type: EngineChannel.FireManualTriggerResult,
             correlationId: 'corr-manual-trigger',
@@ -437,12 +441,12 @@ describe('dispatch', () => {
             type: EngineChannel.CreateWorkflow,
             correlationId: 'corr-2',
             name: 'New WF',
-            pipeline: { id: 'p-1' } as CompiledPipeline,
+            document: { id: 'p-1' } as CompiledPipeline,
             positions: {},
         };
         dispatch(message, subsystems);
 
-        expect(store.create).toHaveBeenCalledWith('New WF', message.pipeline, {});
+        expect(store.create).toHaveBeenCalledWith('New WF', message.document, {});
         expect(log).toHaveBeenCalledWith('Created workflow "New WF" (new-id)');
         expect(broadcastWorkflowsList).toHaveBeenCalledTimes(1);
         expect(postMessage).toHaveBeenCalledWith({
@@ -469,7 +473,7 @@ describe('dispatch', () => {
                 type: EngineChannel.CreateWorkflow,
                 correlationId: 'corr-invalid',
                 name: 'Invalid WF',
-                pipeline: { id: 'p-1' } as CompiledPipeline,
+                document: { id: 'p-1' } as CompiledPipeline,
                 positions: {},
             },
             subsystems,
@@ -508,7 +512,7 @@ describe('dispatch', () => {
                 type: EngineChannel.CreateWorkflow,
                 correlationId: 'corr-write-failed',
                 name: 'Failed WF',
-                pipeline: { id: 'p-1' } as CompiledPipeline,
+                document: { id: 'p-1' } as CompiledPipeline,
                 positions: {},
             },
             subsystems,
@@ -536,14 +540,14 @@ describe('dispatch', () => {
             correlationId: 'corr-3',
             id: WORKFLOW_ID,
             name: 'Updated',
-            pipeline: { id: 'p-1' } as CompiledPipeline,
+            document: { id: 'p-1' } as CompiledPipeline,
             positions: {},
         };
         dispatch(message, subsystems);
 
         expect(activator.deactivate).toHaveBeenCalledWith(WORKFLOW_ID);
         expect(store.get).toHaveBeenCalledWith(WORKFLOW_ID);
-        expect(store.save).toHaveBeenCalledWith(WORKFLOW_ID, 'Updated', message.pipeline, {});
+        expect(store.save).toHaveBeenCalledWith(WORKFLOW_ID, 'Updated', message.document, {});
         expect(log).toHaveBeenCalledWith('Updated workflow "Updated" (wf-1)');
         expect(activator.activate).toHaveBeenCalledWith('wf-1');
         expect(broadcastWorkflowsList).toHaveBeenCalledTimes(1);
@@ -565,7 +569,7 @@ describe('dispatch', () => {
                 correlationId: 'c',
                 id: WORKFLOW_ID,
                 name: 'Updated',
-                pipeline: { id: 'p-1' } as CompiledPipeline,
+                document: { id: 'p-1' } as CompiledPipeline,
                 positions: {},
             },
             subsystems,
@@ -585,7 +589,7 @@ describe('dispatch', () => {
                 correlationId: 'c',
                 id: WORKFLOW_ID,
                 name: 'New',
-                pipeline: { id: 'p-1' } as CompiledPipeline,
+                document: { id: 'p-1' } as CompiledPipeline,
                 positions: {},
             },
             subsystems,
@@ -611,7 +615,7 @@ describe('dispatch', () => {
                 correlationId: 'lifecycle-update',
                 id: WORKFLOW_ID,
                 name: 'Updated',
-                pipeline: { id: 'p-1' } as CompiledPipeline,
+                document: { id: 'p-1' } as CompiledPipeline,
                 positions: {},
             },
             subsystems,
@@ -696,7 +700,7 @@ describe('dispatch', () => {
         store.get.mockReturnValue(
             Option.some({
                 name: 'My WF',
-                pipeline: { id: 'p-1' } as CompiledPipeline,
+                document: { id: 'p-1' } as CompiledPipeline,
                 positions: { node1: { x: 1, y: 2 } },
             }),
         );
@@ -714,7 +718,7 @@ describe('dispatch', () => {
             correlationId: 'corr-5',
             found: true,
             name: 'My WF',
-            pipeline: { id: 'p-1' },
+            document: { id: 'p-1' },
             positions: { node1: { x: 1, y: 2 } },
         });
     });
@@ -1169,14 +1173,14 @@ describe('dispatch', () => {
 
     it('FireManualTrigger posts an error log when engine.execute rejects', async () => {
         const { subsystems, postMessage, engine } = createFakeSubsystems();
-        engine.execute.mockRejectedValue(new Error('manual trigger error'));
+        engine.executeDocument.mockRejectedValue(new Error('manual trigger error'));
         const pipeline = { id: 'p-1' } as CompiledPipeline;
 
         await dispatch(
             {
                 type: EngineChannel.FireManualTrigger,
                 correlationId: 'corr-manual-error',
-                pipeline,
+                document: pipeline,
             },
             subsystems,
         );

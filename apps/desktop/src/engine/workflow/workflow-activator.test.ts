@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CompiledPipeline } from '@sigil/schema';
+import type { WorkflowDocument } from '@sigil/schema';
 import {
     EventNameSchema,
     NodeTypeNameSchema,
@@ -18,11 +18,11 @@ import {
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Either, Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
-import { testPipeline } from '../../test-support/pipeline-fixtures.js';
+import { testDocument } from '../../test-support/pipeline-fixtures.js';
 import { createEngine } from '../core/engine.js';
 import type { NodeHandler, NodeRunResult, TriggerHandler } from '../node-handlers/types.js';
-import { workflowTopologyOptions } from './workflow-acceptance.js';
 import { createWorkflowActivator, getDeactivationHook } from './workflow-activator.js';
+import { workflowCompilationOptions } from './workflow-compilation.js';
 import { createWorkflowStore } from './workflow-store.js';
 
 const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
@@ -68,10 +68,10 @@ describe('WorkflowActivator lifecycle', () => {
 
             const store = createWorkflowStore(
                 storageDir,
-                workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
+                workflowCompilationOptions(engine.handlerRegistry, engine.contractRegistry),
             );
-            const createPipeline = (pipelineId: string, workflowId: string): CompiledPipeline =>
-                testPipeline({
+            const createPipeline = (pipelineId: string, workflowId: string): WorkflowDocument =>
+                testDocument({
                     id: pipelineId,
                     workflowId,
                     nodes: [
@@ -208,9 +208,9 @@ describe('WorkflowActivator lifecycle', () => {
 
             const store = createWorkflowStore(
                 storageDir,
-                workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
+                workflowCompilationOptions(engine.handlerRegistry, engine.contractRegistry),
             );
-            const pipeline: CompiledPipeline = testPipeline({
+            const pipeline: WorkflowDocument = testDocument({
                 id: pipelineId,
                 workflowId,
                 nodes: [
@@ -239,7 +239,7 @@ describe('WorkflowActivator lifecycle', () => {
             store.create('Permission Dependent Workflow', pipeline, {});
             store.create(
                 'Permission Independent Workflow',
-                testPipeline({
+                testDocument({
                     id: 'pipeline-permission-independent',
                     workflowId: unaffectedWorkflowId,
                     nodes: [

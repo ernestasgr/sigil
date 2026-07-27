@@ -1,4 +1,4 @@
-import { CompiledPipelineSchema } from '@sigil/schema';
+import { WorkflowDocumentSchema } from '@sigil/schema';
 import { PluginIdSchema } from '@sigil/schema/ids';
 import { CapabilitySchema, ManifestSchema } from '@sigil/schema/manifest';
 import { TopologyDiagnosticSchema } from '@sigil/schema/topology';
@@ -329,7 +329,7 @@ export const EngineCreateWorkflowSchema = z.object({
     type: z.literal(EngineChannel.CreateWorkflow),
     correlationId: CorrelationIdSchema,
     name: z.string(),
-    pipeline: CompiledPipelineSchema,
+    document: WorkflowDocumentSchema,
     positions: NodePositionRecordSchema,
 });
 export type EngineCreateWorkflow = z.infer<typeof EngineCreateWorkflowSchema>;
@@ -357,15 +357,15 @@ export const EngineUpdateWorkflowSchema = z
         correlationId: CorrelationIdSchema,
         id: WorkflowIdSchema,
         name: z.string(),
-        pipeline: CompiledPipelineSchema,
+        document: WorkflowDocumentSchema,
         positions: NodePositionRecordSchema,
     })
     .superRefine((message, ctx) => {
-        if (message.id !== message.pipeline.workflowId) {
+        if (message.id !== message.document.workflowId) {
             ctx.addIssue({
                 code: 'custom',
-                path: ['pipeline', 'workflowId'],
-                message: 'Pipeline workflowId must match the requested Workflow id.',
+                path: ['document', 'workflowId'],
+                message: 'Workflow document workflowId must match the requested Workflow id.',
             });
         }
     });
@@ -437,7 +437,7 @@ export const EngineGetWorkflowResultFoundSchema = z.object({
     correlationId: CorrelationIdSchema,
     found: z.literal(true),
     name: z.string(),
-    pipeline: CompiledPipelineSchema,
+    document: WorkflowDocumentSchema,
     positions: NodePositionRecordSchema,
 });
 export type EngineGetWorkflowResultFound = z.infer<typeof EngineGetWorkflowResultFoundSchema>;
@@ -549,7 +549,7 @@ export type EngineSavePropertiesResult = z.infer<typeof EngineSavePropertiesResu
 export const EngineFireManualTriggerSchema = z.object({
     correlationId: CorrelationIdSchema,
     type: z.literal(EngineChannel.FireManualTrigger),
-    pipeline: CompiledPipelineSchema,
+    document: WorkflowDocumentSchema,
 });
 export type EngineFireManualTrigger = z.infer<typeof EngineFireManualTriggerSchema>;
 

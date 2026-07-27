@@ -22,8 +22,8 @@ import {
     isExpectedMissingFileDiagnostic,
     type PersistenceDiagnostic,
 } from '../../shared/persistence.js';
-import { workflowTopologyOptions } from '../workflow/workflow-acceptance.js';
 import { createWorkflowActivator } from '../workflow/workflow-activator.js';
+import { workflowCompilationOptions } from '../workflow/workflow-compilation.js';
 import { createWorkflowLifecycle } from '../workflow/workflow-lifecycle.js';
 import { createWorkflowStore } from '../workflow/workflow-store.js';
 import { type DispatchSubsystems, dispatch } from './dispatch.js';
@@ -161,7 +161,7 @@ for (const result of pluginResults) {
 const workflowsDir = join(userDataPath ?? '', 'workflows');
 const store = createWorkflowStore(
     workflowsDir,
-    workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
+    workflowCompilationOptions(engine.handlerRegistry, engine.contractRegistry),
 );
 
 function broadcastWorkflowsList(): void {

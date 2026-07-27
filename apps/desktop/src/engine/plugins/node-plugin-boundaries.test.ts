@@ -1,17 +1,17 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CompiledPipeline } from '@sigil/schema';
+import type { WorkflowDocument } from '@sigil/schema';
 import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import { Either, Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { testNode, testNodeId, testPipeline } from '../../test-support/pipeline-fixtures.js';
+import { testDocument, testNode, testNodeId } from '../../test-support/pipeline-fixtures.js';
 import { createEngine } from '../core/engine.js';
 import { createNodeHandlerRegistry } from '../execution/node-registry.js';
 import { createBuiltinHandlers } from '../node-handlers/registry.js';
 import { isTriggerHandler, type KernelDeps } from '../node-handlers/types.js';
-import { workflowTopologyOptions } from '../workflow/workflow-acceptance.js';
 import { createWorkflowActivator } from '../workflow/workflow-activator.js';
+import { workflowCompilationOptions } from '../workflow/workflow-compilation.js';
 import { createWorkflowStore } from '../workflow/workflow-store.js';
 import { createManifestRegistry } from './manifest-registry.js';
 import { discoverNodePlugin, discoverNodePlugins } from './node-plugin-discovery.js';
@@ -639,9 +639,9 @@ describe('instance-owned Plugin loader supervision', () => {
 
             const store = createWorkflowStore(
                 join(tempDir, 'workflows'),
-                workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
+                workflowCompilationOptions(engine.handlerRegistry, engine.contractRegistry),
             );
-            const pipeline: CompiledPipeline = testPipeline({
+            const document: WorkflowDocument = testDocument({
                 id: 'pipeline-activation-failure',
                 workflowId: 'workflow-activation-failure',
                 nodes: [
@@ -654,7 +654,7 @@ describe('instance-owned Plugin loader supervision', () => {
                 ],
                 edges: [],
             });
-            const workflow = store.create('Activation Failure Workflow', pipeline, {});
+            const workflow = store.create('Activation Failure Workflow', document, {});
             const workflowId = testWorkflowId(workflow.id);
             activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
 
@@ -721,14 +721,14 @@ describe('instance-owned Plugin loader supervision', () => {
 
             const store = createWorkflowStore(
                 join(tempDir, 'workflows'),
-                workflowTopologyOptions(engine.handlerRegistry, engine.contractRegistry),
+                workflowCompilationOptions(engine.handlerRegistry, engine.contractRegistry),
             );
-            const createPipeline = (
+            const createDocument = (
                 pipelineId: string,
                 workflowId: string,
                 id: string,
-            ): CompiledPipeline =>
-                testPipeline({
+            ): WorkflowDocument =>
+                testDocument({
                     id: pipelineId,
                     workflowId,
                     nodes: [
@@ -743,12 +743,12 @@ describe('instance-owned Plugin loader supervision', () => {
                 });
             const first = store.create(
                 'First Concurrent Workflow',
-                createPipeline('pipeline-first', 'workflow-first', 'first'),
+                createDocument('pipeline-first', 'workflow-first', 'first'),
                 {},
             );
             const second = store.create(
                 'Second Concurrent Workflow',
-                createPipeline('pipeline-second', 'workflow-second', 'second'),
+                createDocument('pipeline-second', 'workflow-second', 'second'),
                 {},
             );
             const firstWorkflowId = testWorkflowId(first.id);

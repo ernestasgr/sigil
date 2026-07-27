@@ -1,6 +1,6 @@
 import { stat } from 'node:fs/promises';
 import { basename, dirname, extname } from 'node:path';
-import { CompiledPipelineSchema } from '@sigil/schema';
+import { WorkflowDocumentSchema } from '@sigil/schema';
 import { initTRPC } from '@trpc/server';
 import { observable } from '@trpc/server/observable';
 import type { BrowserWindow } from 'electron';
@@ -333,13 +333,13 @@ export function createAppRouter(deps: AppRouterDependencies) {
         }),
 
         fireManualTrigger: procedure
-            .input(CompiledPipelineSchema)
+            .input(WorkflowDocumentSchema)
             .output(CommandExecutionOutcomeSchema)
             .mutation(async ({ input }) => {
                 const engine = deps.getEngine();
                 if (!engine) return executionFailure(new Error('Engine not ready'));
                 try {
-                    return await engine.fireManualTrigger({ pipeline: input });
+                    return await engine.fireManualTrigger({ document: input });
                 } catch (error) {
                     console.error('[main] fireManualTrigger failed:', error);
                     return executionFailure(error);

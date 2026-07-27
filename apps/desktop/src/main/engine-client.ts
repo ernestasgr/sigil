@@ -226,7 +226,7 @@ function toWorkflowGetOutcome(response: EngineResponse<'getWorkflow'>): GetWorkf
     if (!response.found) return null;
     return {
         name: response.name,
-        pipeline: response.pipeline,
+        document: response.document,
         positions: response.positions,
     };
 }

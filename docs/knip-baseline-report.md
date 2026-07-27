@@ -41,7 +41,6 @@
 | TelemetryDiagnosticSourceSchema         | apps/desktop/src/shared/event-payload-schemas.ts:10:5                      | warn     |
 | TelemetryOutcomeSchema                  | apps/desktop/src/shared/event-payload-schemas.ts:11:5                      | warn     |
 | EventTelemetrySchema                    | apps/desktop/src/shared/event-payload-schemas.ts:9:5                       | warn     |
-| isExecutableWorkflow                    | apps/desktop/src/engine/workflow-acceptance.ts:16:17                       | warn     |
 | payloadPreview                          | apps/desktop/src/renderer/lib/event-display.ts:28:17                       | warn     |
 | EngineReadySchema                       | apps/desktop/src/shared/command-contracts.ts:288:10                        | warn     |
 | CommandExecutionOutcomeSchema           | apps/desktop/src/shared/command-contracts.ts:75:14                         | warn     |

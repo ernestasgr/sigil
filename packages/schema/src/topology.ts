@@ -15,10 +15,11 @@ import {
 } from './node-contract.js';
 import { createBuiltinNodeContractRegistry } from './nodes/catalog.js';
 import { type PipelineNode, SWITCH_DIAGNOSTIC_CODES } from './nodes/index.js';
-import type { CompiledPipeline } from './pipeline.js';
+import type { AdmittedNodeContract, WorkflowDocument } from './pipeline.js';
 
 const TOPOLOGY_DIAGNOSTIC_CODES = [
     'invalid_pipeline',
+    'unsupported_document_version',
     'empty_pipeline',
     'missing_trigger',
     'multiple_triggers',
@@ -83,14 +84,14 @@ export interface WorkflowTopologyOptions {
     readonly isNodeSupported?: (node: PipelineNode) => boolean;
 }
 
-export interface ExecutableWorkflow {
-    readonly pipeline: CompiledPipeline;
+export interface WorkflowTopologyAdmission {
     readonly triggerId: PipelineNodeId;
     readonly executionOrder: readonly PipelineNodeId[];
+    readonly admittedNodeContracts: readonly AdmittedNodeContract[];
 }
 
 export type WorkflowTopologyResult =
-    | { readonly ok: true; readonly value: ExecutableWorkflow }
+    | { readonly ok: true; readonly value: WorkflowTopologyAdmission }
     | { readonly ok: false; readonly diagnostics: readonly TopologyDiagnostic[] };
 
 function pipelineDiagnostic(code: TopologyDiagnosticCode, message: string): TopologyDiagnostic {
@@ -337,10 +338,10 @@ function reachableFrom(
 }
 
 export function validateWorkflowTopology(
-    pipeline: CompiledPipeline,
+    document: WorkflowDocument,
     options: WorkflowTopologyOptions = {},
 ): WorkflowTopologyResult {
-    if (pipeline.nodes.length === 0) {
+    if (document.nodes.length === 0) {
         return {
             ok: false,
             diagnostics: [
@@ -354,7 +355,7 @@ export function validateWorkflowTopology(
 
     const diagnostics: TopologyDiagnostic[] = [];
     const nodeById = new Map<PipelineNodeId, PipelineNode>();
-    for (const node of pipeline.nodes) {
+    for (const node of document.nodes) {
         if (nodeById.has(node.id)) {
             appendUnique(
                 diagnostics,
@@ -403,7 +404,7 @@ export function validateWorkflowTopology(
     }
 
     const edgeIds = new Set<PipelineEdgeId>();
-    for (const edge of pipeline.edges) {
+    for (const edge of document.edges) {
         if (edgeIds.has(edge.id)) {
             appendUnique(
                 diagnostics,
@@ -541,7 +542,7 @@ export function validateWorkflowTopology(
 
     const executionOrder = stableExecutionOrder(nodes, incoming, outgoing);
     if (executionOrder.length !== nodes.length) {
-        const cycleEdges = cyclicEdges(pipeline.edges, nodes, outgoing);
+        const cycleEdges = cyclicEdges(document.edges, nodes, outgoing);
 
         if (cycleEdges.length === 0) {
             appendUnique(
@@ -607,9 +608,21 @@ export function validateWorkflowTopology(
     return {
         ok: true,
         value: {
-            pipeline,
             triggerId: trigger.id,
             executionOrder,
+            admittedNodeContracts: nodes.flatMap((node) => {
+                const resolution = contractResolutions.get(node.id);
+                if (resolution?.status !== 'available') return [];
+                return [
+                    {
+                        nodeId: node.id,
+                        identity: resolution.identity,
+                        version: resolution.contract.version,
+                        role: resolution.contract.role,
+                        outputPorts: resolution.outputPorts,
+                    },
+                ];
+            }),
         },
     };
 }

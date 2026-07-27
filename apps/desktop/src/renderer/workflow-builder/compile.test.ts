@@ -103,7 +103,7 @@ describe('compileGraph', () => {
             expect(result.value.edges).toEqual([
                 { id: 'e1', source: 'trigger', target: 'log', sourcePort: 'out' },
             ]);
-            expect(result.executable.triggerId).toBe('trigger');
+            expect(result.value.triggerId).toBe('trigger');
         }
     });
 
@@ -454,7 +454,7 @@ describe('compileGraph', () => {
 
         expect(result.ok).toBe(true);
         if (result.ok) {
-            expect(result.executable.triggerId).toBe('file-trigger');
+            expect(result.value.triggerId).toBe('file-trigger');
             expect(result.value.nodes[0]).toMatchObject({
                 id: 'file-trigger',
                 type: 'file-watcher',
@@ -498,20 +498,22 @@ describe('compileGraph', () => {
             { id: 'p', workflowId: 'w' },
         );
 
-        expect(result.ok).toBe(true);
-        if (result.ok) {
-            expect(result.value.nodes[1]).toMatchObject({
-                type: 'third-party-action',
-                pluginId: 'com.example.third-party',
-                config: { destination: '/tmp' },
-            });
-            expect(result.diagnostics).toEqual([
-                expect.objectContaining({
-                    severity: 'warning',
-                    code: 'unsupported_plugin_authoring',
-                    nodeId: 'plugin-action',
-                }),
-            ]);
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.diagnostics).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        severity: 'warning',
+                        code: 'unsupported_plugin_authoring',
+                        nodeId: 'plugin-action',
+                    }),
+                    expect.objectContaining({
+                        severity: 'error',
+                        code: 'unavailable_node_contract',
+                        nodeId: 'plugin-action',
+                    }),
+                ]),
+            );
         }
     });
 

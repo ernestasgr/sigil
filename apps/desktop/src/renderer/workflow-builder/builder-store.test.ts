@@ -1,9 +1,9 @@
-import type { CompiledPipeline } from '@sigil/schema';
+import type { WorkflowDocument } from '@sigil/schema';
 import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/schema/ids';
 import { MAX_DELAY_MS, SwitchCaseIdSchema } from '@sigil/schema/nodes';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { testNodeId, testPipeline } from '../../test-support/pipeline-fixtures.js';
+import { testDocument, testNodeId } from '../../test-support/pipeline-fixtures.js';
 import { useBuilderStore } from './builder-store.js';
 import {
     BUILTIN_PLUGIN_NODE_CATALOG,
@@ -313,7 +313,7 @@ describe('useBuilderStore', () => {
         const result = useBuilderStore.getState().compile();
 
         expect(result.ok).toBe(true);
-        if (result.ok) expect(result.executable.triggerId).toBe(trigger);
+        if (result.ok) expect(result.value.triggerId).toBe(trigger);
     });
 
     it('exposes structured validation diagnostics with Node and field context', () => {
@@ -562,8 +562,8 @@ describe('useBuilderStore', () => {
             .getState()
             .onNodesChange([{ id, type: 'position', position: { x: 80, y: 40 }, dragging: true }]);
 
-        useBuilderStore.getState().loadPipeline(
-            testPipeline({
+        useBuilderStore.getState().loadDocument(
+            testDocument({
                 id: 'pipeline-replaced',
                 workflowId: 'workflow-replaced',
                 nodes: [
@@ -630,7 +630,7 @@ describe('useBuilderStore', () => {
     });
 
     it('loads a saved baseline including positions and tracks later node movement', () => {
-        const pipeline: CompiledPipeline = testPipeline({
+        const pipeline: WorkflowDocument = testDocument({
             id: 'pipeline-loaded',
             workflowId: 'workflow-loaded',
             nodes: [{ id: 'log', type: 'log', config: { message: 'Loaded' } }],
@@ -639,7 +639,7 @@ describe('useBuilderStore', () => {
 
         useBuilderStore
             .getState()
-            .loadPipeline(pipeline, 'Loaded Workflow', { log: { x: 40, y: 60 } });
+            .loadDocument(pipeline, 'Loaded Workflow', { log: { x: 40, y: 60 } });
 
         expect(useBuilderStore.getState().dirty).toBe(false);
         expect(useBuilderStore.getState().revision).toBe(0);
@@ -656,7 +656,7 @@ describe('useBuilderStore', () => {
     });
 
     it('preserves a bundled Plugin Node through load, edit, compile, and save', async () => {
-        const pipeline: CompiledPipeline = testPipeline({
+        const pipeline: WorkflowDocument = testDocument({
             id: 'pipeline-plugin',
             workflowId: 'workflow-plugin',
             nodes: [
@@ -706,7 +706,7 @@ describe('useBuilderStore', () => {
                 },
             ]),
         );
-        useBuilderStore.getState().loadPipeline(pipeline, 'Plugin Workflow');
+        useBuilderStore.getState().loadDocument(pipeline, 'Plugin Workflow');
 
         expect(useBuilderStore.getState().nodes[0]?.data).toMatchObject({
             type: 'file-watcher',
@@ -737,10 +737,10 @@ describe('useBuilderStore', () => {
             });
         }
 
-        let savedPipeline: CompiledPipeline | undefined;
+        let savedDocument: WorkflowDocument | undefined;
         const command: WorkflowDraftSaveCommand = vi.fn(
             async (request): Promise<WorkflowDraftSaveResult> => {
-                savedPipeline = request.pipeline;
+                savedDocument = request.document;
                 return { ok: true };
             },
         );
@@ -748,7 +748,7 @@ describe('useBuilderStore', () => {
         await expect(useBuilderStore.getState().save('Plugin Workflow', command)).resolves.toEqual({
             ok: true,
         });
-        expect(savedPipeline?.nodes[0]).toMatchObject({
+        expect(savedDocument?.nodes[0]).toMatchObject({
             type: 'file-watcher',
             pluginId: 'com.sigil.file-watcher',
             config: {
@@ -760,7 +760,7 @@ describe('useBuilderStore', () => {
     });
 
     it('fills missing loaded positions with a deterministic topology layout', () => {
-        const pipeline: CompiledPipeline = testPipeline({
+        const pipeline: WorkflowDocument = testDocument({
             id: 'pipeline-layout',
             workflowId: 'workflow-layout',
             nodes: [
@@ -777,7 +777,7 @@ describe('useBuilderStore', () => {
             edges: [{ id: 'edge-1', source: 'trigger', target: 'log', sourcePort: 'out' }],
         });
 
-        useBuilderStore.getState().loadPipeline(pipeline, 'Layout Workflow');
+        useBuilderStore.getState().loadDocument(pipeline, 'Layout Workflow');
 
         const nodes = useBuilderStore.getState().nodes;
         expect(nodes.find((node) => node.id === 'trigger')?.position).toEqual({ x: 40, y: 40 });
@@ -819,7 +819,7 @@ describe('useBuilderStore', () => {
             expect.objectContaining({
                 name: 'Draft Workflow',
                 revision: 2,
-                pipeline: expect.objectContaining({ workflowId: expect.any(String) }),
+                document: expect.objectContaining({ workflowId: expect.any(String) }),
             }),
         );
 
@@ -875,7 +875,7 @@ describe('useBuilderStore', () => {
             vi.fn(async () => pendingResult),
         );
 
-        const loadedPipeline: CompiledPipeline = testPipeline({
+        const loadedPipeline: WorkflowDocument = testDocument({
             id: 'pipeline-new',
             workflowId: 'workflow-new',
             nodes: [
@@ -890,7 +890,7 @@ describe('useBuilderStore', () => {
             ],
             edges: [],
         });
-        useBuilderStore.getState().loadPipeline(loadedPipeline, 'Loaded Workflow');
+        useBuilderStore.getState().loadDocument(loadedPipeline, 'Loaded Workflow');
 
         resolvePending?.({ ok: false, error: 'Stale save', diagnostics: [] });
         await oldSave;
