@@ -440,7 +440,7 @@ describe('Node Contract Registry', () => {
             },
         });
 
-        const caseIds = fc.stringMatching(/^[a-z][a-z0-9-]{0,5}$/);
+        const caseIds = fc.stringMatching(/^[a-z](?:[a-z0-9]|-[a-z0-9]){0,4}$/);
         const cases = fc
             .array(caseIds, { maxLength: 6 })
             .map((ids) =>

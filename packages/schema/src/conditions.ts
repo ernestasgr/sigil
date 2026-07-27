@@ -1,11 +1,12 @@
 import { z } from 'zod';
+import { CanonicalEventNameSchema } from './ids.js';
 import { BooleanOperatorSchema, NumberOperatorSchema, StringOperatorSchema } from './operators.js';
 
 const EventNameConditionSchema = z
     .object({
         target: z.literal('event'),
         operator: StringOperatorSchema,
-        value: z.string(),
+        value: CanonicalEventNameSchema,
     })
     .strict()
     .readonly();

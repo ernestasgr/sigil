@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
+import type { PluginId } from '@sigil/schema/ids';
 import type { Capability } from '@sigil/schema/manifest';
 import type { NodeContractRegistry } from '@sigil/schema/node-contract';
 import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
@@ -94,7 +95,7 @@ export interface Engine {
     readonly applyProperties: (properties: PropertiesFile) => PropertyApplyResult;
     readonly loadBuiltinPlugins: () => Promise<readonly NodePluginLoadResult[]>;
     readonly applyPermissionOverride: (
-        pluginId: string,
+        pluginId: PluginId,
         overrides: readonly Capability[],
         actor?: PermissionTransitionActor,
     ) => Promise<PermissionOverrideOutcome>;
@@ -102,7 +103,7 @@ export interface Engine {
         reconciler: PermissionTransitionRunReconciler,
     ) => () => void;
     readonly updatePluginPermissions: (
-        pluginId: string,
+        pluginId: PluginId,
         permissions: readonly Capability[],
     ) => void;
     readonly execute: (
@@ -315,7 +316,7 @@ export function createEngine(options?: EngineOptions): Engine {
     };
 
     const updatePluginPermissions = (
-        pluginId: string,
+        pluginId: PluginId,
         permissions: readonly Capability[],
     ): void => {
         pluginLoader.updatePluginPermissions(pluginId, permissions);
@@ -334,7 +335,7 @@ export function createEngine(options?: EngineOptions): Engine {
     };
 
     const applyPermissionOverride = async (
-        pluginId: string,
+        pluginId: PluginId,
         overrides: readonly Capability[],
         actor: PermissionTransitionActor = 'user',
     ): Promise<PermissionOverrideOutcome> =>

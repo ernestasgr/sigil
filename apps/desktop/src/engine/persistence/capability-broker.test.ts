@@ -1,4 +1,4 @@
-import { PluginIdSchema } from '@sigil/schema/ids';
+import { EventNameSchema, PluginIdSchema } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
@@ -6,18 +6,22 @@ import { createManifestRegistry } from '../plugins/manifest-registry.js';
 import { createCapabilityBroker } from './capability-broker.js';
 import { createPermissionOverrideStore } from './permission-override-store.js';
 
+const READER_ID = PluginIdSchema.parse('com.sigil.reader');
+const BARE_ID = PluginIdSchema.parse('com.sigil.bare');
+const GHOST_ID = PluginIdSchema.parse('com.sigil.ghost');
+
 const manifestWithRead: Manifest = {
-    id: PluginIdSchema.parse('com.sigil.reader'),
+    id: READER_ID,
     version: '0.0.1',
     permissions: ['filesystem.read'],
-    emits: ['file.created'],
+    emits: [EventNameSchema.parse('file.created')],
 };
 
 const manifestWithNone: Manifest = {
-    id: PluginIdSchema.parse('com.sigil.bare'),
+    id: BARE_ID,
     version: '0.0.1',
     permissions: [],
-    emits: ['stub.ping'],
+    emits: [EventNameSchema.parse('stub.ping')],
 };
 
 describe('createCapabilityBroker', () => {
@@ -28,7 +32,7 @@ describe('createCapabilityBroker', () => {
         const broker = createCapabilityBroker(registry, overrides);
 
         const result = broker.request({
-            pluginId: 'com.sigil.reader',
+            pluginId: READER_ID,
             capability: 'filesystem.read',
         });
 
@@ -42,7 +46,7 @@ describe('createCapabilityBroker', () => {
         const broker = createCapabilityBroker(registry, overrides);
 
         const result = broker.request({
-            pluginId: 'com.sigil.reader',
+            pluginId: READER_ID,
             capability: 'filesystem.write',
         });
 
@@ -57,11 +61,11 @@ describe('createCapabilityBroker', () => {
         const registry = createManifestRegistry();
         registry.register(manifestWithNone);
         const overrides = createPermissionOverrideStore();
-        overrides.set('com.sigil.bare', ['network']);
+        overrides.set(BARE_ID, ['network']);
         const broker = createCapabilityBroker(registry, overrides);
 
         const result = broker.request({
-            pluginId: 'com.sigil.bare',
+            pluginId: BARE_ID,
             capability: 'network',
         });
 
@@ -74,7 +78,7 @@ describe('createCapabilityBroker', () => {
         const broker = createCapabilityBroker(registry, overrides);
 
         const result = broker.request({
-            pluginId: 'com.sigil.ghost',
+            pluginId: GHOST_ID,
             capability: 'filesystem.read',
         });
 
@@ -88,11 +92,11 @@ describe('createCapabilityBroker', () => {
         const broker = createCapabilityBroker(registry, overrides);
 
         const first = broker.request({
-            pluginId: 'com.sigil.reader',
+            pluginId: READER_ID,
             capability: 'filesystem.read',
         });
         const second = broker.request({
-            pluginId: 'com.sigil.reader',
+            pluginId: READER_ID,
             capability: 'filesystem.read',
         });
 
@@ -104,11 +108,11 @@ describe('createCapabilityBroker', () => {
         const registry = createManifestRegistry();
         registry.register(manifestWithRead);
         const overrides = createPermissionOverrideStore();
-        overrides.set('com.sigil.reader', ['filesystem.read', 'network']);
+        overrides.set(READER_ID, ['filesystem.read', 'network']);
         const broker = createCapabilityBroker(registry, overrides);
 
         const result = broker.request({
-            pluginId: 'com.sigil.reader',
+            pluginId: READER_ID,
             capability: 'network',
         });
 
@@ -117,18 +121,18 @@ describe('createCapabilityBroker', () => {
             expect(result.left.kind).toBe('denied');
             expect(result.left.capability).toBe('network');
         }
-        expect(overrides.get('com.sigil.reader')).toEqual(['filesystem.read', 'network']);
+        expect(overrides.get(READER_ID)).toEqual(['filesystem.read', 'network']);
     });
 
     it('rejects a capability revoked via override even if in manifest', () => {
         const registry = createManifestRegistry();
         registry.register(manifestWithRead);
         const overrides = createPermissionOverrideStore();
-        overrides.set('com.sigil.reader', []);
+        overrides.set(READER_ID, []);
         const broker = createCapabilityBroker(registry, overrides);
 
         const result = broker.request({
-            pluginId: 'com.sigil.reader',
+            pluginId: READER_ID,
             capability: 'filesystem.read',
         });
 
@@ -145,23 +149,23 @@ describe('createCapabilityBroker', () => {
         const overrides = createPermissionOverrideStore();
         const broker = createCapabilityBroker(registry, overrides);
 
-        overrides.set('com.sigil.reader', []);
+        overrides.set(READER_ID, []);
         const initiallyRevoked = broker.request({
-            pluginId: 'com.sigil.reader',
+            pluginId: READER_ID,
             capability: 'filesystem.read',
         });
         expect(Either.isLeft(initiallyRevoked)).toBe(true);
 
-        overrides.set('com.sigil.reader', ['filesystem.read']);
+        overrides.set(READER_ID, ['filesystem.read']);
         const granted = broker.request({
-            pluginId: 'com.sigil.reader',
+            pluginId: READER_ID,
             capability: 'filesystem.read',
         });
         expect(Either.isRight(granted)).toBe(true);
 
-        overrides.set('com.sigil.reader', []);
+        overrides.set(READER_ID, []);
         const revoked = broker.request({
-            pluginId: 'com.sigil.reader',
+            pluginId: READER_ID,
             capability: 'filesystem.read',
         });
         expect(Either.isLeft(revoked)).toBe(true);

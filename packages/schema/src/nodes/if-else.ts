@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { PipelineConditionSchema } from '../conditions.js';
+import { EventNameSchema } from '../ids.js';
 import { defineBuiltinNode } from './types.js';
 
 export const IfElseConfigSchema = z
@@ -15,7 +16,11 @@ export const IfElseNode = defineBuiltinNode({
     type: 'if-else',
     configSchema: IfElseConfigSchema,
     defaultConfig: {
-        condition: { target: 'event', operator: 'equals', value: 'file.created' },
+        condition: {
+            target: 'event',
+            operator: 'equals',
+            value: EventNameSchema.parse('file.created'),
+        },
     },
     contract: {
         identity: { namespace: 'builtin', type: 'if-else' },

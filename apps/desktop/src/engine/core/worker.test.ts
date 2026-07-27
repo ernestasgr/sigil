@@ -1,5 +1,5 @@
 import type { CompiledPipeline } from '@sigil/schema';
-import { WorkflowIdSchema } from '@sigil/schema/ids';
+import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
 import { sampleManualTriggerToLog } from '@sigil/schema/samples';
 import { Effect, Either, Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
@@ -28,6 +28,8 @@ import { activateEnabledWorkflows } from './worker-startup.js';
 
 const WORKFLOW_ID = WorkflowIdSchema.parse('wf-1');
 const MISSING_WORKFLOW_ID = WorkflowIdSchema.parse('missing');
+const PLUGIN_A_ID = PluginIdSchema.parse('com.example.plugin-a');
+const PLUGIN_GHOST_ID = PluginIdSchema.parse('com.example.plugin-ghost');
 
 const { readPropertiesFileMock, writePropertiesFileMock } = vi.hoisted(() => ({
     readPropertiesFileMock: vi.fn(),
@@ -92,7 +94,7 @@ function createFakeSubsystems(propertyDefaults?: Readonly<Record<string, unknown
     const registryAll = vi.fn().mockReturnValue([]);
     const registryGet = vi.fn().mockReturnValue(
         Option.some({
-            id: 'plugin-a',
+            id: PLUGIN_A_ID,
             version: '1.0.0',
             permissions: [],
             emits: ['stub.event'],
@@ -736,7 +738,7 @@ describe('dispatch', () => {
 
     it('routes ListPlugins and posts result with plugin info', () => {
         const { subsystems, postMessage, engine } = createFakeSubsystems();
-        const manifest = { id: 'plugin-a', name: 'A', version: '1.0.0', permissions: [] };
+        const manifest = { id: PLUGIN_A_ID, name: 'A', version: '1.0.0', permissions: [] };
         engine.registry.all.mockReturnValue([manifest]);
         engine.permissionOverrides.has.mockReturnValue(false);
 
@@ -747,7 +749,7 @@ describe('dispatch', () => {
         dispatch(message, subsystems);
 
         expect(engine.registry.all).toHaveBeenCalledTimes(1);
-        expect(engine.permissionOverrides.has).toHaveBeenCalledWith('plugin-a');
+        expect(engine.permissionOverrides.has).toHaveBeenCalledWith(PLUGIN_A_ID);
         expect(postMessage).toHaveBeenCalledWith({
             type: EngineChannel.ListPluginsResult,
             correlationId: 'corr-6',
@@ -758,7 +760,7 @@ describe('dispatch', () => {
     it('routes ListPlugins and reports the effective manifest-bounded permissions', () => {
         const { subsystems, postMessage, engine } = createFakeSubsystems();
         const manifest = {
-            id: 'plugin-a',
+            id: PLUGIN_A_ID,
             name: 'A',
             version: '1.0.0',
             permissions: ['filesystem.read'],
@@ -769,7 +771,7 @@ describe('dispatch', () => {
 
         dispatch({ type: EngineChannel.ListPlugins, correlationId: 'c' }, subsystems);
 
-        expect(engine.permissionOverrides.get).toHaveBeenCalledWith('plugin-a');
+        expect(engine.permissionOverrides.get).toHaveBeenCalledWith(PLUGIN_A_ID);
         expect(postMessage).toHaveBeenCalledWith({
             type: EngineChannel.ListPluginsResult,
             correlationId: 'c',
@@ -783,12 +785,12 @@ describe('dispatch', () => {
         const message: EngineSetPermissionOverride = {
             type: EngineChannel.SetPermissionOverride,
             correlationId: 'corr-7',
-            pluginId: 'plugin-a',
+            pluginId: PLUGIN_A_ID,
             overrides: [],
         };
         await dispatch(message, subsystems);
 
-        expect(engine.applyPermissionOverride).toHaveBeenCalledWith('plugin-a', []);
+        expect(engine.applyPermissionOverride).toHaveBeenCalledWith(PLUGIN_A_ID, []);
         expect(engine.permissionOverrides.set).not.toHaveBeenCalled();
         expect(engine.updatePluginPermissions).not.toHaveBeenCalled();
         expect(postMessage).toHaveBeenCalledWith({
@@ -812,13 +814,13 @@ describe('dispatch', () => {
             {
                 type: EngineChannel.SetPermissionOverride,
                 correlationId: 'corr-bounded-update',
-                pluginId: 'plugin-a',
+                pluginId: PLUGIN_A_ID,
                 overrides: ['filesystem.read', 'network'],
             },
             subsystems,
         );
 
-        expect(engine.applyPermissionOverride).toHaveBeenCalledWith('plugin-a', [
+        expect(engine.applyPermissionOverride).toHaveBeenCalledWith(PLUGIN_A_ID, [
             'filesystem.read',
             'network',
         ]);
@@ -838,21 +840,21 @@ describe('dispatch', () => {
             ok: false,
             kind: 'domain',
             code: 'unknown_plugin',
-            pluginId: 'plugin-ghost',
-            error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
+            pluginId: PLUGIN_GHOST_ID,
+            error: `Plugin "${PLUGIN_GHOST_ID}" is not registered in the Manifest Registry.`,
         });
 
         await dispatch(
             {
                 type: EngineChannel.SetPermissionOverride,
                 correlationId: 'corr-unknown-plugin',
-                pluginId: 'plugin-ghost',
+                pluginId: PLUGIN_GHOST_ID,
                 overrides: [],
             },
             subsystems,
         );
 
-        expect(engine.applyPermissionOverride).toHaveBeenCalledWith('plugin-ghost', []);
+        expect(engine.applyPermissionOverride).toHaveBeenCalledWith(PLUGIN_GHOST_ID, []);
         expect(engine.registry.has).not.toHaveBeenCalled();
         expect(engine.permissionOverrides.set).not.toHaveBeenCalled();
         expect(engine.updatePluginPermissions).not.toHaveBeenCalled();
@@ -862,8 +864,8 @@ describe('dispatch', () => {
             ok: false,
             kind: 'domain',
             code: 'unknown_plugin',
-            pluginId: 'plugin-ghost',
-            error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
+            pluginId: PLUGIN_GHOST_ID,
+            error: `Plugin "${PLUGIN_GHOST_ID}" is not registered in the Manifest Registry.`,
         });
     });
 
@@ -887,7 +889,7 @@ describe('dispatch', () => {
             {
                 type: EngineChannel.SetPermissionOverride,
                 correlationId: 'corr-permission-failed',
-                pluginId: 'plugin-a',
+                pluginId: PLUGIN_A_ID,
                 overrides: [],
             },
             subsystems,
@@ -901,7 +903,7 @@ describe('dispatch', () => {
             error: '[persistence:write] C:/permission-overrides.json: disk full',
             diagnostic,
         });
-        expect(engine.applyPermissionOverride).toHaveBeenCalledWith('plugin-a', []);
+        expect(engine.applyPermissionOverride).toHaveBeenCalledWith(PLUGIN_A_ID, []);
         expect(engine.permissionOverrides.set).not.toHaveBeenCalled();
         expect(engine.updatePluginPermissions).not.toHaveBeenCalled();
     });

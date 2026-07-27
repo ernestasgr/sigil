@@ -107,7 +107,10 @@ describe('EventPayloadSchemaRegistry', () => {
         ],
         ['log.output', { message: 'hello' }],
         ['notification.show', { title: 'Sigil', body: 'Done' }],
-        ['plugin.event', { pluginId: 'com.example', eventName: 'custom', data: { key: 'val' } }],
+        [
+            'plugin.event',
+            { pluginId: 'com.example', eventName: 'custom.event', data: { key: 'val' } },
+        ],
         [
             'plugin.permission.changed',
             {
@@ -449,10 +452,19 @@ describe('PluginBusEventPayloadSchema', () => {
     it('accepts pluginId, eventName, and data', () => {
         const result = PluginBusEventPayloadSchema.safeParse({
             pluginId: 'com.example',
-            eventName: 'custom',
+            eventName: 'custom.event',
             data: { key: 'val' },
         });
         expect(result.success).toBe(true);
+    });
+
+    it('rejects noncanonical Plugin identity values', () => {
+        const result = PluginBusEventPayloadSchema.safeParse({
+            pluginId: 'Com.Example',
+            eventName: 'custom.event',
+            data: {},
+        });
+        expect(result.success).toBe(false);
     });
 
     it('rejects a missing eventName', () => {

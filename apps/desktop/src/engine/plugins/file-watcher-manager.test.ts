@@ -1,7 +1,7 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PluginIdSchema } from '@sigil/schema/ids';
+import { EventNameSchema, PluginIdSchema } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import { DEFAULT_IGNORE_PATTERNS } from '@sigil/schema/properties-file';
 import { Either } from 'effect';
@@ -15,7 +15,11 @@ const fileWatcherManifest: Manifest = {
     id: PluginIdSchema.parse('com.sigil.file-watcher'),
     version: '0.0.1',
     permissions: ['state.write', 'filesystem.read'],
-    emits: ['file.created', 'file.modified', 'file.deleted'],
+    emits: [
+        EventNameSchema.parse('file.created'),
+        EventNameSchema.parse('file.modified'),
+        EventNameSchema.parse('file.deleted'),
+    ],
 };
 
 import {
@@ -89,7 +93,7 @@ describe('Bridge + Manifest validation seam', () => {
         bus.subscribe((e) => busEvents.push(e));
 
         const result = await bridge.emit(FILE_WATCHER_PLUGIN_ID, {
-            eventName: 'file.created',
+            eventName: EventNameSchema.parse('file.created'),
             payload: {
                 path: '/tmp/report.pdf',
                 name: 'report.pdf',
@@ -126,11 +130,11 @@ describe('Bridge + Manifest validation seam', () => {
         });
 
         await bridge.emit(FILE_WATCHER_PLUGIN_ID, {
-            eventName: 'file.modified',
+            eventName: EventNameSchema.parse('file.modified'),
             payload: { path: '/a.txt', name: 'a.txt', ext: 'txt', size: 10, dir: '/' },
         });
         await bridge.emit(FILE_WATCHER_PLUGIN_ID, {
-            eventName: 'file.deleted',
+            eventName: EventNameSchema.parse('file.deleted'),
             payload: { path: '/b.txt', name: 'b.txt', ext: 'txt', size: 0, dir: '/' },
         });
 
@@ -146,7 +150,7 @@ describe('Bridge + Manifest validation seam', () => {
         bus.subscribe((e) => busEvents.push(e));
 
         const result = await bridge.emit(FILE_WATCHER_PLUGIN_ID, {
-            eventName: 'evil.exfil',
+            eventName: EventNameSchema.parse('evil.exfil'),
             payload: {},
         });
 
@@ -166,7 +170,7 @@ describe('Bridge + Manifest validation seam', () => {
         bus.subscribe((e) => busEvents.push(e));
 
         await bridge.emit(FILE_WATCHER_PLUGIN_ID, {
-            eventName: 'file.created',
+            eventName: EventNameSchema.parse('file.created'),
             payload: {
                 path: '/data/photo.jpg',
                 name: 'photo.jpg',

@@ -1,3 +1,4 @@
+import type { PluginId } from '@sigil/schema/ids';
 import type { Capability } from '@sigil/schema/manifest';
 import { Either, Option } from 'effect';
 
@@ -59,7 +60,7 @@ export interface NodePluginRpcExecution {
 }
 
 export interface NodePluginRpcRouterOptions {
-    readonly pluginId: string;
+    readonly pluginId: PluginId;
     readonly pendingExecutions: ReadonlyMap<string, NodePluginRpcExecution>;
     readonly post: (message: unknown) => void;
     readonly kernel?: KernelDeps;

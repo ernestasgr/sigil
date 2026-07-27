@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
     type NodeOutputPortId,
     NodeOutputPortIdSchema,
+    NodeTypeNameSchema,
     type PluginId,
     PluginIdSchema,
 } from './ids.js';
@@ -294,7 +295,7 @@ export const SerializableJsonValueSchema: z.ZodType<SerializableJsonValue> = z.p
 const BuiltinNodeIdentitySchema = z
     .object({
         namespace: z.literal('builtin'),
-        type: z.string().min(1),
+        type: NodeTypeNameSchema,
     })
     .strict()
     .readonly();
@@ -303,7 +304,7 @@ const PluginNodeIdentitySchema = z
     .object({
         namespace: z.literal('plugin'),
         pluginId: PluginIdSchema,
-        type: z.string().min(1),
+        type: NodeTypeNameSchema,
     })
     .strict()
     .readonly();
@@ -576,11 +577,11 @@ export interface NodeContractRegistry {
 }
 
 export function builtinNodeIdentity(type: string): NodeIdentity {
-    return { namespace: 'builtin', type };
+    return { namespace: 'builtin', type: NodeTypeNameSchema.parse(type) };
 }
 
 export function pluginNodeIdentity(pluginId: PluginId, type: string): NodeIdentity {
-    return { namespace: 'plugin', pluginId, type };
+    return { namespace: 'plugin', pluginId, type: NodeTypeNameSchema.parse(type) };
 }
 
 export function nodeIdentityForNode(

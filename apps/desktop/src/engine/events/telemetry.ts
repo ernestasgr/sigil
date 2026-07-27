@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { WorkflowId } from '@sigil/schema/ids';
+import {
+    type NodeTypeName,
+    NodeTypeNameSchema,
+    type PluginId,
+    type WorkflowId,
+} from '@sigil/schema/ids';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import type {
     EventTelemetry,
@@ -30,8 +35,8 @@ export interface RunTelemetryIdentity {
 
 export interface NodeTelemetryIdentity {
     readonly nodeId: string;
-    readonly nodeType: string;
-    readonly pluginId?: string;
+    readonly nodeType: NodeTypeName;
+    readonly pluginId?: PluginId;
 }
 
 export type NodeRunOutcome = Extract<TelemetryOutcome, 'succeeded' | 'failed' | 'cancelled'>;
@@ -41,8 +46,8 @@ export interface TelemetryEventOptions {
     readonly severity?: TelemetrySeverity;
     readonly outcome?: TelemetryOutcome;
     readonly nodeId?: string;
-    readonly nodeType?: string;
-    readonly pluginId?: string;
+    readonly nodeType?: NodeTypeName;
+    readonly pluginId?: PluginId;
     readonly durationMs?: number;
     readonly timestamp?: number;
 }
@@ -249,10 +254,11 @@ function nodePayload(
 }
 
 export function nodeTelemetryIdentity(node: PipelineNode): NodeTelemetryIdentity {
+    const nodeType = NodeTypeNameSchema.parse(node.type);
     if ('pluginId' in node) {
-        return { nodeId: node.id, nodeType: node.type, pluginId: node.pluginId };
+        return { nodeId: node.id, nodeType, pluginId: node.pluginId };
     }
-    return { nodeId: node.id, nodeType: node.type };
+    return { nodeId: node.id, nodeType };
 }
 
 export function createRunTelemetry(

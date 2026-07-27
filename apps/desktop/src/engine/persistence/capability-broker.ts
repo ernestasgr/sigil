@@ -1,3 +1,4 @@
+import { PluginIdSchema } from '@sigil/schema/ids';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
 import { CapabilitySchema } from '@sigil/schema/manifest';
 import { Either, Option } from 'effect';
@@ -10,7 +11,7 @@ export type { Capability, Manifest };
 
 export const CapabilityRequestSchema = z
     .object({
-        pluginId: z.string().min(1),
+        pluginId: PluginIdSchema,
         capability: CapabilitySchema,
     })
     .readonly();

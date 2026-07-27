@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { PluginIdSchema } from '@sigil/schema/ids';
 import { Option } from 'effect';
 import { afterAll, describe, expect, it } from 'vitest';
-import { testNodeId } from '../../test-support/pipeline-fixtures.js';
+import { testNodeId, testNodeType } from '../../test-support/pipeline-fixtures.js';
 import { createNodeHandlerRegistry } from '../execution/node-registry.js';
 import { createBuiltinHandlers } from '../node-handlers/registry.js';
 import { createManifestRegistry } from '../plugins/manifest-registry.js';
@@ -14,7 +14,7 @@ import { type BusEvent, createEventBus } from './event-bus.js';
 
 const pid = (id: string) => PluginIdSchema.parse(id);
 
-const NODE_TYPE = 'plugin-event-test';
+const NODE_TYPE = testNodeType('plugin-event-test');
 
 const HANDLER_PREFIX = `
 import { z } from 'zod';

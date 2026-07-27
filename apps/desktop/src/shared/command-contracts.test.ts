@@ -1,3 +1,4 @@
+import { PluginIdSchema } from '@sigil/schema/ids';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -44,6 +45,8 @@ const summary = {
     activation: { kind: 'active' },
 } as const;
 
+const FIXTURE_PLUGIN_ID = PluginIdSchema.parse('com.example.plugin-1');
+
 const engineFixtures = {
     ping: { request: {}, response: { receivedAt: 1 } },
     fireTestEvent: { request: {}, response: { ok: true } },
@@ -65,7 +68,7 @@ const engineFixtures = {
             plugins: [
                 {
                     manifest: {
-                        id: 'plugin-1',
+                        id: FIXTURE_PLUGIN_ID,
                         version: '1.0.0',
                         permissions: [],
                         emits: ['plugin.event'],
@@ -73,7 +76,7 @@ const engineFixtures = {
                         nodeContract: {
                             identity: {
                                 namespace: 'plugin',
-                                pluginId: 'plugin-1',
+                                pluginId: FIXTURE_PLUGIN_ID,
                                 type: 'fixture-node',
                             },
                             version: 1,
@@ -96,7 +99,7 @@ const engineFixtures = {
         },
     },
     setPermissionOverride: {
-        request: { pluginId: 'plugin-1', overrides: [] },
+        request: { pluginId: FIXTURE_PLUGIN_ID, overrides: [] },
         response: { ok: true, grantedPermissions: [], cancelledRunIds: [] },
     },
     readProperties: { request: {}, response: { properties: {} } },

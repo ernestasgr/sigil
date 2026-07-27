@@ -92,6 +92,43 @@ describe('ManifestSchema', () => {
         expect(result.success).toBe(false);
     });
 
+    it('rejects duplicate Event declarations with a Manifest issue at the duplicate entry', () => {
+        const result = ManifestSchema.safeParse({
+            id: 'com.sigil.stub-ping',
+            version: '0.0.1',
+            permissions: [],
+            emits: ['stub.ping', 'stub.ping'],
+        });
+
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error.issues).toContainEqual(
+                expect.objectContaining({
+                    path: ['emits', 1],
+                    message: expect.stringContaining('declared more than once'),
+                }),
+            );
+        }
+    });
+
+    it('returns structured issues for invalid Event declarations', () => {
+        const result = parseManifest({
+            id: 'com.sigil.stub-ping',
+            version: '0.0.1',
+            permissions: [],
+            emits: ['Stub.Ping'],
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            issues: [
+                expect.objectContaining({
+                    path: ['emits', 0],
+                }),
+            ],
+        });
+    });
+
     it('rejects a manifest with an unknown capability in permissions', () => {
         const result = ManifestSchema.safeParse({
             id: 'com.sigil.stub-ping',

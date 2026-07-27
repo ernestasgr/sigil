@@ -1,4 +1,4 @@
-import { PluginIdSchema } from '@sigil/schema/ids';
+import { EventNameSchema, PluginIdSchema } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import { Either, Option } from 'effect';
 import { describe, expect, it } from 'vitest';
@@ -9,8 +9,10 @@ const stubManifest: Manifest = {
     id: PluginIdSchema.parse('com.sigil.stub-ping'),
     version: '0.0.1',
     permissions: ['filesystem.read'],
-    emits: ['stub.ping'],
+    emits: [EventNameSchema.parse('stub.ping')],
 };
+const STUB_PLUGIN_ID = stubManifest.id;
+const UNKNOWN_PLUGIN_ID = PluginIdSchema.parse('com.sigil.unknown');
 
 describe('createManifestRegistry', () => {
     it('registers a manifest and retrieves it by plugin id', () => {
@@ -18,7 +20,7 @@ describe('createManifestRegistry', () => {
         const result = registry.register(stubManifest);
         expect(Either.isRight(result)).toBe(true);
 
-        const manifest = registry.get('com.sigil.stub-ping');
+        const manifest = registry.get(STUB_PLUGIN_ID);
         expect(Option.isSome(manifest)).toBe(true);
         expect(Option.getOrThrow(manifest)).toEqual(stubManifest);
     });
@@ -26,17 +28,17 @@ describe('createManifestRegistry', () => {
     it('reports has=true for a registered plugin', () => {
         const registry = createManifestRegistry();
         registry.register(stubManifest);
-        expect(registry.has('com.sigil.stub-ping')).toBe(true);
+        expect(registry.has(STUB_PLUGIN_ID)).toBe(true);
     });
 
     it('reports has=false for an unregistered plugin', () => {
         const registry = createManifestRegistry();
-        expect(registry.has('com.sigil.unknown')).toBe(false);
+        expect(registry.has(UNKNOWN_PLUGIN_ID)).toBe(false);
     });
 
     it('returns None for an unregistered plugin id', () => {
         const registry = createManifestRegistry();
-        expect(Option.isNone(registry.get('com.sigil.unknown'))).toBe(true);
+        expect(Option.isNone(registry.get(UNKNOWN_PLUGIN_ID))).toBe(true);
     });
 
     it('rejects duplicate registration of the same plugin id', () => {

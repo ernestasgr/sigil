@@ -1,3 +1,4 @@
+import { PluginIdSchema } from '@sigil/schema/ids';
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
@@ -135,8 +136,8 @@ const responseArbitrary = fc.oneof(
         ok: false as const,
         kind: 'domain' as const,
         code: 'unknown_plugin' as const,
-        pluginId: 'plugin-ghost',
-        error: 'Plugin "plugin-ghost" is not registered in the Manifest Registry.',
+        pluginId: PluginIdSchema.parse('com.example.plugin-ghost'),
+        error: 'Plugin "com.example.plugin-ghost" is not registered in the Manifest Registry.',
     }),
     fc.constant({
         type: EngineChannel.SetPermissionOverrideResult,

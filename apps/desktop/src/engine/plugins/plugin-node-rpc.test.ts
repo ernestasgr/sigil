@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { PluginIdSchema } from '@sigil/schema/ids';
 import { Option } from 'effect';
 import { afterAll, describe, expect, it } from 'vitest';
-import { testNodeId } from '../../test-support/pipeline-fixtures.js';
+import { testNode, testNodeId } from '../../test-support/pipeline-fixtures.js';
 import { createNodeHandlerRegistry } from '../execution/node-registry.js';
 import { createBuiltinHandlers } from '../node-handlers/registry.js';
 import { createManifestRegistry } from './manifest-registry.js';
@@ -389,12 +389,12 @@ describe('NodePluginDepsRpcSchema', () => {
             const handler = Option.getOrThrow(handlerRegistry.get('rpc-execution'));
             const output = await handler.execute(
                 {
-                    node: {
+                    node: testNode({
                         id: testNodeId('n1'),
                         type: 'rpc-execution',
                         pluginId: pid('com.sigil.rpc-execution'),
                         config: {},
-                    },
+                    }),
                     ctx: workflowContext,
                 },
                 { sleep: async () => undefined } as never,

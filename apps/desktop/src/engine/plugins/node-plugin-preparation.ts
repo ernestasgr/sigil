@@ -1,3 +1,4 @@
+import type { NodeTypeName, PluginId } from '@sigil/schema/ids';
 import type { Capability } from '@sigil/schema/manifest';
 import type { SerializableNodeContract } from '@sigil/schema/node-contract';
 
@@ -5,8 +6,8 @@ import type { DiscoveredNodePlugin } from './node-plugin-discovery.js';
 
 export interface NodePluginPreparation {
     readonly dir: string;
-    readonly pluginId: string;
-    readonly manifestNodeType: string;
+    readonly pluginId: PluginId;
+    readonly manifestNodeType: NodeTypeName;
     readonly nodeContract?: SerializableNodeContract;
     readonly handlerPath: string;
     readonly manifestPermissions: readonly Capability[];

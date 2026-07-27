@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 
 import {
+    builtinNodeIdentity,
     createNodeContractRegistry,
     type NodeContract,
     type NodeContractRegistration,
@@ -80,10 +81,7 @@ export function getNodeDescriptor<K extends NodeType>(
 }
 
 export function getBuiltinNodeContract(type: NodeType): NodeContract {
-    const contract = builtinContractLookup.get({
-        namespace: 'builtin',
-        type,
-    });
+    const contract = builtinContractLookup.get(builtinNodeIdentity(type));
     if (!contract) throw new Error(`Missing built-in Node Contract for "${type}".`);
     return contract;
 }

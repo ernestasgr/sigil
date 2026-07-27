@@ -1,3 +1,4 @@
+import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/schema/ids';
 import { MAX_DELAY_MS } from '@sigil/schema/nodes';
 import { describe, expect, it } from 'vitest';
 import { compileGraph } from './compile.js';
@@ -322,8 +323,8 @@ describe('compileGraph', () => {
 
         const nodeCatalog = createNodeCatalogFromManifests([
             {
-                id: 'com.example.tick',
-                nodeType: 'tick-trigger',
+                id: PluginIdSchema.parse('com.example.tick'),
+                nodeType: NodeTypeNameSchema.parse('tick-trigger'),
                 nodeContract: {
                     identity: {
                         namespace: 'plugin',
@@ -376,8 +377,8 @@ describe('compileGraph', () => {
 
         const nodeCatalog = createNodeCatalogFromManifests([
             {
-                id: 'com.sigil.file-watcher',
-                nodeType: 'file-watcher',
+                id: PluginIdSchema.parse('com.sigil.file-watcher'),
+                nodeType: NodeTypeNameSchema.parse('file-watcher'),
                 nodeContract: {
                     identity: {
                         namespace: 'plugin',
@@ -443,7 +444,7 @@ describe('compileGraph', () => {
             {
                 id: 'plugin-action',
                 data: {
-                    type: 'third-party.action',
+                    type: 'third-party-action',
                     pluginId: 'com.example.third-party',
                     config: { destination: '/tmp' },
                 },
@@ -459,7 +460,7 @@ describe('compileGraph', () => {
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.value.nodes[1]).toMatchObject({
-                type: 'third-party.action',
+                type: 'third-party-action',
                 pluginId: 'com.example.third-party',
                 config: { destination: '/tmp' },
             });
@@ -542,8 +543,8 @@ describe('compileGraph', () => {
     it('keeps compiler and topology admission in parity for derived Plugin ports', () => {
         const nodeCatalog = createNodeCatalogFromManifests([
             {
-                id: 'com.example.router',
-                nodeType: 'router-node',
+                id: PluginIdSchema.parse('com.example.router'),
+                nodeType: NodeTypeNameSchema.parse('router-node'),
                 nodeContract: {
                     identity: {
                         namespace: 'plugin',

@@ -1,3 +1,4 @@
+import { PluginIdSchema } from '@sigil/schema/ids';
 import { describe, expect, it } from 'vitest';
 
 import type { EngineBusEventPayload } from '../../shared/ipc-channels.js';
@@ -8,6 +9,8 @@ import {
     formatTelemetryExport,
     isTelemetryFailure,
 } from './telemetry-index.js';
+
+const PLUGIN_ID = PluginIdSchema.parse('com.example.plugin');
 
 const correlatedEvent: EngineBusEventPayload = {
     name: 'log.output',
@@ -123,7 +126,7 @@ describe('telemetry index', () => {
         const entry = createTelemetryEntry(1, {
             name: 'engine.diagnostic',
             payload: {
-                pluginId: 'com.example.plugin',
+                pluginId: PLUGIN_ID,
                 password: 'payload-secret',
             },
             telemetry: {
@@ -131,7 +134,7 @@ describe('telemetry index', () => {
                 timestamp: 1700000000000,
                 kind: 'diagnostic',
                 severity: 'error',
-                pluginId: 'com.example.plugin',
+                pluginId: PLUGIN_ID,
                 outcome: 'failed',
                 summary: '{"token":"summary-secret","message":"authorization: Bearer raw-secret"}',
             },
@@ -166,7 +169,7 @@ describe('telemetry index', () => {
                 message: 'Plugin worker stopped unexpectedly',
                 kind: 'worker',
                 source: 'plugin',
-                pluginId: 'com.example.plugin',
+                pluginId: PLUGIN_ID,
                 outcome: 'failed',
             },
         });
@@ -185,7 +188,7 @@ describe('telemetry index', () => {
         const entry = createTelemetryEntry(1, {
             name: 'plugin.permission.changed',
             payload: {
-                pluginId: 'com.example.plugin',
+                pluginId: PLUGIN_ID,
                 previous: ['filesystem.read'],
                 next: ['state.write'],
                 actor: 'user',
@@ -201,7 +204,7 @@ describe('telemetry index', () => {
         expect(exported).toMatchObject({
             events: [
                 {
-                    pluginId: 'com.example.plugin',
+                    pluginId: PLUGIN_ID,
                     previous: ['filesystem.read'],
                     next: ['state.write'],
                     actor: 'user',

@@ -1,3 +1,4 @@
+import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/schema/ids';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
@@ -59,8 +60,8 @@ describe('Workflow Builder Node catalog', () => {
 
         const catalog = createNodeCatalogFromManifests([
             {
-                id: 'com.sigil.file-watcher',
-                nodeType: 'file-watcher',
+                id: PluginIdSchema.parse('com.sigil.file-watcher'),
+                nodeType: NodeTypeNameSchema.parse('file-watcher'),
                 nodeContract: {
                     identity: {
                         namespace: 'plugin',
@@ -166,7 +167,12 @@ describe('Workflow Builder Node catalog', () => {
         });
 
         const catalog = createNodeCatalogFromManifests(
-            [{ id: 'com.example.declared', nodeType: 'declared-node' }],
+            [
+                {
+                    id: PluginIdSchema.parse('com.example.declared'),
+                    nodeType: NodeTypeNameSchema.parse('declared-node'),
+                },
+            ],
             [declared, undeclared],
         );
 
@@ -191,8 +197,8 @@ describe('Workflow Builder Node catalog', () => {
         const catalog = createNodeCatalogFromManifests(
             [
                 {
-                    id: 'com.example.contract',
-                    nodeType: 'contract-trigger',
+                    id: PluginIdSchema.parse('com.example.contract'),
+                    nodeType: NodeTypeNameSchema.parse('contract-trigger'),
                     nodeContract: {
                         identity: {
                             namespace: 'plugin',
@@ -238,8 +244,8 @@ describe('Workflow Builder Node catalog', () => {
     it('keeps renderer output ports in parity with a Plugin config-derived contract', () => {
         const catalog = createNodeCatalogFromManifests([
             {
-                id: 'com.example.router',
-                nodeType: 'router-node',
+                id: PluginIdSchema.parse('com.example.router'),
+                nodeType: NodeTypeNameSchema.parse('router-node'),
                 nodeContract: {
                     identity: {
                         namespace: 'plugin',

@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PluginIdSchema } from '@sigil/schema/ids';
+import { EventNameSchema, PluginIdSchema } from '@sigil/schema/ids';
 import type { Capability, Manifest } from '@sigil/schema/manifest';
 import { Either } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,7 +19,7 @@ const manifest: Manifest = {
     id: pluginId,
     version: '1.0.0',
     permissions: ['state.write', 'filesystem.read'],
-    emits: ['stub.event'],
+    emits: [EventNameSchema.parse('stub.event')],
 };
 
 describe('applyPermissionOverride', () => {
@@ -44,7 +44,7 @@ describe('applyPermissionOverride', () => {
                 updatePluginPermissions: vi.fn(),
                 emitPermissionChanged,
             },
-            'com.sigil.unknown',
+            PluginIdSchema.parse('com.sigil.unknown'),
             [],
         );
 

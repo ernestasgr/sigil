@@ -1,3 +1,4 @@
+import { FileEventNameSchema } from './event-catalog.js';
 import {
     NodeOutputPortIdSchema,
     PipelineEdgeIdSchema,
@@ -15,7 +16,7 @@ export const sampleManualTriggerToLog: CompiledPipeline = {
             id: PipelineNodeIdSchema.parse('trigger'),
             type: 'manual-trigger',
             config: {
-                eventName: 'file.created',
+                eventName: FileEventNameSchema.parse('file.created'),
                 payload: {
                     path: '/Users/dev/Downloads/report.pdf',
                     name: 'report.pdf',

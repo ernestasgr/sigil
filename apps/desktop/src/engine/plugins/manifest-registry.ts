@@ -1,3 +1,4 @@
+import type { PluginId } from '@sigil/schema/ids';
 import type { Manifest } from '@sigil/schema/manifest';
 import { Either, Option } from 'effect';
 
@@ -5,9 +6,9 @@ export type ManifestRegistryResult = Either.Either<Manifest, 'duplicate'>;
 
 export interface ManifestRegistry {
     readonly register: (manifest: Manifest) => ManifestRegistryResult;
-    readonly unregister: (pluginId: string) => void;
-    readonly get: (pluginId: string) => Option.Option<Manifest>;
-    readonly has: (pluginId: string) => boolean;
+    readonly unregister: (pluginId: PluginId) => void;
+    readonly get: (pluginId: PluginId) => Option.Option<Manifest>;
+    readonly has: (pluginId: PluginId) => boolean;
     readonly all: () => readonly Manifest[];
 }
 
@@ -16,7 +17,7 @@ function cloneManifest(manifest: Manifest): Manifest {
 }
 
 export function createManifestRegistry(): ManifestRegistry {
-    const manifests = new Map<string, Manifest>();
+    const manifests = new Map<PluginId, Manifest>();
     return {
         register: (manifest) => {
             if (manifests.has(manifest.id)) {

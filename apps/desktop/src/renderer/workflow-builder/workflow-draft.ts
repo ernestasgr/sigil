@@ -1,4 +1,5 @@
 import type { CompiledPipeline } from '@sigil/schema';
+import { PipelineEdgeIdSchema } from '@sigil/schema/ids';
 import type { TopologyDiagnostic } from '@sigil/schema/topology';
 import {
     addEdge,
@@ -266,9 +267,18 @@ function applyCommand(
         case 'connect': {
             const { source, target, sourceHandle } = command.connection;
             if (!source || !target || !sourceHandle) return snapshot;
+            const nextEdges = addEdge(command.connection, [...snapshot.edges]);
+            const addedEdge = nextEdges.find(
+                (edge) => !snapshot.edges.some((existing) => existing.id === edge.id),
+            );
+            if (!addedEdge) return { ...snapshot, edges: nextEdges };
             return {
                 ...snapshot,
-                edges: addEdge(command.connection, [...snapshot.edges]),
+                edges: nextEdges.map((edge) =>
+                    edge === addedEdge
+                        ? { ...edge, id: PipelineEdgeIdSchema.parse(crypto.randomUUID()) }
+                        : edge,
+                ),
             };
         }
         case 'remove-edge': {

@@ -105,9 +105,10 @@ describe('Settings Properties File template', () => {
 });
 
 describe('Settings Plugin Permissions', () => {
+    const PLUGIN_ID = PluginIdSchema.parse('com.example.plugin-1');
     const pluginInfo = {
         manifest: {
-            id: PluginIdSchema.parse('plugin-1'),
+            id: PLUGIN_ID,
             version: '1.0.0',
             permissions: ['filesystem.read'],
             emits: [],
@@ -122,7 +123,7 @@ describe('Settings Plugin Permissions', () => {
 
         render(withSigil(<SettingsSection />, sigil));
         const user = userEvent.setup();
-        await waitFor(() => expect(screen.getByText('plugin-1')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByText(PLUGIN_ID)).toBeInTheDocument());
         await user.click(screen.getByRole('button', { name: 'Override' }));
 
         expect(screen.getByRole('checkbox', { name: 'Filesystem Read' })).toBeInTheDocument();
@@ -141,7 +142,7 @@ describe('Settings Plugin Permissions', () => {
                   readonly ok: false;
                   readonly kind: 'domain';
                   readonly code: 'unknown_plugin';
-                  readonly pluginId: string;
+                  readonly pluginId: typeof PLUGIN_ID;
                   readonly error: string;
               }
             | {
@@ -165,12 +166,12 @@ describe('Settings Plugin Permissions', () => {
         render(withSigil(<SettingsSection />, sigil));
         const user = userEvent.setup();
 
-        await waitFor(() => expect(screen.getByText('plugin-1')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByText(PLUGIN_ID)).toBeInTheDocument());
         await user.click(screen.getByRole('button', { name: 'Override' }));
         await user.click(screen.getByRole('button', { name: 'Save' }));
 
         await waitFor(() =>
-            expect(sigil.setPermissionOverride).toHaveBeenCalledWith('plugin-1', [
+            expect(sigil.setPermissionOverride).toHaveBeenCalledWith(PLUGIN_ID, [
                 'filesystem.read',
             ]),
         );
@@ -189,7 +190,7 @@ describe('Settings Plugin Permissions', () => {
         render(withSigil(<SettingsSection />, sigil));
         const user = userEvent.setup();
 
-        await waitFor(() => expect(screen.getByText('plugin-1')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByText(PLUGIN_ID)).toBeInTheDocument());
         await user.click(screen.getByRole('button', { name: 'Override' }));
         await user.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -201,13 +202,13 @@ describe('Settings Plugin Permissions', () => {
             ok: false,
             kind: 'domain',
             code: 'unknown_plugin',
-            pluginId: 'plugin-1',
-            error: 'Plugin "plugin-1" is not registered in the Manifest Registry.',
+            pluginId: PLUGIN_ID,
+            error: `Plugin "${PLUGIN_ID}" is not registered in the Manifest Registry.`,
         });
 
         await waitFor(() =>
             expect(screen.getByRole('alert')).toHaveTextContent(
-                'Permission override rejected: Plugin "plugin-1" is not registered in the Manifest Registry.',
+                `Permission override rejected: Plugin "${PLUGIN_ID}" is not registered in the Manifest Registry.`,
             ),
         );
         expect(screen.getByRole('alert')).not.toHaveTextContent('Write failure');

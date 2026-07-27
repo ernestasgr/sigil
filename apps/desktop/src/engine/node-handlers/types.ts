@@ -1,4 +1,5 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
+import type { EventName } from '@sigil/schema/ids';
 import type { NodeType, PipelineNode, UnknownNodeDescriptor } from '@sigil/schema/nodes';
 import type { SwitchConfig } from '@sigil/schema/nodes/switch';
 import type {
@@ -22,7 +23,10 @@ export interface EventSink {
 }
 
 export interface PluginEventSink {
-    readonly emit: (eventName: string, payload: Readonly<Record<string, unknown>>) => Promise<void>;
+    readonly emit: (
+        eventName: EventName,
+        payload: Readonly<Record<string, unknown>>,
+    ) => Promise<void>;
 }
 
 export type Sleep = (ms: number, signal?: AbortSignal) => Promise<void>;

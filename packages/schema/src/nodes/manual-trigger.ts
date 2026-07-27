@@ -16,7 +16,7 @@ export const ManualTriggerNode = defineBuiltinNode({
     type: 'manual-trigger',
     configSchema: ManualTriggerConfigSchema,
     defaultConfig: {
-        eventName: 'file.created',
+        eventName: FileEventNameSchema.parse('file.created'),
         payload: { path: '/', name: 'file', ext: 'txt', size: 0, dir: '/' },
     },
     contract: {
