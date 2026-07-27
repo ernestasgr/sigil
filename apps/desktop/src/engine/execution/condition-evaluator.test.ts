@@ -1,4 +1,5 @@
 import type { PipelineCondition } from '@sigil/schema/conditions';
+import { MAX_MATCH_CANDIDATE_LENGTH, type MatchPatternEngine } from '@sigil/schema/match-pattern';
 import { SwitchCaseIdSchema, type SwitchConfig } from '@sigil/schema/nodes/switch';
 import type { WorkflowContext } from '@sigil/schema/workflow-context';
 import { Either } from 'effect';
@@ -118,6 +119,44 @@ describe('evaluateCondition — payload string context', () => {
             value: 'report',
         };
         expect(evaluateCondition(caseSensitive, ctx)).toBe(false);
+    });
+
+    it('matches Unicode text through the linear-time pattern engine', () => {
+        const unicodeContext: WorkflowContext = {
+            ...ctx,
+            payload: { ...ctx.payload, name: 'Žodis' },
+        };
+        const condition: PipelineCondition = {
+            target: 'payload',
+            field: 'name',
+            operator: 'matches',
+            value: '/^\\p{L}+$/u',
+        };
+
+        expect(evaluateCondition(condition, unicodeContext)).toBe(true);
+    });
+
+    it('rejects an over-limit runtime candidate before invoking the matcher', () => {
+        let compileCalls = 0;
+        const engine: MatchPatternEngine = {
+            compile: () => {
+                compileCalls += 1;
+                return { ok: true, value: { test: () => true } };
+            },
+        };
+        const longContext: WorkflowContext = {
+            ...ctx,
+            payload: { ...ctx.payload, name: 'a'.repeat(MAX_MATCH_CANDIDATE_LENGTH + 1) },
+        };
+        const condition: PipelineCondition = {
+            target: 'payload',
+            field: 'name',
+            operator: 'matches',
+            value: 'a+',
+        };
+
+        expect(evaluateCondition(condition, longContext, engine)).toBe(false);
+        expect(compileCalls).toBe(0);
     });
 });
 

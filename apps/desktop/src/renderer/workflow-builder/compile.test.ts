@@ -1,4 +1,5 @@
 import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/schema/ids';
+import { MAX_MATCH_PATTERN_LENGTH } from '@sigil/schema/match-pattern';
 import { MAX_DELAY_MS } from '@sigil/schema/nodes';
 import { describe, expect, it } from 'vitest';
 import { compileGraph } from './compile.js';
@@ -163,6 +164,46 @@ describe('compileGraph', () => {
             expect(result.error).toMatch(/message/);
         }
     });
+
+    it.each(['(?=report)', 'a'.repeat(MAX_MATCH_PATTERN_LENGTH + 1)])(
+        'targets an invalid matches pattern at the condition value during Builder compilation',
+        (value) => {
+            const result = compileGraph(
+                [
+                    {
+                        id: 'branch',
+                        data: {
+                            type: 'if-else',
+                            config: {
+                                condition: {
+                                    target: 'payload',
+                                    field: 'name',
+                                    operator: 'matches',
+                                    value,
+                                },
+                            },
+                        },
+                    },
+                ],
+                [],
+                { id: 'p', workflowId: 'w' },
+            );
+
+            expect(result.ok).toBe(false);
+            if (!result.ok) {
+                expect(result.diagnostics).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({
+                            target: { kind: 'node', nodeId: 'branch' },
+                            nodeId: 'branch',
+                            fieldPath: 'config.condition.value',
+                        }),
+                    ]),
+                );
+                expect(result.error).toMatch(/config\.condition\.value/);
+            }
+        },
+    );
 
     it.each([-1, 0.5, MAX_DELAY_MS + 1, Number.NaN, Number.POSITIVE_INFINITY])(
         'targets invalid Delay value %s during Builder compilation',

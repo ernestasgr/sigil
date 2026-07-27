@@ -7,6 +7,7 @@ import type { CompiledPipeline } from '@sigil/schema';
 import type { PipelineEdge } from '@sigil/schema/edges';
 import type { FileEventPayload } from '@sigil/schema/file-event-payload';
 import { PluginIdSchema, WorkflowIdSchema } from '@sigil/schema/ids';
+import type { MatchPatternEngine } from '@sigil/schema/match-pattern';
 import { pluginNodeIdentity, registerSerializableNodeContract } from '@sigil/schema/node-contract';
 import type { PipelineNode } from '@sigil/schema/nodes';
 import { createBuiltinNodeContractRegistry } from '@sigil/schema/nodes/catalog';
@@ -264,6 +265,63 @@ describe('dag-executor', () => {
                 .filter((event) => event.name === 'log.output')
                 .map((event) => (event.name === 'log.output' ? event.payload.message : ''));
             expect(messages).toEqual(['took the FALSE branch']);
+        });
+
+        it('passes the injected matcher through Engine condition evaluation', async () => {
+            const bus = createEventBus();
+            const events = captureEvents(bus);
+            let compileCalls = 0;
+            const matchPatternEngine: MatchPatternEngine = {
+                compile: (pattern) => {
+                    compileCalls += 1;
+                    expect(pattern.source).toBe('custom');
+                    return {
+                        ok: true,
+                        value: { test: (candidate) => candidate === 'pdf' },
+                    };
+                },
+            };
+
+            await executePipeline(
+                pipeline(
+                    [
+                        trigger(),
+                        {
+                            id: 'branch',
+                            type: 'if-else',
+                            config: {
+                                condition: {
+                                    target: 'payload',
+                                    field: 'ext',
+                                    operator: 'matches',
+                                    value: 'custom',
+                                },
+                            },
+                        },
+                        log('true-log', 'took the TRUE branch'),
+                        log('false-log', 'took the FALSE branch'),
+                    ],
+                    [
+                        edge('t-to-branch', 'trigger', 'branch', 'out'),
+                        edge('branch-to-true', 'branch', 'true-log', 'true'),
+                        edge('branch-to-false', 'branch', 'false-log', 'false'),
+                    ],
+                ),
+                bus,
+                handlerRegistry,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                { matchPatternEngine },
+            );
+
+            const messages = events
+                .filter((event) => event.name === 'log.output')
+                .map((event) => (event.name === 'log.output' ? event.payload.message : ''));
+            expect(messages).toEqual(['took the TRUE branch']);
+            expect(compileCalls).toBe(1);
         });
     });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PipelineConditionSchema } from './conditions.js';
 import { FileEventPayloadSchema } from './file-event-payload.js';
+import { MAX_MATCH_PATTERN_LENGTH } from './match-pattern.js';
 import { PipelineNodeSchema } from './nodes/index.js';
 import { CompiledPipelineSchema, PipelineDocumentSchema, parsePipeline } from './pipeline.js';
 import { sampleManualTriggerToLog } from './samples.js';
@@ -69,6 +70,59 @@ describe('PipelineConditionSchema', () => {
         });
         expect(result.success).toBe(true);
     });
+
+    it('accepts a Unicode payload match condition', () => {
+        const result = PipelineConditionSchema.safeParse({
+            target: 'payload',
+            field: 'name',
+            operator: 'matches',
+            value: '/^\\p{L}+$/u',
+        });
+        expect(result.success).toBe(true);
+    });
+
+    it('accepts a pattern-valued Event match condition', () => {
+        const result = PipelineConditionSchema.safeParse({
+            target: 'event',
+            operator: 'matches',
+            value: '/^file\\./',
+        });
+        expect(result.success).toBe(true);
+    });
+
+    it('rejects unsupported payload match syntax at the value field', () => {
+        const result = PipelineConditionSchema.safeParse({
+            target: 'payload',
+            field: 'name',
+            operator: 'matches',
+            value: '(?=report)',
+        });
+
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error.issues).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        path: ['value'],
+                        message: expect.stringMatching(/linear-time/i),
+                    }),
+                ]),
+            );
+        }
+    });
+
+    it.each(['/report/g', 'a'.repeat(MAX_MATCH_PATTERN_LENGTH + 1)])(
+        'rejects invalid match flags or length',
+        (value) => {
+            const result = PipelineConditionSchema.safeParse({
+                target: 'payload',
+                field: 'name',
+                operator: 'matches',
+                value,
+            });
+            expect(result.success).toBe(false);
+        },
+    );
 
     it('accepts a payload size condition with a number operator', () => {
         const result = PipelineConditionSchema.safeParse({
