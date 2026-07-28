@@ -197,7 +197,13 @@ describe('generated Workflow topology properties', () => {
                 if (!result.ok) {
                     expect(result.diagnostics).toEqual(
                         expect.arrayContaining([
-                            expect.objectContaining({ code: 'cycle', edgeId: 'edge-cycle' }),
+                            expect.objectContaining({
+                                code: 'cycle',
+                                target: expect.objectContaining({
+                                    kind: 'edge',
+                                    edgeId: 'edge-cycle',
+                                }),
+                            }),
                         ]),
                     );
                 }
@@ -220,11 +226,18 @@ describe('generated Workflow topology properties', () => {
                         expect(
                             first.diagnostics
                                 .filter((diagnostic) => diagnostic.code === 'cycle')
-                                .map((diagnostic) => diagnostic.edgeId),
+                                .flatMap((diagnostic) =>
+                                    diagnostic.target.kind === 'edge'
+                                        ? [diagnostic.target.edgeId]
+                                        : [],
+                                ),
                         ).toEqual(cycleEdgeIds);
                         expect(first.diagnostics).not.toEqual(
                             expect.arrayContaining([
-                                expect.objectContaining({ code: 'cycle', edgeId: 'cycle-tail' }),
+                                expect.objectContaining({
+                                    code: 'cycle',
+                                    target: { kind: 'edge', edgeId: 'cycle-tail' },
+                                }),
                             ]),
                         );
                     }

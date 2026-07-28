@@ -193,11 +193,11 @@ describe('Node Contract Registry', () => {
             identity: { namespace: 'builtin', type: 'switch' },
             issues: expect.arrayContaining([
                 expect.objectContaining({
-                    diagnosticCode: 'duplicate_match_value',
+                    details: expect.objectContaining({ code: 'duplicate_match_value' }),
                     path: 'cases[0].value',
                 }),
                 expect.objectContaining({
-                    diagnosticCode: 'invalid_numeric_match_value',
+                    details: expect.objectContaining({ code: 'invalid_numeric_match_value' }),
                     path: 'cases[2].value',
                 }),
             ]),

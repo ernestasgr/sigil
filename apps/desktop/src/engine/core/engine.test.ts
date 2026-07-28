@@ -495,7 +495,19 @@ describe('createEngine', () => {
                 expect.objectContaining({ code: 'empty_pipeline' }),
             ]),
         });
-        expect(events.some((event) => event.name === 'engine.diagnostic')).toBe(true);
+        expect(events).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    name: 'engine.diagnostic',
+                    payload: expect.objectContaining({
+                        diagnostic: expect.objectContaining({
+                            code: 'empty_pipeline',
+                            target: { kind: 'pipeline' },
+                        }),
+                    }),
+                }),
+            ]),
+        );
         engine.dispose();
     });
 
@@ -532,7 +544,6 @@ describe('createEngine', () => {
             diagnostics: expect.arrayContaining([
                 expect.objectContaining({
                     code: 'unsupported_node_handler',
-                    nodeId: 'missing',
                     target: { kind: 'node', nodeId: 'missing' },
                 }),
             ]),
@@ -577,7 +588,7 @@ describe('createEngine', () => {
             diagnostics: expect.arrayContaining([
                 expect.objectContaining({
                     code: 'unavailable_node_contract',
-                    nodeId: 'contractless',
+                    target: { kind: 'node', nodeId: 'contractless' },
                 }),
             ]),
         });

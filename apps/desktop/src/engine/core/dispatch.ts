@@ -6,7 +6,7 @@ import type {
     EngineRequest,
     EngineResponse,
 } from '../../shared/command-contracts.js';
-import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
+import type { EngineDiagnosticContext } from '../../shared/event-payload-schemas.js';
 import { EngineChannel } from '../../shared/ipc-channels.js';
 import {
     formatPersistenceDiagnostic,
@@ -30,7 +30,7 @@ export interface DispatchSubsystems {
     readonly lifecycle?: WorkflowLifecycle;
     readonly shutdown?: () => Promise<void>;
     readonly broadcastWorkflowsList: () => void;
-    readonly log: (message: string, context?: Omit<EngineDiagnosticPayload, 'message'>) => void;
+    readonly log: (message: string, context?: EngineDiagnosticContext) => void;
     readonly propertiesPath: string;
 }
 

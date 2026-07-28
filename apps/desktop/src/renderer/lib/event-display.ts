@@ -1,3 +1,4 @@
+import { formatTopologyDiagnosticTarget } from '@sigil/workflow-domain/topology';
 import { Either } from 'effect';
 
 import {
@@ -118,12 +119,19 @@ export function telemetryEntryContext(entry: BusEventEntry): string {
     const pluginId = entry.telemetry?.pluginId ?? diagnostic?.pluginId;
     const outcome = entry.telemetry?.outcome ?? diagnostic?.outcome;
     const source = diagnostic?.source;
+    const topologyTarget =
+        diagnostic?.diagnostic === undefined
+            ? undefined
+            : formatTopologyDiagnosticTarget(diagnostic.diagnostic.target);
+    const topologyCode = diagnostic?.diagnostic?.code;
     return [
         workflowId === undefined ? undefined : `workflow=${workflowId}`,
         runId === undefined ? undefined : `run=${runId}`,
         pluginId === undefined ? undefined : `plugin=${pluginId}`,
         outcome === undefined ? undefined : `outcome=${outcome}`,
         source === undefined ? undefined : `source=${source}`,
+        topologyTarget === undefined ? undefined : `target=${topologyTarget}`,
+        topologyCode === undefined ? undefined : `code=${topologyCode}`,
     ]
         .filter((value): value is string => value !== undefined)
         .join(' · ');

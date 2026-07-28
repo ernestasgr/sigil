@@ -101,7 +101,7 @@ describe('WorkflowDocument to CompiledPipeline seam', () => {
                 expect.arrayContaining([
                     expect.objectContaining({
                         code: 'unavailable_node_contract',
-                        nodeId: 'plugin-action',
+                        target: { kind: 'node', nodeId: 'plugin-action' },
                     }),
                 ]),
             );
@@ -166,7 +166,7 @@ describe('WorkflowDocument to CompiledPipeline seam', () => {
                 expect.arrayContaining([
                     expect.objectContaining({
                         code: 'invalid_node_contract',
-                        nodeId: 'plugin-action',
+                        target: { kind: 'node', nodeId: 'plugin-action' },
                         fieldPath: 'config.name',
                     }),
                 ]),
@@ -183,7 +183,10 @@ describe('WorkflowDocument to CompiledPipeline seam', () => {
         if (!result.ok) {
             expect(result.diagnostics).toEqual(
                 expect.arrayContaining([
-                    expect.objectContaining({ code: 'unsupported_node_handler', nodeId: 'log' }),
+                    expect.objectContaining({
+                        code: 'unsupported_node_handler',
+                        target: { kind: 'node', nodeId: 'log' },
+                    }),
                 ]),
             );
         }

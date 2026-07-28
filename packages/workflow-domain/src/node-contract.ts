@@ -5,6 +5,7 @@ import {
     type NodeContractDefinition,
     type NodeContractInput,
     type NodeContractIssue,
+    NodeContractIssueSchema,
     NodeContractSchema,
     type NodeIdentity,
     type NodeOutputPort,
@@ -15,13 +16,15 @@ import {
     normalizeNodeConfigurationSchema,
     type SerializableNodeContractInput,
 } from '@sigil/contracts/node-contract';
-import { fromJSONSchema, type z } from 'zod';
+import type { z as ZodNamespace } from 'zod';
+import { fromJSONSchema, z } from 'zod';
 
 export type {
     NodeContract,
     NodeContractDefinition,
     NodeContractInput,
     NodeContractIssue,
+    NodeDiagnosticDetails,
     NodeIdentity,
     NodeOutputPort,
     NodeOutputPortId,
@@ -53,11 +56,17 @@ export type NodeContractResolution =
           readonly outputPorts?: readonly NodeOutputPort[] | 'dynamic';
       };
 
-export interface NodeContractRegistration<TSchema extends z.ZodType = z.ZodType> {
+export interface NodeContractRegistration<
+    TSchema extends ZodNamespace.ZodType = ZodNamespace.ZodType,
+> {
     readonly contract: NodeContractDefinition;
     readonly configSchema: TSchema;
-    readonly validateConfig?: (config: z.output<TSchema>) => readonly NodeContractIssue[];
-    readonly resolveOutputPorts?: (config: z.output<TSchema>) => DeclarativeOutputPortResolution;
+    readonly validateConfig?: (
+        config: ZodNamespace.output<TSchema>,
+    ) => readonly NodeContractIssue[];
+    readonly resolveOutputPorts?: (
+        config: ZodNamespace.output<TSchema>,
+    ) => DeclarativeOutputPortResolution;
 }
 
 export type OutputPortStrategy = (
@@ -130,12 +139,27 @@ function normalizeOutputPort(port: NodeOutputPortInput): NodeOutputPort {
     return fixedOutputPort(port.id, port.label);
 }
 
-function zodIssues(error: z.ZodError): readonly NodeContractIssue[] {
+function zodIssues(error: ZodNamespace.ZodError): readonly NodeContractIssue[] {
     return error.issues.map((issue) => ({
         code: 'invalid_configuration',
         path: issue.path.map(String).join('.'),
         message: issue.message,
     }));
+}
+
+function validatedNodeContractIssues(
+    issues: readonly NodeContractIssue[],
+): readonly NodeContractIssue[] {
+    const parsed = z.array(NodeContractIssueSchema).readonly().safeParse(issues);
+    return parsed.success
+        ? parsed.data
+        : [
+              {
+                  code: 'invalid_contract',
+                  path: 'diagnostics',
+                  message: 'Node Contract emitted invalid diagnostic details.',
+              },
+          ];
 }
 
 export type DeclarativeOutputPortResolution =
@@ -206,14 +230,16 @@ function resolveRegistration(
               parsed.data,
               outputPortStrategies,
           );
-    const customIssues = registration.validateConfig?.(parsed.data) ?? [];
+    const customIssues = validatedNodeContractIssues(
+        registration.validateConfig?.(parsed.data) ?? [],
+    );
 
     if (!resolved.ok) {
         return {
             status: 'invalid',
             identity,
             contract: registration.contract,
-            issues: [...customIssues, ...resolved.issues],
+            issues: validatedNodeContractIssues([...customIssues, ...resolved.issues]),
             ...(resolved.outputPorts === undefined ? {} : { outputPorts: resolved.outputPorts }),
         };
     }
@@ -276,7 +302,9 @@ export function createNodeContractRegistry(
             );
         }
 
-        const defaultConfigIssues = registration.validateConfig?.(defaultConfig.data) ?? [];
+        const defaultConfigIssues = validatedNodeContractIssues(
+            registration.validateConfig?.(defaultConfig.data) ?? [],
+        );
         if (defaultConfigIssues.length > 0) {
             throw new Error(
                 `Invalid default configuration for ${formatNodeIdentity(parsedContract.data.identity)}: ${defaultConfigIssues.map((issue) => issue.message).join('; ')}`,
@@ -330,7 +358,7 @@ export function registerSerializableNodeContract(
 }
 
 /** Reconstruct the host validator from a serializable Plugin Node contract. */
-export function reconstructNodeConfigurationSchema(value: unknown): z.ZodType {
+export function reconstructNodeConfigurationSchema(value: unknown): ZodNamespace.ZodType {
     const normalized = normalizeNodeConfigurationSchema(value);
     try {
         return fromJSONSchema(normalized.schema);

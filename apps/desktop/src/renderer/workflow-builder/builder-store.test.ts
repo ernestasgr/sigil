@@ -202,8 +202,12 @@ describe('useBuilderStore', () => {
             expect(result.diagnostics).toEqual(
                 expect.arrayContaining([
                     expect.objectContaining({
-                        code: 'empty_match_value',
-                        nodeId: sw,
+                        code: 'invalid_node_contract',
+                        target: { kind: 'node', nodeId: sw },
+                        details: expect.objectContaining({
+                            namespace: 'builtin.switch',
+                            code: 'empty_match_value',
+                        }),
                         fieldPath: 'config.cases[0].value',
                     }),
                 ]),
@@ -255,7 +259,6 @@ describe('useBuilderStore', () => {
                 expect.arrayContaining([
                     expect.objectContaining({
                         target: { kind: 'node', nodeId: delay },
-                        nodeId: delay,
                         fieldPath: 'config.ms',
                     }),
                 ]),
@@ -340,8 +343,12 @@ describe('useBuilderStore', () => {
             expect(validation.diagnostics).toEqual(
                 expect.arrayContaining([
                     expect.objectContaining({
-                        code: 'duplicate_match_value',
+                        code: 'invalid_node_contract',
                         target: { kind: 'node', nodeId: sw },
+                        details: expect.objectContaining({
+                            namespace: 'builtin.switch',
+                            code: 'duplicate_match_value',
+                        }),
                         fieldPath: 'config.cases[1].value',
                         repairHint: expect.any(String),
                     }),
@@ -376,8 +383,12 @@ describe('useBuilderStore', () => {
             expect(result.diagnostics).toEqual(
                 expect.arrayContaining([
                     expect.objectContaining({
-                        code: 'invalid_numeric_match_value',
-                        nodeId: sw,
+                        code: 'invalid_node_contract',
+                        target: { kind: 'node', nodeId: sw },
+                        details: expect.objectContaining({
+                            namespace: 'builtin.switch',
+                            code: 'invalid_numeric_match_value',
+                        }),
                         fieldPath: 'config.cases[0].value',
                     }),
                 ]),
@@ -971,7 +982,6 @@ describe('useBuilderStore', () => {
             severity: 'error',
             code: 'invalid_pipeline',
             target: { kind: 'node', nodeId: testNodeId('trigger') },
-            nodeId: testNodeId('trigger'),
             fieldPath: 'config.eventName',
             message: 'The Trigger event is invalid.',
             repairHint: 'Choose a supported event name.',

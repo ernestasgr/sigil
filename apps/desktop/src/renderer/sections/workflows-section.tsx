@@ -1,4 +1,8 @@
-import type { TopologyDiagnostic } from '@sigil/workflow-domain/topology';
+import {
+    formatTopologyDiagnosticTarget,
+    type TopologyDiagnostic,
+    topologyDiagnosticKey,
+} from '@sigil/workflow-domain/topology';
 import { type ReactElement, useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { PluginInfo } from '../../shared/plugin-info.js';
@@ -22,14 +26,7 @@ import { WorkflowBuilder } from '../workflow-builder/workflow-builder.js';
 import type { WorkflowDraftSaveResult } from '../workflow-builder/workflow-draft.js';
 
 function diagnosticTargetLabel(diagnostic: TopologyDiagnostic): string {
-    switch (diagnostic.target.kind) {
-        case 'pipeline':
-            return 'Workflow';
-        case 'node':
-            return `Node ${diagnostic.target.nodeId}`;
-        case 'edge':
-            return `Edge ${diagnostic.target.edgeId}`;
-    }
+    return formatTopologyDiagnosticTarget(diagnostic.target);
 }
 
 export function WorkflowsSection(): ReactElement {
@@ -275,7 +272,7 @@ export function WorkflowsSection(): ReactElement {
                                             <div className="mt-1 space-y-1 pr-4 font-data text-[10px]">
                                                 {workflow.diagnostics.map((diagnostic) => (
                                                     <p
-                                                        key={`${diagnostic.severity}-${diagnostic.code}-${diagnostic.target.kind}-${diagnostic.message}`}
+                                                        key={topologyDiagnosticKey(diagnostic)}
                                                         className={
                                                             diagnostic.severity === 'error'
                                                                 ? 'text-old-blood'

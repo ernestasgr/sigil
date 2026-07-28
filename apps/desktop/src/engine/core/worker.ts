@@ -9,7 +9,7 @@ import {
 } from '../../shared/command-contracts.js';
 import {
     createEngineDiagnostic,
-    type EngineDiagnosticPayload,
+    type EngineDiagnosticContext,
 } from '../../shared/event-payload-schemas.js';
 import {
     type EngineBusEvent,
@@ -60,8 +60,8 @@ const engine = createEngine({
     permissionOverridesPath: overridesPath,
 });
 
-function log(message: string, context: Omit<EngineDiagnosticPayload, 'message'> = {}): void {
-    engine.bus.next(createEngineDiagnostic({ message, ...context }));
+function log(message: string, context: EngineDiagnosticContext = {}): void {
+    engine.bus.next(createEngineDiagnostic(message, context));
 }
 
 if (propertiesDiagnostic && !isExpectedMissingFileDiagnostic(propertiesDiagnostic)) {

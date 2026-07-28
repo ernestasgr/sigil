@@ -1,4 +1,5 @@
 import { NodeOutputPortIdSchema } from '@sigil/contracts/ids';
+import type { NodeDiagnosticDetails } from '@sigil/contracts/node-contract';
 import {
     SwitchDescriptor as ContractSwitchDescriptor,
     SWITCH_DEFAULT_PORT,
@@ -68,6 +69,8 @@ export const SWITCH_DIAGNOSTIC_CODES = [
     'reserved_case_id',
 ] as const;
 
+export const SWITCH_DIAGNOSTIC_NAMESPACE = 'builtin.switch' as const;
+
 export type SwitchDiagnosticCode = (typeof SWITCH_DIAGNOSTIC_CODES)[number];
 
 export interface SwitchDiagnostic {
@@ -93,6 +96,23 @@ function diagnostic(
         value: switchCase.value,
         message,
         repairHint,
+    };
+}
+
+function diagnosticDetails(
+    code: SwitchDiagnosticCode,
+    caseId: string,
+    caseIndex: number,
+    value: string,
+): NodeDiagnosticDetails {
+    return {
+        namespace: SWITCH_DIAGNOSTIC_NAMESPACE,
+        code,
+        data: {
+            caseId,
+            caseIndex,
+            value,
+        },
     };
 }
 
@@ -242,8 +262,12 @@ export function switchOutputPortSpec(
 function switchConfigIssues(config: SwitchConfig): readonly NodeContractIssue[] {
     return validateSwitchConfig(config).map((diagnostic) => ({
         code: 'invalid_configuration',
-        diagnosticCode: diagnostic.code,
-        caseId: diagnostic.caseId,
+        details: diagnosticDetails(
+            diagnostic.code,
+            diagnostic.caseId,
+            diagnostic.caseIndex,
+            diagnostic.value,
+        ),
         path:
             diagnostic.code === 'duplicate_case_id' || diagnostic.code === 'reserved_case_id'
                 ? `cases[${diagnostic.caseIndex}].id`
@@ -264,8 +288,12 @@ function reservedDefaultPortIssues(
             ? [
                   {
                       code: 'invalid_configuration' as const,
-                      diagnosticCode: 'reserved_case_id',
-                      caseId: switchCase.id,
+                      details: diagnosticDetails(
+                          'reserved_case_id',
+                          switchCase.id,
+                          caseIndex,
+                          switchCase.value,
+                      ),
                       path: `cases[${caseIndex}].id`,
                       message:
                           `Switch case identity "${switchCase.id}" is reserved for the ` +

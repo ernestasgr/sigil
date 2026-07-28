@@ -1,19 +1,20 @@
 import { WorkflowDocumentSchema } from '@sigil/contracts';
 import { PluginIdSchema } from '@sigil/contracts/ids';
 import { CapabilitySchema, ManifestSchema } from '@sigil/contracts/manifest';
-import { TopologyDiagnosticSchema } from '@sigil/workflow-domain/topology';
+import { type TopologyDiagnostic, TopologyDiagnosticSchema } from '@sigil/workflow-domain/topology';
 import { z } from 'zod';
 import {
     PermissionOverrideDomainFailureFieldsSchema,
     PermissionOverridePersistenceFailureFieldsSchema,
     PermissionOverrideSuccessFieldsSchema,
+    type PersistenceDiagnostic,
     PersistenceDiagnosticSchema,
     PropertiesSaveSuccessFieldsSchema,
     PropertiesValidationFailureFieldsSchema,
     PropertiesWriteFailureFieldsSchema,
 } from './persistence.js';
 import { EventTelemetrySchema } from './telemetry.js';
-import { WorkflowIdSchema, WorkflowSummarySchema } from './workflow.js';
+import { WorkflowIdSchema, type WorkflowSummary, WorkflowSummarySchema } from './workflow.js';
 
 export type {
     PermissionOverrideOutcome,
@@ -27,13 +28,20 @@ export {
 } from './persistence.js';
 export { WorkflowIdSchema } from './workflow.js';
 
-const WorkflowWriteDiagnosticSchema = z.union([
-    TopologyDiagnosticSchema,
-    PersistenceDiagnosticSchema,
-]);
-export type WorkflowWriteDiagnostic = z.infer<typeof WorkflowWriteDiagnosticSchema>;
+export type WorkflowWriteDiagnostic = TopologyDiagnostic | PersistenceDiagnostic;
+const WorkflowWriteDiagnosticSchema: z.ZodType<WorkflowWriteDiagnostic> = z
+    .union([TopologyDiagnosticSchema, PersistenceDiagnosticSchema])
+    .readonly() as z.ZodType<WorkflowWriteDiagnostic>;
 
-export const WorkflowWriteOutcomeSchema = z.union([
+export type WorkflowWriteOutcome =
+    | { readonly ok: true; readonly summary: WorkflowSummary }
+    | {
+          readonly ok: false;
+          readonly error: string;
+          readonly diagnostics: readonly WorkflowWriteDiagnostic[];
+      };
+
+export const WorkflowWriteOutcomeSchema: z.ZodType<WorkflowWriteOutcome> = z.union([
     z
         .object({
             ok: z.literal(true),
@@ -47,10 +55,17 @@ export const WorkflowWriteOutcomeSchema = z.union([
             diagnostics: z.array(WorkflowWriteDiagnosticSchema).readonly(),
         })
         .readonly(),
-]);
-export type WorkflowWriteOutcome = z.infer<typeof WorkflowWriteOutcomeSchema>;
+]) as z.ZodType<WorkflowWriteOutcome>;
 
-export const WorkflowActionOutcomeSchema = z.union([
+export type WorkflowActionOutcome =
+    | { readonly ok: true; readonly summary: WorkflowSummary | null }
+    | {
+          readonly ok: false;
+          readonly error: string;
+          readonly diagnostics: readonly PersistenceDiagnostic[];
+      };
+
+export const WorkflowActionOutcomeSchema: z.ZodType<WorkflowActionOutcome> = z.union([
     z
         .object({
             ok: z.literal(true),
@@ -66,10 +81,18 @@ export const WorkflowActionOutcomeSchema = z.union([
         })
         .strict()
         .readonly(),
-]);
-export type WorkflowActionOutcome = z.infer<typeof WorkflowActionOutcomeSchema>;
+]) as z.ZodType<WorkflowActionOutcome>;
 
-export const WorkflowDeleteOutcomeSchema = z.union([
+export type WorkflowDeleteOutcome =
+    | { readonly ok: true; readonly success: boolean }
+    | {
+          readonly ok: false;
+          readonly success: false;
+          readonly error: string;
+          readonly diagnostics: readonly PersistenceDiagnostic[];
+      };
+
+export const WorkflowDeleteOutcomeSchema: z.ZodType<WorkflowDeleteOutcome> = z.union([
     z
         .object({
             ok: z.literal(true),
@@ -86,8 +109,7 @@ export const WorkflowDeleteOutcomeSchema = z.union([
         })
         .strict()
         .readonly(),
-]);
-export type WorkflowDeleteOutcome = z.infer<typeof WorkflowDeleteOutcomeSchema>;
+]) as z.ZodType<WorkflowDeleteOutcome>;
 
 const NodePositionSchema = z.object({ x: z.number(), y: z.number() }).readonly();
 export const NodePositionRecordSchema = z.record(z.string(), NodePositionSchema).readonly();

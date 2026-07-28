@@ -88,7 +88,6 @@ function nodeConfigurationDiagnostic(
         severity: 'error',
         code: 'invalid_pipeline',
         target: { kind: 'node', nodeId: nodeId.data },
-        nodeId: nodeId.data,
         fieldPath,
         message:
             `Node "${node.id}" has invalid configuration at ${fieldPath}: ${issue.message} ` +
@@ -119,7 +118,6 @@ function droppedEdgeDiagnostic(edge: VisualEdge): TopologyDiagnostic {
         severity: 'warning',
         code: 'invalid_edge',
         target: { kind: 'edge', edgeId },
-        edgeId,
         message: `Edge "${edge.id}" has no source port and was omitted from the compiled Workflow; reconnect it to a declared output port.`,
     };
 }
@@ -152,7 +150,6 @@ function pluginCatalogDiagnostics(
                 severity: 'warning',
                 code: 'unsupported_plugin_authoring',
                 target: { kind: 'node', nodeId: nodeId.data },
-                nodeId: nodeId.data,
                 message:
                     `Plugin Node "${spec.type}" from "${spec.pluginId}" has no Workflow Builder ` +
                     'authoring adapter; it is read-only and will be preserved unchanged.',

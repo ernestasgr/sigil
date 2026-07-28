@@ -29,6 +29,13 @@ interface SupportTelemetryRecord {
     readonly timestamp: number;
     readonly kind?: EventTelemetry['kind'];
     readonly diagnosticKind?: string;
+    readonly diagnosticCode?: string;
+    readonly diagnosticDetailCode?: string;
+    readonly diagnosticNamespace?: string;
+    readonly diagnosticTarget?: 'pipeline' | 'node' | 'edge';
+    readonly diagnosticTargetId?: string;
+    readonly edgeId?: string;
+    readonly relatedNodeId?: string;
     readonly source?: TelemetryDiagnosticSource;
     readonly severity?: EventTelemetry['severity'];
     readonly workflowId?: string;
@@ -100,9 +107,26 @@ function diagnosticMetadata(entry: TelemetryEntry): Partial<SupportTelemetryReco
     const workflowId = boundedString(diagnostic.workflowId);
     const pipelineId = boundedString(diagnostic.pipelineId);
     const runId = boundedString(diagnostic.runId);
-    const nodeId = boundedString(diagnostic.nodeId);
     const nodeType = boundedString(diagnostic.nodeType);
     const outcome = diagnostic.outcome;
+    const topology = diagnostic.diagnostic;
+    const target = topology?.target;
+    const nodeId =
+        topology === undefined
+            ? boundedString(diagnostic.nodeId)
+            : target?.kind === 'node'
+              ? boundedString(target.nodeId)
+              : undefined;
+    const edgeId = target?.kind === 'edge' ? boundedString(target.edgeId) : undefined;
+    const relatedNodeId = target?.kind === 'edge' ? boundedString(target.relatedNodeId) : undefined;
+    const detailCode =
+        topology !== undefined && 'details' in topology
+            ? boundedString(topology.details?.code)
+            : undefined;
+    const detailNamespace =
+        topology !== undefined && 'details' in topology
+            ? boundedString(topology.details?.namespace)
+            : undefined;
 
     return {
         ...(message === undefined ? {} : { summary: redactTelemetryText(message) }),
@@ -115,6 +139,27 @@ function diagnosticMetadata(entry: TelemetryEntry): Partial<SupportTelemetryReco
         ...(nodeId === undefined ? {} : { nodeId }),
         ...(nodeType === undefined ? {} : { nodeType }),
         ...(outcome === undefined ? {} : { outcome }),
+        ...(topology === undefined
+            ? {}
+            : {
+                  ...(topology.target.kind === 'node' ? {} : { nodeId: undefined }),
+                  diagnosticCode: topology.code,
+                  diagnosticTarget: topology.target.kind,
+                  ...(topology.target.kind === 'pipeline'
+                      ? {}
+                      : {
+                            diagnosticTargetId:
+                                topology.target.kind === 'node'
+                                    ? topology.target.nodeId
+                                    : topology.target.edgeId,
+                        }),
+                  ...(edgeId === undefined ? {} : { edgeId }),
+                  ...(relatedNodeId === undefined ? {} : { relatedNodeId }),
+                  ...(detailCode === undefined ? {} : { diagnosticDetailCode: detailCode }),
+                  ...(detailNamespace === undefined
+                      ? {}
+                      : { diagnosticNamespace: detailNamespace }),
+              }),
     };
 }
 
@@ -140,7 +185,6 @@ function supportRecord(entry: TelemetryEntry): SupportTelemetryRecord {
     return {
         name: entry.name,
         timestamp: entry.timestamp,
-        ...diagnostic,
         ...permissionChange,
         summary: telemetry
             ? redactTelemetrySummary(telemetry.summary)
@@ -156,6 +200,7 @@ function supportRecord(entry: TelemetryEntry): SupportTelemetryRecord {
         ...(telemetry?.pluginId === undefined ? {} : { pluginId: telemetry.pluginId }),
         ...(telemetry?.outcome === undefined ? {} : { outcome: telemetry.outcome }),
         ...(telemetry?.durationMs === undefined ? {} : { durationMs: telemetry.durationMs }),
+        ...diagnostic,
     };
 }
 

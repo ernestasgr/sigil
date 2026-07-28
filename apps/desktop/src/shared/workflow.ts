@@ -1,4 +1,4 @@
-import { TopologyDiagnosticSchema } from '@sigil/workflow-domain/topology';
+import { type TopologyDiagnostic, TopologyDiagnosticSchema } from '@sigil/workflow-domain/topology';
 import { z } from 'zod';
 
 export { WorkflowIdSchema } from '@sigil/contracts/ids';
@@ -12,7 +12,15 @@ export const WorkflowActivationStateSchema = z.discriminatedUnion('kind', [
 
 export type WorkflowActivationState = z.infer<typeof WorkflowActivationStateSchema>;
 
-export const WorkflowSummarySchema = z
+export interface WorkflowSummary {
+    readonly id: string;
+    readonly name: string;
+    readonly enabled: boolean;
+    readonly activation: WorkflowActivationState;
+    readonly diagnostics?: readonly TopologyDiagnostic[];
+}
+
+export const WorkflowSummarySchema: z.ZodType<WorkflowSummary> = z
     .object({
         // Startup diagnostics may expose an invalid filename id for recovery.
         id: z.string(),
@@ -22,9 +30,7 @@ export const WorkflowSummarySchema = z
         activation: WorkflowActivationStateSchema.default({ kind: 'disabled' }),
         diagnostics: z.array(TopologyDiagnosticSchema).readonly().optional(),
     })
-    .readonly();
-
-export type WorkflowSummary = z.infer<typeof WorkflowSummarySchema>;
+    .readonly() as z.ZodType<WorkflowSummary>;
 
 function assertNever(value: never): never {
     throw new Error(`Unhandled Workflow activation state: ${JSON.stringify(value)}`);

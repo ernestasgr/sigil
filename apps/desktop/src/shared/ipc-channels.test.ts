@@ -122,6 +122,44 @@ describe('EngineToMainMessageSchema', () => {
         }
     });
 
+    it('round-trips a structured topology diagnostic through the IPC result schema', () => {
+        const result = EngineToMainMessageSchema.safeParse({
+            type: EngineChannel.CreateWorkflowResult,
+            correlationId: 'corr-topology',
+            error: 'Workflow topology is invalid.',
+            diagnostics: [
+                {
+                    severity: 'error',
+                    code: 'invalid_node_contract',
+                    target: { kind: 'node', nodeId: 'plugin-router' },
+                    details: {
+                        namespace: 'plugin.example.router',
+                        code: 'unsupported_target',
+                        data: { field: 'target' },
+                    },
+                    message: 'The router target is not supported.',
+                },
+            ],
+        });
+
+        expect(result.success).toBe(true);
+        if (
+            result.success &&
+            result.data.type === EngineChannel.CreateWorkflowResult &&
+            'diagnostics' in result.data
+        ) {
+            expect(result.data.diagnostics).toEqual([
+                expect.objectContaining({
+                    target: { kind: 'node', nodeId: 'plugin-router' },
+                    details: expect.objectContaining({
+                        namespace: 'plugin.example.router',
+                        code: 'unsupported_target',
+                    }),
+                }),
+            ]);
+        }
+    });
+
     it('preserves unknown Plugin domain failures without a persistence diagnostic', () => {
         const result = EngineToMainMessageSchema.safeParse({
             type: EngineChannel.SetPermissionOverrideResult,
