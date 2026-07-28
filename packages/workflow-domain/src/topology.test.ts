@@ -240,6 +240,20 @@ describe('validateWorkflowTopology', () => {
         );
     });
 
+    it('formats a pipeline diagnostic target for workflow-level messages', () => {
+        const target = { kind: 'pipeline' } as const;
+
+        expect(formatTopologyDiagnosticTarget(target)).toBe('Workflow');
+        expect(
+            topologyDiagnosticKey({
+                severity: 'error',
+                code: 'invalid_pipeline',
+                target,
+                message: 'The Workflow is invalid.',
+            }),
+        ).toContain('"target":"pipeline"');
+    });
+
     it('rejects an empty Pipeline with a repair-oriented diagnostic', () => {
         const result = validateWorkflowTopology({
             id: 'pipeline-1',
