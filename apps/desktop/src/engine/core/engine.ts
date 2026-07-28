@@ -53,7 +53,7 @@ import {
     loadPropertiesFile,
     type PropertiesFile,
     type PropertyRegistry,
-    type PropertyResolutionResult,
+    propertyResolutionError,
     type RegisteredResolvedProperties,
     type ResolvedProperties,
 } from './property-registry.js';
@@ -146,14 +146,6 @@ export function resolveSettings(
             collisionSuffixStyle: collisionSuffixStyle.value,
         },
     };
-}
-
-function propertyResolutionError(
-    result: Extract<PropertyResolutionResult<unknown>, { readonly ok: false }>,
-): string {
-    return result.kind === 'missing'
-        ? `Property "${result.key}" is not registered.`
-        : `Property "${result.key}" from ${result.source} is invalid: ${result.error}`;
 }
 
 function emitTopologyDiagnostics(bus: EventBus, diagnostics: readonly TopologyDiagnostic[]): void {

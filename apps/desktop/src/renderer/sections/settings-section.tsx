@@ -22,6 +22,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const EMPTY_PROPERTY_DEFAULTS = immutablePropertySnapshot({});
+
 function normalizePropertiesReadResult(value: Record<string, unknown>): {
     readonly properties: Readonly<Record<string, unknown>>;
     readonly defaults: Readonly<Record<string, unknown>>;
@@ -29,10 +31,13 @@ function normalizePropertiesReadResult(value: Record<string, unknown>): {
     if (isRecord(value.properties)) {
         return {
             properties: immutablePropertySnapshot(value.properties),
-            defaults: immutablePropertySnapshot(isRecord(value.defaults) ? value.defaults : {}),
+            defaults:
+                isRecord(value.defaults) && Object.keys(value.defaults).length > 0
+                    ? immutablePropertySnapshot(value.defaults)
+                    : EMPTY_PROPERTY_DEFAULTS,
         };
     }
-    return { properties: immutablePropertySnapshot(value), defaults: {} };
+    return { properties: immutablePropertySnapshot(value), defaults: EMPTY_PROPERTY_DEFAULTS };
 }
 
 function persistenceErrorMessage(
@@ -721,7 +726,8 @@ export function SettingsSection(): ReactElement {
     const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
     const [pluginsLoading, setPluginsLoading] = useState(true);
     const [properties, setProperties] = useState<Record<string, unknown>>({});
-    const [propertyDefaults, setPropertyDefaults] = useState<Readonly<Record<string, unknown>>>({});
+    const [propertyDefaults, setPropertyDefaults] =
+        useState<Readonly<Record<string, unknown>>>(EMPTY_PROPERTY_DEFAULTS);
     const [propertiesLoading, setPropertiesLoading] = useState(true);
     const [persistenceError, setPersistenceError] = useState<string | null>(null);
     const [propertiesSaveStatus, setPropertiesSaveStatus] = useState<PropertiesSaveSuccess | null>(
@@ -752,7 +758,7 @@ export function SettingsSection(): ReactElement {
             })
             .catch(() => {
                 setProperties({});
-                setPropertyDefaults({});
+                setPropertyDefaults(EMPTY_PROPERTY_DEFAULTS);
             })
             .finally(() => setPropertiesLoading(false));
     }, [sigil]);

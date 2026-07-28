@@ -629,7 +629,7 @@ describe('loadPropertiesFile', () => {
         }
     });
 
-    it('falls back to the hardcoded default when the root is not an object', () => {
+    it('rejects a root that is not an object', () => {
         const result = loadBuiltinProperties('nope');
         expect(result.ok).toBe(false);
     });

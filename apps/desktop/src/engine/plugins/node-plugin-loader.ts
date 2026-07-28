@@ -373,6 +373,21 @@ async function loadNodePluginWithSupervisor(
     return loadDiscoveredPlugin(discovered.plugin, deps, supervisor);
 }
 
+type LoadedPlugin = {
+    readonly nodeType: string;
+    readonly contract?: SerializableNodeContract;
+    readonly deps: NodePluginLoaderDeps;
+};
+
+function cleanupRegistrations(pluginId: PluginId, loaded: LoadedPlugin): void {
+    loaded.deps.propertyRegistry?.unregisterOwner(pluginId);
+    loaded.deps.manifestRegistry.unregister(pluginId);
+    if (loaded.contract !== undefined) {
+        loaded.deps.contractRegistry?.unregister(loaded.contract.identity);
+    }
+    loaded.deps.handlerRegistry.unregister(loaded.nodeType);
+}
+
 /**
  * Compose discovery, preparation, worker supervision, registry registration,
  * and cleanup behind one loader instance. Worker ownership never escapes this
@@ -380,14 +395,7 @@ async function loadNodePluginWithSupervisor(
  */
 export function createNodePluginLoader(): NodePluginLoader {
     const supervisor = createNodePluginWorkerSupervisor();
-    const loadedPlugins = new Map<
-        PluginId,
-        {
-            readonly nodeType: string;
-            readonly contract?: SerializableNodeContract;
-            readonly deps: NodePluginLoaderDeps;
-        }
-    >();
+    const loadedPlugins = new Map<PluginId, LoadedPlugin>();
 
     const loadNodePlugin = async (
         pluginDir: string,
@@ -423,12 +431,7 @@ export function createNodePluginLoader(): NodePluginLoader {
         try {
             await supervisor.disposePlugin(pluginId);
         } finally {
-            loaded.deps.propertyRegistry?.unregisterOwner(pluginId);
-            loaded.deps.manifestRegistry.unregister(pluginId);
-            if (loaded.contract !== undefined) {
-                loaded.deps.contractRegistry?.unregister(loaded.contract.identity);
-            }
-            loaded.deps.handlerRegistry.unregister(loaded.nodeType);
+            cleanupRegistrations(pluginId, loaded);
             loadedPlugins.delete(pluginId);
         }
         return true;
@@ -439,12 +442,7 @@ export function createNodePluginLoader(): NodePluginLoader {
             await supervisor.shutdown();
         } finally {
             for (const [pluginId, loaded] of loadedPlugins) {
-                loaded.deps.propertyRegistry?.unregisterOwner(pluginId);
-                loaded.deps.manifestRegistry.unregister(pluginId);
-                if (loaded.contract !== undefined) {
-                    loaded.deps.contractRegistry?.unregister(loaded.contract.identity);
-                }
-                loaded.deps.handlerRegistry.unregister(loaded.nodeType);
+                cleanupRegistrations(pluginId, loaded);
             }
             loadedPlugins.clear();
         }

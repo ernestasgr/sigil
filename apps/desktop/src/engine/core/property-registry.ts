@@ -19,6 +19,7 @@ import {
     PropertyApplyModeSchema,
 } from '@sigil/contracts/properties-file';
 import { fromJSONSchema, z } from 'zod';
+import { cloneSnapshot, freezeSnapshot } from '../../shared/property-snapshot.js';
 
 export {
     BUILTIN_PROPERTY_DESCRIPTORS,
@@ -191,24 +192,6 @@ function isJsonSafe(value: unknown, seen = new Set<object>()): boolean {
     }
 }
 
-function freezeSnapshot<T>(value: T, seen = new Set<object>()): T {
-    if (value === null || typeof value !== 'object' || seen.has(value)) return value;
-    seen.add(value);
-    if (Array.isArray(value)) {
-        for (const item of value) freezeSnapshot(item, seen);
-    } else {
-        for (const item of Object.values(value as Record<string, unknown>)) {
-            freezeSnapshot(item, seen);
-        }
-    }
-    return Object.freeze(value);
-}
-
-function cloneSnapshot<T>(value: T): T {
-    if (value === null || typeof value !== 'object') return value;
-    return freezeSnapshot(structuredClone(value));
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -353,7 +336,7 @@ function invalidPropertyResult(
     };
 }
 
-function resolutionError(
+export function propertyResolutionError(
     result: Extract<PropertyResolutionResult<unknown>, { readonly ok: false }>,
 ): string {
     return result.kind === 'missing'
@@ -610,7 +593,7 @@ export function loadPropertiesFile(
 
     const resolved = registry.resolveAll(result.data, defaults);
     if (!resolved.ok) {
-        return { ok: false, error: resolutionError(resolved.error) };
+        return { ok: false, error: propertyResolutionError(resolved.error) };
     }
 
     return {

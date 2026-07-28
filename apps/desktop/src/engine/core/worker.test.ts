@@ -990,10 +990,13 @@ describe('dispatch', () => {
         expect(response.properties).toEqual(properties);
         expect(response.defaults).toEqual(defaults);
         expect(Object.isFrozen(response.properties)).toBe(true);
+        expect(Object.isFrozen(response.defaults)).toBe(true);
         expect(Object.isFrozen(response.properties.nested as object)).toBe(true);
         expect(Object.isFrozen(response.defaults.nested as object)).toBe(true);
         expect(response.properties).not.toBe(properties);
         expect(response.defaults).not.toBe(defaults);
+        expect(response.properties.nested).not.toBe(properties.nested);
+        expect(response.defaults.nested).not.toBe(defaults.nested);
     });
 
     it('routes SaveProperties and posts ok:true result', () => {

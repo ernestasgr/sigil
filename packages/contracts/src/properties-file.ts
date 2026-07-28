@@ -189,19 +189,14 @@ export function serializePropertyDescriptor(
 }
 
 /** Static contract validation for the built-in Properties File shape. */
-export const PropertiesFileSchema = z
-    .object({
-        notifyOnWorkflowError: BUILTIN_PROPERTY_DESCRIPTORS.notifyOnWorkflowError.schema.optional(),
-        databasePath: BUILTIN_PROPERTY_DESCRIPTORS.databasePath.schema.optional(),
-        collisionSuffixStyle: BUILTIN_PROPERTY_DESCRIPTORS.collisionSuffixStyle.schema.optional(),
-        'file-watcher.ignorePatterns':
-            BUILTIN_PROPERTY_DESCRIPTORS['file-watcher.ignorePatterns'].schema.optional(),
-        'file-manager.defaultOnConflict':
-            BUILTIN_PROPERTY_DESCRIPTORS['file-manager.defaultOnConflict'].schema.optional(),
-        'file-manager.collisionSuffixStyle':
-            BUILTIN_PROPERTY_DESCRIPTORS['file-manager.collisionSuffixStyle'].schema.optional(),
-    })
-    .strict() as z.ZodType<PropertiesFile>;
+const builtinShape = Object.fromEntries(
+    Object.entries(BUILTIN_PROPERTY_DESCRIPTORS).map(([key, descriptor]) => [
+        key,
+        descriptor.schema.optional(),
+    ]),
+);
+
+export const PropertiesFileSchema = z.object(builtinShape).strict() as z.ZodType<PropertiesFile>;
 
 /** Immutable built-in defaults; dynamic Plugin defaults live in the Engine registry. */
 export const BUILTIN_PROPERTY_DEFAULTS: Readonly<ResolvedProperties> = Object.freeze({

@@ -1,4 +1,4 @@
-function freezeSnapshot<T>(value: T, seen = new Set<object>()): T {
+export function freezeSnapshot<T>(value: T, seen = new Set<object>()): T {
     if (value === null || typeof value !== 'object' || seen.has(value)) return value;
     seen.add(value);
     if (Array.isArray(value)) {
@@ -11,9 +11,14 @@ function freezeSnapshot<T>(value: T, seen = new Set<object>()): T {
     return Object.freeze(value);
 }
 
+export function cloneSnapshot<T>(value: T): T {
+    if (value === null || typeof value !== 'object') return value;
+    return freezeSnapshot(structuredClone(value));
+}
+
 /** Clone a Properties File snapshot so no caller can mutate its source data. */
 export function immutablePropertySnapshot(
     value: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
-    return freezeSnapshot(structuredClone(value));
+    return cloneSnapshot(value);
 }
