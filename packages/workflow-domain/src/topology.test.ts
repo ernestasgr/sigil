@@ -18,7 +18,11 @@ import { createBuiltinNodeContractRegistry } from './nodes/catalog.js';
 import { switchOutputPortSpec } from './nodes/switch.js';
 import {
     formatTopologyDiagnostics,
+    formatTopologyDiagnosticTarget,
+    TopologyDiagnosticCodeSchema,
     TopologyDiagnosticSchema,
+    topologyDiagnosticKey,
+    topologyDiagnosticStableKey,
     validateWorkflowTopology,
 } from './topology.js';
 
@@ -73,9 +77,10 @@ function cycleDiagnosticEdgeIds(
     result: ReturnType<typeof validateWorkflowTopology>,
 ): readonly string[] {
     if (result.ok) return [];
-    return result.diagnostics.flatMap((diagnostic) =>
-        diagnostic.code === 'cycle' && diagnostic.edgeId !== undefined ? [diagnostic.edgeId] : [],
-    );
+    return result.diagnostics.flatMap((diagnostic) => {
+        if (diagnostic.code !== 'cycle' || diagnostic.target.kind !== 'edge') return [];
+        return [diagnostic.target.edgeId];
+    });
 }
 
 const cycleDiagnosticCases = [
@@ -140,11 +145,127 @@ describe('validateWorkflowTopology', () => {
             severity: 'warning',
             code: 'invalid_edge',
             target: { kind: 'edge', edgeId: 'edge-1' },
-            edgeId: 'edge-1',
             message: 'Reconnect the Edge to a declared output port.',
         });
 
         expect(result.success).toBe(true);
+    });
+
+    it('accepts generic Node-owned diagnostic details without built-in knowledge', () => {
+        const result = TopologyDiagnosticSchema.safeParse({
+            severity: 'error',
+            code: 'invalid_node_contract',
+            target: { kind: 'node', nodeId: 'plugin-router' },
+            details: {
+                namespace: 'plugin.example.router',
+                code: 'unsupported_target',
+                data: { field: 'target', allowed: ['event', 'payload'] },
+            },
+            message: 'The router target is not supported.',
+        });
+
+        expect(result.success).toBe(true);
+        expect(TopologyDiagnosticCodeSchema.safeParse('duplicate_match_value').success).toBe(false);
+    });
+
+    it('rejects contradictory target identity sidecars and unnamespaced Node codes', () => {
+        expect(
+            TopologyDiagnosticSchema.safeParse({
+                severity: 'error',
+                code: 'invalid_node_contract',
+                target: { kind: 'node', nodeId: 'node-1' },
+                nodeId: 'node-2',
+                message: 'Contradictory Node identity.',
+            }).success,
+        ).toBe(false);
+        expect(
+            TopologyDiagnosticSchema.safeParse({
+                severity: 'error',
+                code: 'invalid_output_port',
+                target: { kind: 'edge', edgeId: 'edge-1' },
+                edgeId: 'edge-2',
+                message: 'Contradictory Edge identity.',
+            }).success,
+        ).toBe(false);
+        expect(
+            TopologyDiagnosticSchema.safeParse({
+                severity: 'error',
+                code: 'duplicate_match_value',
+                target: { kind: 'node', nodeId: 'node-1' },
+                message: 'Switch-specific codes belong in Node details.',
+            }).success,
+        ).toBe(false);
+    });
+
+    it('derives display and deduplication identity from the target union', () => {
+        const nodeDiagnostic = {
+            severity: 'error',
+            code: 'invalid_node_contract',
+            target: { kind: 'node', nodeId: PipelineNodeIdSchema.parse('node-1') },
+            details: { namespace: 'plugin.example', code: 'invalid_config' },
+            message: 'Invalid configuration.',
+        } as const;
+        const sameTarget = { ...nodeDiagnostic, message: 'A different message.' } as const;
+        const sameTargetWithDifferentRepair = {
+            ...nodeDiagnostic,
+            repairHint: 'Use a different configuration value.',
+        } as const;
+        const otherTarget = {
+            ...nodeDiagnostic,
+            target: { kind: 'node', nodeId: PipelineNodeIdSchema.parse('node-2') },
+        } as const;
+
+        expect(formatTopologyDiagnosticTarget(nodeDiagnostic.target)).toBe('Node node-1');
+        expect(
+            formatTopologyDiagnosticTarget({
+                kind: 'edge',
+                edgeId: PipelineEdgeIdSchema.parse('edge-1'),
+                relatedNodeId: PipelineNodeIdSchema.parse('node-1'),
+            }),
+        ).toBe('Edge edge-1 · Node node-1');
+        expect(topologyDiagnosticKey(nodeDiagnostic)).not.toBe(topologyDiagnosticKey(sameTarget));
+        expect(topologyDiagnosticKey(nodeDiagnostic)).not.toBe(
+            topologyDiagnosticKey(sameTargetWithDifferentRepair),
+        );
+        expect(topologyDiagnosticStableKey(nodeDiagnostic)).toBe(
+            topologyDiagnosticStableKey(sameTarget),
+        );
+        expect(topologyDiagnosticStableKey(nodeDiagnostic)).toBe(
+            topologyDiagnosticStableKey(sameTargetWithDifferentRepair),
+        );
+        expect(topologyDiagnosticKey(nodeDiagnostic)).not.toBe(topologyDiagnosticKey(otherTarget));
+        expect(
+            topologyDiagnosticKey({
+                ...nodeDiagnostic,
+                target: {
+                    kind: 'edge',
+                    edgeId: PipelineEdgeIdSchema.parse('edge-1'),
+                },
+            }),
+        ).not.toBe(
+            topologyDiagnosticKey({
+                ...nodeDiagnostic,
+                target: {
+                    kind: 'edge',
+                    edgeId: PipelineEdgeIdSchema.parse('edge-1'),
+                    relatedNodeId: PipelineNodeIdSchema.parse('node-1'),
+                },
+            }),
+        );
+    });
+
+    it('formats a pipeline diagnostic target for workflow-level messages', () => {
+        const target = { kind: 'pipeline' } as const;
+
+        expect(formatTopologyDiagnosticTarget(target)).toBe('Workflow');
+        expect(
+            topologyDiagnosticKey({
+                severity: 'error',
+                code: 'invalid_pipeline',
+                target,
+                message: 'The Workflow is invalid.',
+            }),
+        ).toContain('"target":"pipeline"');
     });
 
     it('rejects an empty Pipeline with a repair-oriented diagnostic', () => {
@@ -197,7 +318,10 @@ describe('validateWorkflowTopology', () => {
         if (!result.ok) {
             expect(result.diagnostics).toEqual(
                 expect.arrayContaining([
-                    expect.objectContaining({ code: 'unsupported_root', nodeId: 'log' }),
+                    expect.objectContaining({
+                        code: 'unsupported_root',
+                        target: { kind: 'node', nodeId: 'log' },
+                    }),
                 ]),
             );
         }
@@ -236,8 +360,14 @@ describe('validateWorkflowTopology', () => {
         if (!result.ok) {
             expect(result.diagnostics).toEqual(
                 expect.arrayContaining([
-                    expect.objectContaining({ code: 'cycle', edgeId: 'a-b' }),
-                    expect.objectContaining({ code: 'cycle', edgeId: 'b-a' }),
+                    expect.objectContaining({
+                        code: 'cycle',
+                        target: { kind: 'edge', edgeId: 'a-b', relatedNodeId: 'a' },
+                    }),
+                    expect.objectContaining({
+                        code: 'cycle',
+                        target: { kind: 'edge', edgeId: 'b-a', relatedNodeId: 'b' },
+                    }),
                 ]),
             );
         }
@@ -255,8 +385,7 @@ describe('validateWorkflowTopology', () => {
                 cycleEdgeIds.map((edgeId) =>
                     expect.objectContaining({
                         code: 'cycle',
-                        edgeId,
-                        target: { kind: 'edge', edgeId },
+                        target: expect.objectContaining({ kind: 'edge', edgeId }),
                     }),
                 ),
             );
@@ -279,7 +408,10 @@ describe('validateWorkflowTopology', () => {
         if (!result.ok) {
             expect(result.diagnostics).toEqual(
                 expect.arrayContaining([
-                    expect.objectContaining({ code: 'disconnected_node', nodeId: 'orphan' }),
+                    expect.objectContaining({
+                        code: 'disconnected_node',
+                        target: { kind: 'node', nodeId: 'orphan' },
+                    }),
                 ]),
             );
         }
@@ -302,7 +434,10 @@ describe('validateWorkflowTopology', () => {
         if (!result.ok) {
             expect(result.diagnostics).toEqual(
                 expect.arrayContaining([
-                    expect.objectContaining({ code: 'implicit_join', nodeId: 'joined' }),
+                    expect.objectContaining({
+                        code: 'implicit_join',
+                        target: { kind: 'node', nodeId: 'joined' },
+                    }),
                 ]),
             );
         }
@@ -319,8 +454,7 @@ describe('validateWorkflowTopology', () => {
                 expect.arrayContaining([
                     expect.objectContaining({
                         code: 'invalid_output_port',
-                        edgeId: 'e1',
-                        nodeId: 'trigger',
+                        target: { kind: 'edge', edgeId: 'e1', relatedNodeId: 'trigger' },
                     }),
                 ]),
             );
@@ -356,19 +490,18 @@ describe('validateWorkflowTopology', () => {
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(diagnosticCodes(result)).toEqual(
-                expect.arrayContaining([
-                    'duplicate_match_value',
-                    'empty_match_value',
-                    'reserved_match_value',
-                    'invalid_match_value',
-                ]),
+                expect.arrayContaining(['invalid_node_contract']),
             );
             expect(result.diagnostics).toEqual(
                 expect.arrayContaining([
                     expect.objectContaining({
-                        code: 'duplicate_match_value',
-                        nodeId: 'switch',
-                        caseId: 'duplicate',
+                        code: 'invalid_node_contract',
+                        target: { kind: 'node', nodeId: 'switch' },
+                        details: {
+                            namespace: 'builtin.switch',
+                            code: 'duplicate_match_value',
+                            data: expect.objectContaining({ caseId: 'duplicate' }),
+                        },
                         fieldPath: 'config.cases[1].value',
                         repairHint: expect.any(String),
                     }),
@@ -395,7 +528,7 @@ describe('validateWorkflowTopology', () => {
             diagnostics: expect.arrayContaining([
                 expect.objectContaining({
                     code: 'invalid_node_contract',
-                    nodeId: 'switch',
+                    target: { kind: 'node', nodeId: 'switch' },
                 }),
             ]),
         });
@@ -507,8 +640,9 @@ describe('validateWorkflowTopology', () => {
             ok: false,
             diagnostics: [
                 expect.objectContaining({
-                    code: 'empty_match_value',
-                    nodeId: 'router',
+                    code: 'invalid_node_contract',
+                    target: { kind: 'node', nodeId: 'router' },
+                    details: expect.objectContaining({ code: 'empty_match_value' }),
                     fieldPath: 'config.cases[0].value',
                 }),
             ],
@@ -516,7 +650,10 @@ describe('validateWorkflowTopology', () => {
         if (!result.ok) {
             expect(result.diagnostics).not.toEqual(
                 expect.arrayContaining([
-                    expect.objectContaining({ code: 'invalid_output_port', edgeId: 'router-log' }),
+                    expect.objectContaining({
+                        code: 'invalid_output_port',
+                        target: { kind: 'edge', edgeId: 'router-log' },
+                    }),
                 ]),
             );
         }
@@ -548,8 +685,7 @@ describe('validateWorkflowTopology', () => {
             diagnostics: [
                 expect.objectContaining({
                     code: 'invalid_output_port',
-                    edgeId: 'unknown-log',
-                    nodeId: 'unknown',
+                    target: { kind: 'edge', edgeId: 'unknown-log', relatedNodeId: 'unknown' },
                 }),
             ],
         });
@@ -577,7 +713,7 @@ describe('validateWorkflowTopology', () => {
             diagnostics: expect.arrayContaining([
                 expect.objectContaining({
                     code: 'unavailable_node_contract',
-                    nodeId: 'unknown',
+                    target: { kind: 'node', nodeId: 'unknown' },
                 }),
             ]),
         });
@@ -588,6 +724,13 @@ describe('validateWorkflowTopology', () => {
             pipeline([trigger('trigger'), trigger('trigger')], []),
         );
         expect(diagnosticCodes(duplicateNodes)).toContain('duplicate_node_id');
+        if (!duplicateNodes.ok) {
+            expect(
+                duplicateNodes.diagnostics.filter(
+                    (diagnostic) => diagnostic.code === 'duplicate_node_id',
+                ),
+            ).toHaveLength(1);
+        }
 
         const duplicateEdges = validateWorkflowTopology(
             pipeline(
@@ -630,7 +773,6 @@ describe('validateWorkflowTopology', () => {
                 expect.arrayContaining([
                     expect.objectContaining({
                         code: 'unsupported_node_handler',
-                        nodeId: 'missing',
                         target: { kind: 'node', nodeId: 'missing' },
                     }),
                 ]),
@@ -644,7 +786,6 @@ describe('validateWorkflowTopology', () => {
                 severity: 'error',
                 code: 'invalid_node_contract',
                 target: { kind: 'node', nodeId: PipelineNodeIdSchema.parse('router') },
-                nodeId: PipelineNodeIdSchema.parse('router'),
                 fieldPath: 'config.cases[0].value',
                 message: 'The match value is empty.',
                 repairHint: 'Enter a non-empty match value.',
@@ -653,7 +794,6 @@ describe('validateWorkflowTopology', () => {
                 severity: 'warning',
                 code: 'invalid_edge',
                 target: { kind: 'edge', edgeId: PipelineEdgeIdSchema.parse('edge-1') },
-                edgeId: PipelineEdgeIdSchema.parse('edge-1'),
                 message: 'Reconnect the Edge.',
             },
         ] as const;

@@ -6,10 +6,15 @@ import {
 } from '@sigil/contracts/node-contract';
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import {
     createNodeContractRegistry,
     fixedOutputPortSpec,
     type NodeContractInput,
+    type NodeContractIssue,
+    outputPortDescriptorsForNode,
+    outputPortIdsForNode,
+    outputPortLabelForNode,
     pluginNodeIdentity,
     reconstructNodeConfigurationSchema,
     registerSerializableNodeContract,
@@ -171,6 +176,60 @@ describe('Node Contract Registry', () => {
         });
     });
 
+    it('replaces malformed Node Contract diagnostics with a bounded contract issue', () => {
+        const pluginId = pid('com.example.invalid-diagnostics');
+        const registry = createNodeContractRegistry([
+            {
+                contract: {
+                    identity: pluginNodeIdentity(pluginId, 'invalid-diagnostics'),
+                    version: 1,
+                    role: 'action',
+                    configSchema: ANY_CONFIG_SCHEMA,
+                    defaultConfig: { invalid: false },
+                    outputPorts: fixedOutputPortSpec(['out']),
+                    display: {
+                        label: 'Invalid Diagnostics',
+                        description: 'Emits malformed diagnostics for boundary testing.',
+                        category: 'utility',
+                    },
+                },
+                configSchema: z.object({ invalid: z.boolean() }),
+                validateConfig: (config) => {
+                    const parsed = z.object({ invalid: z.boolean() }).parse(config);
+                    return parsed.invalid
+                        ? ([
+                              {
+                                  code: 'not-a-contract-code',
+                                  path: 'invalid',
+                                  message: '',
+                              },
+                          ] as unknown as readonly NodeContractIssue[])
+                        : [];
+                },
+            },
+        ]);
+
+        expect(
+            resolveNodeContract(
+                {
+                    type: 'invalid-diagnostics',
+                    pluginId,
+                    config: { invalid: true },
+                },
+                registry,
+            ),
+        ).toMatchObject({
+            status: 'invalid',
+            issues: [
+                {
+                    code: 'invalid_contract',
+                    path: 'diagnostics',
+                    message: 'Node Contract emitted invalid diagnostic details.',
+                },
+            ],
+        });
+    });
+
     it('rejects invalid numeric Switch cases before output-port admission', () => {
         const registry = createBuiltinNodeContractRegistry();
 
@@ -193,11 +252,11 @@ describe('Node Contract Registry', () => {
             identity: { namespace: 'builtin', type: 'switch' },
             issues: expect.arrayContaining([
                 expect.objectContaining({
-                    diagnosticCode: 'duplicate_match_value',
+                    details: expect.objectContaining({ code: 'duplicate_match_value' }),
                     path: 'cases[0].value',
                 }),
                 expect.objectContaining({
-                    diagnosticCode: 'invalid_numeric_match_value',
+                    details: expect.objectContaining({ code: 'invalid_numeric_match_value' }),
                     path: 'cases[2].value',
                 }),
             ]),
@@ -582,6 +641,59 @@ describe('Node Contract Registry', () => {
             },
             reason: 'unregistered',
         });
+    });
+
+    it('projects fixed, dynamic, invalid, and unavailable output ports for consumers', () => {
+        const registry = createBuiltinNodeContractRegistry();
+        const fixedNode = {
+            type: 'if-else',
+            config: {
+                condition: { target: 'event', operator: 'equals', value: 'file.created' },
+            },
+        } as const;
+
+        expect(outputPortDescriptorsForNode(fixedNode, registry)).toEqual([
+            { id: 'true', label: 'true' },
+            { id: 'false', label: 'false' },
+        ]);
+        expect(outputPortIdsForNode(fixedNode, registry)).toEqual(['true', 'false']);
+        expect(outputPortLabelForNode(fixedNode, 'true', registry)).toBe('true');
+        expect(outputPortLabelForNode(fixedNode, 'missing', registry)).toBe('missing');
+
+        const invalidNode = switchNode({
+            target: 'payload',
+            field: 'ext',
+            comparison: 'string',
+            cases: [{ id: 'default', value: 'pdf' }],
+        });
+        expect(outputPortDescriptorsForNode(invalidNode, registry)).toEqual([]);
+        expect(outputPortIdsForNode(invalidNode, registry)).toEqual([]);
+        expect(outputPortLabelForNode(invalidNode, 'missing', registry)).toBe('missing');
+
+        const dynamicPluginId = pid('com.example.dynamic-projection');
+        registerSerializableNodeContract(registry, {
+            identity: pluginNodeIdentity(dynamicPluginId, 'dynamic-node'),
+            version: 1,
+            role: 'action',
+            configSchema: ANY_CONFIG_SCHEMA,
+            defaultConfig: {},
+            outputPorts: { kind: 'dynamic' },
+            display: {
+                label: 'Dynamic Node',
+                description: 'Selects ports at runtime.',
+                category: 'utility',
+            },
+        });
+        const dynamicNode = {
+            type: 'dynamic-node',
+            pluginId: dynamicPluginId,
+            config: {},
+        } as const;
+        expect(outputPortDescriptorsForNode(dynamicNode, registry)).toBe('dynamic');
+        expect(outputPortIdsForNode(dynamicNode, registry)).toBe('dynamic');
+        expect(outputPortLabelForNode(dynamicNode, 'runtime', registry)).toBe('runtime');
+
+        expect(outputPortDescriptorsForNode({ type: 'missing', config: {} }, registry)).toEqual([]);
     });
 
     it('rejects a Plugin contract whose identity or version is invalid', () => {

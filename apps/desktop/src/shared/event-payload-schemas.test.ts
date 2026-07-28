@@ -606,6 +606,49 @@ describe('EngineDiagnosticPayloadSchema', () => {
         }
     });
 
+    it('accepts a structured topology diagnostic with generic Node details', () => {
+        const result = EngineDiagnosticPayloadSchema.safeParse({
+            message: '[topology:invalid_node_contract] Invalid configuration.',
+            kind: 'topology',
+            source: 'engine',
+            outcome: 'failed',
+            diagnostic: {
+                severity: 'error',
+                code: 'invalid_node_contract',
+                target: { kind: 'node', nodeId: 'plugin-router' },
+                details: {
+                    namespace: 'plugin.example.router',
+                    code: 'unsupported_target',
+                    data: { field: 'target' },
+                },
+                message: 'The router target is not supported.',
+            },
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.diagnostic).toMatchObject({
+                target: { kind: 'node', nodeId: 'plugin-router' },
+                details: { namespace: 'plugin.example.router', code: 'unsupported_target' },
+            });
+        }
+    });
+
+    it('rejects a topology diagnostic with a duplicated top-level Node identity', () => {
+        const result = EngineDiagnosticPayloadSchema.safeParse({
+            message: 'Contradictory topology identity.',
+            diagnostic: {
+                severity: 'error',
+                code: 'invalid_node_contract',
+                target: { kind: 'node', nodeId: 'node-1' },
+                message: 'The target is duplicated.',
+            },
+            nodeId: 'node-2',
+        });
+
+        expect(result.success).toBe(false);
+    });
+
     it('constructs a schema-validated diagnostic event through the shared helper', () => {
         const event = createEngineDiagnostic({
             message: '[worker] engine worker error: native binding failed',

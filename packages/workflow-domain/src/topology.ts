@@ -7,6 +7,10 @@ import {
     type PipelineNodeId,
     PipelineNodeIdSchema,
 } from '@sigil/contracts/ids';
+import {
+    type NodeDiagnosticDetails,
+    NodeDiagnosticDetailsSchema,
+} from '@sigil/contracts/node-contract';
 import type { PipelineNode } from '@sigil/contracts/nodes';
 import { z } from 'zod';
 import type { AdmittedNodeContract } from './compilation.js';
@@ -17,7 +21,6 @@ import {
     resolveNodeContract,
 } from './node-contract.js';
 import { createBuiltinNodeContractRegistry } from './nodes/catalog.js';
-import { SWITCH_DIAGNOSTIC_CODES } from './nodes/switch.js';
 
 const TOPOLOGY_DIAGNOSTIC_CODES = [
     'invalid_pipeline',
@@ -40,7 +43,6 @@ const TOPOLOGY_DIAGNOSTIC_CODES = [
     'unsupported_plugin_authoring',
     'invalid_plugin_config',
     'invalid_node_contract',
-    ...SWITCH_DIAGNOSTIC_CODES,
 ] as const;
 
 export const TopologyDiagnosticSeveritySchema = z.enum(['error', 'warning']);
@@ -49,28 +51,85 @@ export type TopologyDiagnosticSeverity = z.infer<typeof TopologyDiagnosticSeveri
 export const TopologyDiagnosticCodeSchema = z.enum(TOPOLOGY_DIAGNOSTIC_CODES);
 export type TopologyDiagnosticCode = z.infer<typeof TopologyDiagnosticCodeSchema>;
 
-const TopologyDiagnosticTargetSchema = z.discriminatedUnion('kind', [
-    z.object({ kind: z.literal('pipeline') }).strict(),
-    z.object({ kind: z.literal('node'), nodeId: PipelineNodeIdSchema }).strict(),
-    z.object({ kind: z.literal('edge'), edgeId: PipelineEdgeIdSchema }).strict(),
-]);
+const TopologyDiagnosticCommonFields = {
+    severity: TopologyDiagnosticSeveritySchema,
+    code: TopologyDiagnosticCodeSchema,
+    fieldPath: z.string().min(1).optional(),
+    message: z.string().min(1),
+    repairHint: z.string().min(1).optional(),
+} as const;
 
-export const TopologyDiagnosticSchema = z
+interface TopologyDiagnosticCommon {
+    readonly severity: TopologyDiagnosticSeverity;
+    readonly code: TopologyDiagnosticCode;
+    readonly fieldPath?: string;
+    readonly message: string;
+    readonly repairHint?: string;
+}
+
+export type TopologyDiagnostic =
+    | (TopologyDiagnosticCommon & {
+          readonly target: { readonly kind: 'pipeline' };
+      })
+    | (TopologyDiagnosticCommon & {
+          readonly target: { readonly kind: 'node'; readonly nodeId: PipelineNodeId };
+          readonly details?: NodeDiagnosticDetails;
+      })
+    | (TopologyDiagnosticCommon & {
+          readonly target: {
+              readonly kind: 'edge';
+              readonly edgeId: PipelineEdgeId;
+              readonly relatedNodeId?: PipelineNodeId;
+          };
+      });
+
+const PipelineTopologyDiagnosticSchema = z
     .object({
-        severity: TopologyDiagnosticSeveritySchema,
-        code: TopologyDiagnosticCodeSchema,
-        target: TopologyDiagnosticTargetSchema,
-        nodeId: PipelineNodeIdSchema.optional(),
-        edgeId: PipelineEdgeIdSchema.optional(),
-        caseId: z.string().min(1).optional(),
-        fieldPath: z.string().min(1).optional(),
-        message: z.string().min(1),
-        repairHint: z.string().min(1).optional(),
+        ...TopologyDiagnosticCommonFields,
+        target: z.object({ kind: z.literal('pipeline') }).strict(),
     })
     .strict()
     .readonly();
 
-export type TopologyDiagnostic = z.infer<typeof TopologyDiagnosticSchema>;
+const NodeTopologyDiagnosticSchema = z
+    .object({
+        ...TopologyDiagnosticCommonFields,
+        target: z.object({ kind: z.literal('node'), nodeId: PipelineNodeIdSchema }).strict(),
+        details: NodeDiagnosticDetailsSchema.optional(),
+    })
+    .strict()
+    .readonly();
+
+const EdgeTopologyDiagnosticSchema = z
+    .object({
+        ...TopologyDiagnosticCommonFields,
+        target: z
+            .object({
+                kind: z.literal('edge'),
+                edgeId: PipelineEdgeIdSchema,
+                relatedNodeId: PipelineNodeIdSchema.optional(),
+            })
+            .strict(),
+    })
+    .strict()
+    .readonly();
+
+export const TopologyDiagnosticSchema: z.ZodType<TopologyDiagnostic> = z
+    .union([
+        PipelineTopologyDiagnosticSchema,
+        NodeTopologyDiagnosticSchema,
+        EdgeTopologyDiagnosticSchema,
+    ])
+    .readonly() as z.ZodType<TopologyDiagnostic>;
+export type TopologyDiagnosticTarget = TopologyDiagnostic['target'];
+export type NodeTopologyDiagnostic = Extract<
+    TopologyDiagnostic,
+    { readonly target: { readonly kind: 'node' } }
+>;
+export type EdgeTopologyDiagnostic = Extract<
+    TopologyDiagnostic,
+    { readonly target: { readonly kind: 'edge' } }
+>;
 
 export type TopologyOutputPorts = readonly NodeOutputPortId[] | 'dynamic';
 
@@ -114,7 +173,6 @@ function nodeDiagnostic(
         severity: 'error',
         code,
         target: { kind: 'node', nodeId },
-        nodeId,
         message,
     };
 }
@@ -123,14 +181,16 @@ function edgeDiagnostic(
     code: TopologyDiagnosticCode,
     edgeId: PipelineEdgeId,
     message: string,
-    nodeId?: PipelineNodeId,
+    relatedNodeId?: PipelineNodeId,
 ): TopologyDiagnostic {
     return {
         severity: 'error',
         code,
-        target: { kind: 'edge', edgeId },
-        edgeId,
-        ...(nodeId ? { nodeId } : {}),
+        target: {
+            kind: 'edge',
+            edgeId,
+            ...(relatedNodeId === undefined ? {} : { relatedNodeId }),
+        },
         message,
     };
 }
@@ -160,18 +220,14 @@ function appendInvalidContractDiagnostics(
     resolution: Extract<NodeContractResolution, { readonly status: 'invalid' }>,
 ): void {
     for (const issue of resolution.issues) {
-        const mappedCode = issue.diagnosticCode
-            ? TopologyDiagnosticCodeSchema.safeParse(issue.diagnosticCode)
-            : undefined;
         appendUnique(diagnostics, {
             severity: 'error',
-            code: mappedCode?.success ? mappedCode.data : 'invalid_node_contract',
+            code: 'invalid_node_contract',
             target: { kind: 'node', nodeId: node.id },
-            nodeId: node.id,
-            ...(issue.caseId === undefined ? {} : { caseId: issue.caseId }),
+            ...(issue.details === undefined ? {} : { details: issue.details }),
             fieldPath: contractIssueFieldPath(issue.path),
             message:
-                issue.diagnosticCode === undefined
+                issue.details === undefined
                     ? `Node "${node.id}" (${formatNodeIdentity(resolution.identity)}) has invalid ` +
                       `configuration for its output-port contract: ${issue.message}`
                     : issue.message,
@@ -181,16 +237,66 @@ function appendInvalidContractDiagnostics(
 }
 
 function appendUnique(diagnostics: TopologyDiagnostic[], diagnostic: TopologyDiagnostic): void {
-    const duplicate = diagnostics.some(
-        (existing) =>
-            existing.code === diagnostic.code &&
-            existing.target.kind === diagnostic.target.kind &&
-            existing.nodeId === diagnostic.nodeId &&
-            existing.edgeId === diagnostic.edgeId &&
-            existing.caseId === diagnostic.caseId &&
-            existing.fieldPath === diagnostic.fieldPath,
-    );
+    const key = topologyDiagnosticKey(diagnostic);
+    const duplicate = diagnostics.some((existing) => topologyDiagnosticKey(existing) === key);
     if (!duplicate) diagnostics.push(diagnostic);
+}
+
+export function topologyDiagnosticTargetKey(target: TopologyDiagnosticTarget): string {
+    switch (target.kind) {
+        case 'pipeline':
+            return 'pipeline';
+        case 'node':
+            return `node:${target.nodeId}`;
+        case 'edge':
+            return target.relatedNodeId === undefined
+                ? `edge:${target.edgeId}`
+                : `edge:${target.edgeId}:node:${target.relatedNodeId}`;
+        default:
+            return assertNever(target);
+    }
+}
+
+export function formatTopologyDiagnosticTarget(target: TopologyDiagnosticTarget): string {
+    switch (target.kind) {
+        case 'pipeline':
+            return 'Workflow';
+        case 'node':
+            return `Node ${target.nodeId}`;
+        case 'edge':
+            return target.relatedNodeId === undefined
+                ? `Edge ${target.edgeId}`
+                : `Edge ${target.edgeId} · Node ${target.relatedNodeId}`;
+        default:
+            return assertNever(target);
+    }
+}
+
+export function topologyDiagnosticKey(diagnostic: TopologyDiagnostic): string {
+    return JSON.stringify({
+        code: diagnostic.code,
+        severity: diagnostic.severity,
+        target: topologyDiagnosticTargetKey(diagnostic.target),
+        fieldPath: diagnostic.fieldPath ?? null,
+        details: 'details' in diagnostic ? (diagnostic.details ?? null) : null,
+        message: diagnostic.message,
+        repairHint: diagnostic.repairHint ?? null,
+    });
+}
+
+/** Stable identity for UI entries that should survive message or repair-hint changes. */
+export function topologyDiagnosticStableKey(diagnostic: TopologyDiagnostic): string {
+    return JSON.stringify({
+        code: diagnostic.code,
+        severity: diagnostic.severity,
+        target: topologyDiagnosticTargetKey(diagnostic.target),
+        fieldPath: diagnostic.fieldPath ?? null,
+        details: 'details' in diagnostic ? (diagnostic.details ?? null) : null,
+    });
+}
+
+function assertNever(value: never): never {
+    throw new Error(`Unhandled topology diagnostic value: ${JSON.stringify(value)}`);
 }
 
 function stableExecutionOrder(
@@ -385,7 +491,6 @@ export function validateWorkflowTopology(
                 severity: 'error',
                 code: 'unavailable_node_contract',
                 target: { kind: 'node', nodeId: node.id },
-                nodeId: node.id,
                 message:
                     `Node "${node.id}" (${formatNodeIdentity(resolution.identity)}) has no registered ` +
                     'Node Contract; load the Plugin that declares it before running the Workflow.',

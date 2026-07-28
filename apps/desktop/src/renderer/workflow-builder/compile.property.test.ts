@@ -170,7 +170,13 @@ describe('generated compileGraph properties', () => {
                 if (!result.ok) {
                     expect(result.diagnostics).toEqual(
                         expect.arrayContaining([
-                            expect.objectContaining({ code: 'cycle', edgeId: 'edge-cycle' }),
+                            expect.objectContaining({
+                                code: 'cycle',
+                                target: expect.objectContaining({
+                                    kind: 'edge',
+                                    edgeId: 'edge-cycle',
+                                }),
+                            }),
                         ]),
                     );
                 }
@@ -199,7 +205,7 @@ describe('generated compileGraph properties', () => {
                             expect.objectContaining({
                                 severity: 'warning',
                                 code: 'invalid_edge',
-                                edgeId: 'edge-detached',
+                                target: { kind: 'edge', edgeId: 'edge-detached' },
                             }),
                         ]),
                     );

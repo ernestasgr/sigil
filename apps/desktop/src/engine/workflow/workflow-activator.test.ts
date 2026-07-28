@@ -20,6 +20,7 @@ import { Either, Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import { testDocument } from '../../test-support/pipeline-fixtures.js';
 import { createEngine } from '../core/engine.js';
+import type { BusEvent } from '../events/event-bus.js';
 import type { NodeHandler, NodeRunResult, TriggerHandler } from '../node-handlers/types.js';
 import { createWorkflowActivator, getDeactivationHook } from './workflow-activator.js';
 import { workflowCompilationOptions } from './workflow-compilation.js';
@@ -137,10 +138,7 @@ describe('WorkflowActivator lifecycle', () => {
             permissionOverridesPath: join(storageDir, 'permission-overrides.json'),
         });
         let activator: ReturnType<typeof createWorkflowActivator> | undefined;
-        const events: Array<{
-            readonly name: string;
-            readonly payload: Readonly<Record<string, unknown>>;
-        }> = [];
+        const events: BusEvent[] = [];
 
         try {
             const nodeContract = {
@@ -264,7 +262,7 @@ describe('WorkflowActivator lifecycle', () => {
             );
             activator = createWorkflowActivator(engine, store, engine.handlerRegistry);
             engine.bus.subscribe((event) => {
-                events.push({ name: event.name, payload: event.payload });
+                events.push(event);
             });
 
             expect(activator.activate(workflowId)).toBe(true);

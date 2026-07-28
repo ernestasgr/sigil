@@ -160,7 +160,7 @@ describe('WorkflowStore', () => {
                 diagnostics: expect.arrayContaining([
                     expect.objectContaining({
                         code: 'unsupported_node_handler',
-                        nodeId: 'missing',
+                        target: { kind: 'node', nodeId: 'missing' },
                     }),
                 ]),
             }),
@@ -704,8 +704,11 @@ describe('WorkflowStore', () => {
                 diagnostics: [
                     expect.objectContaining({
                         code: 'invalid_output_port',
-                        edgeId: 'trigger-log',
-                        nodeId: 'trigger',
+                        target: {
+                            kind: 'edge',
+                            edgeId: 'trigger-log',
+                            relatedNodeId: 'trigger',
+                        },
                     }),
                 ],
             }),

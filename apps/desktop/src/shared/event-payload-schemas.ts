@@ -6,6 +6,7 @@ import {
     WorkflowIdSchema,
 } from '@sigil/contracts/ids';
 import { CapabilitySchema } from '@sigil/contracts/manifest';
+import { type TopologyDiagnostic, TopologyDiagnosticSchema } from '@sigil/workflow-domain/topology';
 import { Either } from 'effect';
 import { z } from 'zod';
 
@@ -186,7 +187,32 @@ export function createPluginPermissionChangedEvent(
     };
 }
 
-export const EngineDiagnosticPayloadSchema = z
+interface EngineDiagnosticPayloadFields {
+    readonly kind?: string;
+    readonly source?: z.infer<typeof TelemetryDiagnosticSourceSchema>;
+    readonly pluginId?: z.infer<typeof PluginIdSchema>;
+    readonly workflowId?: string;
+    readonly pipelineId?: string;
+    readonly runId?: string;
+    readonly nodeType?: z.infer<typeof NodeTypeNameSchema>;
+    readonly outcome?: z.infer<typeof TelemetryOutcomeSchema>;
+}
+
+export type EngineDiagnosticContext =
+    | (EngineDiagnosticPayloadFields & {
+          readonly diagnostic: TopologyDiagnostic;
+          readonly nodeId?: never;
+      })
+    | (EngineDiagnosticPayloadFields & {
+          readonly diagnostic?: never;
+          readonly nodeId?: string;
+      });
+
+export type EngineDiagnosticPayload = EngineDiagnosticContext & {
+    readonly message: string;
+};
+
+const EngineDiagnosticPayloadSchemaImplementation = z
     .object({
         message: z.string(),
         kind: z.string().optional(),
@@ -198,16 +224,41 @@ export const EngineDiagnosticPayloadSchema = z
         nodeId: z.string().min(1).optional(),
         nodeType: NodeTypeNameSchema.optional(),
         outcome: TelemetryOutcomeSchema.optional(),
+        diagnostic: TopologyDiagnosticSchema.optional(),
+    })
+    .superRefine((payload, ctx) => {
+        if (payload.diagnostic !== undefined && payload.nodeId !== undefined) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['nodeId'],
+                message:
+                    'Topology diagnostic target identity must not be duplicated in nodeId context.',
+            });
+        }
     })
     .readonly();
-export type EngineDiagnosticPayload = z.infer<typeof EngineDiagnosticPayloadSchema>;
+export const EngineDiagnosticPayloadSchema: z.ZodType<EngineDiagnosticPayload> =
+    EngineDiagnosticPayloadSchemaImplementation as z.ZodType<EngineDiagnosticPayload>;
+export type { TopologyDiagnostic };
 
 export type EngineDiagnosticEvent = {
     readonly name: 'engine.diagnostic';
     readonly payload: EngineDiagnosticPayload;
 };
 
-export function createEngineDiagnostic(payload: EngineDiagnosticPayload): EngineDiagnosticEvent {
+export function createEngineDiagnostic(payload: EngineDiagnosticPayload): EngineDiagnosticEvent;
+export function createEngineDiagnostic(
+    message: string,
+    context?: EngineDiagnosticContext,
+): EngineDiagnosticEvent;
+export function createEngineDiagnostic(
+    payloadOrMessage: EngineDiagnosticPayload | string,
+    context?: EngineDiagnosticContext,
+): EngineDiagnosticEvent {
+    const payload =
+        typeof payloadOrMessage === 'string'
+            ? { message: payloadOrMessage, ...(context ?? {}) }
+            : payloadOrMessage;
     return {
         name: 'engine.diagnostic',
         payload: EngineDiagnosticPayloadSchema.parse(payload),

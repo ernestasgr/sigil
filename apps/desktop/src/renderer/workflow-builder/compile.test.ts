@@ -62,11 +62,16 @@ describe('compileGraph', () => {
             expect(
                 result.diagnostics
                     .filter((diagnostic) => diagnostic.code === 'cycle')
-                    .map((diagnostic) => diagnostic.edgeId),
+                    .flatMap((diagnostic) =>
+                        diagnostic.target.kind === 'edge' ? [diagnostic.target.edgeId] : [],
+                    ),
             ).toEqual(['a-b', 'b-a']);
             expect(result.diagnostics).not.toEqual(
                 expect.arrayContaining([
-                    expect.objectContaining({ code: 'cycle', edgeId: 'b-tail' }),
+                    expect.objectContaining({
+                        code: 'cycle',
+                        target: expect.objectContaining({ kind: 'edge', edgeId: 'b-tail' }),
+                    }),
                 ]),
             );
             expect(result.error).not.toContain('b-tail');
@@ -195,7 +200,6 @@ describe('compileGraph', () => {
                     expect.arrayContaining([
                         expect.objectContaining({
                             target: { kind: 'node', nodeId: 'branch' },
-                            nodeId: 'branch',
                             fieldPath: 'config.condition.value',
                         }),
                     ]),
@@ -242,7 +246,6 @@ describe('compileGraph', () => {
                         expect.objectContaining({
                             code: 'invalid_pipeline',
                             target: { kind: 'node', nodeId: 'delay' },
-                            nodeId: 'delay',
                             fieldPath: 'config.ms',
                         }),
                     ]),
@@ -515,12 +518,12 @@ describe('compileGraph', () => {
                     expect.objectContaining({
                         severity: 'warning',
                         code: 'unsupported_plugin_authoring',
-                        nodeId: 'plugin-action',
+                        target: { kind: 'node', nodeId: 'plugin-action' },
                     }),
                     expect.objectContaining({
                         severity: 'error',
                         code: 'unavailable_node_contract',
-                        nodeId: 'plugin-action',
+                        target: { kind: 'node', nodeId: 'plugin-action' },
                     }),
                 ]),
             );
@@ -563,8 +566,11 @@ describe('compileGraph', () => {
                     expect.objectContaining({ code: 'missing_trigger' }),
                     expect.objectContaining({
                         code: 'invalid_output_port',
-                        edgeId: 'e1',
-                        nodeId: 'plugin-trigger',
+                        target: {
+                            kind: 'edge',
+                            edgeId: 'e1',
+                            relatedNodeId: 'plugin-trigger',
+                        },
                     }),
                 ]),
             );
@@ -699,8 +705,11 @@ describe('compileGraph', () => {
                 expect.arrayContaining([
                     expect.objectContaining({
                         code: 'invalid_output_port',
-                        edgeId: 'router-log',
-                        nodeId: 'router',
+                        target: {
+                            kind: 'edge',
+                            edgeId: 'router-log',
+                            relatedNodeId: 'router',
+                        },
                     }),
                 ]),
             );

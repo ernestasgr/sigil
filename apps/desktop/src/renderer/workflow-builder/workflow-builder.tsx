@@ -1,4 +1,9 @@
-import type { TopologyDiagnostic } from '@sigil/workflow-domain/topology';
+import {
+    formatTopologyDiagnosticTarget,
+    type TopologyDiagnostic,
+    topologyDiagnosticKey,
+    topologyDiagnosticStableKey,
+} from '@sigil/workflow-domain/topology';
 import { ReactFlowProvider } from '@xyflow/react';
 import { type ReactElement, useEffect, useState } from 'react';
 
@@ -147,16 +152,7 @@ interface ValidationBarProps {
 }
 
 function diagnosticTargetLabel(diagnostic: TopologyDiagnostic): string {
-    switch (diagnostic.target.kind) {
-        case 'pipeline':
-            return 'Workflow';
-        case 'node':
-            return `Node ${diagnostic.target.nodeId}`;
-        case 'edge':
-            return diagnostic.nodeId
-                ? `Edge ${diagnostic.target.edgeId} · Node ${diagnostic.nodeId}`
-                : `Edge ${diagnostic.target.edgeId}`;
-    }
+    return formatTopologyDiagnosticTarget(diagnostic.target);
 }
 
 type CommandDiagnostic = Extract<WorkflowDraftDiagnostic, WorkflowDraftCommandDiagnostic>;
@@ -195,6 +191,7 @@ function saveDiagnosticRepairHint(diagnostic: WorkflowDraftDiagnostic): string |
 }
 
 function saveDiagnosticKey(diagnostic: WorkflowDraftDiagnostic): string {
+    if (isTopologyDiagnostic(diagnostic)) return topologyDiagnosticStableKey(diagnostic);
     return `${diagnostic.code}-${saveDiagnosticTargetLabel(diagnostic)}-${
         saveDiagnosticContextLabel(diagnostic) ?? ''
     }-${diagnostic.message}`;
@@ -299,10 +296,7 @@ function ValidationBar({ onSave, saveState }: ValidationBarProps): ReactElement 
                 {diagnostics.length > 0 ? (
                     <ul className="mt-1 max-h-20 space-y-1 overflow-auto pl-4 font-data text-[10px]">
                         {diagnostics.map((diagnostic) => (
-                            <li
-                                key={`${diagnostic.severity}-${diagnostic.code}-${diagnostic.target.kind}-${diagnostic.message}`}
-                                className="break-words"
-                            >
+                            <li key={topologyDiagnosticKey(diagnostic)} className="break-words">
                                 <span
                                     className={
                                         diagnostic.severity === 'error'

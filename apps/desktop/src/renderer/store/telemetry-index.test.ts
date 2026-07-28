@@ -149,6 +149,67 @@ describe('telemetry index', () => {
         expect(output).not.toContain('raw-secret');
     });
 
+    it('indexes topology target identity and namespaced Node details from the nested diagnostic', () => {
+        const nodeEntry = createTelemetryEntry(1, {
+            name: 'engine.diagnostic',
+            payload: {
+                message: '[topology:invalid_node_contract] Invalid configuration.',
+                source: 'engine',
+                outcome: 'failed',
+                diagnostic: {
+                    severity: 'error',
+                    code: 'invalid_node_contract',
+                    target: { kind: 'node', nodeId: 'router' },
+                    details: {
+                        namespace: 'plugin.example.router',
+                        code: 'unsupported_target',
+                    },
+                    message: 'The router target is not supported.',
+                },
+            },
+        });
+        const edgeEntry = createTelemetryEntry(2, {
+            name: 'engine.diagnostic',
+            payload: {
+                message: '[topology:invalid_output_port] Invalid output port.',
+                source: 'engine',
+                outcome: 'failed',
+                diagnostic: {
+                    severity: 'error',
+                    code: 'invalid_output_port',
+                    target: { kind: 'edge', edgeId: 'router-log', relatedNodeId: 'router' },
+                    message: 'The output port is not declared.',
+                },
+            },
+        });
+
+        const exported: unknown = JSON.parse(formatTelemetryExport([nodeEntry, edgeEntry]));
+
+        expect(exported).toMatchObject({
+            events: [
+                {
+                    diagnosticCode: 'invalid_node_contract',
+                    diagnosticTarget: 'node',
+                    diagnosticTargetId: 'router',
+                    nodeId: 'router',
+                    diagnosticNamespace: 'plugin.example.router',
+                    diagnosticDetailCode: 'unsupported_target',
+                },
+                {
+                    diagnosticCode: 'invalid_output_port',
+                    diagnosticTarget: 'edge',
+                    diagnosticTargetId: 'router-log',
+                    edgeId: 'router-log',
+                    relatedNodeId: 'router',
+                },
+            ],
+        });
+        if (exported && typeof exported === 'object' && 'events' in exported) {
+            const events = exported.events;
+            if (Array.isArray(events)) expect(events[1]).not.toHaveProperty('nodeId');
+        }
+    });
+
     it('does not index diagnostic fields from an invalid registered payload', () => {
         const entry = createTelemetryEntry(1, {
             name: 'engine.diagnostic',

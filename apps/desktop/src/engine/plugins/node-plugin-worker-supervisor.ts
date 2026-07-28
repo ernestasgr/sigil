@@ -4,7 +4,11 @@ import type { PluginId } from '@sigil/contracts/ids';
 import type { SerializableNodeContract } from '@sigil/contracts/node-contract';
 import { type WorkflowContext, WorkflowContextSchema } from '@sigil/contracts/workflow-context';
 import { Option } from 'effect';
-import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
+import {
+    createEngineDiagnostic,
+    type EngineDiagnosticContext,
+    type EngineDiagnosticPayload,
+} from '../../shared/event-payload-schemas.js';
 import type { Bridge } from '../events/bridge.js';
 import type {
     KernelDeps,
@@ -98,7 +102,7 @@ function notifyDiagnostic(
     diagnostic: ((message: string) => void) | undefined,
     diagnosticEvent: ((event: EngineDiagnosticPayload) => void) | undefined,
     message: string,
-    context: Omit<EngineDiagnosticPayload, 'message'> = {},
+    context: EngineDiagnosticContext = {},
 ): void {
     try {
         diagnostic?.(message);
@@ -106,7 +110,7 @@ function notifyDiagnostic(
         // A diagnostic subscriber must not affect Plugin execution.
     }
     try {
-        diagnosticEvent?.({ message, ...context });
+        diagnosticEvent?.(createEngineDiagnostic(message, context).payload);
     } catch {
         // A diagnostic subscriber must not affect Plugin execution.
     }

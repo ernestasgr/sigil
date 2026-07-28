@@ -14,6 +14,7 @@ import type {
     EngineDiagnosticPayload,
     PermissionTransitionActor,
 } from '../../shared/event-payload-schemas.js';
+import { createEngineDiagnostic } from '../../shared/event-payload-schemas.js';
 import type { PermissionOverrideOutcome } from '../../shared/persistence.js';
 import type { Bridge } from '../events/bridge.js';
 import { createBridge } from '../events/bridge.js';
@@ -142,15 +143,15 @@ export function resolveSettings(
 
 function emitTopologyDiagnostics(bus: EventBus, diagnostics: readonly TopologyDiagnostic[]): void {
     for (const diagnostic of diagnostics) {
-        bus.next({
-            name: 'engine.diagnostic',
-            payload: {
+        bus.next(
+            createEngineDiagnostic({
                 message: `[topology:${diagnostic.code}] ${diagnostic.message}`,
                 kind: 'topology',
                 source: 'engine',
                 outcome: 'failed',
-            },
-        });
+                diagnostic,
+            }),
+        );
     }
 }
 

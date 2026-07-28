@@ -433,7 +433,11 @@ describe('WorkflowDocumentSchema', () => {
             if (!topology.ok) {
                 expect(topology.diagnostics).toEqual(
                     expect.arrayContaining([
-                        expect.objectContaining({ code: 'duplicate_match_value' }),
+                        expect.objectContaining({
+                            code: 'invalid_node_contract',
+                            target: { kind: 'node', nodeId: 'sw' },
+                            details: expect.objectContaining({ code: 'duplicate_match_value' }),
+                        }),
                     ]),
                 );
             }

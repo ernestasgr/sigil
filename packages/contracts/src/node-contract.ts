@@ -292,6 +292,34 @@ export const SerializableJsonValueSchema: z.ZodType<SerializableJsonValue> = z.p
     SerializableJsonValueSchemaImplementation,
 );
 
+const NODE_DIAGNOSTIC_NAMESPACE_PATTERN = /^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$/;
+const NODE_DIAGNOSTIC_CODE_PATTERN = /^[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*$/;
+
+/** A bounded, namespaced payload for configuration diagnostics owned by a Node. */
+export interface NodeDiagnosticDetails {
+    readonly namespace: string;
+    readonly code: string;
+    /** Runtime validation guarantees that this record contains serializable JSON values. */
+    readonly data?: Readonly<Record<string, SerializableJsonValue>>;
+}
+
+export const NodeDiagnosticDetailsSchema: z.ZodType<NodeDiagnosticDetails> = z
+    .object({
+        namespace: z
+            .string()
+            .min(1)
+            .max(128)
+            .regex(NODE_DIAGNOSTIC_NAMESPACE_PATTERN, 'Diagnostic namespace is not canonical.'),
+        code: z
+            .string()
+            .min(1)
+            .max(128)
+            .regex(NODE_DIAGNOSTIC_CODE_PATTERN, 'Diagnostic code is not canonical.'),
+        data: z.record(z.string(), SerializableJsonValueSchema).readonly().optional(),
+    })
+    .strict()
+    .readonly() as z.ZodType<NodeDiagnosticDetails>;
+
 export type SerializableJsonSchema = boolean | { readonly [key: string]: unknown };
 
 export const SerializableJsonSchemaSchema: z.ZodType<SerializableJsonSchema, unknown> =
@@ -607,8 +635,7 @@ export const NodeContractIssueSchema = z
         path: z.string(),
         message: z.string().min(1),
         repairHint: z.string().min(1).optional(),
-        diagnosticCode: z.string().min(1).optional(),
-        caseId: z.string().min(1).optional(),
+        details: NodeDiagnosticDetailsSchema.optional(),
     })
     .strict()
     .readonly();
