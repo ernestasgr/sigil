@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { PluginIdSchema } from '@sigil/contracts/ids';
 import { FileWatcherConfigSchema } from '@sigil/contracts/nodes/file-watcher';
-import { PROPERTY_DESCRIPTORS } from '@sigil/contracts/properties-file';
+import { BUILTIN_PROPERTY_DESCRIPTORS } from '@sigil/contracts/properties-file';
 import type { WorkflowContext } from '@sigil/contracts/workflow-context';
 import { Either } from 'effect';
 
@@ -17,7 +17,7 @@ export const descriptor = {
     type: 'file-watcher' as const,
     configSchema: FileWatcherConfigSchema,
     defaultConfig: { path: '/', recursive: true, events: ['file.created'] },
-    properties: [PROPERTY_DESCRIPTORS['file-watcher.ignorePatterns']],
+    properties: [BUILTIN_PROPERTY_DESCRIPTORS['file-watcher.ignorePatterns']],
 };
 
 export function handler(kernel: KernelDeps): TriggerHandler {

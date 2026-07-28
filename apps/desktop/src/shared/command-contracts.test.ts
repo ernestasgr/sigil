@@ -107,7 +107,7 @@ const engineFixtures = {
         request: { pluginId: FIXTURE_PLUGIN_ID, overrides: [] },
         response: { ok: true, grantedPermissions: [], cancelledRunIds: [] },
     },
-    readProperties: { request: {}, response: { properties: {} } },
+    readProperties: { request: {}, response: { properties: {}, defaults: {} } },
     saveProperties: {
         request: { properties: {} },
         response: { ok: true, applied: {}, restartRequired: [] },

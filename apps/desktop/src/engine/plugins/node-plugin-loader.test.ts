@@ -986,7 +986,50 @@ describe('loadNodePlugin', () => {
         expect(
             propertyRegistry.schema().safeParse({ 'property-node.message': 'configured' }).success,
         ).toBe(true);
-        expect(propertyRegistry.resolveAll({})['property-node.message']).toBe('hello');
+        const resolvedProperties = propertyRegistry.resolveAll({});
+        expect(resolvedProperties.ok).toBe(true);
+        if (resolvedProperties.ok) {
+            expect(resolvedProperties.value['property-node.message']).toBe('hello');
+        }
+    });
+
+    it('unloads a Plugin by owner and leaves built-in properties and handlers intact', async () => {
+        const pluginDir = join(tempDir, 'unloadable-property-plugin');
+        const pluginId = pid('com.sigil.unloadable-property');
+        writePlugin(
+            pluginDir,
+            {
+                id: pluginId,
+                version: '0.0.1',
+                permissions: [],
+                emits: ['test.event'],
+                nodeType: 'property-node',
+            },
+            PROPERTY_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const propertyRegistry = createPropertyRegistry();
+        const loader = createNodePluginLoader();
+        testLoaders.add(loader);
+
+        await expect(
+            loader.loadNodePlugin(pluginDir, {
+                manifestRegistry,
+                handlerRegistry,
+                propertyRegistry,
+            }),
+        ).resolves.toMatchObject({ ok: true });
+        expect(manifestRegistry.has(pluginId)).toBe(true);
+        expect(handlerRegistry.has('property-node')).toBe(true);
+        expect(propertyRegistry.has('property-node.message')).toBe(true);
+
+        await expect(loader.unloadNodePlugin(pluginId)).resolves.toBe(true);
+        expect(manifestRegistry.has(pluginId)).toBe(false);
+        expect(handlerRegistry.has('property-node')).toBe(false);
+        expect(propertyRegistry.has('property-node.message')).toBe(false);
+        expect(propertyRegistry.has('notifyOnWorkflowError')).toBe(true);
+        await expect(loader.unloadNodePlugin(pluginId)).resolves.toBe(false);
     });
 
     it('collects properties declared on the descriptor and module export', async () => {

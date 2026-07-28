@@ -14,10 +14,18 @@ import type {
     SerializedPropertyDescriptor,
 } from '@sigil/contracts/properties-file';
 
-import { PROPERTY_DESCRIPTORS } from '@sigil/contracts/properties-file';
+import {
+    BUILTIN_PROPERTY_DESCRIPTORS,
+    PropertyApplyModeSchema,
+} from '@sigil/contracts/properties-file';
 import { fromJSONSchema, z } from 'zod';
+import { cloneSnapshot, freezeSnapshot } from '../../shared/property-snapshot.js';
 
-export { PROPERTY_DESCRIPTORS } from '@sigil/contracts/properties-file';
+export {
+    BUILTIN_PROPERTY_DESCRIPTORS,
+    DEFAULT_PROPERTIES,
+    PROPERTY_DESCRIPTORS,
+} from '@sigil/contracts/properties-file';
 export type {
     AnyPropertyDescriptor,
     CollisionSuffixStyle,
@@ -37,9 +45,8 @@ export type {
 export interface PropertyRegistryOptions {
     readonly owner?: string;
     /**
-     * Builtin Plugins are loaded after the builtin registry has seeded
-     * their descriptors. They may re-submit the exact descriptor; arbitrary
-     * Plugins may not use this escape hatch.
+     * Built-in Plugins may re-submit the immutable descriptor seeded by the
+     * Engine. Arbitrary duplicate descriptors never use this escape hatch.
      */
     readonly allowExisting?: boolean;
 }
@@ -71,6 +78,43 @@ export type PropertyRegistrationBatchResult =
       }
     | { readonly ok: false; readonly error: PropertyRegistryError };
 
+export type PropertyResolutionSource =
+    | 'explicit'
+    | 'properties-file'
+    | 'caller-fallback'
+    | 'descriptor-fallback';
+
+export type PropertyResolutionResult<TValue> =
+    | {
+          readonly ok: true;
+          readonly kind: 'success';
+          readonly status: 'success';
+          readonly value: TValue;
+          readonly source: PropertyResolutionSource;
+      }
+    | {
+          readonly ok: false;
+          readonly kind: 'missing';
+          readonly status: 'missing';
+          readonly key: string;
+      }
+    | {
+          readonly ok: false;
+          readonly kind: 'invalid';
+          readonly status: 'invalid';
+          readonly key: string;
+          readonly source: PropertyResolutionSource;
+          readonly error: string;
+          readonly issues: readonly string[];
+      };
+
+export type PropertyResolutionBatchResult =
+    | { readonly ok: true; readonly value: RegisteredResolvedProperties }
+    | {
+          readonly ok: false;
+          readonly error: Extract<PropertyResolutionResult<unknown>, { readonly ok: false }>;
+      };
+
 export interface PropertyRegistry {
     readonly register: (
         descriptor: PropertyDescriptor<string, z.ZodType> | SerializedPropertyDescriptor,
@@ -83,21 +127,37 @@ export interface PropertyRegistry {
         )[],
         options?: PropertyRegistryOptions,
     ) => PropertyRegistrationBatchResult;
-    readonly unregister: (key: string) => void;
-    readonly unregisterOwner: (owner: string) => void;
+    /** Remove a non-built-in descriptor by key. */
+    readonly unregister: (key: string) => boolean;
+    /** Remove all descriptors owned by one Plugin and return the removed keys. */
+    readonly unregisterOwner: (owner: string) => readonly string[];
+    /** Return an immutable descriptor snapshot. */
     readonly get: (key: string) => AnyPropertyDescriptor | undefined;
     readonly has: (key: string) => boolean;
+    /** Return immutable descriptor snapshots in registration order. */
     readonly all: () => readonly AnyPropertyDescriptor[];
+    /** Return a schema refreshed after every successful registration change. */
     readonly schema: () => z.ZodType<PropertiesFile>;
+    /**
+     * Resolve the first selected source and validate that winner. A dynamic
+     * key therefore cannot hide missing or invalid data behind a concrete type.
+     */
     readonly resolve: <TKey extends string>(
         key: TKey,
-        sources: PropertyResolutionSources<TKey>,
-    ) => PropertyValue<TKey>;
+        sources: PropertyResolutionSources,
+    ) => PropertyResolutionResult<PropertyValue<TKey>>;
     readonly resolveAll: (
         properties: Readonly<Record<string, unknown>>,
         fallbacks?: Readonly<Record<string, unknown>>,
-    ) => RegisteredResolvedProperties;
+    ) => PropertyResolutionBatchResult;
+    /** Return an immutable snapshot of every currently registered fallback. */
     readonly defaults: () => Readonly<RegisteredResolvedProperties>;
+}
+
+interface StoredDescriptor {
+    readonly descriptor: AnyPropertyDescriptor;
+    readonly owner?: string;
+    readonly builtin: boolean;
 }
 
 function isJsonSafe(value: unknown, seen = new Set<object>()): boolean {
@@ -184,7 +244,15 @@ function normalizeDescriptor(
         }
     }
 
-    const fallback = schema.safeParse(input.fallback);
+    let fallback: ReturnType<typeof schema.safeParse>;
+    try {
+        fallback = schema.safeParse(input.fallback);
+    } catch (error) {
+        return invalidDescriptor(
+            `Property descriptor fallback could not be validated: ${error instanceof Error ? error.message : String(error)}`,
+            key,
+        );
+    }
     if (!fallback.success) {
         return invalidDescriptor(
             `Property descriptor fallback does not match its schema: ${fallback.error.message}`,
@@ -198,7 +266,7 @@ function normalizeDescriptor(
         return invalidDescriptor('Property descriptor fallback must be JSON-safe.', key);
     }
 
-    const apply = z.enum(['hot', 'restart-required']).safeParse(input.apply);
+    const apply = PropertyApplyModeSchema.safeParse(input.apply);
     if (!apply.success) {
         return invalidDescriptor(
             'Property descriptor must explicitly declare an apply mode of "hot" or "restart-required".',
@@ -208,12 +276,12 @@ function normalizeDescriptor(
 
     return {
         ok: true,
-        descriptor: {
+        descriptor: Object.freeze({
             key,
             schema,
-            fallback: fallback.data,
+            fallback: cloneSnapshot(fallback.data),
             apply: apply.data,
-        },
+        }),
     };
 }
 
@@ -239,23 +307,50 @@ function descriptorsMatch(first: AnyPropertyDescriptor, second: AnyPropertyDescr
 }
 
 function createPropertiesFileSchema(
-    descriptors: ReadonlyMap<string, { readonly descriptor: AnyPropertyDescriptor }>,
+    descriptors: ReadonlyMap<string, StoredDescriptor>,
 ): z.ZodType<PropertiesFile> {
-    const shape: Record<string, z.ZodType> = {};
-    for (const [key, entry] of descriptors) {
-        shape[key] = entry.descriptor.schema.optional();
-    }
+    const shape = Object.fromEntries(
+        [...descriptors.entries()].map(([key, entry]) => [key, entry.descriptor.schema.optional()]),
+    );
     return z.object(shape).strict() as z.ZodType<PropertiesFile>;
+}
+
+function formatIssues(issues: readonly string[]): string {
+    return issues.join('\n');
+}
+
+function invalidPropertyResult(
+    key: string,
+    source: PropertyResolutionSource,
+    error: string,
+    issues: readonly string[] = [error],
+): PropertyResolutionResult<never> {
+    return {
+        ok: false,
+        kind: 'invalid',
+        status: 'invalid',
+        key,
+        source,
+        error,
+        issues,
+    };
+}
+
+export function propertyResolutionError(
+    result: Extract<PropertyResolutionResult<unknown>, { readonly ok: false }>,
+): string {
+    return result.kind === 'missing'
+        ? `Property "${result.key}" is not registered.`
+        : `Property "${result.key}" from ${result.source} is invalid: ${result.error}`;
 }
 
 /** Create the mutable registry owned by one Engine composition root. */
 export function createPropertyRegistry(
-    initialDescriptors: readonly AnyPropertyDescriptor[] = Object.values(PROPERTY_DESCRIPTORS),
+    initialDescriptors: readonly AnyPropertyDescriptor[] = Object.values(
+        BUILTIN_PROPERTY_DESCRIPTORS,
+    ),
 ): PropertyRegistry {
-    const descriptors = new Map<
-        string,
-        { readonly descriptor: AnyPropertyDescriptor; readonly owner?: string }
-    >();
+    const descriptors = new Map<string, StoredDescriptor>();
 
     for (const descriptor of initialDescriptors) {
         const normalized = normalizeDescriptor(descriptor);
@@ -269,7 +364,10 @@ export function createPropertyRegistry(
         if (descriptors.has(normalized.descriptor.key)) {
             throw new Error(`Duplicate property "${normalized.descriptor.key}".`);
         }
-        descriptors.set(normalized.descriptor.key, { descriptor: normalized.descriptor });
+        descriptors.set(normalized.descriptor.key, {
+            descriptor: normalized.descriptor,
+            builtin: Object.hasOwn(BUILTIN_PROPERTY_DESCRIPTORS, normalized.descriptor.key),
+        });
     }
 
     let propertiesFileSchema = createPropertiesFileSchema(descriptors);
@@ -287,7 +385,11 @@ export function createPropertyRegistry(
                 options.allowExisting &&
                 descriptorsMatch(existing.descriptor, normalized.descriptor)
             ) {
-                return { ok: true, descriptor: existing.descriptor, registered: false };
+                return {
+                    ok: true,
+                    descriptor: cloneDescriptor(existing.descriptor),
+                    registered: false,
+                };
             }
             return {
                 ok: false,
@@ -298,9 +400,14 @@ export function createPropertyRegistry(
         descriptors.set(normalized.descriptor.key, {
             descriptor: normalized.descriptor,
             ...(options.owner === undefined ? {} : { owner: options.owner }),
+            builtin: false,
         });
         propertiesFileSchema = createPropertiesFileSchema(descriptors);
-        return { ok: true, descriptor: normalized.descriptor, registered: true };
+        return {
+            ok: true,
+            descriptor: cloneDescriptor(normalized.descriptor),
+            registered: true,
+        };
     };
 
     const registerMany = (
@@ -346,64 +453,119 @@ export function createPropertyRegistry(
         return { ok: true, descriptors: normalizedDescriptors, registeredKeys };
     };
 
+    const resolve = <TKey extends string>(
+        key: TKey,
+        sources: PropertyResolutionSources,
+    ): PropertyResolutionResult<PropertyValue<TKey>> => {
+        const entry = descriptors.get(key);
+        if (!entry) {
+            return { ok: false, kind: 'missing', status: 'missing', key };
+        }
+
+        let source: PropertyResolutionSource;
+        let candidate: unknown;
+        if (sources.explicit !== undefined) {
+            source = 'explicit';
+            candidate = sources.explicit;
+        } else if (Object.hasOwn(sources.properties, key)) {
+            source = 'properties-file';
+            candidate = sources.properties[key];
+        } else if (sources.fallback !== undefined) {
+            source = 'caller-fallback';
+            candidate = sources.fallback;
+        } else {
+            source = 'descriptor-fallback';
+            candidate = entry.descriptor.fallback;
+        }
+
+        try {
+            const parsed = entry.descriptor.schema.safeParse(candidate);
+            if (!parsed.success) {
+                const issues = parsed.error.issues.map((issue) => {
+                    const path = issue.path.length === 0 ? '<root>' : issue.path.join('.');
+                    return `${path}: ${issue.message}`;
+                });
+                return invalidPropertyResult(key, source, formatIssues(issues), issues);
+            }
+            return {
+                ok: true,
+                kind: 'success',
+                status: 'success',
+                value: cloneSnapshot(parsed.data) as PropertyValue<TKey>,
+                source,
+            };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return invalidPropertyResult(key, source, message);
+        }
+    };
+
+    const resolveAll = (
+        properties: Readonly<Record<string, unknown>>,
+        fallbacks: Readonly<Record<string, unknown>> = {},
+    ): PropertyResolutionBatchResult => {
+        const resolved: Record<string, unknown> = {};
+        for (const key of descriptors.keys()) {
+            const result = resolve(key, { properties, fallback: fallbacks[key] });
+            if (!result.ok) return { ok: false, error: result };
+            resolved[key] = result.value;
+        }
+        return {
+            ok: true,
+            value: freezeSnapshot(resolved) as RegisteredResolvedProperties,
+        };
+    };
+
     return {
         register,
         registerMany,
         unregister: (key) => {
-            if (!descriptors.delete(key)) return;
+            const entry = descriptors.get(key);
+            if (!entry || entry.builtin) return false;
+            descriptors.delete(key);
             propertiesFileSchema = createPropertiesFileSchema(descriptors);
+            return true;
         },
         unregisterOwner: (owner) => {
-            let changed = false;
+            const removed: string[] = [];
             for (const [key, entry] of descriptors) {
                 if (entry.owner === owner) {
                     descriptors.delete(key);
-                    changed = true;
+                    removed.push(key);
                 }
             }
-            if (changed) propertiesFileSchema = createPropertiesFileSchema(descriptors);
+            if (removed.length > 0) {
+                propertiesFileSchema = createPropertiesFileSchema(descriptors);
+            }
+            return Object.freeze(removed);
         },
-        get: (key) => descriptors.get(key)?.descriptor,
-        has: (key) => descriptors.has(key),
-        all: () => [...descriptors.values()].map((entry) => entry.descriptor),
-        schema: () => propertiesFileSchema,
-        resolve: <TKey extends string>(
-            key: TKey,
-            sources: PropertyResolutionSources<TKey>,
-        ): PropertyValue<TKey> => {
+        get: (key) => {
             const descriptor = descriptors.get(key)?.descriptor;
-            if (!descriptor) return undefined as PropertyValue<TKey>;
-            if (sources.explicit !== undefined) return sources.explicit;
-            const propertyValue = sources.properties[key];
-            if (propertyValue !== undefined) return propertyValue as PropertyValue<TKey>;
-            if (sources.fallback !== undefined) return sources.fallback;
-            return descriptor.fallback as PropertyValue<TKey>;
+            return descriptor === undefined ? undefined : cloneDescriptor(descriptor);
         },
-        resolveAll: (properties, fallbacks = {}) => {
-            const entries = [...descriptors.entries()].map(
-                ([key, entry]) =>
-                    [key, sourceValue(entry.descriptor, properties, fallbacks[key])] as const,
-            );
-            return Object.fromEntries(entries) as RegisteredResolvedProperties;
-        },
+        has: (key) => descriptors.has(key),
+        all: () =>
+            Object.freeze(
+                [...descriptors.values()].map((entry) => cloneDescriptor(entry.descriptor)),
+            ),
+        schema: () => propertiesFileSchema,
+        resolve,
+        resolveAll,
         defaults: () => {
-            const entries = [...descriptors.entries()].map(
-                ([key, entry]) => [key, entry.descriptor.fallback] as const,
-            );
-            return Object.fromEntries(entries) as RegisteredResolvedProperties;
+            const defaults: Record<string, unknown> = {};
+            for (const [key, entry] of descriptors) {
+                defaults[key] = entry.descriptor.fallback;
+            }
+            return cloneSnapshot(defaults) as Readonly<RegisteredResolvedProperties>;
         },
     };
 }
 
-function sourceValue(
-    descriptor: AnyPropertyDescriptor,
-    properties: Readonly<Record<string, unknown>>,
-    fallback: unknown,
-): unknown {
-    const propertyValue = properties[descriptor.key];
-    if (propertyValue !== undefined) return propertyValue;
-    if (fallback !== undefined) return fallback;
-    return descriptor.fallback;
+function cloneDescriptor(descriptor: AnyPropertyDescriptor): AnyPropertyDescriptor {
+    return Object.freeze({
+        ...descriptor,
+        fallback: cloneSnapshot(descriptor.fallback),
+    });
 }
 
 export type PropertiesFileLoadResult =
@@ -416,8 +578,8 @@ export type PropertiesFileLoadResult =
 
 export function loadPropertiesFile(
     unknown: unknown,
+    registry: PropertyRegistry,
     defaults: Readonly<Record<string, unknown>> = {},
-    registry: PropertyRegistry = createPropertyRegistry(),
 ): PropertiesFileLoadResult {
     const result = registry.schema().safeParse(unknown);
     if (!result.success) {
@@ -428,9 +590,15 @@ export function loadPropertiesFile(
                 .join('\n'),
         };
     }
+
+    const resolved = registry.resolveAll(result.data, defaults);
+    if (!resolved.ok) {
+        return { ok: false, error: propertyResolutionError(resolved.error) };
+    }
+
     return {
         ok: true,
-        value: registry.resolveAll(result.data, defaults),
-        properties: result.data,
+        value: resolved.value,
+        properties: cloneSnapshot(result.data),
     };
 }

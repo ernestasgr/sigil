@@ -550,7 +550,7 @@ export function spawnEngine(): EngineHandle {
         ): Promise<PropertiesReadOutput> {
             return client.request('readProperties', {}, timeoutMs).then((response) => ({
                 properties: response.properties,
-                ...(response.defaults === undefined ? {} : { defaults: response.defaults }),
+                defaults: response.defaults,
             }));
         },
         saveProperties(

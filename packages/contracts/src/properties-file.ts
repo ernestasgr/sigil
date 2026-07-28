@@ -6,12 +6,12 @@ export type CollisionSuffixStyle = z.infer<typeof CollisionSuffixStyleSchema>;
 export const ConflictPolicySchema = z.enum(['skip', 'overwrite', 'auto-rename', 'error']);
 export type ConflictPolicy = z.infer<typeof ConflictPolicySchema>;
 
-export const DEFAULT_IGNORE_PATTERNS: readonly string[] = [
+export const DEFAULT_IGNORE_PATTERNS: readonly string[] = Object.freeze([
     '*.crdownload',
     '*.part',
     '*.tmp',
     '*.download',
-];
+]);
 
 export const PropertyApplyModeSchema = z.enum(['hot', 'restart-required']);
 export type PropertyApplyMode = z.infer<typeof PropertyApplyModeSchema>;
@@ -90,10 +90,14 @@ export function definePropertyDescriptor<TKey extends string, TSchema extends z.
     fallback: z.output<TSchema>,
     apply: PropertyApplyMode,
 ): PropertyDescriptor<TKey, TSchema> {
-    return { key, schema, fallback, apply };
+    return Object.freeze({ key, schema, fallback, apply });
 }
 
-export const PROPERTY_DESCRIPTORS = {
+/**
+ * Built-in property descriptors are pure contract data. They are deliberately
+ * not registered with a mutable runtime registry while this module loads.
+ */
+export const BUILTIN_PROPERTY_DESCRIPTORS = Object.freeze({
     notifyOnWorkflowError: definePropertyDescriptor(
         'notifyOnWorkflowError',
         z.boolean(),
@@ -130,13 +134,19 @@ export const PROPERTY_DESCRIPTORS = {
         'windows',
         'hot',
     ),
-} as const satisfies Readonly<Record<string, PropertyDescriptor<string, z.ZodType>>>;
+} as const satisfies Readonly<Record<string, PropertyDescriptor<string, z.ZodType>>>);
 
-export type PropertiesKey = keyof typeof PROPERTY_DESCRIPTORS;
+/** @deprecated Use BUILTIN_PROPERTY_DESCRIPTORS at new call sites. */
+export const PROPERTY_DESCRIPTORS = BUILTIN_PROPERTY_DESCRIPTORS;
+
+export type PropertiesKey = keyof typeof BUILTIN_PROPERTY_DESCRIPTORS;
 
 type PropertyValueMap = {
-    readonly [K in PropertiesKey]: z.infer<(typeof PROPERTY_DESCRIPTORS)[K]['schema']>;
+    readonly [K in PropertiesKey]: z.infer<(typeof BUILTIN_PROPERTY_DESCRIPTORS)[K]['schema']>;
 };
+
+/** Complete, statically typed settings owned by the built-in contract. */
+export type BuiltinProperties = PropertyValueMap;
 
 export type PropertyValue<TKey extends string> = TKey extends PropertiesKey
     ? PropertyValueMap[TKey]
@@ -145,10 +155,11 @@ export type PropertiesFile = Partial<PropertyValueMap> & Readonly<Record<string,
 export type ResolvedProperties = PropertyValueMap;
 export type RegisteredResolvedProperties = ResolvedProperties & Readonly<Record<string, unknown>>;
 
-export interface PropertyResolutionSources<TKey extends string> {
-    readonly explicit?: PropertyValue<TKey>;
+/** Raw candidates are validated by the Engine-owned registry before use. */
+export interface PropertyResolutionSources {
+    readonly explicit?: unknown;
     readonly properties: Readonly<Record<string, unknown>>;
-    readonly fallback?: PropertyValue<TKey>;
+    readonly fallback?: unknown;
 }
 
 export function serializePropertyDescriptor(
@@ -177,16 +188,28 @@ export function serializePropertyDescriptor(
     };
 }
 
-const builtinShape: Record<string, z.ZodType> = {};
-for (const [key, descriptor] of Object.entries(PROPERTY_DESCRIPTORS)) {
-    builtinShape[key] = descriptor.schema.optional();
-}
-
 /** Static contract validation for the built-in Properties File shape. */
+const builtinShape = Object.fromEntries(
+    Object.entries(BUILTIN_PROPERTY_DESCRIPTORS).map(([key, descriptor]) => [
+        key,
+        descriptor.schema.optional(),
+    ]),
+);
+
 export const PropertiesFileSchema = z.object(builtinShape).strict() as z.ZodType<PropertiesFile>;
 
-export const DEFAULT_PROPERTIES: Readonly<RegisteredResolvedProperties> = Object.freeze(
-    Object.fromEntries(
-        Object.entries(PROPERTY_DESCRIPTORS).map(([key, descriptor]) => [key, descriptor.fallback]),
-    ) as RegisteredResolvedProperties,
-);
+/** Immutable built-in defaults; dynamic Plugin defaults live in the Engine registry. */
+export const BUILTIN_PROPERTY_DEFAULTS: Readonly<ResolvedProperties> = Object.freeze({
+    notifyOnWorkflowError: BUILTIN_PROPERTY_DESCRIPTORS.notifyOnWorkflowError.fallback,
+    databasePath: BUILTIN_PROPERTY_DESCRIPTORS.databasePath.fallback,
+    collisionSuffixStyle: BUILTIN_PROPERTY_DESCRIPTORS.collisionSuffixStyle.fallback,
+    'file-watcher.ignorePatterns':
+        BUILTIN_PROPERTY_DESCRIPTORS['file-watcher.ignorePatterns'].fallback,
+    'file-manager.defaultOnConflict':
+        BUILTIN_PROPERTY_DESCRIPTORS['file-manager.defaultOnConflict'].fallback,
+    'file-manager.collisionSuffixStyle':
+        BUILTIN_PROPERTY_DESCRIPTORS['file-manager.collisionSuffixStyle'].fallback,
+});
+
+/** @deprecated Use BUILTIN_PROPERTY_DEFAULTS at new call sites. */
+export const DEFAULT_PROPERTIES = BUILTIN_PROPERTY_DEFAULTS;

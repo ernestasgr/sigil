@@ -5,11 +5,13 @@ import type { WorkflowDocument } from '@sigil/contracts';
 import { EventNameSchema, PluginIdSchema, WorkflowIdSchema } from '@sigil/contracts/ids';
 import type { Capability, Manifest } from '@sigil/contracts/manifest';
 import type { FileWatcherConfig } from '@sigil/contracts/nodes/file-watcher';
+import { definePropertyDescriptor } from '@sigil/contracts/properties-file';
 import type { WorkflowContext } from '@sigil/contracts/workflow-context';
 import { compileWorkflow } from '@sigil/workflow-domain';
 import { sampleManualTriggerToLog } from '@sigil/workflow-domain/samples';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { compileGraph } from '../../renderer/workflow-builder/compile.js';
 import { createNodeCatalogFromManifests } from '../../renderer/workflow-builder/node-catalog.js';
 import { testDocument, testEdge, testNode } from '../../test-support/pipeline-fixtures.js';
@@ -89,6 +91,33 @@ function fileManagerWorkflow(
 }
 
 describe('createEngine', () => {
+    it('owns an isolated Property Registry per Engine instance', async () => {
+        const first = createEngine();
+        const second = createEngine();
+        const descriptor = definePropertyDescriptor(
+            'example-engine.isolated',
+            z.boolean(),
+            false,
+            'hot',
+        );
+
+        try {
+            expect(
+                first.propertyRegistry.register(descriptor, { owner: 'example-engine' }).ok,
+            ).toBe(true);
+            expect(first.propertyRegistry.has(descriptor.key)).toBe(true);
+            expect(second.propertyRegistry.has(descriptor.key)).toBe(false);
+
+            expect(first.propertyRegistry.unregisterOwner('example-engine')).toEqual([
+                descriptor.key,
+            ]);
+            expect(first.propertyRegistry.has(descriptor.key)).toBe(false);
+            expect(second.propertyRegistry.has(descriptor.key)).toBe(false);
+        } finally {
+            await Promise.all([first.shutdown(), second.shutdown()]);
+        }
+    });
+
     it('exposes the event bus, stub bridge, and stub capability broker', () => {
         const engine = createEngine();
 

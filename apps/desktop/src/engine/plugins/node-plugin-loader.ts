@@ -117,6 +117,7 @@ export interface NodePluginLoader {
         pluginId: PluginId,
         permissions: readonly Capability[],
     ) => void;
+    readonly unloadNodePlugin: (pluginId: PluginId) => Promise<boolean>;
     readonly shutdown: () => Promise<void>;
 }
 
@@ -248,6 +249,12 @@ async function loadDiscoveredPlugin(
         owner: manifest.id,
         allowExisting: deps.allowExistingPropertyDescriptors,
     });
+    const rollbackPropertyRegistration = (): void => {
+        if (!propertyRegistration?.ok) return;
+        for (const key of propertyRegistration.registeredKeys) {
+            deps.propertyRegistry?.unregister(key);
+        }
+    };
     if (propertyRegistration && !propertyRegistration.ok) {
         await supervisor.disposePlugin(manifest.id);
         if (propertyRegistration.error.kind === 'duplicate') {
@@ -273,15 +280,10 @@ async function loadDiscoveredPlugin(
         };
     }
 
-    const registeredPropertyKeys =
-        propertyRegistration?.ok === true ? propertyRegistration.registeredKeys : [];
-
     if (manifest.nodeContract !== undefined) {
         if (loaded.contract === undefined) {
             await supervisor.disposePlugin(manifest.id);
-            for (const key of registeredPropertyKeys) {
-                deps.propertyRegistry?.unregister(key);
-            }
+            rollbackPropertyRegistration();
             return {
                 ok: false,
                 error: {
@@ -295,9 +297,7 @@ async function loadDiscoveredPlugin(
         }
         if (!isDeepStrictEqual(loaded.contract, manifest.nodeContract)) {
             await supervisor.disposePlugin(manifest.id);
-            for (const key of registeredPropertyKeys) {
-                deps.propertyRegistry?.unregister(key);
-            }
+            rollbackPropertyRegistration();
             return {
                 ok: false,
                 error: {
@@ -314,9 +314,7 @@ async function loadDiscoveredPlugin(
     const registerResult = deps.manifestRegistry.register(manifest);
     if (Either.isLeft(registerResult)) {
         await supervisor.disposePlugin(manifest.id);
-        for (const key of registeredPropertyKeys) {
-            deps.propertyRegistry?.unregister(key);
-        }
+        rollbackPropertyRegistration();
         return { ok: false, error: { kind: 'duplicate', dir, pluginId: manifest.id } };
     }
 
@@ -324,9 +322,7 @@ async function loadDiscoveredPlugin(
         if (deps.contractRegistry.has(manifest.nodeContract.identity)) {
             await supervisor.disposePlugin(manifest.id);
             deps.manifestRegistry.unregister(manifest.id);
-            for (const key of registeredPropertyKeys) {
-                deps.propertyRegistry?.unregister(key);
-            }
+            rollbackPropertyRegistration();
             return {
                 ok: false,
                 error: {
@@ -342,9 +338,7 @@ async function loadDiscoveredPlugin(
         } catch (error) {
             await supervisor.disposePlugin(manifest.id);
             deps.manifestRegistry.unregister(manifest.id);
-            for (const key of registeredPropertyKeys) {
-                deps.propertyRegistry?.unregister(key);
-            }
+            rollbackPropertyRegistration();
             return {
                 ok: false,
                 error: {
@@ -379,19 +373,19 @@ async function loadNodePluginWithSupervisor(
     return loadDiscoveredPlugin(discovered.plugin, deps, supervisor);
 }
 
-async function loadNodePluginsWithSupervisor(
-    pluginsDir: string,
-    deps: NodePluginLoaderDeps,
-    supervisor: NodePluginWorkerSupervisor,
-): Promise<readonly NodePluginLoadResult[]> {
-    const discovered = discoverNodePlugins(pluginsDir);
-    const results: NodePluginLoadResult[] = [];
-    for (const result of discovered) {
-        results.push(
-            result.ok ? await loadDiscoveredPlugin(result.plugin, deps, supervisor) : result,
-        );
+type LoadedPlugin = {
+    readonly nodeType: string;
+    readonly contract?: SerializableNodeContract;
+    readonly deps: NodePluginLoaderDeps;
+};
+
+function cleanupRegistrations(pluginId: PluginId, loaded: LoadedPlugin): void {
+    loaded.deps.propertyRegistry?.unregisterOwner(pluginId);
+    loaded.deps.manifestRegistry.unregister(pluginId);
+    if (loaded.contract !== undefined) {
+        loaded.deps.contractRegistry?.unregister(loaded.contract.identity);
     }
-    return results;
+    loaded.deps.handlerRegistry.unregister(loaded.nodeType);
 }
 
 /**
@@ -401,13 +395,65 @@ async function loadNodePluginsWithSupervisor(
  */
 export function createNodePluginLoader(): NodePluginLoader {
     const supervisor = createNodePluginWorkerSupervisor();
+    const loadedPlugins = new Map<PluginId, LoadedPlugin>();
+
+    const loadNodePlugin = async (
+        pluginDir: string,
+        deps: NodePluginLoaderDeps,
+    ): Promise<NodePluginLoadResult> => {
+        const result = await loadNodePluginWithSupervisor(pluginDir, deps, supervisor);
+        if (result.ok) {
+            loadedPlugins.set(result.manifest.id, {
+                nodeType: result.manifest.nodeType ?? result.descriptor.type,
+                ...(result.contract === undefined ? {} : { contract: result.contract }),
+                deps,
+            });
+        }
+        return result;
+    };
+
+    const loadNodePlugins = async (
+        pluginsDir: string,
+        deps: NodePluginLoaderDeps,
+    ): Promise<readonly NodePluginLoadResult[]> => {
+        const discovered = discoverNodePlugins(pluginsDir);
+        const results: NodePluginLoadResult[] = [];
+        for (const result of discovered) {
+            results.push(result.ok ? await loadNodePlugin(result.plugin.dir, deps) : result);
+        }
+        return results;
+    };
+
+    const unloadNodePlugin = async (pluginId: PluginId): Promise<boolean> => {
+        const loaded = loadedPlugins.get(pluginId);
+        if (!loaded) return false;
+
+        try {
+            await supervisor.disposePlugin(pluginId);
+        } finally {
+            cleanupRegistrations(pluginId, loaded);
+            loadedPlugins.delete(pluginId);
+        }
+        return true;
+    };
+
+    const shutdown = async (): Promise<void> => {
+        try {
+            await supervisor.shutdown();
+        } finally {
+            for (const [pluginId, loaded] of loadedPlugins) {
+                cleanupRegistrations(pluginId, loaded);
+            }
+            loadedPlugins.clear();
+        }
+    };
+
     return {
-        loadNodePlugin: (pluginDir, deps) =>
-            loadNodePluginWithSupervisor(pluginDir, deps, supervisor),
-        loadNodePlugins: (pluginsDir, deps) =>
-            loadNodePluginsWithSupervisor(pluginsDir, deps, supervisor),
+        loadNodePlugin,
+        loadNodePlugins,
         updatePluginPermissions: (pluginId, permissions) =>
             supervisor.updatePermissions(pluginId, permissions),
-        shutdown: () => supervisor.shutdown(),
+        unloadNodePlugin,
+        shutdown,
     };
 }

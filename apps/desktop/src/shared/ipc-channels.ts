@@ -538,7 +538,7 @@ export const EngineReadPropertiesResultSchema = z.object({
     type: z.literal(EngineChannel.ReadPropertiesResult),
     correlationId: CorrelationIdSchema,
     properties: z.record(z.string(), z.unknown()).readonly(),
-    defaults: z.record(z.string(), z.unknown()).readonly().optional(),
+    defaults: z.record(z.string(), z.unknown()).readonly(),
 });
 export type EngineReadPropertiesResult = z.infer<typeof EngineReadPropertiesResultSchema>;
 
