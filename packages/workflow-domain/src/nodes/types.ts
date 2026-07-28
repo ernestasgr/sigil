@@ -1,4 +1,8 @@
-import type { NodeContractDefinition, NodeContractIssue } from '@sigil/contracts/node-contract';
+import {
+    type NodeContractDefinition,
+    type NodeContractIssue,
+    serializeNodeConfigurationSchema,
+} from '@sigil/contracts/node-contract';
 import type { z } from 'zod';
 import type {
     DeclarativeOutputPortResolution,
@@ -7,7 +11,7 @@ import type {
 
 export type BuiltinNodeContractDefinition<TType extends string> = Omit<
     NodeContractDefinition,
-    'defaultConfig' | 'identity'
+    'defaultConfig' | 'identity' | 'configSchema'
 > & {
     readonly identity: {
         readonly namespace: 'builtin';
@@ -45,6 +49,7 @@ export function defineNodeRegistration<TType extends string, TSchema extends z.Z
     return {
         contract: {
             ...contract,
+            configSchema: serializeNodeConfigurationSchema(descriptor.configSchema),
             defaultConfig: descriptor.defaultConfig,
         },
         configSchema: descriptor.configSchema,

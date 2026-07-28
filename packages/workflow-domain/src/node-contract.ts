@@ -12,9 +12,10 @@ import {
     type NodeOutputPortInput,
     type NodeOutputPortSpec,
     type NodeOutputPortSpecInput,
+    normalizeNodeConfigurationSchema,
     type SerializableNodeContractInput,
 } from '@sigil/contracts/node-contract';
-import { z } from 'zod';
+import { fromJSONSchema, type z } from 'zod';
 
 export type {
     NodeContract,
@@ -324,7 +325,20 @@ export function registerSerializableNodeContract(
     registry: NodeContractRegistry,
     contract: SerializableNodeContractInput,
 ): void {
-    registry.register({ contract, configSchema: z.unknown() });
+    const configSchema = reconstructNodeConfigurationSchema(contract.configSchema);
+    registry.register({ contract, configSchema });
+}
+
+/** Reconstruct the host validator from a serializable Plugin Node contract. */
+export function reconstructNodeConfigurationSchema(value: unknown): z.ZodType {
+    const normalized = normalizeNodeConfigurationSchema(value);
+    try {
+        return fromJSONSchema(normalized.schema);
+    } catch (error) {
+        throw new Error(
+            `Plugin Node configuration schema could not be reconstructed for ${normalized.dialect}: ${String(error)}`,
+        );
+    }
 }
 
 export function resolveNodeContract(

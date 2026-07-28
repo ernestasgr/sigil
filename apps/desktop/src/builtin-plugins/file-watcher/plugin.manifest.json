@@ -12,6 +12,39 @@
         },
         "version": 1,
         "role": "trigger",
+        "configSchema": {
+            "version": 1,
+            "dialect": "https://json-schema.org/draft/2020-12/schema",
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "recursive": {
+                        "type": "boolean"
+                    },
+                    "events": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["file.created", "file.modified", "file.deleted"]
+                        }
+                    },
+                    "ignorePatterns": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "required": ["path", "recursive", "events"],
+                "additionalProperties": false
+            }
+        },
         "defaultConfig": {
             "path": "/",
             "recursive": true,

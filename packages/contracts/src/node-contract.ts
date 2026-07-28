@@ -14,6 +14,13 @@ export type NodeNamespace = z.infer<typeof NodeNamespaceSchema>;
 /** The current version of the serializable Node Contract wire format. */
 export const CURRENT_NODE_CONTRACT_VERSION = 1 as const;
 
+/** The current version of the serializable Plugin Node configuration schema envelope. */
+export const CURRENT_NODE_CONFIGURATION_SCHEMA_VERSION = 1 as const;
+
+/** The only JSON Schema dialect accepted at the Plugin boundary. */
+export const SUPPORTED_NODE_CONFIGURATION_SCHEMA_DIALECT =
+    'https://json-schema.org/draft/2020-12/schema' as const;
+
 export type SerializableJsonValue =
     | string
     | number
@@ -285,6 +292,108 @@ export const SerializableJsonValueSchema: z.ZodType<SerializableJsonValue> = z.p
     SerializableJsonValueSchemaImplementation,
 );
 
+export type SerializableJsonSchema = boolean | { readonly [key: string]: unknown };
+
+export const SerializableJsonSchemaSchema: z.ZodType<SerializableJsonSchema, unknown> =
+    z.custom<SerializableJsonSchema>(
+        (value): value is SerializableJsonSchema => {
+            if (typeof value === 'boolean') return true;
+            if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+
+            try {
+                return SerializableJsonValueSchema.safeParse(value).success;
+            } catch {
+                return false;
+            }
+        },
+        { message: 'JSON Schema must be a JSON object or boolean.' },
+    );
+
+export const NodeConfigurationSchemaVersionSchema = z.literal(
+    CURRENT_NODE_CONFIGURATION_SCHEMA_VERSION,
+);
+export type NodeConfigurationSchemaVersion = z.infer<typeof NodeConfigurationSchemaVersionSchema>;
+
+export const NodeConfigurationSchemaDialectSchema = z.literal(
+    SUPPORTED_NODE_CONFIGURATION_SCHEMA_DIALECT,
+);
+export type NodeConfigurationSchemaDialect = z.infer<typeof NodeConfigurationSchemaDialectSchema>;
+
+const SerializableNodeConfigurationSchemaImplementation = z
+    .object({
+        version: NodeConfigurationSchemaVersionSchema,
+        dialect: NodeConfigurationSchemaDialectSchema,
+        schema: SerializableJsonSchemaSchema,
+    })
+    .strict()
+    .superRefine((configurationSchema, ctx) => {
+        if (typeof configurationSchema.schema === 'boolean') return;
+
+        const declaredDialect = configurationSchema.schema.$schema;
+        if (declaredDialect !== undefined && declaredDialect !== configurationSchema.dialect) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['schema', '$schema'],
+                message:
+                    `JSON Schema declares dialect "${String(declaredDialect)}", but the ` +
+                    `configuration schema envelope declares "${configurationSchema.dialect}".`,
+            });
+        }
+    })
+    .readonly();
+
+export type SerializableNodeConfigurationSchemaInput = z.input<
+    typeof SerializableNodeConfigurationSchemaImplementation
+>;
+export type SerializableNodeConfigurationSchema = z.output<
+    typeof SerializableNodeConfigurationSchemaImplementation
+>;
+
+export const SerializableNodeConfigurationSchema: z.ZodType<
+    SerializableNodeConfigurationSchema,
+    unknown
+> = SerializableNodeConfigurationSchemaImplementation;
+
+/** Add the explicit dialect marker required by the host/worker comparison. */
+export function normalizeNodeConfigurationSchema(
+    value: unknown,
+): SerializableNodeConfigurationSchema {
+    const parsed = SerializableNodeConfigurationSchema.parse(value);
+    if (typeof parsed.schema === 'boolean' || parsed.schema.$schema !== undefined) {
+        return parsed;
+    }
+
+    return SerializableNodeConfigurationSchema.parse({
+        ...parsed,
+        schema: {
+            ...parsed.schema,
+            $schema: parsed.dialect,
+        },
+    });
+}
+
+/** Convert a runtime Zod schema into the versioned Plugin wire representation. */
+export function serializeNodeConfigurationSchema(
+    schema: z.ZodType,
+): SerializableNodeConfigurationSchema {
+    let jsonSchema: unknown;
+    try {
+        jsonSchema = z.toJSONSchema(schema, { target: 'draft-2020-12' });
+    } catch (error) {
+        throw new Error(
+            `Plugin Node configuration schema could not be serialized: ${
+                error instanceof Error ? error.message : String(error)
+            }`,
+        );
+    }
+
+    return normalizeNodeConfigurationSchema({
+        version: CURRENT_NODE_CONFIGURATION_SCHEMA_VERSION,
+        dialect: SUPPORTED_NODE_CONFIGURATION_SCHEMA_DIALECT,
+        schema: jsonSchema,
+    });
+}
+
 const BuiltinNodeIdentitySchema = z
     .object({ namespace: z.literal('builtin'), type: NodeTypeNameSchema })
     .strict()
@@ -366,6 +475,7 @@ export const NodeContractSchema = z
         identity: NodeIdentitySchema,
         version: z.literal(CURRENT_NODE_CONTRACT_VERSION),
         role: NodeRoleSchema,
+        configSchema: SerializableNodeConfigurationSchema,
         defaultConfig: z.unknown(),
         outputPorts: NodeOutputPortSpecSchema,
         display: NodeContractDisplaySchema,

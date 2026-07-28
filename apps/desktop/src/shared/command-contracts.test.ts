@@ -81,6 +81,11 @@ const engineFixtures = {
                             },
                             version: 1,
                             role: 'action',
+                            configSchema: {
+                                version: 1,
+                                dialect: 'https://json-schema.org/draft/2020-12/schema',
+                                schema: {},
+                            },
                             defaultConfig: {},
                             outputPorts: {
                                 kind: 'fixed',

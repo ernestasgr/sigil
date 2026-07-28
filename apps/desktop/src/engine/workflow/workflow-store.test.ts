@@ -24,6 +24,11 @@ import { isWorkflowTopologyError } from './workflow-topology-error.js';
 
 const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
 const pid = (id: string) => PluginIdSchema.parse(id);
+const ANY_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {},
+} as const;
 
 function randomDir(): string {
     return join(tmpdir(), `sigil-test-workflow-store-${crypto.randomUUID()}`);
@@ -648,6 +653,7 @@ describe('WorkflowStore', () => {
             identity: pluginNodeIdentity(pid('com.example.removed-port'), 'trigger'),
             version: 1,
             role: 'trigger',
+            configSchema: ANY_CONFIG_SCHEMA,
             defaultConfig: {},
             outputPorts: fixedOutputPortSpec(['current']),
             display: {

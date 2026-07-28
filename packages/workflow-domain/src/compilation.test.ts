@@ -1,7 +1,14 @@
 import { parseWorkflowDocument } from '@sigil/contracts';
+import { PluginIdSchema } from '@sigil/contracts/ids';
 import { describe, expect, it } from 'vitest';
 
 import { compileWorkflow } from './compilation.js';
+import {
+    fixedOutputPortSpec,
+    pluginNodeIdentity,
+    registerSerializableNodeContract,
+} from './node-contract.js';
+import { createBuiltinNodeContractRegistry } from './nodes/catalog.js';
 
 const document = {
     id: 'pipeline-seam',
@@ -95,6 +102,72 @@ describe('WorkflowDocument to CompiledPipeline seam', () => {
                     expect.objectContaining({
                         code: 'unavailable_node_contract',
                         nodeId: 'plugin-action',
+                    }),
+                ]),
+            );
+        }
+    });
+
+    it('rejects a Plugin Node configuration during Workflow compilation', () => {
+        const contractRegistry = createBuiltinNodeContractRegistry();
+        registerSerializableNodeContract(contractRegistry, {
+            identity: pluginNodeIdentity(
+                PluginIdSchema.parse('com.example.config-validation'),
+                'config-validation-action',
+            ),
+            version: 1,
+            role: 'action',
+            configSchema: {
+                version: 1,
+                dialect: 'https://json-schema.org/draft/2020-12/schema',
+                schema: {
+                    type: 'object',
+                    properties: { name: { type: 'string' } },
+                    required: ['name'],
+                    additionalProperties: false,
+                },
+            },
+            defaultConfig: { name: 'valid' },
+            outputPorts: fixedOutputPortSpec(['out']),
+            display: {
+                label: 'Config Validation Action',
+                description: 'Rejects invalid Plugin configuration during admission.',
+                category: 'utility',
+            },
+        });
+
+        const result = compileWorkflow(
+            {
+                ...document,
+                nodes: [
+                    document.nodes[0],
+                    {
+                        id: 'plugin-action',
+                        type: 'config-validation-action',
+                        pluginId: 'com.example.config-validation',
+                        config: { name: 42 },
+                    },
+                ],
+                edges: [
+                    {
+                        id: 'trigger-plugin',
+                        source: 'trigger',
+                        target: 'plugin-action',
+                        sourcePort: 'out',
+                    },
+                ],
+            },
+            { contractRegistry },
+        );
+
+        expect(result).toMatchObject({ ok: false, phase: 'admission' });
+        if (!result.ok) {
+            expect(result.diagnostics).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        code: 'invalid_node_contract',
+                        nodeId: 'plugin-action',
+                        fieldPath: 'config.name',
                     }),
                 ]),
             );

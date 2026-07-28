@@ -287,6 +287,11 @@ describe('useBuilderStore', () => {
                         },
                         version: 1,
                         role: 'trigger',
+                        configSchema: {
+                            version: 1,
+                            dialect: 'https://json-schema.org/draft/2020-12/schema',
+                            schema: {},
+                        },
                         defaultConfig: {},
                         outputPorts: {
                             kind: 'fixed',
@@ -688,6 +693,11 @@ describe('useBuilderStore', () => {
                         },
                         version: 1,
                         role: 'trigger',
+                        configSchema: {
+                            version: 1,
+                            dialect: 'https://json-schema.org/draft/2020-12/schema',
+                            schema: {},
+                        },
                         defaultConfig: {
                             path: '/',
                             recursive: true,

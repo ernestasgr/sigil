@@ -22,6 +22,11 @@ import {
 } from './plugin-node-rpc.js';
 
 const pid = (id: string) => PluginIdSchema.parse(id);
+const ANY_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {},
+} as const;
 
 const workflowContext = { event: 'file.created', payload: {}, vars: {} };
 
@@ -122,6 +127,7 @@ describe('NodePluginWorker contract transport', () => {
             },
             version: 1,
             role: 'action' as const,
+            configSchema: ANY_CONFIG_SCHEMA,
             defaultConfig: { enabled: true },
             outputPorts: {
                 kind: 'fixed' as const,

@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { CapabilitySchema, ManifestSchema, parseManifest } from './manifest.js';
+import {
+    normalizeNodeConfigurationSchema,
+    SerializableJsonSchemaSchema,
+    SerializableNodeConfigurationSchema,
+    serializeNodeConfigurationSchema,
+} from './node-contract.js';
+
+const ANY_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {},
+} as const;
 
 function cyclicPluginManifest(defaultConfig: unknown): Record<string, unknown> {
     return {
@@ -17,6 +30,7 @@ function cyclicPluginManifest(defaultConfig: unknown): Record<string, unknown> {
             },
             version: 1,
             role: 'action',
+            configSchema: ANY_CONFIG_SCHEMA,
             defaultConfig,
             outputPorts: {
                 kind: 'fixed',
@@ -165,6 +179,7 @@ describe('ManifestSchema', () => {
                 },
                 version: 1,
                 role: 'action',
+                configSchema: ANY_CONFIG_SCHEMA,
                 defaultConfig: { enabled: true },
                 outputPorts: {
                     kind: 'fixed',
@@ -197,6 +212,7 @@ describe('ManifestSchema', () => {
                     },
                     version: 1,
                     role: 'action',
+                    configSchema: ANY_CONFIG_SCHEMA,
                     defaultConfig: { callback: () => undefined },
                     outputPorts: {
                         kind: 'fixed',
@@ -210,6 +226,49 @@ describe('ManifestSchema', () => {
                 },
             }).success,
         ).toBe(false);
+    });
+
+    it('rejects a Plugin Contract that declares an unsupported configuration schema dialect', () => {
+        const result = ManifestSchema.safeParse({
+            id: 'com.sigil.dialect-plugin',
+            version: '0.0.1',
+            permissions: [],
+            emits: ['dialect.event'],
+            nodeType: 'dialect-node',
+            nodeContract: {
+                identity: {
+                    namespace: 'plugin',
+                    pluginId: 'com.sigil.dialect-plugin',
+                    type: 'dialect-node',
+                },
+                version: 1,
+                role: 'action',
+                configSchema: {
+                    version: 1,
+                    dialect: 'https://json-schema.org/draft-07/schema#',
+                    schema: {},
+                },
+                defaultConfig: {},
+                outputPorts: {
+                    kind: 'fixed',
+                    ports: [{ id: 'out', label: 'Output' }],
+                },
+                display: {
+                    label: 'Dialect Node',
+                    description: 'Rejects unsupported configuration schema dialects.',
+                    category: 'utility',
+                },
+            },
+        });
+
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error.issues).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ path: ['nodeContract', 'configSchema', 'dialect'] }),
+                ]),
+            );
+        }
     });
 
     it('accepts a manifest without a nodeType (non-node plugin)', () => {
@@ -271,5 +330,63 @@ describe('parseManifest', () => {
             ok: false,
             error: expect.stringContaining('cyclic'),
         });
+    });
+});
+
+describe('Plugin Node configuration schema envelope', () => {
+    it('normalizes the explicit dialect marker without changing boolean schemas', () => {
+        const normalized = normalizeNodeConfigurationSchema({
+            version: 1,
+            dialect: 'https://json-schema.org/draft/2020-12/schema',
+            schema: { type: 'object' },
+        });
+        expect(normalized.schema).toMatchObject({
+            type: 'object',
+            $schema: 'https://json-schema.org/draft/2020-12/schema',
+        });
+
+        expect(
+            normalizeNodeConfigurationSchema({
+                version: 1,
+                dialect: 'https://json-schema.org/draft/2020-12/schema',
+                schema: false,
+            }).schema,
+        ).toBe(false);
+    });
+
+    it('requires the envelope dialect and JSON Schema dialect to agree', () => {
+        const result = SerializableNodeConfigurationSchema.safeParse({
+            version: 1,
+            dialect: 'https://json-schema.org/draft/2020-12/schema',
+            schema: {
+                $schema: 'https://json-schema.org/draft-07/schema#',
+            },
+        });
+
+        expect(result.success).toBe(false);
+        expect(SerializableJsonSchemaSchema.safeParse(false).success).toBe(true);
+        expect(SerializableJsonSchemaSchema.safeParse([]).success).toBe(false);
+        expect(SerializableJsonSchemaSchema.safeParse({ callback: () => undefined }).success).toBe(
+            false,
+        );
+    });
+
+    it('serializes a runtime Zod schema into the supported wire format', () => {
+        const result = serializeNodeConfigurationSchema(z.object({ name: z.string() }));
+
+        expect(result).toMatchObject({
+            version: 1,
+            dialect: 'https://json-schema.org/draft/2020-12/schema',
+            schema: {
+                $schema: 'https://json-schema.org/draft/2020-12/schema',
+                type: 'object',
+            },
+        });
+    });
+
+    it('returns a typed error when a runtime schema cannot be serialized', () => {
+        expect(() =>
+            serializeNodeConfigurationSchema(z.string().transform((value) => value)),
+        ).toThrow(/configuration schema could not be serialized/i);
     });
 });
