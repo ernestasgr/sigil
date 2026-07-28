@@ -14,7 +14,9 @@ import {
 } from '@sigil/contracts/ids';
 import { type Capability, CapabilitySchema } from '@sigil/contracts/manifest';
 import {
+    normalizeNodeConfigurationSchema,
     type SerializableNodeContract,
+    serializeNodeConfigurationSchema,
     validatePluginNodeContract,
 } from '@sigil/contracts/node-contract';
 import type { PluginPipelineNode } from '@sigil/contracts/nodes';
@@ -151,13 +153,7 @@ function createLiveFunctionProxy(getCurrent: () => unknown, name: string): Calla
 
 interface RawPluginDescriptor {
     readonly type: string;
-    readonly configSchema: {
-        readonly safeParse: (
-            value: unknown,
-        ) =>
-            | { readonly success: true; readonly data: unknown }
-            | { readonly success: false; readonly error: { readonly message: string } };
-    };
+    readonly configSchema: z.ZodType;
     readonly defaultConfig?: unknown;
     readonly properties?: unknown;
     readonly propertyDescriptors?: unknown;
@@ -170,12 +166,7 @@ interface RawPluginModule {
 }
 
 function isRawPluginDescriptor(value: unknown): value is RawPluginDescriptor {
-    return (
-        isRecord(value) &&
-        typeof value.type === 'string' &&
-        isRecord(value.configSchema) &&
-        isCallable(value.configSchema.safeParse)
-    );
+    return isRecord(value) && typeof value.type === 'string' && isZodSchema(value.configSchema);
 }
 
 function isNodeHandler(value: unknown): value is NodeHandler {
@@ -1018,6 +1009,36 @@ function validateRuntimeContract(
     const identity = validatePluginNodeContract(contract, pluginId, nodeType);
     if (!identity.ok) return identity;
 
+    let runtimeConfigSchema: ReturnType<typeof serializeNodeConfigurationSchema>;
+    try {
+        runtimeConfigSchema = serializeNodeConfigurationSchema(descriptor.configSchema);
+    } catch (error) {
+        return {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        };
+    }
+
+    let declaredConfigSchema: ReturnType<typeof normalizeNodeConfigurationSchema>;
+    try {
+        declaredConfigSchema = normalizeNodeConfigurationSchema(identity.contract.configSchema);
+    } catch (error) {
+        return {
+            ok: false,
+            error: `The declared Plugin Node configuration schema could not be normalized: ${
+                error instanceof Error ? error.message : String(error)
+            }`,
+        };
+    }
+    if (!jsonEqual(runtimeConfigSchema, declaredConfigSchema)) {
+        return {
+            ok: false,
+            error:
+                'The host-visible Plugin Node configuration schema does not match the ' +
+                'authoritative runtime schema.',
+        };
+    }
+
     if (descriptor.defaultConfig === undefined) {
         return {
             ok: false,
@@ -1063,6 +1084,24 @@ function validateRuntimeContract(
     }
 
     return { ok: true, contract: identity.contract };
+}
+
+type RuntimeConfigParseResult =
+    | { readonly ok: true; readonly value: unknown }
+    | { readonly ok: false; readonly error: string };
+
+function parseRuntimeConfig(configSchema: z.ZodType, config: unknown): RuntimeConfigParseResult {
+    try {
+        const parsed = configSchema.safeParse(config);
+        return parsed.success
+            ? { ok: true, value: parsed.data }
+            : { ok: false, error: parsed.error.message };
+    } catch (error) {
+        return {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        };
+    }
 }
 
 async function main(): Promise<void> {
@@ -1180,11 +1219,11 @@ async function main(): Promise<void> {
 
         switch (msg.kind) {
             case NodePluginWorkerKind.ExecuteRequest: {
-                await handleExecute(msg, rawHandler);
+                await handleExecute(msg, rawHandler, mod.descriptor.configSchema);
                 break;
             }
             case NodePluginWorkerKind.ActivateRequest: {
-                await handleActivate(msg, rawHandler);
+                await handleActivate(msg, rawHandler, mod.descriptor.configSchema);
                 break;
             }
             case NodePluginWorkerKind.CancelRequest: {
@@ -1276,6 +1315,7 @@ function cancelExecution(msg: NodePluginWorkerCancelRequest): void {
 async function handleExecute(
     msg: NodePluginWorkerExecuteRequest,
     handler: NodeHandler,
+    configSchema: z.ZodType,
 ): Promise<void> {
     if (activeExecutions.has(msg.requestId)) {
         send({
@@ -1333,11 +1373,20 @@ async function handleExecute(
             return;
         }
 
+        const parsedConfig = parseRuntimeConfig(configSchema, msg.nodeConfig);
+        if (!parsedConfig.ok) {
+            sendError(`Invalid Plugin Node execution configuration: ${parsedConfig.error}`);
+            execution.state = transitionPluginExecution(execution.state, {
+                kind: 'failed',
+            }).state;
+            return;
+        }
+
         const node: PluginPipelineNode = {
             id: PipelineNodeIdSchema.parse(msg.requestId),
             type: msg.nodeType,
             pluginId: data.pluginId,
-            config: msg.nodeConfig,
+            config: parsedConfig.value,
         };
         const deps = createProxiedDeps(
             execution,
@@ -1383,6 +1432,7 @@ async function handleExecute(
 async function handleActivate(
     msg: { requestId: string; config: unknown },
     handler: NodeHandler,
+    configSchema: z.ZodType,
 ): Promise<void> {
     if (!isTriggerHandler(handler)) {
         send({
@@ -1402,6 +1452,16 @@ async function handleActivate(
         return;
     }
 
+    const parsedConfig = parseRuntimeConfig(configSchema, msg.config);
+    if (!parsedConfig.ok) {
+        send({
+            kind: NodePluginWorkerKind.ActivateError,
+            requestId: msg.requestId,
+            error: `Invalid Plugin Node activation configuration: ${parsedConfig.error}`,
+        });
+        return;
+    }
+
     const state = createActivationState(msg.requestId);
     pendingActivationStates.set(msg.requestId, state);
 
@@ -1417,7 +1477,7 @@ async function handleActivate(
         };
 
         const activationResult: unknown = await activationScope.run(state, () =>
-            Promise.resolve(handler.activate(msg.config, onEvent)),
+            Promise.resolve(handler.activate(parsedConfig.value, onEvent)),
         );
         if (!isActivationTeardown(activationResult)) {
             throw new Error('Plugin activate must return a teardown function');

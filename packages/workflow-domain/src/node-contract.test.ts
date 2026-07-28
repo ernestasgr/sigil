@@ -11,6 +11,7 @@ import {
     fixedOutputPortSpec,
     type NodeContractInput,
     pluginNodeIdentity,
+    reconstructNodeConfigurationSchema,
     registerSerializableNodeContract,
     resolveNodeContract,
 } from './node-contract.js';
@@ -18,12 +19,29 @@ import { createBuiltinNodeContractRegistry } from './nodes/catalog.js';
 import { switchOutputPortSpec, switchOutputPortStrategy } from './nodes/switch.js';
 
 const pid = (id: string) => PluginIdSchema.parse(id);
+const ANY_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {},
+} as const;
+
+const STRING_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {
+        type: 'object',
+        properties: { name: { type: 'string', minLength: 1 } },
+        required: ['name'],
+        additionalProperties: false,
+    },
+} as const;
 
 function serializablePluginContract(defaultConfig: unknown = {}) {
     return {
         identity: pluginNodeIdentity(pid('com.example.contract'), 'contract-node'),
         version: 1,
         role: 'action',
+        configSchema: ANY_CONFIG_SCHEMA,
         defaultConfig,
         outputPorts: fixedOutputPortSpec(['out']),
         display: {
@@ -192,6 +210,7 @@ describe('Node Contract Registry', () => {
             identity: pluginNodeIdentity(pid('com.example.log'), 'log'),
             version: 1,
             role: 'action',
+            configSchema: ANY_CONFIG_SCHEMA,
             defaultConfig: { message: 'plugin' },
             outputPorts: fixedOutputPortSpec(['out']),
             display: {
@@ -232,6 +251,7 @@ describe('Node Contract Registry', () => {
                 identity: pluginNodeIdentity(pid('com.example.file'), 'file-node'),
                 version: 1,
                 role: 'action',
+                configSchema: ANY_CONFIG_SCHEMA,
                 defaultConfig: { path: '/tmp' },
                 outputPorts: fixedOutputPortSpec([{ id: 'out', label: 'Output' }]),
                 display: { label: 'File Node', description: 'Moves a file.', category: 'system' },
@@ -257,6 +277,54 @@ describe('Node Contract Registry', () => {
             status: 'available',
             outputPorts: [{ id: 'out', label: 'Output' }],
         });
+    });
+
+    it('reconstructs a host validator and rejects an invalid Plugin configuration', () => {
+        const contract = {
+            ...serializablePluginContract({ name: 'default' }),
+            configSchema: STRING_CONFIG_SCHEMA,
+            defaultConfig: { name: 'default' },
+        };
+        const registry = createNodeContractRegistry();
+        registerSerializableNodeContract(registry, contract);
+
+        expect(
+            resolveNodeContract(
+                {
+                    type: 'contract-node',
+                    pluginId: pid('com.example.contract'),
+                    config: { name: 'Ada' },
+                },
+                registry,
+            ),
+        ).toMatchObject({ status: 'available', config: { name: 'Ada' } });
+
+        expect(
+            resolveNodeContract(
+                {
+                    type: 'contract-node',
+                    pluginId: pid('com.example.contract'),
+                    config: { name: 42 },
+                },
+                registry,
+            ),
+        ).toMatchObject({
+            status: 'invalid',
+            issues: [expect.objectContaining({ code: 'invalid_configuration', path: 'name' })],
+        });
+    });
+
+    it('returns a typed reconstruction error for an unsupported JSON Schema feature', () => {
+        expect(() =>
+            reconstructNodeConfigurationSchema({
+                version: 1,
+                dialect: 'https://json-schema.org/draft/2020-12/schema',
+                schema: {
+                    type: 'object',
+                    properties: { value: { not: { type: 'string' } } },
+                },
+            }),
+        ).toThrow(/configuration schema could not be reconstructed/i);
     });
 
     it('returns a typed failure for an over-depth serializable Plugin contract', () => {
@@ -354,6 +422,7 @@ describe('Node Contract Registry', () => {
                 identity: pluginNodeIdentity(pid('com.example.router'), 'router-node'),
                 version: 1,
                 role: 'action',
+                configSchema: ANY_CONFIG_SCHEMA,
                 defaultConfig: {
                     target: 'event',
                     cases: [{ id: 'ready', value: 'ready' }],
@@ -432,6 +501,7 @@ describe('Node Contract Registry', () => {
             identity: pluginNodeIdentity(pid('com.example.router'), 'router-node'),
             version: 1,
             role: 'action',
+            configSchema: ANY_CONFIG_SCHEMA,
             defaultConfig: { target: 'event', cases: [] },
             outputPorts: switchOutputPortSpec(),
             display: {
@@ -482,6 +552,7 @@ describe('Node Contract Registry', () => {
             identity: pluginNodeIdentity(pid('com.example.dynamic'), 'dynamic-node'),
             version: 1,
             role: 'action',
+            configSchema: ANY_CONFIG_SCHEMA,
             defaultConfig: {},
             outputPorts: { kind: 'dynamic' },
             display: {
@@ -520,6 +591,7 @@ describe('Node Contract Registry', () => {
                     identity: pluginNodeIdentity(pid('com.example.other'), 'file-node'),
                     version: 1,
                     role: 'action',
+                    configSchema: ANY_CONFIG_SCHEMA,
                     defaultConfig: {},
                     outputPorts: fixedOutputPortSpec(['out']),
                     display: { label: 'File Node', description: '', category: 'system' },
@@ -535,6 +607,7 @@ describe('Node Contract Registry', () => {
                     identity: pluginNodeIdentity(pid('com.example.file'), 'file-node'),
                     version: 2,
                     role: 'action',
+                    configSchema: ANY_CONFIG_SCHEMA,
                     defaultConfig: {},
                     outputPorts: fixedOutputPortSpec(['out']),
                     display: { label: 'File Node', description: '', category: 'system' },
@@ -550,6 +623,7 @@ describe('Node Contract Registry', () => {
             identity: pluginNodeIdentity(pid('com.example.custom'), 'custom-node'),
             version: 1 as const,
             role: 'action' as const,
+            configSchema: ANY_CONFIG_SCHEMA,
             defaultConfig: {},
             outputPorts: {
                 kind: 'config-derived' as const,

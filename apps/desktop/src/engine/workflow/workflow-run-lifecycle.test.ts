@@ -23,6 +23,11 @@ import { createWorkflowStore } from './workflow-store.js';
 
 const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
 const pid = (id: string) => PluginIdSchema.parse(id);
+const ANY_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {},
+} as const;
 
 const context: WorkflowContext = {
     event: 'file.created',
@@ -52,6 +57,7 @@ function registerTestTriggerContract(contractRegistry: NodeContractRegistry): vo
         identity: pluginNodeIdentity(pid('com.sigil.test-trigger'), 'test-trigger'),
         version: 1,
         role: 'trigger',
+        configSchema: ANY_CONFIG_SCHEMA,
         defaultConfig: {},
         outputPorts: {
             kind: 'fixed',

@@ -12,6 +12,30 @@
         },
         "version": 1,
         "role": "action",
+        "configSchema": {
+            "version": 1,
+            "dialect": "https://json-schema.org/draft/2020-12/schema",
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["move", "rename", "copy"]
+                    },
+                    "destination": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "onConflict": {
+                        "type": "string",
+                        "enum": ["skip", "overwrite", "auto-rename", "error"]
+                    }
+                },
+                "required": ["action", "destination"],
+                "additionalProperties": false
+            }
+        },
         "defaultConfig": {
             "action": "move",
             "destination": "/",

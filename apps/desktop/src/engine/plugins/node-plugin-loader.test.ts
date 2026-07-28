@@ -55,6 +55,70 @@ function nestedObject(depth: number): unknown {
     return value;
 }
 
+const GREET_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {
+        type: 'object',
+        properties: { name: { type: 'string' } },
+        required: ['name'],
+        additionalProperties: false,
+    },
+} as const;
+
+const ROUTER_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {
+        type: 'object',
+        properties: {
+            target: { type: 'string', const: 'event' },
+            cases: {
+                type: 'array',
+                items: {
+                    type: 'object',
+                    properties: {
+                        id: { type: 'string', minLength: 1 },
+                        value: { type: 'string' },
+                    },
+                    required: ['id', 'value'],
+                    additionalProperties: false,
+                },
+            },
+        },
+        required: ['target', 'cases'],
+        additionalProperties: false,
+    },
+} as const;
+
+const ANY_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {},
+} as const;
+
+const BOOLEAN_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {
+        type: 'object',
+        properties: { enabled: { type: 'boolean' } },
+        required: ['enabled'],
+        additionalProperties: false,
+    },
+} as const;
+
+const MISMATCH_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {
+        type: 'object',
+        properties: { count: { type: 'number' } },
+        required: ['count'],
+        additionalProperties: false,
+    },
+} as const;
+
 const testLoaders = new Set<NodePluginLoader>();
 
 async function loadNodePlugin(
@@ -142,6 +206,45 @@ export const handler: TriggerHandler = {
         }, c.intervalMs);
         return () => clearInterval(timer);
     },
+    async execute({ ctx }) {
+        return { outputCtx: ctx, activePort: 'out' };
+    },
+};
+`;
+
+const ACTIVATION_VALIDATION_PLUGIN_HANDLER = `
+import { z } from 'zod';
+
+const ConfigSchema = z.object({ enabled: z.boolean() });
+
+export const descriptor = {
+    type: 'activation-validation-trigger' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: { enabled: true },
+};
+
+export const handler = {
+    activate() {
+        throw new Error('HANDLER_INVOKED');
+    },
+    async execute({ ctx }) {
+        return { outputCtx: ctx, activePort: 'out' };
+    },
+};
+`;
+
+const MISMATCH_PLUGIN_HANDLER = `
+import { z } from 'zod';
+
+const ConfigSchema = z.object({ name: z.string() });
+
+export const descriptor = {
+    type: 'mismatch-node' as const,
+    configSchema: ConfigSchema,
+    defaultConfig: { name: 'world' },
+};
+
+export const handler = {
     async execute({ ctx }) {
         return { outputCtx: ctx, activePort: 'out' };
     },
@@ -356,6 +459,7 @@ describe('loadNodePlugin', () => {
                     },
                     version: 1,
                     role: 'action',
+                    configSchema: GREET_CONFIG_SCHEMA,
                     defaultConfig: { name: 'world' },
                     outputPorts: {
                         kind: 'fixed',
@@ -402,6 +506,222 @@ describe('loadNodePlugin', () => {
         });
     });
 
+    it('rejects invalid runtime execution configuration before invoking the Plugin handler', async () => {
+        const pluginDir = join(tempDir, 'runtime-config-validation-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.runtime-config-validation',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['config.validation'],
+                nodeType: 'greet',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: pid('com.sigil.runtime-config-validation'),
+                        type: 'greet',
+                    },
+                    version: 1,
+                    role: 'action',
+                    configSchema: GREET_CONFIG_SCHEMA,
+                    defaultConfig: { name: 'world' },
+                    outputPorts: {
+                        kind: 'fixed',
+                        ports: [{ id: 'out', label: 'Output' }],
+                    },
+                    display: {
+                        label: 'Runtime Config Validation',
+                        description: 'Validates execution configuration in the worker.',
+                        category: 'utility',
+                    },
+                },
+            },
+            GREET_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(handlerRegistry.get('greet'));
+        await expect(
+            handler.execute(
+                {
+                    node: {
+                        id: testNodeId('invalid-runtime-config'),
+                        type: testNodeType('greet'),
+                        pluginId: pid('com.sigil.runtime-config-validation'),
+                        config: { name: 42 },
+                    },
+                    ctx: { event: '', payload: {}, vars: {} },
+                },
+                {} as never,
+            ),
+        ).rejects.toThrow(/Invalid Plugin Node execution configuration/);
+    });
+
+    it('rejects invalid runtime activation configuration before invoking the trigger', async () => {
+        const pluginDir = join(tempDir, 'activation-config-validation-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.activation-config-validation',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['config.activation-validation'],
+                nodeType: 'activation-validation-trigger',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: pid('com.sigil.activation-config-validation'),
+                        type: 'activation-validation-trigger',
+                    },
+                    version: 1,
+                    role: 'trigger',
+                    configSchema: BOOLEAN_CONFIG_SCHEMA,
+                    defaultConfig: { enabled: true },
+                    outputPorts: {
+                        kind: 'fixed',
+                        ports: [{ id: 'out', label: 'Output' }],
+                    },
+                    display: {
+                        label: 'Activation Config Validation',
+                        description: 'Validates activation configuration in the worker.',
+                        category: 'trigger',
+                    },
+                },
+            },
+            ACTIVATION_VALIDATION_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const diagnostics: string[] = [];
+        const result = await loadNodePlugin(pluginDir, {
+            manifestRegistry,
+            handlerRegistry,
+            diagnostic: (message) => diagnostics.push(message),
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        const handler = Option.getOrThrow(
+            handlerRegistry.get('activation-validation-trigger'),
+        ) as unknown as {
+            readonly activate: (config: unknown, onEvent: (ctx: unknown) => void) => () => void;
+        };
+        const teardown = handler.activate({ enabled: 'invalid' }, () => {});
+        await vi.waitFor(() => {
+            expect(diagnostics).toEqual(
+                expect.arrayContaining([
+                    expect.stringContaining('Invalid Plugin Node activation configuration'),
+                ]),
+            );
+        });
+        expect(diagnostics.join('\n')).not.toContain('HANDLER_INVOKED');
+        teardown();
+    });
+
+    it('returns a typed contract mismatch when host and runtime schemas disagree', async () => {
+        const pluginDir = join(tempDir, 'schema-mismatch-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.schema-mismatch',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['schema.mismatch'],
+                nodeType: 'mismatch-node',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: pid('com.sigil.schema-mismatch'),
+                        type: 'mismatch-node',
+                    },
+                    version: 1,
+                    role: 'action',
+                    configSchema: MISMATCH_CONFIG_SCHEMA,
+                    defaultConfig: { count: 1 },
+                    outputPorts: {
+                        kind: 'fixed',
+                        ports: [{ id: 'out', label: 'Output' }],
+                    },
+                    display: {
+                        label: 'Schema Mismatch',
+                        description: 'Exercises host/runtime schema disagreement.',
+                        category: 'utility',
+                    },
+                },
+            },
+            MISMATCH_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: {
+                kind: 'contract_mismatch',
+                error: expect.stringContaining('does not match the authoritative runtime schema'),
+            },
+        });
+        expect(manifestRegistry.has(pid('com.sigil.schema-mismatch'))).toBe(false);
+        expect(handlerRegistry.has('mismatch-node')).toBe(false);
+    });
+
+    it('rejects an unsupported configuration schema dialect as a typed manifest failure', async () => {
+        const pluginDir = join(tempDir, 'unsupported-schema-dialect-plugin');
+        writePlugin(
+            pluginDir,
+            {
+                id: 'com.sigil.unsupported-schema-dialect',
+                version: '0.0.1',
+                permissions: [],
+                emits: ['schema.dialect'],
+                nodeType: 'greet',
+                nodeContract: {
+                    identity: {
+                        namespace: 'plugin',
+                        pluginId: pid('com.sigil.unsupported-schema-dialect'),
+                        type: 'greet',
+                    },
+                    version: 1,
+                    role: 'action',
+                    configSchema: {
+                        ...GREET_CONFIG_SCHEMA,
+                        dialect: 'https://json-schema.org/draft-07/schema#',
+                    },
+                    defaultConfig: { name: 'world' },
+                    outputPorts: {
+                        kind: 'fixed',
+                        ports: [{ id: 'out', label: 'Output' }],
+                    },
+                    display: {
+                        label: 'Unsupported Schema Dialect',
+                        description: 'Exercises the versioned schema boundary.',
+                        category: 'utility',
+                    },
+                },
+            },
+            GREET_PLUGIN_HANDLER,
+        );
+
+        const { manifestRegistry, handlerRegistry } = createRegistries();
+        const result = await loadNodePlugin(pluginDir, { manifestRegistry, handlerRegistry });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: {
+                kind: 'invalid_manifest',
+                error: expect.stringContaining('nodeContract.configSchema.dialect'),
+            },
+        });
+    });
+
     it('returns an Engine-safe load failure for an over-depth contract at the worker seam', async () => {
         const pluginDir = join(tempDir, 'over-depth-worker-contract');
         mkdirSync(pluginDir, { recursive: true });
@@ -419,6 +739,7 @@ describe('loadNodePlugin', () => {
                     },
                     version: 1,
                     role: 'action',
+                    configSchema: ANY_CONFIG_SCHEMA,
                     defaultConfig: nestedObject(64),
                     outputPorts: {
                         kind: 'fixed',
@@ -477,6 +798,7 @@ describe('loadNodePlugin', () => {
                     },
                     version: 1,
                     role: 'action',
+                    configSchema: ANY_CONFIG_SCHEMA,
                     defaultConfig: cyclicConfig,
                     outputPorts: {
                         kind: 'fixed',
@@ -533,6 +855,7 @@ describe('loadNodePlugin', () => {
                     },
                     version: 1,
                     role: 'action',
+                    configSchema: ANY_CONFIG_SCHEMA,
                     defaultConfig: nestedObject(64),
                     outputPorts: {
                         kind: 'fixed',
@@ -579,6 +902,7 @@ describe('loadNodePlugin', () => {
                     },
                     version: 1,
                     role: 'action',
+                    configSchema: ROUTER_CONFIG_SCHEMA,
                     defaultConfig: {
                         target: 'event',
                         cases: [{ id: 'ready', value: 'ready' }],

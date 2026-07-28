@@ -24,6 +24,11 @@ import {
 
 const pid = (id: string) => PluginIdSchema.parse(id);
 const nt = (type: string) => NodeTypeNameSchema.parse(type);
+const ANY_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {},
+} as const;
 
 const trigger = (id: string): PipelineNode => ({
     id: PipelineNodeIdSchema.parse(id),
@@ -408,6 +413,7 @@ describe('validateWorkflowTopology', () => {
             identity: pluginNodeIdentity(pid('com.example.tick'), 'tick-trigger'),
             version: 1,
             role: 'trigger',
+            configSchema: ANY_CONFIG_SCHEMA,
             defaultConfig: {},
             outputPorts: {
                 kind: 'fixed',
@@ -435,6 +441,30 @@ describe('validateWorkflowTopology', () => {
             identity: pluginNodeIdentity(pid('com.example.router'), 'router-node'),
             version: 1,
             role: 'action',
+            configSchema: {
+                version: 1,
+                dialect: 'https://json-schema.org/draft/2020-12/schema',
+                schema: {
+                    type: 'object',
+                    properties: {
+                        target: { const: 'event' },
+                        cases: {
+                            type: 'array',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    id: { type: 'string' },
+                                    value: { type: 'string' },
+                                },
+                                required: ['id', 'value'],
+                                additionalProperties: false,
+                            },
+                        },
+                    },
+                    required: ['target', 'cases'],
+                    additionalProperties: false,
+                },
+            },
             defaultConfig: {
                 target: 'event',
                 cases: [{ id: 'ready', value: 'ready' }],

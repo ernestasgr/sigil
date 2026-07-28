@@ -70,6 +70,11 @@ describe('Workflow Builder Node catalog', () => {
                     },
                     version: 1,
                     role: 'trigger',
+                    configSchema: {
+                        version: 1,
+                        dialect: 'https://json-schema.org/draft/2020-12/schema',
+                        schema: {},
+                    },
                     defaultConfig: {
                         path: '/',
                         recursive: true,
@@ -207,6 +212,11 @@ describe('Workflow Builder Node catalog', () => {
                         },
                         version: 1,
                         role: 'trigger',
+                        configSchema: {
+                            version: 1,
+                            dialect: 'https://json-schema.org/draft/2020-12/schema',
+                            schema: {},
+                        },
                         defaultConfig: { enabled: true },
                         outputPorts: {
                             kind: 'fixed',
@@ -254,6 +264,11 @@ describe('Workflow Builder Node catalog', () => {
                     },
                     version: 1,
                     role: 'action',
+                    configSchema: {
+                        version: 1,
+                        dialect: 'https://json-schema.org/draft/2020-12/schema',
+                        schema: {},
+                    },
                     defaultConfig: {
                         target: 'event',
                         cases: [{ id: 'ready', value: 'ready' }],

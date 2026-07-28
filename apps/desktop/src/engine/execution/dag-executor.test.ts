@@ -31,6 +31,11 @@ const TEST_WORKFLOW_ID = WorkflowIdSchema.parse('test-workflow');
 const DOWNLOAD_WORKFLOW_ID = WorkflowIdSchema.parse('workflow-download-sorter');
 const pid = (id: string) => PluginIdSchema.parse(id);
 const AUTHORITATIVE_WORKFLOW_ID = WorkflowIdSchema.parse('authoritative-workflow');
+const ANY_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {},
+} as const;
 
 function captureEvents(bus: ReturnType<typeof createEventBus>): BusEvent[] {
     const events: BusEvent[] = [];
@@ -164,6 +169,7 @@ describe('dag-executor', () => {
                 identity: pluginNodeIdentity(pid('com.example.contract'), 'contracted-action'),
                 version: 1,
                 role: 'action',
+                configSchema: ANY_CONFIG_SCHEMA,
                 defaultConfig: {},
                 outputPorts: {
                     kind: 'fixed',

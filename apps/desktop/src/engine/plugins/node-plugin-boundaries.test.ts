@@ -25,6 +25,25 @@ import { NodePluginWorkerKind } from './plugin-node-rpc.js';
 
 const testWorkflowId = (value: string) => WorkflowIdSchema.parse(value);
 const pid = (id: string) => PluginIdSchema.parse(id);
+const EMPTY_OBJECT_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+    },
+} as const;
+const STRING_ID_CONFIG_SCHEMA = {
+    version: 1,
+    dialect: 'https://json-schema.org/draft/2020-12/schema',
+    schema: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+        additionalProperties: false,
+    },
+} as const;
 
 const HANDLER = `
 import { z } from 'zod';
@@ -161,6 +180,7 @@ function writePartialRegistrationFailurePlugin(dir: string): void {
                 },
                 version: 1,
                 role: 'trigger',
+                configSchema: EMPTY_OBJECT_CONFIG_SCHEMA,
                 defaultConfig: {},
                 outputPorts: {
                     kind: 'fixed',
@@ -225,6 +245,7 @@ function writeConcurrentActivationPlugin(dir: string): void {
                 },
                 version: 1,
                 role: 'trigger',
+                configSchema: STRING_ID_CONFIG_SCHEMA,
                 defaultConfig: { id: 'default' },
                 outputPorts: {
                     kind: 'fixed',
