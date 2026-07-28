@@ -1,6 +1,5 @@
 import type { Capability } from '@sigil/contracts/manifest';
 
-import { DEFAULT_PROPERTIES as ENGINE_DEFAULTS } from '@sigil/contracts/properties-file';
 import type { ReactElement } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -11,6 +10,7 @@ import type {
 } from '../../shared/ipc-channels.js';
 import type { PropertiesSaveOutcome } from '../../shared/persistence.js';
 import type { PluginInfo } from '../../shared/plugin-info.js';
+import { immutablePropertySnapshot } from '../../shared/property-snapshot.js';
 import { type WorkflowSummary, workflowActivationLabel } from '../../shared/workflow.js';
 import { SectionShell } from '../components/section-shell.js';
 import { Button } from '../components/ui/button.js';
@@ -23,16 +23,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizePropertiesReadResult(value: Record<string, unknown>): {
-    readonly properties: Record<string, unknown>;
+    readonly properties: Readonly<Record<string, unknown>>;
     readonly defaults: Readonly<Record<string, unknown>>;
 } {
     if (isRecord(value.properties)) {
         return {
-            properties: value.properties,
-            defaults: isRecord(value.defaults) ? value.defaults : ENGINE_DEFAULTS,
+            properties: immutablePropertySnapshot(value.properties),
+            defaults: immutablePropertySnapshot(isRecord(value.defaults) ? value.defaults : {}),
         };
     }
-    return { properties: value, defaults: ENGINE_DEFAULTS };
+    return { properties: immutablePropertySnapshot(value), defaults: {} };
 }
 
 function persistenceErrorMessage(
@@ -721,8 +721,7 @@ export function SettingsSection(): ReactElement {
     const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
     const [pluginsLoading, setPluginsLoading] = useState(true);
     const [properties, setProperties] = useState<Record<string, unknown>>({});
-    const [propertyDefaults, setPropertyDefaults] =
-        useState<Readonly<Record<string, unknown>>>(ENGINE_DEFAULTS);
+    const [propertyDefaults, setPropertyDefaults] = useState<Readonly<Record<string, unknown>>>({});
     const [propertiesLoading, setPropertiesLoading] = useState(true);
     const [persistenceError, setPersistenceError] = useState<string | null>(null);
     const [propertiesSaveStatus, setPropertiesSaveStatus] = useState<PropertiesSaveSuccess | null>(
@@ -753,7 +752,7 @@ export function SettingsSection(): ReactElement {
             })
             .catch(() => {
                 setProperties({});
-                setPropertyDefaults(ENGINE_DEFAULTS);
+                setPropertyDefaults({});
             })
             .finally(() => setPropertiesLoading(false));
     }, [sigil]);

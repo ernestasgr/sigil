@@ -15,3 +15,15 @@ export {
     WorkflowDocumentSchema,
     WorkflowDocumentSchemaVersionSchema,
 } from './pipeline.js';
+export type {
+    BuiltinProperties,
+    PropertiesFile,
+    PropertiesKey,
+    PropertyValue,
+    ResolvedProperties,
+} from './properties-file.js';
+export {
+    BUILTIN_PROPERTY_DEFAULTS,
+    BUILTIN_PROPERTY_DESCRIPTORS,
+    PropertiesFileSchema,
+} from './properties-file.js';

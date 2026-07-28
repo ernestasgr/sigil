@@ -14,6 +14,7 @@ import {
     type EngineListPlugins,
     type EnginePing,
     type EngineReadProperties,
+    type EngineReadPropertiesResult,
     type EngineReadWorkflowState,
     type EngineRetryWorkflow,
     type EngineSaveProperties,
@@ -925,6 +926,7 @@ describe('dispatch', () => {
             type: EngineChannel.ReadPropertiesResult,
             correlationId: 'corr-8',
             properties: { loadedKey: 'loadedValue' },
+            defaults: {},
         });
     });
 
@@ -949,6 +951,7 @@ describe('dispatch', () => {
             type: EngineChannel.ReadPropertiesResult,
             correlationId: 'corr-properties-failed',
             properties: {},
+            defaults: {},
         });
     });
 
@@ -970,6 +973,27 @@ describe('dispatch', () => {
             properties: { loadedKey: 'loadedValue' },
             defaults,
         });
+    });
+
+    it('clones and freezes property snapshots before crossing the Engine IPC seam', () => {
+        const defaults = { nested: { values: ['default'] } };
+        const { subsystems, postMessage } = createFakeSubsystems(defaults);
+        const properties = { nested: { values: ['configured'] } };
+        readPropertiesFileMock.mockReturnValue(Effect.succeed(properties));
+
+        dispatch(
+            { type: EngineChannel.ReadProperties, correlationId: 'corr-properties-snapshot' },
+            subsystems,
+        );
+
+        const response = postMessage.mock.calls[0]?.[0] as EngineReadPropertiesResult;
+        expect(response.properties).toEqual(properties);
+        expect(response.defaults).toEqual(defaults);
+        expect(Object.isFrozen(response.properties)).toBe(true);
+        expect(Object.isFrozen(response.properties.nested as object)).toBe(true);
+        expect(Object.isFrozen(response.defaults.nested as object)).toBe(true);
+        expect(response.properties).not.toBe(properties);
+        expect(response.defaults).not.toBe(defaults);
     });
 
     it('routes SaveProperties and posts ok:true result', () => {

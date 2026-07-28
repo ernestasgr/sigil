@@ -41,7 +41,7 @@ describe('Settings Properties File template', () => {
 
     it('reports hot-applied values and restart-required values separately', async () => {
         const sigil = createMockSigil();
-        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {} });
+        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {}, defaults: {} });
         vi.mocked(sigil.saveProperties).mockResolvedValue({
             ok: true,
             applied: { notifyOnWorkflowError: false },
@@ -87,7 +87,7 @@ describe('Settings Properties File template', () => {
         'labels $kind failures distinctly',
         async ({ kind, error, diagnostic, issues, expected }) => {
             const sigil = createMockSigil();
-            vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {} });
+            vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {}, defaults: {} });
             vi.mocked(sigil.saveProperties).mockResolvedValue(
                 kind === 'validation'
                     ? { ok: false, kind, error, issues }
@@ -120,7 +120,7 @@ describe('Settings Plugin Permissions', () => {
     it('offers toggles only for capabilities declared by the Plugin Manifest', async () => {
         const sigil = createMockSigil();
         vi.mocked(sigil.listPlugins).mockResolvedValue([pluginInfo]);
-        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {} });
+        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {}, defaults: {} });
 
         render(withSigil(<SettingsSection />, sigil));
         const user = userEvent.setup();
@@ -161,7 +161,7 @@ describe('Settings Plugin Permissions', () => {
     ): Promise<void> {
         const sigil = createMockSigil();
         vi.mocked(sigil.listPlugins).mockResolvedValue([pluginInfo]);
-        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {} });
+        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {}, defaults: {} });
         vi.mocked(sigil.setPermissionOverride).mockResolvedValue(result);
 
         render(withSigil(<SettingsSection />, sigil));
@@ -181,7 +181,7 @@ describe('Settings Plugin Permissions', () => {
     it('updates PluginInfo from the Engine effective result instead of the raw selection', async () => {
         const sigil = createMockSigil();
         vi.mocked(sigil.listPlugins).mockResolvedValue([pluginInfo]);
-        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {} });
+        vi.mocked(sigil.readProperties).mockResolvedValue({ properties: {}, defaults: {} });
         vi.mocked(sigil.setPermissionOverride).mockResolvedValue({
             ok: true,
             grantedPermissions: [],

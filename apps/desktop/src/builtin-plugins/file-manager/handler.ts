@@ -3,10 +3,10 @@ import { basename, dirname, join, parse } from 'node:path';
 import { type PluginId, PluginIdSchema } from '@sigil/contracts/ids';
 import { FileManagerConfigSchema } from '@sigil/contracts/nodes/file-manager';
 import {
+    BUILTIN_PROPERTY_DEFAULTS,
+    BUILTIN_PROPERTY_DESCRIPTORS,
     type CollisionSuffixStyle,
     type ConflictPolicy,
-    DEFAULT_PROPERTIES,
-    PROPERTY_DESCRIPTORS,
 } from '@sigil/contracts/properties-file';
 import { Either } from 'effect';
 import type { NodeHandler, NodeRunResult } from '../../engine/node-handlers/types.js';
@@ -168,8 +168,8 @@ export const descriptor = {
     configSchema: FileManagerConfigSchema,
     defaultConfig: { action: 'move', destination: '/', onConflict: 'skip' },
     properties: [
-        PROPERTY_DESCRIPTORS['file-manager.defaultOnConflict'],
-        PROPERTY_DESCRIPTORS['file-manager.collisionSuffixStyle'],
+        BUILTIN_PROPERTY_DESCRIPTORS['file-manager.defaultOnConflict'],
+        BUILTIN_PROPERTY_DESCRIPTORS['file-manager.collisionSuffixStyle'],
     ],
 };
 
@@ -181,7 +181,7 @@ export const handler: NodeHandler = {
         const onConflict =
             typedNode.config.onConflict ??
             deps.fileManager?.defaultOnConflict ??
-            DEFAULT_PROPERTIES['file-manager.defaultOnConflict'];
+            BUILTIN_PROPERTY_DEFAULTS['file-manager.defaultOnConflict'];
         const sourcePath = ctx.payload.path;
         if (typeof sourcePath !== 'string' || sourcePath === '') {
             throw new Error('File-manager: payload.path is missing or empty');

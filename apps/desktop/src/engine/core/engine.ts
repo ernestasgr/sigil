@@ -53,6 +53,7 @@ import {
     loadPropertiesFile,
     type PropertiesFile,
     type PropertyRegistry,
+    type PropertyResolutionResult,
     type RegisteredResolvedProperties,
     type ResolvedProperties,
 } from './property-registry.js';
@@ -95,6 +96,7 @@ export interface Engine {
     ) => PropertyValidationResult;
     readonly applyProperties: (properties: PropertiesFile) => PropertyApplyResult;
     readonly loadBuiltinPlugins: () => Promise<readonly NodePluginLoadResult[]>;
+    readonly unloadPlugin: (pluginId: PluginId) => Promise<boolean>;
     readonly applyPermissionOverride: (
         pluginId: PluginId,
         overrides: readonly Capability[],
@@ -124,21 +126,34 @@ export interface Engine {
 
 export function resolveSettings(
     resolvedProperties: ResolvedProperties,
+    propertyRegistry: PropertyRegistry,
     properties: PropertiesFile = {},
-    propertyRegistry: PropertyRegistry = createPropertyRegistry(),
 ): ExecutorSettings {
+    const collisionSuffixStyle = propertyRegistry.resolve('file-manager.collisionSuffixStyle', {
+        properties,
+        fallback: resolvedProperties.collisionSuffixStyle,
+    });
+    if (!collisionSuffixStyle.ok) {
+        throw new Error(propertyResolutionError(collisionSuffixStyle));
+    }
+
     return {
         notifyOnWorkflowError: resolvedProperties.notifyOnWorkflowError,
         collisionSuffixStyle: resolvedProperties.collisionSuffixStyle,
         properties: resolvedProperties,
         fileManager: {
             defaultOnConflict: resolvedProperties['file-manager.defaultOnConflict'],
-            collisionSuffixStyle: propertyRegistry.resolve('file-manager.collisionSuffixStyle', {
-                properties,
-                fallback: resolvedProperties.collisionSuffixStyle,
-            }),
+            collisionSuffixStyle: collisionSuffixStyle.value,
         },
     };
+}
+
+function propertyResolutionError(
+    result: Extract<PropertyResolutionResult<unknown>, { readonly ok: false }>,
+): string {
+    return result.kind === 'missing'
+        ? `Property "${result.key}" is not registered.`
+        : `Property "${result.key}" from ${result.source} is invalid: ${result.error}`;
 }
 
 function emitTopologyDiagnostics(bus: EventBus, diagnostics: readonly TopologyDiagnostic[]): void {
@@ -180,6 +195,11 @@ function propertyValuesEqual(first: unknown, second: unknown): boolean {
     return false;
 }
 
+function removeUnregisteredProperties(value: unknown, propertyRegistry: PropertyRegistry): unknown {
+    if (!isRecord(value)) return value;
+    return Object.fromEntries(Object.entries(value).filter(([key]) => propertyRegistry.has(key)));
+}
+
 export function createEngine(options?: EngineOptions): Engine {
     const bus = createEventBus();
     const registry = createManifestRegistry();
@@ -193,25 +213,24 @@ export function createEngine(options?: EngineOptions): Engine {
         readonly resolved: RegisteredResolvedProperties;
         readonly properties: PropertiesFile;
     } => {
-        const propertiesResult = loadPropertiesFile(
-            configuredProperties,
-            { databasePath: options?.defaultDatabasePath },
-            propertyRegistry,
-        );
+        const propertiesResult = loadPropertiesFile(configuredProperties, propertyRegistry, {
+            databasePath: options?.defaultDatabasePath,
+        });
         return propertiesResult.ok
             ? { resolved: propertiesResult.value, properties: propertiesResult.properties }
-            : {
-                  resolved: propertyRegistry.resolveAll(
+            : (() => {
+                  const fallback = propertyRegistry.resolveAll(
                       {},
                       { databasePath: options?.defaultDatabasePath },
-                  ),
-                  properties: {},
-              };
+                  );
+                  if (!fallback.ok) throw new Error(propertyResolutionError(fallback.error));
+                  return { resolved: fallback.value, properties: {} };
+              })();
     };
 
     let { resolved: resolvedProperties, properties } = resolveConfiguredProperties();
 
-    let settings = resolveSettings(resolvedProperties, properties, propertyRegistry);
+    let settings = resolveSettings(resolvedProperties, propertyRegistry, properties);
     const database = new DatabaseSync(resolvedProperties.databasePath);
     const workflowStateStore = createWorkflowStateStore(database);
 
@@ -300,9 +319,13 @@ export function createEngine(options?: EngineOptions): Engine {
             }
         }
 
-        resolvedProperties = effective as RegisteredResolvedProperties;
+        const resolvedResult = propertyRegistry.resolveAll(effective);
+        if (!resolvedResult.ok) {
+            throw new Error(propertyResolutionError(resolvedResult.error));
+        }
+        resolvedProperties = resolvedResult.value;
         properties = next.properties;
-        settings = resolveSettings(resolvedProperties, properties, propertyRegistry);
+        settings = resolveSettings(resolvedProperties, propertyRegistry, properties);
         fileWatcherManager.setDefaultIgnorePatterns(
             resolvedProperties['file-watcher.ignorePatterns'],
         );
@@ -412,6 +435,17 @@ export function createEngine(options?: EngineOptions): Engine {
             });
             refreshResolvedProperties();
             return builtinResults;
+        },
+        unloadPlugin: async (pluginId): Promise<boolean> => {
+            const unloaded = await pluginLoader.unloadNodePlugin(pluginId);
+            if (unloaded) {
+                configuredProperties = removeUnregisteredProperties(
+                    configuredProperties,
+                    propertyRegistry,
+                );
+                refreshResolvedProperties();
+            }
+            return unloaded;
         },
         applyPermissionOverride,
         registerPermissionTransitionReconciler,

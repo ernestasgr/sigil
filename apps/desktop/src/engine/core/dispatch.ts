@@ -13,6 +13,7 @@ import {
     isExpectedMissingFileDiagnostic,
 } from '../../shared/persistence.js';
 import type { PluginInfo } from '../../shared/plugin-info.js';
+import { immutablePropertySnapshot } from '../../shared/property-snapshot.js';
 import { effectiveCapabilityView } from '../persistence/capability-broker.js';
 import type { WorkflowActivator } from '../workflow/workflow-activator.js';
 import type { WorkflowLifecycle } from '../workflow/workflow-lifecycle.js';
@@ -548,14 +549,14 @@ function handleReadProperties(
         Effect.runSync,
     );
     const properties = isRecord(current) ? current : {};
-    const defaults = subsystems.engine.propertyRegistry?.defaults();
+    const defaults = subsystems.engine.propertyRegistry?.defaults() ?? {};
     postCommandResponse(
         'readProperties',
         {
             type: EngineChannel.ReadPropertiesResult,
             correlationId: message.correlationId,
-            properties,
-            ...(defaults === undefined ? {} : { defaults }),
+            properties: immutablePropertySnapshot(properties),
+            defaults: immutablePropertySnapshot(defaults),
         },
         subsystems,
     );

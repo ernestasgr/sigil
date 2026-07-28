@@ -10,7 +10,20 @@ import {
 } from '@sigil/contracts/properties-file';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import type { PropertyResolutionResult } from './property-registry.js';
 import { createPropertyRegistry, loadPropertiesFile } from './property-registry.js';
+
+function resolvedValue<T>(result: PropertyResolutionResult<T>): T {
+    if (!result.ok) throw new Error(`Expected a resolved property, got ${result.kind}.`);
+    return result.value;
+}
+
+function loadBuiltinProperties(
+    value: unknown,
+    defaults: Readonly<Record<string, unknown>> = {},
+): ReturnType<typeof loadPropertiesFile> {
+    return loadPropertiesFile(value, createPropertyRegistry(), defaults);
+}
 
 describe('Property registry', () => {
     it('serializes a descriptor and restores it from JSON Schema', () => {
@@ -253,26 +266,104 @@ describe('Property registry', () => {
         ]);
 
         expect(
-            registry.resolve('example-plugin.mode', {
-                explicit: 'explicit',
-                properties: { 'example-plugin.mode': 'from-file' },
-                fallback: 'caller-fallback',
-            }),
+            resolvedValue(
+                registry.resolve('example-plugin.mode', {
+                    explicit: 'explicit',
+                    properties: { 'example-plugin.mode': 'from-file' },
+                    fallback: 'caller-fallback',
+                }),
+            ),
         ).toBe('explicit');
         expect(
-            registry.resolve('example-plugin.mode', {
-                properties: { 'example-plugin.mode': 'from-file' },
-                fallback: 'caller-fallback',
-            }),
+            resolvedValue(
+                registry.resolve('example-plugin.mode', {
+                    properties: { 'example-plugin.mode': 'from-file' },
+                    fallback: 'caller-fallback',
+                }),
+            ),
         ).toBe('from-file');
         expect(
-            registry.resolve('example-plugin.mode', {
-                properties: {},
-                fallback: 'caller-fallback',
-            }),
+            resolvedValue(
+                registry.resolve('example-plugin.mode', {
+                    properties: {},
+                    fallback: 'caller-fallback',
+                }),
+            ),
         ).toBe('caller-fallback');
-        expect(registry.resolve('example-plugin.mode', { properties: {} })).toBe('hardcoded');
-        expect(registry.resolve('missing-key', { properties: {} })).toBeUndefined();
+        expect(resolvedValue(registry.resolve('example-plugin.mode', { properties: {} }))).toBe(
+            'hardcoded',
+        );
+        expect(registry.resolve('missing-key', { properties: {} })).toMatchObject({
+            ok: false,
+            kind: 'missing',
+        });
+    });
+
+    it('validates the winning source instead of trusting or skipping an invalid value', () => {
+        const registry = createPropertyRegistry([
+            definePropertyDescriptor('example-plugin.count', z.number().int(), 1, 'hot'),
+        ]);
+
+        expect(
+            registry.resolve('example-plugin.count', {
+                explicit: 'not-a-number',
+                properties: { 'example-plugin.count': 2 },
+                fallback: 3,
+            }),
+        ).toMatchObject({ ok: false, kind: 'invalid', source: 'explicit' });
+        expect(
+            registry.resolve('example-plugin.count', {
+                properties: { 'example-plugin.count': 'not-a-number' },
+                fallback: 3,
+            }),
+        ).toMatchObject({ ok: false, kind: 'invalid', source: 'properties-file' });
+        expect(
+            registry.resolve('example-plugin.count', {
+                properties: {},
+                fallback: 'not-a-number',
+            }),
+        ).toMatchObject({ ok: false, kind: 'invalid', source: 'caller-fallback' });
+    });
+
+    it('keeps registry ownership isolated and built-in snapshots immutable', () => {
+        const first = createPropertyRegistry();
+        const second = createPropertyRegistry();
+        const descriptor = definePropertyDescriptor(
+            'example-plugin.isolated',
+            z.boolean(),
+            false,
+            'hot',
+        );
+
+        expect(first.register(descriptor, { owner: 'example-plugin' }).ok).toBe(true);
+        expect(first.has(descriptor.key)).toBe(true);
+        expect(second.has(descriptor.key)).toBe(false);
+
+        expect(first.unregisterOwner('example-plugin')).toEqual([descriptor.key]);
+        expect(first.has(descriptor.key)).toBe(false);
+        expect(second.has(descriptor.key)).toBe(false);
+        expect(first.unregister('notifyOnWorkflowError')).toBe(false);
+        expect(first.has('notifyOnWorkflowError')).toBe(true);
+
+        const defaults = first.defaults();
+        expect(Object.isFrozen(defaults)).toBe(true);
+        expect(Object.isFrozen(defaults['file-watcher.ignorePatterns'])).toBe(true);
+        expect(Object.isFrozen(first.get('notifyOnWorkflowError'))).toBe(true);
+    });
+
+    it('returns a typed invalid result when a batch fallback does not match its descriptor', () => {
+        const registry = createPropertyRegistry();
+
+        const result = registry.resolveAll({}, { notifyOnWorkflowError: 'yes' });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: {
+                kind: 'invalid',
+                key: 'notifyOnWorkflowError',
+                source: 'caller-fallback',
+            },
+        });
     });
 
     it('refreshes its schema and defaults when a descriptor is removed', () => {
@@ -348,9 +439,11 @@ describe('Properties resolution', () => {
         expect(registry.schema().safeParse({ 'example-plugin.enabled': 'yes' }).success).toBe(
             false,
         );
-        expect(registry.resolveAll({})['example-plugin.enabled']).toBe(false);
+        const resolved = registry.resolveAll({});
+        expect(resolved.ok).toBe(true);
+        if (resolved.ok) expect(resolved.value['example-plugin.enabled']).toBe(false);
 
-        const loaded = loadPropertiesFile({}, { 'example-plugin.enabled': true }, registry);
+        const loaded = loadPropertiesFile({}, registry, { 'example-plugin.enabled': true });
         expect(loaded.ok).toBe(true);
         if (loaded.ok) {
             expect(loaded.value['example-plugin.enabled']).toBe(true);
@@ -360,10 +453,12 @@ describe('Properties resolution', () => {
     it('prefers an explicit value over the Properties File value', () => {
         const registry = createPropertyRegistry();
         expect(
-            registry.resolve('notifyOnWorkflowError', {
-                explicit: false,
-                properties: { notifyOnWorkflowError: true },
-            }),
+            resolvedValue(
+                registry.resolve('notifyOnWorkflowError', {
+                    explicit: false,
+                    properties: { notifyOnWorkflowError: true },
+                }),
+            ),
         ).toBe(false);
     });
 
@@ -377,28 +472,22 @@ describe('Properties resolution', () => {
             'file-manager.defaultOnConflict',
             'file-manager.collisionSuffixStyle',
         ]);
-        expect(registry.resolveAll({})).toEqual({
-            notifyOnWorkflowError: true,
-            databasePath: ':memory:',
-            collisionSuffixStyle: 'windows',
-            'file-watcher.ignorePatterns': DEFAULT_IGNORE_PATTERNS,
-            'file-manager.defaultOnConflict': 'error',
-            'file-manager.collisionSuffixStyle': 'windows',
-        });
+        const resolved = registry.resolveAll({});
+        expect(resolved).toMatchObject({ ok: true });
+        if (resolved.ok)
+            expect(resolved.value).toEqual({
+                notifyOnWorkflowError: true,
+                databasePath: ':memory:',
+                collisionSuffixStyle: 'windows',
+                'file-watcher.ignorePatterns': DEFAULT_IGNORE_PATTERNS,
+                'file-manager.defaultOnConflict': 'error',
+                'file-manager.collisionSuffixStyle': 'windows',
+            });
     });
 
     it('returns a typed resolved object containing engine and builtin plugin values', () => {
         const registry = createPropertyRegistry();
-        expect(
-            registry.resolveAll({
-                notifyOnWorkflowError: false,
-                databasePath: '/properties/sigil.db',
-                collisionSuffixStyle: 'underscore',
-                'file-watcher.ignorePatterns': ['*.user-defined'],
-                'file-manager.defaultOnConflict': 'skip',
-                'file-manager.collisionSuffixStyle': 'hyphen',
-            }),
-        ).toEqual({
+        const resolved = registry.resolveAll({
             notifyOnWorkflowError: false,
             databasePath: '/properties/sigil.db',
             collisionSuffixStyle: 'underscore',
@@ -406,6 +495,16 @@ describe('Properties resolution', () => {
             'file-manager.defaultOnConflict': 'skip',
             'file-manager.collisionSuffixStyle': 'hyphen',
         });
+        expect(resolved).toMatchObject({ ok: true });
+        if (resolved.ok)
+            expect(resolved.value).toEqual({
+                notifyOnWorkflowError: false,
+                databasePath: '/properties/sigil.db',
+                collisionSuffixStyle: 'underscore',
+                'file-watcher.ignorePatterns': ['*.user-defined'],
+                'file-manager.defaultOnConflict': 'skip',
+                'file-manager.collisionSuffixStyle': 'hyphen',
+            });
     });
 
     it('enforces explicit, Properties File, then hardcoded precedence for every key', () => {
@@ -434,11 +533,11 @@ describe('Properties resolution', () => {
                 throw new Error(`Missing test value for ${key}`);
             }
 
-            expect(registry.resolve(key, { properties })).toEqual(propertyValue);
-            expect(registry.resolve(key, { explicit: explicitValue, properties })).toEqual(
-                explicitValue,
-            );
-            expect(registry.resolve(key, { properties: {} })).toEqual(
+            expect(resolvedValue(registry.resolve(key, { properties }))).toEqual(propertyValue);
+            expect(
+                resolvedValue(registry.resolve(key, { explicit: explicitValue, properties })),
+            ).toEqual(explicitValue);
+            expect(resolvedValue(registry.resolve(key, { properties: {} }))).toEqual(
                 PROPERTY_DESCRIPTORS[key].fallback,
             );
         }
@@ -515,7 +614,7 @@ describe('PropertiesFileSchema', () => {
 
 describe('loadPropertiesFile', () => {
     it('returns ok with the explicit value when notifyOnWorkflowError is set', () => {
-        const result = loadPropertiesFile({ notifyOnWorkflowError: false });
+        const result = loadBuiltinProperties({ notifyOnWorkflowError: false });
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.value.notifyOnWorkflowError).toBe(false);
@@ -523,7 +622,7 @@ describe('loadPropertiesFile', () => {
     });
 
     it('falls back to the hardcoded default when the key is absent', () => {
-        const result = loadPropertiesFile({});
+        const result = loadBuiltinProperties({});
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.value.notifyOnWorkflowError).toBe(true);
@@ -531,12 +630,12 @@ describe('loadPropertiesFile', () => {
     });
 
     it('falls back to the hardcoded default when the root is not an object', () => {
-        const result = loadPropertiesFile('nope');
+        const result = loadBuiltinProperties('nope');
         expect(result.ok).toBe(false);
     });
 
     it('rejects a non-boolean notifyOnWorkflowError with an error message', () => {
-        const result = loadPropertiesFile({ notifyOnWorkflowError: 1 });
+        const result = loadBuiltinProperties({ notifyOnWorkflowError: 1 });
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.error.length).toBeGreaterThan(0);
@@ -548,7 +647,7 @@ describe('loadPropertiesFile', () => {
     });
 
     it('resolves databasePath from the file content', () => {
-        const result = loadPropertiesFile({ databasePath: '/data/sigil.db' });
+        const result = loadBuiltinProperties({ databasePath: '/data/sigil.db' });
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.value.databasePath).toBe('/data/sigil.db');
@@ -556,7 +655,7 @@ describe('loadPropertiesFile', () => {
     });
 
     it('falls back to the hardcoded :memory: default when databasePath is absent', () => {
-        const result = loadPropertiesFile({});
+        const result = loadBuiltinProperties({});
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.value.databasePath).toBe(':memory:');
@@ -568,7 +667,7 @@ describe('loadPropertiesFile', () => {
     });
 
     it('uses caller-provided defaults when the key is absent from the file', () => {
-        const result = loadPropertiesFile({}, { databasePath: '/userData/sigil.db' });
+        const result = loadBuiltinProperties({}, { databasePath: '/userData/sigil.db' });
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.value.databasePath).toBe('/userData/sigil.db');
@@ -576,7 +675,7 @@ describe('loadPropertiesFile', () => {
     });
 
     it('caller-provided defaults do not override an explicit value in the file', () => {
-        const result = loadPropertiesFile(
+        const result = loadBuiltinProperties(
             { databasePath: '/explicit/sigil.db' },
             { databasePath: '/userData/sigil.db' },
         );
@@ -587,7 +686,7 @@ describe('loadPropertiesFile', () => {
     });
 
     it('caller-provided defaults can override notifyOnWorkflowError', () => {
-        const result = loadPropertiesFile({}, { notifyOnWorkflowError: false });
+        const result = loadBuiltinProperties({}, { notifyOnWorkflowError: false });
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.value.notifyOnWorkflowError).toBe(false);
@@ -595,7 +694,7 @@ describe('loadPropertiesFile', () => {
     });
 
     it('resolves collisionSuffixStyle from the file content', () => {
-        const result = loadPropertiesFile({ collisionSuffixStyle: 'underscore' });
+        const result = loadBuiltinProperties({ collisionSuffixStyle: 'underscore' });
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.value.collisionSuffixStyle).toBe('underscore');
@@ -603,7 +702,7 @@ describe('loadPropertiesFile', () => {
     });
 
     it('defaults collisionSuffixStyle to windows when absent', () => {
-        const result = loadPropertiesFile({});
+        const result = loadBuiltinProperties({});
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.value.collisionSuffixStyle).toBe('windows');

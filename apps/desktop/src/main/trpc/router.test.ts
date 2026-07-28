@@ -26,7 +26,7 @@ describe('AppRouter', () => {
         });
         await expect(caller.getWorkflow({ id: 'workflow-1' })).resolves.toBeNull();
         await expect(caller.listPlugins()).resolves.toEqual([]);
-        await expect(caller.readProperties()).resolves.toEqual({ properties: {} });
+        await expect(caller.readProperties()).resolves.toEqual({ properties: {}, defaults: {} });
         await expect(caller.readWorkflowState({ id: 'workflow-1' })).resolves.toEqual([]);
     });
 

@@ -76,7 +76,7 @@ export type PermissionOverrideInput = z.input<typeof PermissionOverrideInputSche
 export const PropertiesReadOutputSchema = z
     .object({
         properties: z.record(z.string(), z.unknown()).readonly(),
-        defaults: z.record(z.string(), z.unknown()).readonly().optional(),
+        defaults: z.record(z.string(), z.unknown()).readonly(),
     })
     .readonly();
 export type PropertiesReadOutput = z.infer<typeof PropertiesReadOutputSchema>;

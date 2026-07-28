@@ -287,7 +287,7 @@ export function createAppRouter(deps: AppRouterDependencies) {
 
         readProperties: procedure.output(PropertiesReadOutputSchema).query(async () => {
             const engine = deps.getEngine();
-            if (!engine) return { properties: {} } satisfies PropertiesReadOutput;
+            if (!engine) return { properties: {}, defaults: {} } satisfies PropertiesReadOutput;
             try {
                 return await engine.readProperties();
             } catch (error) {
