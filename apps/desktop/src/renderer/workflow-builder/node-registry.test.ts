@@ -1,5 +1,5 @@
 import { WorkflowDocumentSchema } from '@sigil/contracts';
-import { NodeTypeSchema } from '@sigil/contracts/nodes';
+import { NodeTypeSchema } from '@sigil/contracts/workflow';
 import { describe, expect, it } from 'vitest';
 
 import { type NodeSpec, nodeTypeDef } from './node-catalog.js';

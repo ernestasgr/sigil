@@ -1,5 +1,5 @@
-import type { PipelineCondition } from '@sigil/contracts/conditions';
-import { type EventCatalog, findEventField } from '@sigil/contracts/event-catalog';
+import { type EventCatalog, findEventField } from '@sigil/contracts/events';
+import type { PipelineCondition } from '@sigil/contracts/workflow';
 
 export type FieldCondition = Extract<PipelineCondition, { target: 'payload' | 'vars' }>;
 

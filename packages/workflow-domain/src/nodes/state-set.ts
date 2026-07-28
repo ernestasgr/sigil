@@ -1,9 +1,11 @@
-import { StateSetDescriptor } from '@sigil/contracts/nodes/state-set';
+import { StateSetConfigSchema } from '@sigil/contracts/workflow';
 
 import { defineBuiltinNode } from './types.js';
 
 export const StateSetNode = defineBuiltinNode({
-    ...StateSetDescriptor,
+    type: 'state-set',
+    configSchema: StateSetConfigSchema,
+    defaultConfig: { key: 'key', valueTemplate: '', valueType: 'string' },
     contract: {
         identity: { namespace: 'builtin', type: 'state-set' },
         version: 1,
@@ -16,5 +18,3 @@ export const StateSetNode = defineBuiltinNode({
         },
     },
 });
-
-export const StateSetContractRegistration = StateSetNode.registration;

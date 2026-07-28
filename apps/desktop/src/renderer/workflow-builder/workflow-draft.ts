@@ -1,6 +1,6 @@
 import type { WorkflowDocument } from '@sigil/contracts';
 import { PipelineEdgeIdSchema } from '@sigil/contracts/ids';
-import type { TopologyDiagnostic } from '@sigil/workflow-domain/topology';
+import type { TopologyDiagnostic } from '@sigil/workflow-domain';
 import {
     addEdge,
     applyEdgeChanges,

@@ -1,9 +1,15 @@
-import { FileWatcherDescriptor } from '@sigil/contracts/nodes/file-watcher';
+import { FileWatcherConfigSchema } from '@sigil/contracts/workflow';
 
 import { defineBuiltinNode } from './types.js';
 
 export const FileWatcherNode = defineBuiltinNode({
-    ...FileWatcherDescriptor,
+    type: 'file-watcher',
+    configSchema: FileWatcherConfigSchema,
+    defaultConfig: {
+        path: '/',
+        recursive: true,
+        events: ['file.created'],
+    },
     contract: {
         identity: { namespace: 'builtin', type: 'file-watcher' },
         version: 1,
@@ -17,5 +23,3 @@ export const FileWatcherNode = defineBuiltinNode({
         },
     },
 });
-
-export const FileWatcherContractRegistration = FileWatcherNode.registration;

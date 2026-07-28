@@ -1,8 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import type { NodeTypeName } from '@sigil/contracts/ids';
-import type { Manifest } from '@sigil/contracts/manifest';
-import { parseManifest } from '@sigil/contracts/manifest';
+import type { Manifest } from '@sigil/contracts/plugins';
+import { parseManifest } from '@sigil/contracts/plugins';
 import { Option } from 'effect';
 
 export type DiscoveredPluginManifest = Manifest & { readonly nodeType: NodeTypeName };

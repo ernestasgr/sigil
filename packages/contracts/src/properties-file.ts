@@ -136,9 +136,6 @@ export const BUILTIN_PROPERTY_DESCRIPTORS = Object.freeze({
     ),
 } as const satisfies Readonly<Record<string, PropertyDescriptor<string, z.ZodType>>>);
 
-/** @deprecated Use BUILTIN_PROPERTY_DESCRIPTORS at new call sites. */
-export const PROPERTY_DESCRIPTORS = BUILTIN_PROPERTY_DESCRIPTORS;
-
 export type PropertiesKey = keyof typeof BUILTIN_PROPERTY_DESCRIPTORS;
 
 type PropertyValueMap = {
@@ -210,6 +207,3 @@ export const BUILTIN_PROPERTY_DEFAULTS: Readonly<ResolvedProperties> = Object.fr
     'file-manager.collisionSuffixStyle':
         BUILTIN_PROPERTY_DESCRIPTORS['file-manager.collisionSuffixStyle'].fallback,
 });
-
-/** @deprecated Use BUILTIN_PROPERTY_DEFAULTS at new call sites. */
-export const DEFAULT_PROPERTIES = BUILTIN_PROPERTY_DEFAULTS;

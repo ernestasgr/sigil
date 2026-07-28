@@ -27,15 +27,22 @@
             "ignoreDependencies": ["lint-staged"]
         },
         "packages/contracts": {
-            // Every non-test contract source module is listed in
-            // package.json#exports; these are intentional public boundaries.
-            "entry": ["src/**/*.ts", "!src/**/*.test.ts"],
+            // Only the use-case-oriented package facades are public. Internal
+            // schema modules are reached through these facades or by tests.
+            "entry": [
+                "src/contracts.ts",
+                "src/ids.ts",
+                "src/workflow.ts",
+                "src/events.ts",
+                "src/plugins.ts",
+                "src/properties.ts"
+            ],
             "project": ["src/**/*.ts"]
         },
         "packages/workflow-domain": {
-            // Domain facades and admission modules are public package
-            // boundaries; runtime composition remains in the desktop app.
-            "entry": ["src/**/*.ts", "!src/**/*.test.ts"],
+            // The root facade is the only public package boundary; runtime
+            // composition remains in the desktop app.
+            "entry": ["src/workflow-domain.ts"],
             "project": ["src/**/*.ts"]
         },
         "apps/desktop": {
@@ -74,7 +81,14 @@
             // the entrypoint model.
             // Tailwind v4 and tw-animate-css are consumed from styles.css via
             // CSS @import, outside Knip's JavaScript/TypeScript graph.
-            "ignoreDependencies": ["tailwindcss", "tw-animate-css"],
+            "ignoreDependencies": [
+                "@fontsource/cinzel",
+                "@fontsource/ibm-plex-sans",
+                "@fontsource/jetbrains-mono",
+                "@fontsource/spectral",
+                "tailwindcss",
+                "tw-animate-css"
+            ],
             "ignoreFiles": [
                 "**/dist/**",
                 "**/out/**",
@@ -84,6 +98,7 @@
                 "**/playwright-report/**",
                 "**/generated/**",
                 "**/*.generated.*",
+                "src/engine/test-support/**",
                 "tests/e2e/fixtures.ts",
                 "tests/renderer/test-support.tsx",
                 "src/renderer/styles.css"

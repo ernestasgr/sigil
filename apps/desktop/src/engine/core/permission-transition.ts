@@ -1,5 +1,5 @@
 import type { PluginId } from '@sigil/contracts/ids';
-import type { Capability } from '@sigil/contracts/manifest';
+import type { Capability } from '@sigil/contracts/plugins';
 import { Either, Option } from 'effect';
 
 import {

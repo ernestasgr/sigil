@@ -1,13 +1,13 @@
-import type { ResolvedProperties } from '@sigil/contracts/properties-file';
+import type { ResolvedProperties } from '@sigil/contracts/properties';
 import {
+    BUILTIN_PROPERTY_DEFAULTS,
+    BUILTIN_PROPERTY_DESCRIPTORS,
     DEFAULT_IGNORE_PATTERNS,
-    DEFAULT_PROPERTIES,
     definePropertyDescriptor,
-    PROPERTY_DESCRIPTORS,
     PropertiesFileSchema,
     SerializedPropertyDescriptorSchema,
     serializePropertyDescriptor,
-} from '@sigil/contracts/properties-file';
+} from '@sigil/contracts/properties';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { PropertyResolutionResult } from './property-registry.js';
@@ -464,7 +464,7 @@ describe('Properties resolution', () => {
 
     it('resolves all registered descriptors to their hardcoded fallbacks', () => {
         const registry = createPropertyRegistry();
-        expect(Object.keys(PROPERTY_DESCRIPTORS)).toEqual([
+        expect(Object.keys(BUILTIN_PROPERTY_DESCRIPTORS)).toEqual([
             'notifyOnWorkflowError',
             'databasePath',
             'collisionSuffixStyle',
@@ -526,7 +526,9 @@ describe('Properties resolution', () => {
             'file-manager.collisionSuffixStyle': 'underscore',
         };
 
-        for (const key of Object.keys(PROPERTY_DESCRIPTORS) as (keyof ResolvedProperties)[]) {
+        for (const key of Object.keys(
+            BUILTIN_PROPERTY_DESCRIPTORS,
+        ) as (keyof ResolvedProperties)[]) {
             const propertyValue = properties[key];
             const explicitValue = explicit[key];
             if (propertyValue === undefined || explicitValue === undefined) {
@@ -538,7 +540,7 @@ describe('Properties resolution', () => {
                 resolvedValue(registry.resolve(key, { explicit: explicitValue, properties })),
             ).toEqual(explicitValue);
             expect(resolvedValue(registry.resolve(key, { properties: {} }))).toEqual(
-                PROPERTY_DESCRIPTORS[key].fallback,
+                BUILTIN_PROPERTY_DESCRIPTORS[key].fallback,
             );
         }
     });
@@ -642,8 +644,8 @@ describe('loadPropertiesFile', () => {
         }
     });
 
-    it('DEFAULT_PROPERTIES enables notifyOnWorkflowError', () => {
-        expect(DEFAULT_PROPERTIES.notifyOnWorkflowError).toBe(true);
+    it('BUILTIN_PROPERTY_DEFAULTS enables notifyOnWorkflowError', () => {
+        expect(BUILTIN_PROPERTY_DEFAULTS.notifyOnWorkflowError).toBe(true);
     });
 
     it('resolves databasePath from the file content', () => {
@@ -662,8 +664,8 @@ describe('loadPropertiesFile', () => {
         }
     });
 
-    it('DEFAULT_PROPERTIES uses :memory: for databasePath', () => {
-        expect(DEFAULT_PROPERTIES.databasePath).toBe(':memory:');
+    it('BUILTIN_PROPERTY_DEFAULTS uses :memory: for databasePath', () => {
+        expect(BUILTIN_PROPERTY_DEFAULTS.databasePath).toBe(':memory:');
     });
 
     it('uses caller-provided defaults when the key is absent from the file', () => {
@@ -709,8 +711,8 @@ describe('loadPropertiesFile', () => {
         }
     });
 
-    it('DEFAULT_PROPERTIES uses windows for collisionSuffixStyle', () => {
-        expect(DEFAULT_PROPERTIES.collisionSuffixStyle).toBe('windows');
+    it('BUILTIN_PROPERTY_DEFAULTS uses windows for collisionSuffixStyle', () => {
+        expect(BUILTIN_PROPERTY_DEFAULTS.collisionSuffixStyle).toBe('windows');
     });
 
     it('rejects an unknown collisionSuffixStyle', () => {

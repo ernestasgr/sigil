@@ -4,12 +4,14 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import type { WorkflowDocument } from '@sigil/contracts';
 import type { PluginId } from '@sigil/contracts/ids';
-import type { Capability } from '@sigil/contracts/manifest';
-import type { WorkflowContext } from '@sigil/contracts/workflow-context';
-import { type CompiledPipeline, compileWorkflow } from '@sigil/workflow-domain';
-import type { NodeContractRegistry } from '@sigil/workflow-domain/node-contract';
-import { createBuiltinNodeContractRegistry } from '@sigil/workflow-domain/nodes/catalog';
-import type { TopologyDiagnostic } from '@sigil/workflow-domain/topology';
+import type { Capability } from '@sigil/contracts/plugins';
+import type { WorkflowContext } from '@sigil/contracts/workflow';
+import type { NodeContractRegistry, TopologyDiagnostic } from '@sigil/workflow-domain';
+import {
+    type CompiledPipeline,
+    compileWorkflow,
+    createBuiltinNodeContractRegistry,
+} from '@sigil/workflow-domain';
 import type {
     EngineDiagnosticPayload,
     PermissionTransitionActor,

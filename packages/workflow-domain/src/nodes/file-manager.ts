@@ -1,9 +1,11 @@
-import { FileManagerDescriptor } from '@sigil/contracts/nodes/file-manager';
+import { FileManagerConfigSchema } from '@sigil/contracts/workflow';
 
 import { defineBuiltinNode } from './types.js';
 
 export const FileManagerNode = defineBuiltinNode({
-    ...FileManagerDescriptor,
+    type: 'file-manager',
+    configSchema: FileManagerConfigSchema,
+    defaultConfig: { action: 'move', destination: '/', onConflict: 'skip' },
     contract: {
         identity: { namespace: 'builtin', type: 'file-manager' },
         version: 1,
@@ -16,5 +18,3 @@ export const FileManagerNode = defineBuiltinNode({
         },
     },
 });
-
-export const FileManagerContractRegistration = FileManagerNode.registration;

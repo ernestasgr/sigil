@@ -1,9 +1,14 @@
-import { ManualTriggerDescriptor } from '@sigil/contracts/nodes/manual-trigger';
+import { ManualTriggerConfigSchema } from '@sigil/contracts/workflow';
 
 import { defineBuiltinNode } from './types.js';
 
 export const ManualTriggerNode = defineBuiltinNode({
-    ...ManualTriggerDescriptor,
+    type: 'manual-trigger',
+    configSchema: ManualTriggerConfigSchema,
+    defaultConfig: {
+        eventName: 'file.created',
+        payload: { path: '/', name: 'file', ext: 'txt', size: 0, dir: '/' },
+    },
     contract: {
         identity: { namespace: 'builtin', type: 'manual-trigger' },
         version: 1,
@@ -17,5 +22,3 @@ export const ManualTriggerNode = defineBuiltinNode({
         },
     },
 });
-
-export const ManualTriggerContractRegistration = ManualTriggerNode.registration;

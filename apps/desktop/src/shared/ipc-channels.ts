@@ -1,7 +1,7 @@
 import { WorkflowDocumentSchema } from '@sigil/contracts';
 import { PluginIdSchema } from '@sigil/contracts/ids';
-import { CapabilitySchema, ManifestSchema } from '@sigil/contracts/manifest';
-import { type TopologyDiagnostic, TopologyDiagnosticSchema } from '@sigil/workflow-domain/topology';
+import { CapabilitySchema, ManifestSchema } from '@sigil/contracts/plugins';
+import { type TopologyDiagnostic, TopologyDiagnosticSchema } from '@sigil/workflow-domain';
 import { z } from 'zod';
 import {
     PermissionOverrideDomainFailureFieldsSchema,

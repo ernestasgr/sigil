@@ -1,9 +1,11 @@
-import { DelayDescriptor } from '@sigil/contracts/nodes/delay';
+import { DelayConfigSchema } from '@sigil/contracts/workflow';
 
 import { defineBuiltinNode } from './types.js';
 
 export const DelayNode = defineBuiltinNode({
-    ...DelayDescriptor,
+    type: 'delay',
+    configSchema: DelayConfigSchema,
+    defaultConfig: { ms: 1000 },
     contract: {
         identity: { namespace: 'builtin', type: 'delay' },
         version: 1,
@@ -16,5 +18,3 @@ export const DelayNode = defineBuiltinNode({
         },
     },
 });
-
-export const DelayContractRegistration = DelayNode.registration;

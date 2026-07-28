@@ -1,10 +1,10 @@
-import type { PipelineCondition } from '@sigil/contracts/conditions';
+import type { PipelineCondition, WorkflowContext } from '@sigil/contracts/workflow';
 import {
     MAX_MATCH_CANDIDATE_LENGTH,
     type MatchPatternEngine,
-} from '@sigil/contracts/match-pattern';
-import type { WorkflowContext } from '@sigil/contracts/workflow-context';
-import { SwitchCaseIdSchema, type SwitchConfig } from '@sigil/workflow-domain/nodes/switch';
+    SwitchCaseIdSchema,
+    type SwitchConfig,
+} from '@sigil/contracts/workflow';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
 

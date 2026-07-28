@@ -228,7 +228,7 @@ sigil/
     └── agents/             # Agent-specific documentation
 ```
 
-`@sigil/contracts` owns versioned persisted and wire shapes such as `WorkflowDocument`, `PipelineNode`, `PipelineEdge`, `WorkflowContext`, `Manifest`, Node Contract snapshots, and serialized property descriptors. `@sigil/workflow-domain` owns pure Workflow behavior: `compileWorkflow`, topology admission, Node Contract resolution, and the built-in domain catalog. The Engine composes mutable runtime registries and handlers around those two packages.
+`@sigil/contracts` owns versioned persisted and wire shapes such as `WorkflowDocument`, `PipelineNode`, `PipelineEdge`, `WorkflowContext`, `Manifest`, Node Contract snapshots, and serialized property descriptors. Its public use-case facades are `.`, `./ids`, `./workflow`, `./events`, `./plugins`, and `./properties`; per-schema files and Node assembly are private. `@sigil/workflow-domain` exposes only its root facade for pure Workflow behavior: `compileWorkflow`, topology admission, Node Contract resolution, and the built-in authoring catalog. The Engine composes mutable runtime registries and handlers around those two packages.
 
 ## Prerequisites
 
@@ -266,7 +266,7 @@ process trees, including nested TypeScript and Electron processes on Windows.
 | `pnpm lint:fix`     | Lint and auto-fix with Biome.                             |
 | `pnpm format`       | Format the repo with Biome.                               |
 | `pnpm format:check` | Check formatting without writing.                         |
-| `pnpm architecture:check` | Check dependency cycles and process/package boundaries.   |
+| `pnpm architecture:check` | Check dependency cycles, process boundaries, and approved package facades. |
 | `pnpm structure:check` | Report syntax-aware architecture findings without writing. |
 | `pnpm structure:check:json` | Emit deterministic structural findings for CI and agents. |
 | `pnpm structure:test` | Test ast-grep guards and codemod fixtures.                 |
@@ -306,10 +306,10 @@ Run `pnpm test:e2e -- tests/e2e/workflow-lifecycle.spec.ts` for the complete Ele
 - [`CONTEXT.md`](CONTEXT.md) — the domain glossary. Canonical vocabulary for Event, Plugin, Workflow, Node, Pipeline, Workflow State, Context, and more.
 - [`CODING_STANDARDS.md`](CODING_STANDARDS.md) — TypeScript conventions: no `any`, discriminated unions with exhaustive switches, `readonly` by default, branded IDs, Zod at boundaries, functional style with Effect (`Either`, `Option`, `Match`), `Result` types over throwing.
 - [`UI_STYLE_GUIDANCE.md`](UI_STYLE_GUIDANCE.md) — visual language and color system.
-- [`docs/quality-gates.md`](docs/quality-gates.md) — local check scope and architecture exceptions.
+- [`docs/quality-gates.md`](docs/quality-gates.md) — local check scope, package facades, and architecture exceptions.
 - [`docs/structural-checks.md`](docs/structural-checks.md) — ast-grep guards, fixtures, JSON output, suppressions, and codemods.
 - [`docs/electron-smoke-tests.md`](docs/electron-smoke-tests.md) — Playwright Electron lifecycle test, isolation, launch path, and diagnostics.
-- [`docs/adr/`](docs/adr) — Architecture Decision Records.
+- [`docs/adr/`](docs/adr) — Architecture Decision Records and the decision inventory.
 - [`docs/agents/`](docs/agents) — Agent-specific documentation (domain, issue tracker, triage labels).
 
 ## Roadmap

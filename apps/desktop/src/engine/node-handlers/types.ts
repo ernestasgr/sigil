@@ -1,13 +1,17 @@
-import type { PipelineCondition } from '@sigil/contracts/conditions';
 import type { EventName } from '@sigil/contracts/ids';
-import type { NodeType, PipelineNode, UnknownNodeDescriptor } from '@sigil/contracts/nodes';
 import type {
     CollisionSuffixStyle,
     ConflictPolicy,
     PropertyDescriptor,
-} from '@sigil/contracts/properties-file';
-import type { WorkflowContext } from '@sigil/contracts/workflow-context';
-import type { SwitchConfig } from '@sigil/workflow-domain/nodes/switch';
+} from '@sigil/contracts/properties';
+import type {
+    NodeType,
+    PipelineCondition,
+    PipelineNode,
+    SwitchConfig,
+    WorkflowContext,
+} from '@sigil/contracts/workflow';
+import type { z } from 'zod';
 import type { BusEvent } from '../events/event-bus.js';
 import type { CapabilityBroker } from '../persistence/capability-broker.js';
 import type { FileWatcherManager } from '../plugins/file-watcher-manager.js';
@@ -84,11 +88,16 @@ export interface KernelDeps {
 
 export type NodePluginProperties = PropertyDescriptor | readonly PropertyDescriptor[];
 
+interface PluginNodeDescriptor {
+    readonly type: string;
+    readonly configSchema: z.ZodType;
+    readonly defaultConfig: unknown;
+    readonly properties?: NodePluginProperties;
+    readonly propertyDescriptors?: NodePluginProperties;
+}
+
 export interface NodePluginModule {
-    readonly descriptor: UnknownNodeDescriptor & {
-        readonly properties?: NodePluginProperties;
-        readonly propertyDescriptors?: NodePluginProperties;
-    };
+    readonly descriptor: PluginNodeDescriptor;
     readonly handler: NodeHandler | ((kernel: KernelDeps) => NodeHandler);
     readonly properties?: NodePluginProperties;
 }

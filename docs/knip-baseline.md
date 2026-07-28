@@ -12,14 +12,14 @@ The complete file-and-symbol report is preserved in [knip-baseline-report.md](kn
 
 ### Fix
 
-- `apps/desktop/package.json:37` — `lucide-react` is declared but has no source or test reference. It is removed in this issue slice.
 - `apps/desktop/src/engine/atomic-file.ts:49` — `nodeAtomicFileSystem` is used only inside its defining module; its unused public export is removed in this issue slice.
 
 ### Intentional
 
+- `@fontsource/cinzel`, `@fontsource/ibm-plex-sans`, `@fontsource/jetbrains-mono`, and `@fontsource/spectral` are consumed by CSS `@import` statements in `apps/desktop/src/renderer/styles.css`, outside Knip's TypeScript module graph.
 - `tailwindcss` and `tw-animate-css` are consumed by CSS `@import` statements in `apps/desktop/src/renderer/styles.css`, outside Knip’s TypeScript module graph.
 - `lint-staged` is invoked by `.husky/pre-commit` through `pnpm exec`; the shell boundary is documented as an explicit Knip exception.
-- `packages/contracts/src/**/*.ts` and the public `packages/workflow-domain/src/**/*.ts` modules are modeled as public entry modules because each non-test entry module is exposed through its package `package.json#exports`.
+- `packages/contracts/src/{contracts,ids,workflow,events,plugins,properties}.ts` and `packages/workflow-domain/src/workflow-domain.ts` are the only modeled public entry modules. Internal schema, Node assembly, and test-support modules are intentionally reached through those facades or by tests.
 - Electron main/preload/renderer/worker entrypoints, plugin handlers, and plugin manifests are runtime boundaries and are listed explicitly in `knip.jsonc`.
 
 ### Configuration gap / review backlog
@@ -34,5 +34,5 @@ The baseline is intentionally committed as evidence for the rollout. Future slic
 - Add every new Electron build entrypoint to the `apps/desktop` `entry` list.
 - Add a new Plugin handler and manifest under `src/builtin-plugins/**`; the existing filesystem-discovery globs keep both reachable. A different discovery mechanism needs its own explicit `entry` pattern.
 - Add repository or desktop TypeScript scripts to the matching `scripts/**/*.ts` entry list.
-- Add a new public contracts or Workflow domain module to the owning package’s `package.json#exports`; the package’s non-test source glob models those public module boundaries.
+- Add a new public contracts or Workflow domain use-case facade to the owning package’s `package.json#exports` and to the matching Knip `entry` list. Keep schema internals, Node assembly, and test support private.
 - Add generated output, fixtures, or test-only helpers to the narrowest `ignoreFiles` pattern, with a comment explaining why the boundary is intentional.

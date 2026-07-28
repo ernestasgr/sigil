@@ -1,7 +1,7 @@
 import { WorkflowDocumentSchema } from '@sigil/contracts';
-import { FileEventPayloadSchema } from '@sigil/contracts/file-event-payload';
+import { FileEventPayloadSchema } from '@sigil/contracts/events';
 import { PluginIdSchema } from '@sigil/contracts/ids';
-import { CapabilitySchema } from '@sigil/contracts/manifest';
+import { CapabilitySchema } from '@sigil/contracts/plugins';
 import { z } from 'zod';
 
 import {

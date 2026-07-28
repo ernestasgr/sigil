@@ -12,20 +12,12 @@ import type {
     RegisteredResolvedProperties,
     ResolvedProperties,
     SerializedPropertyDescriptor,
-} from '@sigil/contracts/properties-file';
+} from '@sigil/contracts/properties';
 
-import {
-    BUILTIN_PROPERTY_DESCRIPTORS,
-    PropertyApplyModeSchema,
-} from '@sigil/contracts/properties-file';
+import { BUILTIN_PROPERTY_DESCRIPTORS, PropertyApplyModeSchema } from '@sigil/contracts/properties';
 import { fromJSONSchema, z } from 'zod';
 import { cloneSnapshot, freezeSnapshot } from '../../shared/property-snapshot.js';
 
-export {
-    BUILTIN_PROPERTY_DESCRIPTORS,
-    DEFAULT_PROPERTIES,
-    PROPERTY_DESCRIPTORS,
-} from '@sigil/contracts/properties-file';
 export type {
     AnyPropertyDescriptor,
     CollisionSuffixStyle,

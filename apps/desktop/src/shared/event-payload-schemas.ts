@@ -1,12 +1,12 @@
-import { type FileEventPayload, FileEventPayloadSchema } from '@sigil/contracts/file-event-payload';
+import { type FileEventPayload, FileEventPayloadSchema } from '@sigil/contracts/events';
 import {
     EventNameSchema,
     NodeTypeNameSchema,
     PluginIdSchema,
     WorkflowIdSchema,
 } from '@sigil/contracts/ids';
-import { CapabilitySchema } from '@sigil/contracts/manifest';
-import { type TopologyDiagnostic, TopologyDiagnosticSchema } from '@sigil/workflow-domain/topology';
+import { CapabilitySchema } from '@sigil/contracts/plugins';
+import { type TopologyDiagnostic, TopologyDiagnosticSchema } from '@sigil/workflow-domain';
 import { Either } from 'effect';
 import { z } from 'zod';
 

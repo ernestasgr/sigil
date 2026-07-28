@@ -1,4 +1,4 @@
-import { type TopologyDiagnostic, TopologyDiagnosticSchema } from '@sigil/workflow-domain/topology';
+import { type TopologyDiagnostic, TopologyDiagnosticSchema } from '@sigil/workflow-domain';
 import { z } from 'zod';
 
 export { WorkflowIdSchema } from '@sigil/contracts/ids';

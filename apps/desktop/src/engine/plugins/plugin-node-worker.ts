@@ -12,22 +12,22 @@ import {
     PipelineNodeIdSchema,
     PluginIdSchema,
 } from '@sigil/contracts/ids';
-import { type Capability, CapabilitySchema } from '@sigil/contracts/manifest';
 import {
+    type Capability,
+    CapabilitySchema,
     normalizeNodeConfigurationSchema,
     type SerializableNodeContract,
     serializeNodeConfigurationSchema,
     validatePluginNodeContract,
-} from '@sigil/contracts/node-contract';
-import type { PluginPipelineNode } from '@sigil/contracts/nodes';
+} from '@sigil/contracts/plugins';
 import {
     type AnyPropertyDescriptor,
     PropertyApplyModeSchema,
     serializePropertyDescriptor,
-} from '@sigil/contracts/properties-file';
-import { type WorkflowContext, WorkflowContextSchema } from '@sigil/contracts/workflow-context';
-import { resolveDeclarativeOutputPorts } from '@sigil/workflow-domain/node-contract';
-import { switchOutputPortStrategy } from '@sigil/workflow-domain/nodes/switch';
+} from '@sigil/contracts/properties';
+import type { PluginPipelineNode } from '@sigil/contracts/workflow';
+import { type WorkflowContext, WorkflowContextSchema } from '@sigil/contracts/workflow';
+import { resolveDeclarativeOutputPorts, switchOutputPortStrategy } from '@sigil/workflow-domain';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
 import type {

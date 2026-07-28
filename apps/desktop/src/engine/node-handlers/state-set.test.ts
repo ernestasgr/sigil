@@ -1,5 +1,4 @@
-import type { PipelineNode } from '@sigil/contracts/nodes';
-import type { WorkflowContext } from '@sigil/contracts/workflow-context';
+import type { PipelineNode, WorkflowContext } from '@sigil/contracts/workflow';
 import { describe, expect, it, vi } from 'vitest';
 import { testNode } from '../../test-support/pipeline-fixtures.js';
 import { createEventBus } from '../events/event-bus.js';

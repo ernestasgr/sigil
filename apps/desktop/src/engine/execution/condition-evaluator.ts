@@ -1,17 +1,19 @@
-import type { PipelineCondition } from '@sigil/contracts/conditions';
+import type {
+    BooleanOperator,
+    NumberOperator,
+    PipelineCondition,
+    StringOperator,
+    SwitchCase,
+    SwitchComparison,
+    SwitchConfig,
+    WorkflowContext,
+} from '@sigil/contracts/workflow';
 import {
     compareMatchPattern,
     DEFAULT_MATCH_PATTERN_ENGINE,
     type MatchPatternEngine,
-} from '@sigil/contracts/match-pattern';
-import type { BooleanOperator, NumberOperator, StringOperator } from '@sigil/contracts/operators';
-import type { WorkflowContext } from '@sigil/contracts/workflow-context';
-import {
-    canonicalizeSwitchValue,
-    type SwitchCase,
-    type SwitchComparison,
-    type SwitchConfig,
-} from '@sigil/workflow-domain/nodes/switch';
+} from '@sigil/contracts/workflow';
+import { canonicalizeSwitchValue } from '@sigil/workflow-domain';
 import { Either, Match } from 'effect';
 
 export type ComparisonContext = 'string' | 'number' | 'boolean';

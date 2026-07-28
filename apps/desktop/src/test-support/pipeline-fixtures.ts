@@ -1,5 +1,4 @@
 import type { WorkflowDocument } from '@sigil/contracts';
-import { type PipelineEdge, PipelineEdgeSchema } from '@sigil/contracts/edges';
 import {
     NodeOutputPortIdSchema,
     NodeTypeNameSchema,
@@ -7,7 +6,12 @@ import {
     PipelineNodeIdSchema,
     WorkflowIdSchema,
 } from '@sigil/contracts/ids';
-import { type PipelineNode, PipelineNodeSchema } from '@sigil/contracts/nodes';
+import {
+    type PipelineEdge,
+    PipelineEdgeSchema,
+    type PipelineNode,
+    PipelineNodeSchema,
+} from '@sigil/contracts/workflow';
 import { type CompiledPipeline, compileWorkflow } from '@sigil/workflow-domain';
 
 export const testNodeId = (value: string) => PipelineNodeIdSchema.parse(value);
@@ -48,3 +52,39 @@ export function testPipeline(value: {
     if (!result.ok) throw new Error(result.error);
     return result.value;
 }
+
+export const testManualTriggerToLog = testPipeline({
+    id: 'sample-manual-trigger-to-log',
+    workflowId: 'workflow-download-sorter',
+    nodes: [
+        {
+            id: 'trigger',
+            type: 'manual-trigger',
+            config: {
+                eventName: 'file.created',
+                payload: {
+                    path: '/Users/dev/Downloads/report.pdf',
+                    name: 'report.pdf',
+                    ext: 'pdf',
+                    size: 2048576,
+                    dir: '/Users/dev/Downloads',
+                },
+            },
+        },
+        {
+            id: 'log',
+            type: 'log',
+            config: {
+                message: 'Manual trigger fired for {{payload.name}} ({{payload.size}} bytes)',
+            },
+        },
+    ],
+    edges: [
+        {
+            id: 'trigger-to-log',
+            source: 'trigger',
+            target: 'log',
+            sourcePort: 'out',
+        },
+    ],
+});

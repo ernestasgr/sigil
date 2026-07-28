@@ -1,4 +1,4 @@
-import type { FileEventName } from '@sigil/contracts/event-catalog';
+import type { FileEventName } from '@sigil/contracts/events';
 import {
     createEventCatalog,
     createPluginEventCatalogEntries,
@@ -10,9 +10,9 @@ import {
     eventPayloadFieldSuggestions,
     FILE_EVENT_NAMES,
     findEventField,
-} from '@sigil/contracts/event-catalog';
+} from '@sigil/contracts/events';
 import type { EventName, PluginId } from '@sigil/contracts/ids';
-import type { Manifest } from '@sigil/contracts/manifest';
+import type { Manifest } from '@sigil/contracts/plugins';
 
 export type {
     EventCatalog,
@@ -22,13 +22,13 @@ export type {
     EventCatalogSuggestion,
     EventFieldKind,
     EventFieldMetadata,
-} from '@sigil/contracts/event-catalog';
+} from '@sigil/contracts/events';
 
 export const EVENT_CATALOG = DEFAULT_EVENT_CATALOG;
 
 export type EventCatalogManifest = Pick<Manifest, 'id' | 'emits'>;
 
-export type { EventCatalogSuggestion as CatalogSuggestion } from '@sigil/contracts/event-catalog';
+export type { EventCatalogSuggestion as CatalogSuggestion } from '@sigil/contracts/events';
 
 type CatalogSuggestion = EventCatalogSuggestion;
 type EventNameSuggestion = EventCatalogSuggestion<EventName>;

@@ -3,7 +3,7 @@ import {
     type WorkflowDocument,
     type WorkflowDocumentParseFailure,
 } from '@sigil/contracts';
-import type { NodeIdentity, NodeOutputPort, NodeRole } from '@sigil/contracts/node-contract';
+import type { NodeIdentity, NodeOutputPort, NodeRole } from '@sigil/contracts/plugins';
 
 import {
     formatTopologyDiagnostics,

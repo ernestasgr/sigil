@@ -7,7 +7,7 @@ import {
     type NodeContractRegistry,
     pluginNodeIdentity,
     registerSerializableNodeContract,
-} from '@sigil/workflow-domain/node-contract';
+} from '@sigil/workflow-domain';
 import { Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { testNode } from '../../test-support/pipeline-fixtures.js';

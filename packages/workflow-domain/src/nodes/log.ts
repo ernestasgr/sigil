@@ -1,9 +1,11 @@
-import { LogDescriptor } from '@sigil/contracts/nodes/log';
+import { LogConfigSchema } from '@sigil/contracts/workflow';
 
 import { defineBuiltinNode } from './types.js';
 
 export const LogNode = defineBuiltinNode({
-    ...LogDescriptor,
+    type: 'log',
+    configSchema: LogConfigSchema,
+    defaultConfig: { message: 'Log message' },
     contract: {
         identity: { namespace: 'builtin', type: 'log' },
         version: 1,
@@ -16,5 +18,3 @@ export const LogNode = defineBuiltinNode({
         },
     },
 });
-
-export const LogContractRegistration = LogNode.registration;

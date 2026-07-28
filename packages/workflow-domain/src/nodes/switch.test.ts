@@ -1,8 +1,8 @@
+import { SwitchConfigSchema } from '@sigil/contracts/workflow';
 import { describe, expect, it } from 'vitest';
-
 import { outputPortDescriptorsForNode } from '../node-contract.js';
 import { createBuiltinNodeContractRegistry } from './catalog.js';
-import { canonicalizeSwitchValue, SwitchConfigSchema, validateSwitchConfig } from './switch.js';
+import { canonicalizeSwitchValue, validateSwitchConfig } from './switch.js';
 
 describe('Switch descriptor', () => {
     it('keeps output-port identity separate from the editable match value', () => {

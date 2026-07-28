@@ -48,6 +48,14 @@ _Avoid_: step, block, component
 The canonical starting configuration for a Node type, used when a Node is first placed on the Workflow canvas. Every Node type has exactly one Default, which always satisfies its config schema. The Default belongs to the Node type's definition, not to any one consumer.
 _Avoid_: initial config, starter config, example config
 
+**Node Contract:**
+The pure Workflow-domain admission result for a Node identity. It describes the admitted configuration schema, default configuration, role, display facts, diagnostics, and output-port behavior needed by the Engine and Workflow Builder. A Node Contract is distinct from a persisted `PipelineNode` and from a Plugin Manifest.
+_Avoid_: descriptor, registration, node metadata
+
+**Contract Facade:**
+A use-case-oriented public package entrypoint that exposes a stable group of persisted or wire contracts. Internal schema files, Node assembly, registrations, and test fixtures are not package API.
+_Avoid_: schema package surface, barrel (when referring to a deliberate public boundary)
+
 **Pipeline:**
 The compiled DAG representation of a Workflow that the Engine executes. Users interact with Workflows; the Engine executes Pipelines.
 _Avoid_: graph (when referring to the executable form)

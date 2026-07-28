@@ -1,6 +1,6 @@
 import type { WorkflowId } from '@sigil/contracts/ids';
-import { isPluginNode } from '@sigil/contracts/nodes';
-import type { WorkflowContext } from '@sigil/contracts/workflow-context';
+import type { WorkflowContext } from '@sigil/contracts/workflow';
+import { isPluginNode } from '@sigil/contracts/workflow';
 import type { CompiledPipeline } from '@sigil/workflow-domain';
 import { Option } from 'effect';
 

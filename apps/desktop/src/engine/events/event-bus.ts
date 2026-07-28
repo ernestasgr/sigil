@@ -1,4 +1,4 @@
-import type { FileEventPayload } from '@sigil/contracts/file-event-payload';
+import type { FileEventPayload } from '@sigil/contracts/events';
 import { Subject } from 'rxjs';
 import {
     type EngineDiagnosticPayload,

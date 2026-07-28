@@ -1,5 +1,4 @@
 import type { WorkflowDocument } from '@sigil/contracts';
-import type { PipelineEdge } from '@sigil/contracts/edges';
 import {
     type NodeOutputPortId,
     type PipelineEdgeId,
@@ -7,11 +6,8 @@ import {
     type PipelineNodeId,
     PipelineNodeIdSchema,
 } from '@sigil/contracts/ids';
-import {
-    type NodeDiagnosticDetails,
-    NodeDiagnosticDetailsSchema,
-} from '@sigil/contracts/node-contract';
-import type { PipelineNode } from '@sigil/contracts/nodes';
+import { type NodeDiagnosticDetails, NodeDiagnosticDetailsSchema } from '@sigil/contracts/plugins';
+import type { PipelineEdge, PipelineNode } from '@sigil/contracts/workflow';
 import { z } from 'zod';
 import type { AdmittedNodeContract } from './compilation.js';
 import {
@@ -45,7 +41,7 @@ const TOPOLOGY_DIAGNOSTIC_CODES = [
     'invalid_node_contract',
 ] as const;
 
-export const TopologyDiagnosticSeveritySchema = z.enum(['error', 'warning']);
+const TopologyDiagnosticSeveritySchema = z.enum(['error', 'warning']);
 export type TopologyDiagnosticSeverity = z.infer<typeof TopologyDiagnosticSeveritySchema>;
 
 export const TopologyDiagnosticCodeSchema = z.enum(TOPOLOGY_DIAGNOSTIC_CODES);
@@ -131,7 +127,7 @@ export type EdgeTopologyDiagnostic = Extract<
     { readonly target: { readonly kind: 'edge' } }
 >;
 
-export type TopologyOutputPorts = readonly NodeOutputPortId[] | 'dynamic';
+type TopologyOutputPorts = readonly NodeOutputPortId[] | 'dynamic';
 
 export interface WorkflowTopologyOptions {
     /** Shared Node Contract Registry used for built-in and registered Plugin Nodes. */
@@ -145,7 +141,7 @@ export interface WorkflowTopologyOptions {
     readonly isNodeSupported?: (node: PipelineNode) => boolean;
 }
 
-export interface WorkflowTopologyAdmission {
+interface WorkflowTopologyAdmission {
     readonly triggerId: PipelineNodeId;
     readonly executionOrder: readonly PipelineNodeId[];
     readonly admittedNodeContracts: readonly AdmittedNodeContract[];

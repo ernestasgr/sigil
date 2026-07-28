@@ -1,7 +1,5 @@
 import type { WorkflowDocument } from '@sigil/contracts';
-
-import type { PipelineEdge } from '@sigil/contracts/edges';
-import { FileEventNameSchema } from '@sigil/contracts/event-catalog';
+import { FileEventNameSchema } from '@sigil/contracts/events';
 import {
     NodeOutputPortIdSchema,
     NodeTypeNameSchema,
@@ -10,8 +8,8 @@ import {
     PluginIdSchema,
     WorkflowIdSchema,
 } from '@sigil/contracts/ids';
-import type { PipelineNode } from '@sigil/contracts/nodes';
-import { SwitchCaseIdSchema } from '@sigil/contracts/nodes/switch';
+import type { PipelineEdge, PipelineNode } from '@sigil/contracts/workflow';
+import { SwitchCaseIdSchema } from '@sigil/contracts/workflow';
 import { describe, expect, it } from 'vitest';
 import { pluginNodeIdentity, registerSerializableNodeContract } from './node-contract.js';
 import { createBuiltinNodeContractRegistry } from './nodes/catalog.js';
