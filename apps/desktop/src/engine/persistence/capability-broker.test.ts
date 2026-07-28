@@ -1,5 +1,5 @@
 import { EventNameSchema, PluginIdSchema } from '@sigil/contracts/ids';
-import type { Manifest } from '@sigil/contracts/manifest';
+import type { Manifest } from '@sigil/contracts/plugins';
 import { Either } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { createManifestRegistry } from '../plugins/manifest-registry.js';

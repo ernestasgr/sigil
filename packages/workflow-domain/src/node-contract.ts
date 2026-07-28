@@ -1,4 +1,9 @@
-import { NodeOutputPortIdSchema, NodeTypeNameSchema, type PluginId } from '@sigil/contracts/ids';
+import {
+    type NodeOutputPortId,
+    NodeOutputPortIdSchema,
+    NodeTypeNameSchema,
+    type PluginId,
+} from '@sigil/contracts/ids';
 
 import {
     type NodeContract,
@@ -9,16 +14,16 @@ import {
     NodeContractSchema,
     type NodeIdentity,
     type NodeOutputPort,
-    type NodeOutputPortId,
     type NodeOutputPortInput,
     type NodeOutputPortSpec,
     type NodeOutputPortSpecInput,
     normalizeNodeConfigurationSchema,
     type SerializableNodeContractInput,
-} from '@sigil/contracts/node-contract';
+} from '@sigil/contracts/plugins';
 import type { z as ZodNamespace } from 'zod';
 import { fromJSONSchema, z } from 'zod';
 
+export type { NodeOutputPortId } from '@sigil/contracts/ids';
 export type {
     NodeContract,
     NodeContractDefinition,
@@ -27,13 +32,12 @@ export type {
     NodeDiagnosticDetails,
     NodeIdentity,
     NodeOutputPort,
-    NodeOutputPortId,
     NodeOutputPortInput,
     NodeOutputPortSpec,
     NodeOutputPortSpecInput,
     SerializableNodeContract,
     SerializableNodeContractInput,
-} from '@sigil/contracts/node-contract';
+} from '@sigil/contracts/plugins';
 
 export type NodeContractResolution =
     | {

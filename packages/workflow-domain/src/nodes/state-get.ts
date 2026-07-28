@@ -1,9 +1,11 @@
-import { StateGetDescriptor } from '@sigil/contracts/nodes/state-get';
+import { StateGetConfigSchema } from '@sigil/contracts/workflow';
 
 import { defineBuiltinNode } from './types.js';
 
 export const StateGetNode = defineBuiltinNode({
-    ...StateGetDescriptor,
+    type: 'state-get',
+    configSchema: StateGetConfigSchema,
+    defaultConfig: { key: 'key', assignTo: 'value' },
     contract: {
         identity: { namespace: 'builtin', type: 'state-get' },
         version: 1,
@@ -16,5 +18,3 @@ export const StateGetNode = defineBuiltinNode({
         },
     },
 });
-
-export const StateGetContractRegistration = StateGetNode.registration;

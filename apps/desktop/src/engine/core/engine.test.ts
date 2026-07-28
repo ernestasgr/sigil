@@ -3,18 +3,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { WorkflowDocument } from '@sigil/contracts';
 import { EventNameSchema, PluginIdSchema, WorkflowIdSchema } from '@sigil/contracts/ids';
-import type { Capability, Manifest } from '@sigil/contracts/manifest';
-import type { FileWatcherConfig } from '@sigil/contracts/nodes/file-watcher';
-import { definePropertyDescriptor } from '@sigil/contracts/properties-file';
-import type { WorkflowContext } from '@sigil/contracts/workflow-context';
+import type { Capability, Manifest } from '@sigil/contracts/plugins';
+import { definePropertyDescriptor } from '@sigil/contracts/properties';
+import type { FileWatcherConfig, WorkflowContext } from '@sigil/contracts/workflow';
 import { compileWorkflow } from '@sigil/workflow-domain';
-import { sampleManualTriggerToLog } from '@sigil/workflow-domain/samples';
 import { Either, Option } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { compileGraph } from '../../renderer/workflow-builder/compile.js';
 import { createNodeCatalogFromManifests } from '../../renderer/workflow-builder/node-catalog.js';
-import { testDocument, testEdge, testNode } from '../../test-support/pipeline-fixtures.js';
+import {
+    testDocument,
+    testEdge,
+    testManualTriggerToLog,
+    testNode,
+} from '../../test-support/pipeline-fixtures.js';
 import type { BusEvent } from '../events/event-bus.js';
 import { isTriggerHandler } from '../node-handlers/types.js';
 import type { FileEvent } from '../plugins/file-watcher-manager.js';
@@ -374,7 +377,7 @@ describe('createEngine', () => {
             events.push(event);
         });
 
-        await engine.execute(sampleManualTriggerToLog);
+        await engine.execute(testManualTriggerToLog);
 
         const logEvent = events.find((event) => event.name === 'log.output');
         expect(logEvent).toBeDefined();
@@ -513,7 +516,7 @@ describe('createEngine', () => {
             events.push(event);
         });
         const invalidDocument: WorkflowDocument = {
-            ...sampleManualTriggerToLog.source,
+            ...testManualTriggerToLog.source,
             nodes: [],
             edges: [],
         };
@@ -547,9 +550,9 @@ describe('createEngine', () => {
             events.push(event);
         });
         const unsupportedDocument: WorkflowDocument = {
-            ...sampleManualTriggerToLog.source,
+            ...testManualTriggerToLog.source,
             nodes: [
-                ...sampleManualTriggerToLog.nodes,
+                ...testManualTriggerToLog.nodes,
                 testNode({
                     id: 'missing',
                     type: 'missing-node',
@@ -558,7 +561,7 @@ describe('createEngine', () => {
                 }),
             ],
             edges: [
-                ...sampleManualTriggerToLog.edges,
+                ...testManualTriggerToLog.edges,
                 testEdge({
                     id: 'log-missing',
                     source: 'log',
@@ -591,9 +594,9 @@ describe('createEngine', () => {
             execute: async ({ ctx }) => ({ outputCtx: ctx, activePort: 'out' }),
         });
         const contractlessDocument: WorkflowDocument = {
-            ...sampleManualTriggerToLog.source,
+            ...testManualTriggerToLog.source,
             nodes: [
-                ...sampleManualTriggerToLog.nodes,
+                ...testManualTriggerToLog.nodes,
                 testNode({
                     id: 'contractless',
                     type: 'contractless-node',
@@ -602,7 +605,7 @@ describe('createEngine', () => {
                 }),
             ],
             edges: [
-                ...sampleManualTriggerToLog.edges,
+                ...testManualTriggerToLog.edges,
                 testEdge({
                     id: 'log-contractless',
                     source: 'log',
@@ -631,10 +634,10 @@ describe('createEngine', () => {
         engine.bus.subscribe((event) => {
             events.push(event);
         });
-        const trigger = sampleManualTriggerToLog.nodes[0];
+        const trigger = testManualTriggerToLog.nodes[0];
         if (!trigger) throw new Error('sample trigger missing');
         const fanOutDocument: WorkflowDocument = {
-            ...sampleManualTriggerToLog.source,
+            ...testManualTriggerToLog.source,
             nodes: [
                 trigger,
                 testNode({ id: 'log-a', type: 'log', config: { message: 'a' } }),

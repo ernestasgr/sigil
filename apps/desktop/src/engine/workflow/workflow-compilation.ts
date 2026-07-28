@@ -1,7 +1,6 @@
-import type { PipelineNode } from '@sigil/contracts/nodes';
-import type { WorkflowCompilationOptions } from '@sigil/workflow-domain';
-import type { NodeContractRegistry } from '@sigil/workflow-domain/node-contract';
-import { createBuiltinNodeContractRegistry } from '@sigil/workflow-domain/nodes/catalog';
+import type { PipelineNode } from '@sigil/contracts/workflow';
+import type { NodeContractRegistry, WorkflowCompilationOptions } from '@sigil/workflow-domain';
+import { createBuiltinNodeContractRegistry } from '@sigil/workflow-domain';
 
 import type { NodeHandlerRegistry } from '../execution/node-registry.js';
 

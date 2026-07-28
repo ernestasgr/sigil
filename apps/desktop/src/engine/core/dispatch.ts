@@ -1,4 +1,4 @@
-import { sampleManualTriggerToLog } from '@sigil/workflow-domain/samples';
+import { type WorkflowDocument, WorkflowDocumentSchema } from '@sigil/contracts';
 import { Effect, Either, Match, Option } from 'effect';
 import type {
     EngineCommandName,
@@ -35,6 +35,45 @@ export interface DispatchSubsystems {
     readonly propertiesPath: string;
 }
 
+function createTestEventDocument(): WorkflowDocument {
+    return WorkflowDocumentSchema.parse({
+        id: 'sample-manual-trigger-to-log',
+        workflowId: 'workflow-download-sorter',
+        schemaVersion: 1,
+        nodes: [
+            {
+                id: 'trigger',
+                type: 'manual-trigger',
+                config: {
+                    eventName: 'file.created',
+                    payload: {
+                        path: '/Users/dev/Downloads/report.pdf',
+                        name: 'report.pdf',
+                        ext: 'pdf',
+                        size: 2048576,
+                        dir: '/Users/dev/Downloads',
+                    },
+                },
+            },
+            {
+                id: 'log',
+                type: 'log',
+                config: {
+                    message: 'Manual trigger fired for {{payload.name}} ({{payload.size}} bytes)',
+                },
+            },
+        ],
+        edges: [
+            {
+                id: 'trigger-to-log',
+                source: 'trigger',
+                target: 'log',
+                sourcePort: 'out',
+            },
+        ],
+    });
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -63,7 +102,7 @@ async function handleFireTestEvent(
     subsystems: DispatchSubsystems,
 ): Promise<void> {
     try {
-        await subsystems.engine.execute(sampleManualTriggerToLog);
+        await subsystems.engine.executeDocument(createTestEventDocument());
         postCommandResponse(
             'fireTestEvent',
             {
@@ -75,14 +114,14 @@ async function handleFireTestEvent(
         );
     } catch (err: unknown) {
         const detail = err instanceof Error ? err.message : String(err);
-        subsystems.log(`[error] engine.execute failed: ${detail}`, {
+        subsystems.log(`[error] engine.executeDocument failed: ${detail}`, {
             source: 'worker',
             kind: 'execution-dispatch',
             outcome: 'failed',
         });
         subsystems.postMessage({
             type: EngineChannel.Log,
-            line: `[error] engine.execute failed: ${detail}`,
+            line: `[error] engine.executeDocument failed: ${detail}`,
         });
         postCommandResponse(
             'fireTestEvent',

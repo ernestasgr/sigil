@@ -1,12 +1,14 @@
 import { parseWorkflowDocument, WorkflowDocumentSchema } from '@sigil/contracts';
-import { PipelineConditionSchema } from '@sigil/contracts/conditions';
-import { FileEventPayloadSchema } from '@sigil/contracts/file-event-payload';
-import { MAX_MATCH_PATTERN_LENGTH } from '@sigil/contracts/match-pattern';
-import { PipelineNodeSchema } from '@sigil/contracts/nodes';
-import { WorkflowContextSchema } from '@sigil/contracts/workflow-context';
+import { FileEventPayloadSchema } from '@sigil/contracts/events';
+import {
+    MAX_MATCH_PATTERN_LENGTH,
+    PipelineConditionSchema,
+    PipelineNodeSchema,
+    WorkflowContextSchema,
+} from '@sigil/contracts/workflow';
 import { describe, expect, it } from 'vitest';
 
-import { sampleManualTriggerToLog } from './samples.js';
+import { testManualTriggerToLog } from './test-support/workflow-fixture.js';
 import { validateWorkflowTopology } from './topology.js';
 
 describe('FileEventPayloadSchema', () => {
@@ -179,12 +181,12 @@ describe('WorkflowContextSchema', () => {
 
 describe('WorkflowDocumentSchema', () => {
     it('validates the manual-trigger -> log sample', () => {
-        const result = WorkflowDocumentSchema.safeParse(sampleManualTriggerToLog.source);
+        const result = WorkflowDocumentSchema.safeParse(testManualTriggerToLog.source);
         expect(result.success).toBe(true);
     });
 
     it('parseWorkflowDocument returns ok for the sample document', () => {
-        const result = parseWorkflowDocument(sampleManualTriggerToLog.source);
+        const result = parseWorkflowDocument(testManualTriggerToLog.source);
         expect(result.ok).toBe(true);
     });
 
@@ -221,7 +223,7 @@ describe('WorkflowDocumentSchema', () => {
 
     it('rejects unknown persisted fields at the structural boundary', () => {
         const result = WorkflowDocumentSchema.safeParse({
-            ...sampleManualTriggerToLog.source,
+            ...testManualTriggerToLog.source,
             unexpected: true,
         });
         expect(result.success).toBe(false);

@@ -1,4 +1,4 @@
-import { type SwitchCase, SwitchCaseIdSchema } from '@sigil/workflow-domain/nodes/switch';
+import { type SwitchCase, SwitchCaseIdSchema } from '@sigil/contracts/workflow';
 import type { ChangeEvent, ReactElement, ReactNode } from 'react';
 import { useEffect, useId, useState } from 'react';
 

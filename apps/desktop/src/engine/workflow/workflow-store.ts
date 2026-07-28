@@ -12,15 +12,14 @@ import {
 } from 'node:fs';
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { WorkflowDocument, WorkflowDocumentSchemaVersion } from '@sigil/contracts';
-import { PipelineEdgeSchema } from '@sigil/contracts/edges';
 import { type WorkflowId, WorkflowIdSchema } from '@sigil/contracts/ids';
-import { PipelineNodeSchema } from '@sigil/contracts/nodes';
+import { PipelineEdgeSchema, PipelineNodeSchema } from '@sigil/contracts/workflow';
+import type { TopologyDiagnostic, TopologyDiagnosticCode } from '@sigil/workflow-domain';
 import {
     type CompiledPipeline,
     compileWorkflow,
     type WorkflowCompilationOptions,
 } from '@sigil/workflow-domain';
-import type { TopologyDiagnostic, TopologyDiagnosticCode } from '@sigil/workflow-domain/topology';
 import { Either, Option } from 'effect';
 import { z } from 'zod';
 

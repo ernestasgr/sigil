@@ -2,7 +2,7 @@ import {
     formatTopologyDiagnosticTarget,
     type TopologyDiagnostic,
     topologyDiagnosticKey,
-} from '@sigil/workflow-domain/topology';
+} from '@sigil/workflow-domain';
 import { type ReactElement, useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { PluginInfo } from '../../shared/plugin-info.js';

@@ -3,22 +3,24 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync as Database } from 'node:sqlite';
-import type { PipelineEdge } from '@sigil/contracts/edges';
-import type { FileEventPayload } from '@sigil/contracts/file-event-payload';
+import type { FileEventPayload } from '@sigil/contracts/events';
 import { PluginIdSchema, WorkflowIdSchema } from '@sigil/contracts/ids';
-import type { MatchPatternEngine } from '@sigil/contracts/match-pattern';
-import type { PipelineNode } from '@sigil/contracts/nodes';
-import { type CompiledPipeline, compileWorkflow } from '@sigil/workflow-domain';
+import type { MatchPatternEngine, PipelineEdge, PipelineNode } from '@sigil/contracts/workflow';
 import {
+    type CompiledPipeline,
+    compileWorkflow,
+    createBuiltinNodeContractRegistry,
     type NodeContractRegistry,
     pluginNodeIdentity,
     registerSerializableNodeContract,
-} from '@sigil/workflow-domain/node-contract';
-import { createBuiltinNodeContractRegistry } from '@sigil/workflow-domain/nodes/catalog';
-import { sampleManualTriggerToLog } from '@sigil/workflow-domain/samples';
+} from '@sigil/workflow-domain';
 import { Either, Option } from 'effect';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { testEdge, testNode } from '../../test-support/pipeline-fixtures.js';
+import {
+    testEdge,
+    testManualTriggerToLog,
+    testNode,
+} from '../../test-support/pipeline-fixtures.js';
 import type { BusEvent } from '../events/event-bus.js';
 import { createEventBus } from '../events/event-bus.js';
 import { createBuiltinHandlers } from '../node-handlers/registry.js';
@@ -98,7 +100,7 @@ describe('dag-executor', () => {
             const bus = createEventBus();
             const events = captureEvents(bus);
 
-            await executePipeline(sampleManualTriggerToLog, bus, handlerRegistry);
+            await executePipeline(testManualTriggerToLog, bus, handlerRegistry);
 
             const logEvent = events.find((event) => event.name === 'log.output');
             expect(logEvent).toBeDefined();
@@ -111,7 +113,7 @@ describe('dag-executor', () => {
             const bus = createEventBus();
             const events = captureEvents(bus);
 
-            await executePipeline(sampleManualTriggerToLog, bus, handlerRegistry);
+            await executePipeline(testManualTriggerToLog, bus, handlerRegistry);
 
             expect(
                 events
@@ -129,7 +131,7 @@ describe('dag-executor', () => {
             const bus = createEventBus();
             const events = captureEvents(bus);
 
-            await executePipeline(sampleManualTriggerToLog, bus, handlerRegistry);
+            await executePipeline(testManualTriggerToLog, bus, handlerRegistry);
 
             const triggerEvent = events.find((event) => event.name === 'manual.trigger.fired');
             expect(triggerEvent?.name === 'manual.trigger.fired' && triggerEvent.payload).toEqual(
@@ -141,7 +143,7 @@ describe('dag-executor', () => {
             const bus = createEventBus();
             const events = captureEvents(bus);
 
-            const result = await executePipeline(sampleManualTriggerToLog, bus, handlerRegistry);
+            const result = await executePipeline(testManualTriggerToLog, bus, handlerRegistry);
             const started = events.find((event) => event.name === 'workflow.started');
             const completed = events.find((event) => event.name === 'workflow.completed');
             const nodeEvents = events.filter((event) => event.name.startsWith('node.'));
@@ -649,7 +651,7 @@ describe('dag-executor', () => {
             controller.abort('user cancelled');
 
             const result = await executePipeline(
-                sampleManualTriggerToLog,
+                testManualTriggerToLog,
                 bus,
                 handlerRegistry,
                 undefined,

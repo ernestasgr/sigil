@@ -1,6 +1,5 @@
 import { NodeTypeNameSchema, PluginIdSchema } from '@sigil/contracts/ids';
-import { MAX_MATCH_PATTERN_LENGTH } from '@sigil/contracts/match-pattern';
-import { MAX_DELAY_MS } from '@sigil/contracts/nodes';
+import { MAX_DELAY_MS, MAX_MATCH_PATTERN_LENGTH } from '@sigil/contracts/workflow';
 import { describe, expect, it } from 'vitest';
 import { compileGraph } from './compile.js';
 import {

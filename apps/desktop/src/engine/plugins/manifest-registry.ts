@@ -1,5 +1,5 @@
 import type { PluginId } from '@sigil/contracts/ids';
-import type { Manifest } from '@sigil/contracts/manifest';
+import type { Manifest } from '@sigil/contracts/plugins';
 import { Either, Option } from 'effect';
 
 export type ManifestRegistryResult = Either.Either<Manifest, 'duplicate'>;

@@ -1,5 +1,4 @@
-import type { PipelineNode } from '@sigil/contracts/nodes';
-import type { WorkflowContext } from '@sigil/contracts/workflow-context';
+import type { PipelineNode, WorkflowContext } from '@sigil/contracts/workflow';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import { testNode } from '../../test-support/pipeline-fixtures.js';

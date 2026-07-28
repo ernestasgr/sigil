@@ -1,24 +1,21 @@
 import { type PluginId, PluginIdSchema } from '@sigil/contracts/ids';
-import type { Manifest } from '@sigil/contracts/manifest';
-import type { SerializableNodeContractInput } from '@sigil/contracts/node-contract';
+import type { Manifest, SerializableNodeContractInput } from '@sigil/contracts/plugins';
 import {
     type BuiltinPipelineNode,
     isPluginNode,
-    type NodeDescriptor,
     type NodeType,
     type PipelineNode,
-} from '@sigil/contracts/nodes';
+} from '@sigil/contracts/workflow';
 import {
+    type BuiltinNodeDescriptor,
+    createBuiltinNodeContractRegistry,
+    getBuiltinNodeContract,
+    getBuiltinNodeDescriptor,
     type NodeContractRegistry,
     pluginNodeIdentity,
     registerSerializableNodeContract,
     resolveNodeContract,
-} from '@sigil/workflow-domain/node-contract';
-import {
-    createBuiltinNodeContractRegistry,
-    getBuiltinNodeContract,
-    getNodeDescriptor,
-} from '@sigil/workflow-domain/nodes/catalog';
+} from '@sigil/workflow-domain';
 import { type ComponentType, createElement, type ReactElement } from 'react';
 import type { z } from 'zod';
 
@@ -36,7 +33,7 @@ import {
     SwitchConfigForm,
 } from './inspector/config-forms.js';
 
-export type { NodeType } from '@sigil/contracts/nodes';
+export type { NodeType } from '@sigil/contracts/workflow';
 
 export type NodeCategory = 'trigger' | 'logic' | 'system' | 'state' | 'utility';
 
@@ -129,7 +126,7 @@ export type NodeCatalogManifest = Omit<Pick<Manifest, 'id' | 'nodeType'>, 'id'> 
 };
 
 interface BuiltinNodeCatalogAdapter<K extends NodeType, TSchema extends z.ZodType> {
-    readonly descriptor: NodeDescriptor<K, TSchema>;
+    readonly descriptor: BuiltinNodeDescriptor<K, TSchema>;
     readonly Form: ComponentType<ConfigFormProps<z.output<TSchema>>>;
 }
 
@@ -254,43 +251,43 @@ export function createPluginNodeCatalogEntry<TConfig>(
 
 const BUILTIN_NODE_CATALOG_ENTRIES: readonly BuiltinNodeCatalogEntry[] = [
     createBuiltinNodeCatalogEntry({
-        descriptor: getNodeDescriptor('file-watcher'),
+        descriptor: getBuiltinNodeDescriptor('file-watcher'),
         Form: FileWatcherConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
-        descriptor: getNodeDescriptor('manual-trigger'),
+        descriptor: getBuiltinNodeDescriptor('manual-trigger'),
         Form: ManualTriggerConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
-        descriptor: getNodeDescriptor('if-else'),
+        descriptor: getBuiltinNodeDescriptor('if-else'),
         Form: IfElseConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
-        descriptor: getNodeDescriptor('switch'),
+        descriptor: getBuiltinNodeDescriptor('switch'),
         Form: SwitchConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
-        descriptor: getNodeDescriptor('file-manager'),
+        descriptor: getBuiltinNodeDescriptor('file-manager'),
         Form: FileManagerConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
-        descriptor: getNodeDescriptor('notification'),
+        descriptor: getBuiltinNodeDescriptor('notification'),
         Form: NotificationConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
-        descriptor: getNodeDescriptor('state-get'),
+        descriptor: getBuiltinNodeDescriptor('state-get'),
         Form: StateGetConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
-        descriptor: getNodeDescriptor('state-set'),
+        descriptor: getBuiltinNodeDescriptor('state-set'),
         Form: StateSetConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
-        descriptor: getNodeDescriptor('log'),
+        descriptor: getBuiltinNodeDescriptor('log'),
         Form: LogConfigForm,
     }),
     createBuiltinNodeCatalogEntry({
-        descriptor: getNodeDescriptor('delay'),
+        descriptor: getBuiltinNodeDescriptor('delay'),
         Form: DelayConfigForm,
     }),
 ];

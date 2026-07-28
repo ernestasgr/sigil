@@ -1,13 +1,12 @@
 import { NodeOutputPortIdSchema } from '@sigil/contracts/ids';
-import type { NodeDiagnosticDetails } from '@sigil/contracts/node-contract';
+import type { NodeDiagnosticDetails } from '@sigil/contracts/plugins';
 import {
-    SwitchDescriptor as ContractSwitchDescriptor,
     SWITCH_DEFAULT_PORT,
     type SwitchCase,
     type SwitchComparison,
     type SwitchConfig,
     SwitchConfigSchema,
-} from '@sigil/contracts/nodes/switch';
+} from '@sigil/contracts/workflow';
 import type {
     DeclarativeOutputPortResolution,
     NodeContractIssue,
@@ -17,15 +16,6 @@ import type {
 } from '../node-contract.js';
 import { fixedOutputPort } from '../node-contract.js';
 import { defineBuiltinNode } from './types.js';
-
-export type { SwitchCase, SwitchComparison, SwitchConfig } from '@sigil/contracts/nodes/switch';
-export {
-    SWITCH_DEFAULT_PORT,
-    SwitchCaseIdSchema,
-    SwitchCaseSchema,
-    SwitchComparisonSchema,
-    SwitchConfigSchema,
-} from '@sigil/contracts/nodes/switch';
 
 export type SwitchCanonicalization =
     | { readonly ok: true; readonly value: string }
@@ -347,7 +337,12 @@ function resolveBuiltinSwitchOutputPorts(config: SwitchConfig): DeclarativeOutpu
 }
 
 export const SwitchNode = defineBuiltinNode({
-    ...ContractSwitchDescriptor,
+    type: 'switch',
+    configSchema: SwitchConfigSchema,
+    defaultConfig: SwitchConfigSchema.parse({
+        target: 'event',
+        cases: [{ id: 'case-1', value: 'file.created' }],
+    }),
     contract: {
         identity: { namespace: 'builtin', type: 'switch' },
         version: 1,
@@ -362,6 +357,3 @@ export const SwitchNode = defineBuiltinNode({
     },
     resolveOutputPorts: resolveBuiltinSwitchOutputPorts,
 });
-
-export const SwitchDescriptor = SwitchNode.descriptor;
-export const SwitchContractRegistration = SwitchNode.registration;

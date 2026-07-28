@@ -1,13 +1,12 @@
 import { parseWorkflowDocument, type WorkflowDocument } from '@sigil/contracts';
-import type { PipelineEdge } from '@sigil/contracts/edges';
-import { FileEventNameSchema } from '@sigil/contracts/event-catalog';
+import { FileEventNameSchema } from '@sigil/contracts/events';
 import {
     NodeOutputPortIdSchema,
     PipelineEdgeIdSchema,
     PipelineNodeIdSchema,
     WorkflowIdSchema,
 } from '@sigil/contracts/ids';
-import type { PipelineNode } from '@sigil/contracts/nodes';
+import type { PipelineEdge, PipelineNode } from '@sigil/contracts/workflow';
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { validateWorkflowTopology } from './topology.js';

@@ -4,12 +4,12 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { EventNameSchema, PluginIdSchema, WorkflowIdSchema } from '@sigil/contracts/ids';
-import { definePropertyDescriptor } from '@sigil/contracts/properties-file';
+import { definePropertyDescriptor } from '@sigil/contracts/properties';
 import {
     createNodeContractRegistry,
     resolveNodeContract,
-} from '@sigil/workflow-domain/node-contract';
-import { switchOutputPortStrategy } from '@sigil/workflow-domain/nodes/switch';
+    switchOutputPortStrategy,
+} from '@sigil/workflow-domain';
 import { Either, Option } from 'effect';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';

@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
 import type { PluginId } from '@sigil/contracts/ids';
-import type { SerializableNodeContract } from '@sigil/contracts/node-contract';
-import { type WorkflowContext, WorkflowContextSchema } from '@sigil/contracts/workflow-context';
+import type { SerializableNodeContract } from '@sigil/contracts/plugins';
+import { type WorkflowContext, WorkflowContextSchema } from '@sigil/contracts/workflow';
 import { Option } from 'effect';
 import {
     createEngineDiagnostic,

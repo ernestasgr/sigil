@@ -1,4 +1,4 @@
-import type { Capability } from '@sigil/contracts/manifest';
+import type { Capability } from '@sigil/contracts/plugins';
 
 import type { ReactElement } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';

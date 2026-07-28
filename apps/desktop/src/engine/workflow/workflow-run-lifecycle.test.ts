@@ -3,12 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { WorkflowDocument } from '@sigil/contracts';
 import { PluginIdSchema, type WorkflowId, WorkflowIdSchema } from '@sigil/contracts/ids';
-import type { WorkflowContext } from '@sigil/contracts/workflow-context';
+import type { WorkflowContext } from '@sigil/contracts/workflow';
 import {
     type NodeContractRegistry,
     pluginNodeIdentity,
     registerSerializableNodeContract,
-} from '@sigil/workflow-domain/node-contract';
+} from '@sigil/workflow-domain';
 import { Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import { EngineChannel } from '../../shared/ipc-channels.js';

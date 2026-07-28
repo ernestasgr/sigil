@@ -1,3 +1,5 @@
+import type { NodeType } from '@sigil/contracts/workflow';
+import type { z } from 'zod';
 import {
     builtinNodeIdentity,
     createNodeContractRegistry,
@@ -15,9 +17,29 @@ import { NotificationNode } from './notification.js';
 import { StateGetNode } from './state-get.js';
 import { StateSetNode } from './state-set.js';
 import { SwitchNode, switchOutputPortStrategy } from './switch.js';
+import type { BuiltinNodeDefinition, NodeDescriptor } from './types.js';
 
-/** The complete built-in catalog. Order is the stable registration order. */
-export const BUILTIN_NODE_DEFINITIONS = Object.freeze([
+export type { NodeType } from '@sigil/contracts/workflow';
+
+/** The authoring descriptor exposed by the Workflow domain catalog. */
+export type BuiltinNodeDescriptor<
+    TType extends NodeType = NodeType,
+    TSchema extends z.ZodType = z.ZodType,
+> = NodeDescriptor<TType, TSchema>;
+
+type BuiltinNodeDefinitionUnion =
+    | typeof FileWatcherNode
+    | typeof ManualTriggerNode
+    | typeof IfElseNode
+    | typeof SwitchNode
+    | typeof FileManagerNode
+    | typeof NotificationNode
+    | typeof LogNode
+    | typeof DelayNode
+    | typeof StateGetNode
+    | typeof StateSetNode;
+
+const builtinNodeDefinitions = Object.freeze([
     FileWatcherNode,
     ManualTriggerNode,
     IfElseNode,
@@ -28,59 +50,39 @@ export const BUILTIN_NODE_DEFINITIONS = Object.freeze([
     DelayNode,
     StateGetNode,
     StateSetNode,
-]);
+] as const satisfies readonly BuiltinNodeDefinition<string, z.ZodType>[]);
 
-type BuiltinNodeDefinitionUnion = (typeof BUILTIN_NODE_DEFINITIONS)[number];
-
-export type NodeType = BuiltinNodeDefinitionUnion['descriptor']['type'];
-
-export type BuiltinNodeConfig<K extends NodeType> = z.output<
-    Extract<
-        BuiltinNodeDefinitionUnion,
-        { readonly descriptor: { readonly type: K } }
-    >['descriptor']['configSchema']
->;
-
-export const BUILTIN_NODE_TYPE_VALUES = Object.freeze(
-    BUILTIN_NODE_DEFINITIONS.map(({ descriptor }) => descriptor.type),
-) as unknown as readonly [NodeType, ...NodeType[]];
-
-/** Compatibility lookup derived from BUILTIN_NODE_DEFINITIONS. */
-export const BUILTIN_NODE_DESCRIPTORS = Object.freeze(
-    Object.fromEntries(
-        BUILTIN_NODE_DEFINITIONS.map(({ descriptor }) => [descriptor.type, descriptor]),
-    ),
-) as {
+type BuiltinDescriptorByType = {
     readonly [K in NodeType]: Extract<
         BuiltinNodeDefinitionUnion,
         { readonly descriptor: { readonly type: K } }
     >['descriptor'];
 };
 
-/** Runtime registrations derived from the same definitions as the descriptor lookup. */
-export const BUILTIN_NODE_CONTRACT_REGISTRATIONS: readonly NodeContractRegistration[] =
-    Object.freeze(BUILTIN_NODE_DEFINITIONS.map(({ registration }) => registration));
+const builtinDescriptors = Object.freeze(
+    Object.fromEntries(
+        builtinNodeDefinitions.map(({ descriptor }) => [descriptor.type, descriptor]),
+    ),
+) as BuiltinDescriptorByType;
+
+const builtinContractRegistrations: readonly NodeContractRegistration[] = Object.freeze(
+    builtinNodeDefinitions.map(({ registration }) => registration),
+);
+
+export function getBuiltinNodeDescriptor<K extends NodeType>(type: K): BuiltinDescriptorByType[K] {
+    return builtinDescriptors[type];
+}
 
 export function createBuiltinNodeContractRegistry(): NodeContractRegistry {
-    return createNodeContractRegistry(BUILTIN_NODE_CONTRACT_REGISTRATIONS, {
+    return createNodeContractRegistry(builtinContractRegistrations, {
         outputPortStrategies: {
             'switch-cases': switchOutputPortStrategy,
         },
     });
 }
 
-const builtinContractLookup = createBuiltinNodeContractRegistry();
-
-export function getNodeDescriptor<K extends NodeType>(
-    type: K,
-): (typeof BUILTIN_NODE_DESCRIPTORS)[K] {
-    return BUILTIN_NODE_DESCRIPTORS[type];
-}
-
 export function getBuiltinNodeContract(type: NodeType): NodeContract {
-    const contract = builtinContractLookup.get(builtinNodeIdentity(type));
+    const contract = createBuiltinNodeContractRegistry().get(builtinNodeIdentity(type));
     if (!contract) throw new Error(`Missing built-in Node Contract for "${type}".`);
     return contract;
 }
-
-import type { z } from 'zod';

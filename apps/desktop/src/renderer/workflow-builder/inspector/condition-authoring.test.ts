@@ -1,4 +1,4 @@
-import { createEventCatalog, DEFAULT_EVENT_CATALOG } from '@sigil/contracts/event-catalog';
+import { createEventCatalog, DEFAULT_EVENT_CATALOG } from '@sigil/contracts/events';
 import { EventNameSchema, PluginIdSchema } from '@sigil/contracts/ids';
 import { describe, expect, it } from 'vitest';
 

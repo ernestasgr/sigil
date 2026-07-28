@@ -65,6 +65,7 @@ It builds the contracts and Workflow domain packages, runs the contracts, Workfl
 | --- | --- | --- |
 | Biome lint and format | Repository source, configuration, and documentation files that Biome understands | `node_modules`, `dist`, `out`, `release`, `coverage`, `.turbo`, `.sandcastle`, generated database/log/typecheck files, and user-owned `assets`, `learning-records`, `reference`, and `lessons` trees |
 | Dependency Cruiser | Production `.ts`/`.tsx` dependencies below `apps/desktop/src`, `packages/contracts/src`, and `packages/workflow-domain/src` | Tests, generated output, declaration output, `node_modules`, and agent tooling |
+| Package facade guard | Public package export keys and all workspace imports of `@sigil/contracts` and `@sigil/workflow-domain` | Relative imports inside a package, generated output, and external dependencies |
 | Vitest coverage | Production `.ts`/`.tsx` source in the contracts, Workflow domain, desktop, and renderer project roots | Test files, declarations, generated output, fixtures, mock data, vendor code, and ignored coverage output |
 
 The committed `sigil.properties.json` is a small example configuration and remains in the Biome scope. Runtime `sigil.db*` files are user-owned and ignored.
@@ -78,7 +79,9 @@ The committed `sigil.properties.json` is a small example configuration and remai
 - Renderer runtime imports from Engine, Main, or Preload;
 - Engine or Preload imports from Renderer;
 - contracts imports from Workflow domain or the desktop application; and
-- Workflow domain imports from the desktop application.
+- Workflow domain imports from the desktop application;
+- package consumers bypass the approved contracts or Workflow domain facades; and
+- retired Node assembly, registration, or sample source paths return to the public source tree.
 
 One existing relationship is intentionally visible as a warning rather than hidden:
 
@@ -91,7 +94,7 @@ Coverage includes production TypeScript source under `packages/contracts/src`, `
 
 The measured baseline is recorded in [`coverage-baseline.json`](coverage-baseline.json). `pnpm coverage:check` requires statements, branches, functions, and lines for the contracts, Workflow domain, desktop, and renderer projects to be at least their committed baseline. This is a trend policy derived from the current measured suite, rather than an arbitrary round-number threshold. If production source is added without corresponding tests, the affected metric falls below the baseline and the gate fails; update the baseline only alongside an intentional, reviewed coverage-policy change.
 
-The per-file seam floors live in the root [`vitest.coverage.ts`](../vitest.coverage.ts) policy module. They cover topology compilation; Plugin authentication and command dispatch; Workflow persistence; Workflow lifecycle supervision; and renderer state transitions. Each floor is rounded down from the current report for that seam, while the aggregate baseline prevents the rest of the source tree from regressing unnoticed.
+The per-file seam floors live in the root [`vitest.coverage.ts`](../vitest.coverage.ts) policy module. They cover Workflow compilation and topology, Node Contract admission, Plugin configuration admission, property resolution, Plugin authentication and command dispatch, Workflow persistence, Workflow lifecycle supervision, and renderer state transitions. Each floor is rounded down from the current report for that seam, while the aggregate baseline prevents the rest of the source tree from regressing unnoticed.
 
 ## CI quality gate
 
@@ -99,7 +102,7 @@ The `Quality gates (Windows)` job runs every required check sequentially on a fr
 
 1. install the frozen workspace dependencies with lifecycle scripts disabled;
 2. build the contracts and Workflow domain packages;
-3. run lint, formatting, architecture, structural checks and fixtures, workflow validation, typecheck, and `pnpm test:fast`, whose composed renderer test command runs the renderer unit and DOM projects;
+3. run lint, formatting, architecture (including facade imports), structural checks and fixtures, workflow validation, typecheck, and `pnpm test:fast`, whose composed renderer test command runs the renderer unit and DOM projects;
 4. run the contracts, Workflow domain, desktop, and renderer test projects with coverage;
 5. enforce the measured project baselines and per-file seam thresholds;
 6. build the production Electron output; and

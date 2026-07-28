@@ -3,7 +3,7 @@ import {
     type TopologyDiagnostic,
     topologyDiagnosticKey,
     topologyDiagnosticStableKey,
-} from '@sigil/workflow-domain/topology';
+} from '@sigil/workflow-domain';
 import { ReactFlowProvider } from '@xyflow/react';
 import { type ReactElement, useEffect, useState } from 'react';
 

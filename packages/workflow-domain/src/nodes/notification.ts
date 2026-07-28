@@ -1,9 +1,11 @@
-import { NotificationDescriptor } from '@sigil/contracts/nodes/notification';
+import { NotificationConfigSchema } from '@sigil/contracts/workflow';
 
 import { defineBuiltinNode } from './types.js';
 
 export const NotificationNode = defineBuiltinNode({
-    ...NotificationDescriptor,
+    type: 'notification',
+    configSchema: NotificationConfigSchema,
+    defaultConfig: { title: 'Notification', body: 'Body' },
     contract: {
         identity: { namespace: 'builtin', type: 'notification' },
         version: 1,
@@ -16,5 +18,3 @@ export const NotificationNode = defineBuiltinNode({
         },
     },
 });
-
-export const NotificationContractRegistration = NotificationNode.registration;

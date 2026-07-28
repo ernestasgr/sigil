@@ -1,4 +1,4 @@
-import { formatTopologyDiagnosticTarget } from '@sigil/workflow-domain/topology';
+import { formatTopologyDiagnosticTarget } from '@sigil/workflow-domain';
 import { Either } from 'effect';
 
 import {

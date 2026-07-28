@@ -11,41 +11,6 @@
             "types": "./dist/workflow-domain.d.ts",
             "import": "./dist/workflow-domain.js",
             "default": "./dist/workflow-domain.js"
-        },
-        "./compilation": {
-            "types": "./dist/compilation.d.ts",
-            "import": "./dist/compilation.js",
-            "default": "./dist/compilation.js"
-        },
-        "./topology": {
-            "types": "./dist/topology.d.ts",
-            "import": "./dist/topology.js",
-            "default": "./dist/topology.js"
-        },
-        "./node-contract": {
-            "types": "./dist/node-contract.d.ts",
-            "import": "./dist/node-contract.js",
-            "default": "./dist/node-contract.js"
-        },
-        "./nodes/catalog": {
-            "types": "./dist/nodes/catalog.d.ts",
-            "import": "./dist/nodes/catalog.js",
-            "default": "./dist/nodes/catalog.js"
-        },
-        "./nodes/switch": {
-            "types": "./dist/nodes/switch.d.ts",
-            "import": "./dist/nodes/switch.js",
-            "default": "./dist/nodes/switch.js"
-        },
-        "./nodes/types": {
-            "types": "./dist/nodes/types.d.ts",
-            "import": "./dist/nodes/types.js",
-            "default": "./dist/nodes/types.js"
-        },
-        "./samples": {
-            "types": "./dist/samples.d.ts",
-            "import": "./dist/samples.js",
-            "default": "./dist/samples.js"
         }
     },
     "files": [
@@ -65,7 +30,7 @@
     },
     "devDependencies": {
         "@types/node": "26.1.1",
-        "@vitest/coverage-v8": "4.1.9",
+        "@vitest/coverage-v8": "4.1.10",
         "fast-check": "3.23.2",
         "typescript": "^6.0.3",
         "vite": "7.3.5",

@@ -1,9 +1,17 @@
-import { IfElseDescriptor } from '@sigil/contracts/nodes/if-else';
+import { IfElseConfigSchema } from '@sigil/contracts/workflow';
 
 import { defineBuiltinNode } from './types.js';
 
 export const IfElseNode = defineBuiltinNode({
-    ...IfElseDescriptor,
+    type: 'if-else',
+    configSchema: IfElseConfigSchema,
+    defaultConfig: {
+        condition: {
+            target: 'event',
+            operator: 'equals',
+            value: 'file.created',
+        },
+    },
     contract: {
         identity: { namespace: 'builtin', type: 'if-else' },
         version: 1,
@@ -22,5 +30,3 @@ export const IfElseNode = defineBuiltinNode({
         },
     },
 });
-
-export const IfElseContractRegistration = IfElseNode.registration;

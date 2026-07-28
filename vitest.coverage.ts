@@ -23,11 +23,25 @@ export const coverageExcludes = [
 export const contractsCoverageThresholds = {} as const;
 
 export const workflowDomainCoverageThresholds = {
+    // Workflow admission and compilation.
+    'src/compilation.ts': {
+        statements: 95,
+        branches: 95,
+        functions: 95,
+        lines: 95,
+    },
     'src/topology.ts': {
         statements: 88,
         branches: 76,
         functions: 90,
         lines: 88,
+    },
+    // Node Contract admission and resolution.
+    'src/node-contract.ts': {
+        statements: 85,
+        branches: 90,
+        functions: 80,
+        lines: 84,
     },
 } as const;
 
@@ -44,6 +58,20 @@ export const desktopCoverageThresholds = {
         branches: 68,
         functions: 95,
         lines: 81,
+    },
+    // Plugin configuration admission.
+    'src/engine/plugins/node-plugin-preparation.ts': {
+        statements: 95,
+        branches: 70,
+        functions: 95,
+        lines: 95,
+    },
+    // Properties File resolution.
+    'src/engine/core/property-registry.ts': {
+        statements: 90,
+        branches: 80,
+        functions: 94,
+        lines: 90,
     },
     // Workflow persistence.
     'src/engine/workflow/workflow-state.ts': {

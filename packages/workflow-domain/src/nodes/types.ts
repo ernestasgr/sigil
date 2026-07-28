@@ -2,7 +2,7 @@ import {
     type NodeContractDefinition,
     type NodeContractIssue,
     serializeNodeConfigurationSchema,
-} from '@sigil/contracts/node-contract';
+} from '@sigil/contracts/plugins';
 import type { z } from 'zod';
 import type {
     DeclarativeOutputPortResolution,
@@ -30,7 +30,7 @@ export interface BuiltinNodeDefinition<TType extends string, TSchema extends z.Z
     readonly registration: NodeContractRegistration<TSchema>;
 }
 
-export function defineNode<TType extends string, TSchema extends z.ZodType>(
+function defineNode<TType extends string, TSchema extends z.ZodType>(
     descriptor: NodeDescriptor<TType, TSchema>,
 ): NodeDescriptor<TType, TSchema> {
     return descriptor;
@@ -83,5 +83,3 @@ export function defineBuiltinNode<TType extends string, TSchema extends z.ZodTyp
     });
     return { descriptor, registration };
 }
-
-export type UnknownNodeDescriptor = NodeDescriptor<string, z.ZodType>;

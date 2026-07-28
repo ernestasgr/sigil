@@ -3,7 +3,7 @@ import {
     checkSerializableJsonComplexity,
     SERIALIZABLE_NODE_CONTRACT_COMPLEXITY_LIMITS,
     validatePluginNodeContract,
-} from '@sigil/contracts/node-contract';
+} from '@sigil/contracts/plugins';
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';

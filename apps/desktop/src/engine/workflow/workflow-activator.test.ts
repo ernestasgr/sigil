@@ -8,14 +8,13 @@ import {
     PluginIdSchema,
     WorkflowIdSchema,
 } from '@sigil/contracts/ids';
-import type { Manifest } from '@sigil/contracts/manifest';
-import type { SerializableNodeContractInput } from '@sigil/contracts/node-contract';
-import type { WorkflowContext } from '@sigil/contracts/workflow-context';
+import type { Manifest, SerializableNodeContractInput } from '@sigil/contracts/plugins';
+import type { WorkflowContext } from '@sigil/contracts/workflow';
 import {
     fixedOutputPortSpec,
     pluginNodeIdentity,
     registerSerializableNodeContract,
-} from '@sigil/workflow-domain/node-contract';
+} from '@sigil/workflow-domain';
 import { Either, Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import { testDocument } from '../../test-support/pipeline-fixtures.js';

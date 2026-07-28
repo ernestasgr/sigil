@@ -1,13 +1,13 @@
 import { copyFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import { basename, dirname, join, parse } from 'node:path';
 import { type PluginId, PluginIdSchema } from '@sigil/contracts/ids';
-import { FileManagerConfigSchema } from '@sigil/contracts/nodes/file-manager';
 import {
     BUILTIN_PROPERTY_DEFAULTS,
     BUILTIN_PROPERTY_DESCRIPTORS,
     type CollisionSuffixStyle,
     type ConflictPolicy,
-} from '@sigil/contracts/properties-file';
+} from '@sigil/contracts/properties';
+import { FileManagerConfigSchema } from '@sigil/contracts/workflow';
 import { Either } from 'effect';
 import type { NodeHandler, NodeRunResult } from '../../engine/node-handlers/types.js';
 import { narrowNode } from '../../engine/node-handlers/types.js';

@@ -5,7 +5,7 @@ import {
     type PluginId,
     type WorkflowId,
 } from '@sigil/contracts/ids';
-import type { PipelineNode } from '@sigil/contracts/nodes';
+import type { PipelineNode } from '@sigil/contracts/workflow';
 import type {
     EventTelemetry,
     TelemetryKind,

@@ -3,16 +3,16 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { type PluginId, PluginIdSchema } from '@sigil/contracts/ids';
-import type { Capability, Manifest } from '@sigil/contracts/manifest';
+import type { Capability, Manifest } from '@sigil/contracts/plugins';
 import {
     type SerializableNodeContract,
     validatePluginNodeContract,
-} from '@sigil/contracts/node-contract';
-import type { SerializedPropertyDescriptor } from '@sigil/contracts/properties-file';
+} from '@sigil/contracts/plugins';
+import type { SerializedPropertyDescriptor } from '@sigil/contracts/properties';
 import {
     type NodeContractRegistry,
     registerSerializableNodeContract,
-} from '@sigil/workflow-domain/node-contract';
+} from '@sigil/workflow-domain';
 import { Either } from 'effect';
 import type { EngineDiagnosticPayload } from '../../shared/event-payload-schemas.js';
 import type { PropertyRegistry } from '../core/property-registry.js';

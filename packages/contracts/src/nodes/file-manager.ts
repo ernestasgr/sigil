@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import { ConflictPolicySchema } from '../properties-file.js';
-import { defineNode } from './types.js';
 
 export const FileManagerConfigSchema = z
     .object({
@@ -11,9 +10,3 @@ export const FileManagerConfigSchema = z
     })
     .strict();
 export type FileManagerConfig = z.infer<typeof FileManagerConfigSchema>;
-
-export const FileManagerDescriptor = defineNode({
-    type: 'file-manager',
-    configSchema: FileManagerConfigSchema,
-    defaultConfig: { action: 'move', destination: '/', onConflict: 'skip' },
-});

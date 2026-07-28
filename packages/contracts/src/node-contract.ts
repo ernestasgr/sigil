@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import {
-    type NodeOutputPortId,
     NodeOutputPortIdSchema,
     NodeTypeNameSchema,
     type PluginId,
@@ -640,5 +639,3 @@ export const NodeContractIssueSchema = z
     .strict()
     .readonly();
 export type NodeContractIssue = z.infer<typeof NodeContractIssueSchema>;
-
-export type { NodeOutputPortId };

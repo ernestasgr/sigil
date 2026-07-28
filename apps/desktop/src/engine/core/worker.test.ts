@@ -1,6 +1,5 @@
 import { PluginIdSchema, WorkflowIdSchema } from '@sigil/contracts/ids';
 import type { CompiledPipeline } from '@sigil/workflow-domain';
-import { sampleManualTriggerToLog } from '@sigil/workflow-domain/samples';
 import { Effect, Either, Option } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -229,8 +228,14 @@ describe('dispatch', () => {
             subsystems,
         );
 
-        expect(engine.execute).toHaveBeenCalledTimes(1);
-        expect(engine.execute).toHaveBeenCalledWith(sampleManualTriggerToLog);
+        expect(engine.executeDocument).toHaveBeenCalledTimes(1);
+        expect(engine.executeDocument).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: 'sample-manual-trigger-to-log',
+                workflowId: 'workflow-download-sorter',
+                schemaVersion: 1,
+            }),
+        );
         expect(subsystems.postMessage).toHaveBeenCalledWith({
             type: EngineChannel.FireTestEventResult,
             correlationId: 'corr-test-event',
@@ -1175,9 +1180,9 @@ describe('dispatch', () => {
         });
     });
 
-    it('FireTestEvent posts an error log when engine.execute rejects', async () => {
+    it('FireTestEvent posts an error log when engine.executeDocument rejects', async () => {
         const { subsystems, postMessage, engine } = createFakeSubsystems();
-        engine.execute.mockRejectedValue(new Error('test error'));
+        engine.executeDocument.mockRejectedValue(new Error('test error'));
 
         await dispatch(
             { type: EngineChannel.FireTestEvent, correlationId: 'corr-test-error' },
@@ -1187,7 +1192,7 @@ describe('dispatch', () => {
         await vi.waitFor(() => {
             expect(postMessage).toHaveBeenCalledWith({
                 type: EngineChannel.Log,
-                line: '[error] engine.execute failed: test error',
+                line: '[error] engine.executeDocument failed: test error',
             });
         });
         expect(postMessage).toHaveBeenCalledWith({
@@ -1198,7 +1203,7 @@ describe('dispatch', () => {
         });
     });
 
-    it('FireManualTrigger posts an error log when engine.execute rejects', async () => {
+    it('FireManualTrigger posts an error log when engine.executeDocument rejects', async () => {
         const { subsystems, postMessage, engine } = createFakeSubsystems();
         engine.executeDocument.mockRejectedValue(new Error('manual trigger error'));
         const pipeline = { id: 'p-1' } as CompiledPipeline;

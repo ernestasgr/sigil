@@ -3,12 +3,10 @@ import { PipelineEdgeIdSchema, PipelineNodeIdSchema } from '@sigil/contracts/ids
 import {
     type CompiledPipeline,
     compileWorkflow,
-    type WorkflowCompilationOptions,
-} from '@sigil/workflow-domain';
-import {
     formatTopologyDiagnostics,
     type TopologyDiagnostic,
-} from '@sigil/workflow-domain/topology';
+    type WorkflowCompilationOptions,
+} from '@sigil/workflow-domain';
 
 import {
     createNodeCatalog,
