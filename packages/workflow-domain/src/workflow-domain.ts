@@ -20,6 +20,7 @@ export {
     formatTopologyDiagnosticTarget,
     TopologyDiagnosticSchema,
     topologyDiagnosticKey,
+    topologyDiagnosticStableKey,
     topologyDiagnosticTargetKey,
     validateWorkflowTopology,
 } from './topology.js';

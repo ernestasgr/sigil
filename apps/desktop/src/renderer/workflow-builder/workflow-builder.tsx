@@ -2,6 +2,7 @@ import {
     formatTopologyDiagnosticTarget,
     type TopologyDiagnostic,
     topologyDiagnosticKey,
+    topologyDiagnosticStableKey,
 } from '@sigil/workflow-domain/topology';
 import { ReactFlowProvider } from '@xyflow/react';
 import { type ReactElement, useEffect, useState } from 'react';
@@ -190,7 +191,7 @@ function saveDiagnosticRepairHint(diagnostic: WorkflowDraftDiagnostic): string |
 }
 
 function saveDiagnosticKey(diagnostic: WorkflowDraftDiagnostic): string {
-    if (isTopologyDiagnostic(diagnostic)) return topologyDiagnosticKey(diagnostic);
+    if (isTopologyDiagnostic(diagnostic)) return topologyDiagnosticStableKey(diagnostic);
     return `${diagnostic.code}-${saveDiagnosticTargetLabel(diagnostic)}-${
         saveDiagnosticContextLabel(diagnostic) ?? ''
     }-${diagnostic.message}`;

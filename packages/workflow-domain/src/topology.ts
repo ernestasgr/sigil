@@ -279,6 +279,19 @@ export function topologyDiagnosticKey(diagnostic: TopologyDiagnostic): string {
         target: topologyDiagnosticTargetKey(diagnostic.target),
         fieldPath: diagnostic.fieldPath ?? null,
         details: 'details' in diagnostic ? (diagnostic.details ?? null) : null,
+        message: diagnostic.message,
+        repairHint: diagnostic.repairHint ?? null,
+    });
+}
+
+/** Stable identity for UI entries that should survive message or repair-hint changes. */
+export function topologyDiagnosticStableKey(diagnostic: TopologyDiagnostic): string {
+    return JSON.stringify({
+        code: diagnostic.code,
+        severity: diagnostic.severity,
+        target: topologyDiagnosticTargetKey(diagnostic.target),
+        fieldPath: diagnostic.fieldPath ?? null,
+        details: 'details' in diagnostic ? (diagnostic.details ?? null) : null,
     });
 }
 

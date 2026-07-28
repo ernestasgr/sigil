@@ -22,6 +22,7 @@ import {
     TopologyDiagnosticCodeSchema,
     TopologyDiagnosticSchema,
     topologyDiagnosticKey,
+    topologyDiagnosticStableKey,
     validateWorkflowTopology,
 } from './topology.js';
 
@@ -205,6 +206,10 @@ describe('validateWorkflowTopology', () => {
             message: 'Invalid configuration.',
         } as const;
         const sameTarget = { ...nodeDiagnostic, message: 'A different message.' } as const;
+        const sameTargetWithDifferentRepair = {
+            ...nodeDiagnostic,
+            repairHint: 'Use a different configuration value.',
+        } as const;
         const otherTarget = {
             ...nodeDiagnostic,
             target: { kind: 'node', nodeId: PipelineNodeIdSchema.parse('node-2') },
@@ -218,7 +223,16 @@ describe('validateWorkflowTopology', () => {
                 relatedNodeId: PipelineNodeIdSchema.parse('node-1'),
             }),
         ).toBe('Edge edge-1 · Node node-1');
-        expect(topologyDiagnosticKey(nodeDiagnostic)).toBe(topologyDiagnosticKey(sameTarget));
+        expect(topologyDiagnosticKey(nodeDiagnostic)).not.toBe(topologyDiagnosticKey(sameTarget));
+        expect(topologyDiagnosticKey(nodeDiagnostic)).not.toBe(
+            topologyDiagnosticKey(sameTargetWithDifferentRepair),
+        );
+        expect(topologyDiagnosticStableKey(nodeDiagnostic)).toBe(
+            topologyDiagnosticStableKey(sameTarget),
+        );
+        expect(topologyDiagnosticStableKey(nodeDiagnostic)).toBe(
+            topologyDiagnosticStableKey(sameTargetWithDifferentRepair),
+        );
         expect(topologyDiagnosticKey(nodeDiagnostic)).not.toBe(topologyDiagnosticKey(otherTarget));
         expect(
             topologyDiagnosticKey({

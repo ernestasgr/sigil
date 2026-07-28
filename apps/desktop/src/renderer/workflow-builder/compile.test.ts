@@ -68,7 +68,10 @@ describe('compileGraph', () => {
             ).toEqual(['a-b', 'b-a']);
             expect(result.diagnostics).not.toEqual(
                 expect.arrayContaining([
-                    expect.objectContaining({ code: 'cycle', edgeId: 'b-tail' }),
+                    expect.objectContaining({
+                        code: 'cycle',
+                        target: expect.objectContaining({ kind: 'edge', edgeId: 'b-tail' }),
+                    }),
                 ]),
             );
             expect(result.error).not.toContain('b-tail');
